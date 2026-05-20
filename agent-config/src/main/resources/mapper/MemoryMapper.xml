@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.platform.shared.mapper.MemoryMapper">
+
+    <!-- ==================== PostgreSQL 记忆存储 SQL 配置 ==================== -->
+    <!-- SQL语句支持 ${tableName} 占位符，运行时替换为实际表名 -->
+
+    <!-- 创建表 -->
+    <sql id="createTable">
+        CREATE TABLE IF NOT EXISTS ${tableName} (
+            id SERIAL PRIMARY KEY,
+            key VARCHAR(512) UNIQUE NOT NULL,
+            value TEXT,
+            metadata JSONB,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    </sql>
+
+    <!-- 创建key索引 -->
+    <sql id="createKeyIndex">
+        CREATE INDEX IF NOT EXISTS idx_${tableName}_key ON ${tableName} (key)
+    </sql>
+
+    <!-- 创建created_at索引 -->
+    <sql id="createCreatedAtIndex">
+        CREATE INDEX IF NOT EXISTS idx_${tableName}_created_at ON ${tableName} (created_at)
+    </sql>
+
+    <!-- 创建更新时间触发器函数 -->
+    <sql id="createTriggerFunction">
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            NEW.updated_at = CURRENT_TIMESTAMP;
+            RETURN NEW;
+        END;
+        $$ language 'plpgsql'
+    </sql>
+
+    <!-- 创建触发器 -->
+    <sql id="createTrigger">
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_trigger WHERE tgname = 'update_${tableName}_updated_at'
+            ) THEN
+                CREATE TRIGGER update_${tableName}_updated_at
+                    BEFORE UPDATE ON ${tableName}
+                    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+            END IF;
+        END;
+        $$
+    </sql>
+
+    <!-- 启用pgvector扩展 -->
+    <sql id="enableVectorExtension">
+        CREATE EXTENSION IF NOT EXISTS vector
+    </sql>
+
+    <!-- ==================== 数据操作 SQL ==================== -->
+
+    <!-- 插入或更新（UPSERT） -->
+    <sql id="upsert">
+        INSERT INTO ${tableName} (key, value, metadata)
+        VALUES (?, ?, ?::jsonb)
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            metadata = EXCLUDED.metadata,
+            updated_at = CURRENT_TIMESTAMP
+    </sql>
+
+    <!-- 根据key查询 -->
+    <sql id="selectByKey">
+        SELECT value, metadata FROM ${tableName} WHERE key = ?
+    </sql>
+
+    <!-- 根据key查询（包含元数据和时间戳） -->
+    <sql id="selectWithMetadata">
+        SELECT value, metadata, created_at, updated_at FROM ${tableName} WHERE key = ?
+    </sql>
+
+    <!-- 根据key删除 -->
+    <sql id="deleteByKey">
+        DELETE FROM ${tableName} WHERE key = ?
+    </sql>
+
+    <!-- 检查key是否存在 -->
+    <sql id="existsByKey">
+        SELECT 1 FROM ${tableName} WHERE key = ?
+    </sql>
+
+    <!-- 列出所有key -->
+    <sql id="listKeys">
+        SELECT key FROM ${tableName} ORDER BY created_at DESC LIMIT ?
+    </sql>
+
+    <!-- 清空表 -->
+    <sql id="truncateTable">
+        TRUNCATE TABLE ${tableName}
+    </sql>
+
+    <!-- 健康检查 -->
+    <sql id="healthCheck">
+        SELECT 1
+    </sql>
+
+</mapper>

@@ -1,0 +1,439 @@
+/**
+ * yunxiClaw - 中继服务器测试页面
+ * 
+ * 用于测试连接到中继服务器 ws://localhost:40001/ws/desktop
+ * AI 通过后端 API 转发命令到此页面
+ */
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>yunxiClaw - 中继服务器测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #0f0f23;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .server-type {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .server-type button {
+            padding: 10px 20px;
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            background: #1a1a2e;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .server-type button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            border-color: #667eea;
+        }
+        
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding: 16px;
+            background: #1a1a2e;
+            border-radius: 10px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #f87171;
+        }
+        
+        .status-dot.connected {
+            background: #00d26a;
+            box-shadow: 0 0 10px #00d26a;
+        }
+        
+        .status-text {
+            color: #e2e8f0;
+            font-size: 14px;
+        }
+        
+        .server-url {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            background: #0a0a15;
+            color: #e2e8f0;
+            font-family: 'Monaco', monospace;
+            font-size: 12px;
+        }
+        
+        .section {
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            color: #94a3b8;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 120px;
+            background: #1a1a2e;
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-family: 'Monaco', monospace;
+            font-size: 12px;
+            padding: 12px;
+            resize: vertical;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+        
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+        
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            background: #2a2a4a;
+            color: #94a3b8;
+        }
+        
+        .btn-sm:hover {
+            background: #3a3a5a;
+            color: #e2e8f0;
+        }
+        
+        .log-panel {
+            background: #0a0a15;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 300px;
+            overflow: auto;
+            font-family: 'Monaco', monospace;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+        }
+        
+        .log-entry.success {
+            border-left-color: #00d26a;
+        }
+        
+        .log-entry.error {
+            border-left-color: #f87171;
+        }
+        
+        .log-entry.info {
+            border-left-color: #60a5fa;
+        }
+        
+        .log-entry.cmd {
+            border-left-color: #fbbf24;
+            background: #2a2a1a;
+        }
+        
+        .log-time {
+            color: #64748b;
+            font-size: 10px;
+        }
+        
+        .log-content {
+            margin-top: 4px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>yunxiClaw 连接测试</h1>
+        
+        <div class="server-type">
+            <button id="btnLocal" onclick="switchMode('local')">本地服务器模式</button>
+            <button id="btnRelay" class="active" onclick="switchMode('relay')">中继服务器模式</button>
+        </div>
+        
+        <div class="status-row">
+            <div class="status-dot" id="statusDot"></div>
+            <span class="status-text" id="statusText">未连接</span>
+            <input type="text" class="server-url" id="serverUrl" value="ws://localhost:40001/ws/desktop">
+            <button class="btn btn-primary" id="btnConnect" style="margin-left: auto;">连接</button>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">发送命令 (JSON)</div>
+            <textarea id="commandInput" placeholder='{"type": "ping"}'></textarea>
+            <div class="btn-row">
+                <button class="btn btn-sm" onclick="sendCommand('ping')">Ping</button>
+                <button class="btn btn-sm" onclick="sendCommand('get-info')">获取信息</button>
+                <button class="btn btn-sm" onclick="sendCommand('execute')">执行命令</button>
+                <button class="btn btn-sm" onclick="sendCommand('list-dir')">列出目录</button>
+                <button class="btn btn-sm" onclick="sendCommand('read-file')">读取文件</button>
+                <button class="btn btn-sm" onclick="sendCommand('git')">Git 操作</button>
+                <button class="btn btn-sm" onclick="clearLog()">清空日志</button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">通信日志</div>
+            <div class="log-panel" id="logPanel">
+                <div class="log-entry info">
+                    <div class="log-time">等待连接...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let connected = false;
+        let mode = 'relay'; // 'local' or 'relay'
+        
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const btnConnect = document.getElementById('btnConnect');
+        const commandInput = document.getElementById('commandInput');
+        const logPanel = document.getElementById('logPanel');
+        const serverUrlInput = document.getElementById('serverUrl');
+        
+        // 模式切换
+        function switchMode(newMode) {
+            mode = newMode;
+            
+            document.getElementById('btnLocal').className = mode === 'local' ? 'active' : '';
+            document.getElementById('btnRelay').className = mode === 'relay' ? 'active' : '';
+            
+            if (mode === 'local') {
+                serverUrlInput.value = 'ws://localhost:9876';
+            } else {
+                serverUrlInput.value = 'ws://localhost:40001/ws/desktop';
+            }
+            
+            // 断开现有连接
+            if (connected) {
+                disconnect();
+            }
+        }
+        
+        // 连接/断开服务器
+        btnConnect.addEventListener('click', () => {
+            if (connected) {
+                disconnect();
+            } else {
+                connect();
+            }
+        });
+        
+        function connect() {
+            const url = serverUrlInput.value;
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                connected = true;
+                statusDot.classList.add('connected');
+                statusText.textContent = '已连接 (' + mode + ')';
+                btnConnect.textContent = '断开';
+                addLog('success', '已连接到 ' + url);
+                
+                // 注册客户端
+                ws.send(JSON.stringify({
+                    type: 'register',
+                    clientId: 'test-client-' + Date.now(),
+                    capabilities: ['execute', 'git', 'file', 'list-dir', 'read-file', 'write-file']
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    addLog('info', JSON.stringify(data, null, 2));
+                } catch (e) {
+                    addLog('info', event.data);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                addLog('error', 'WebSocket 错误: ' + error.message);
+            };
+            
+            ws.onclose = () => {
+                connected = false;
+                statusDot.classList.remove('connected');
+                statusText.textContent = '未连接';
+                btnConnect.textContent = '连接';
+                addLog('info', '连接已断开');
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+            }
+        }
+        
+        // 发送命令
+        function sendCommand(type) {
+            if (!connected) {
+                addLog('error', '请先连接服务器');
+                return;
+            }
+            
+            let data;
+            const cwd = 'D:\\work\\code\\yunxi-agent-platform';
+            
+            switch (type) {
+                case 'ping':
+                    data = { type: 'ping', requestId: 'req-' + Date.now() };
+                    break;
+                case 'get-info':
+                    data = { type: 'get-info', requestId: 'req-' + Date.now() };
+                    break;
+                case 'execute':
+                    data = { 
+                        type: 'execute', 
+                        requestId: 'req-' + Date.now(),
+                        command: 'echo', 
+                        args: ['Hello from yunxiClaw!'],
+                        cwd: cwd
+                    };
+                    break;
+                case 'list-dir':
+                    data = { 
+                        type: 'list-dir', 
+                        requestId: 'req-' + Date.now(),
+                        path: cwd
+                    };
+                    break;
+                case 'read-file':
+                    data = { 
+                        type: 'read-file', 
+                        requestId: 'req-' + Date.now(),
+                        path: cwd + '\\package.json'
+                    };
+                    break;
+                case 'git':
+                    data = { 
+                        type: 'git', 
+                        requestId: 'req-' + Date.now(),
+                        operation: 'status',
+                        args: []
+                    };
+                    break;
+                default:
+                    return;
+            }
+            
+            commandInput.value = JSON.stringify(data, null, 2);
+            ws.send(JSON.stringify(data));
+            addLog('cmd', '发送: ' + JSON.stringify(data));
+        }
+        
+        // 添加日志
+        function addLog(type, message) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<div class="log-time">${time}</div><div class="log-content">${escapeHtml(message)}</div>`;
+            
+            logPanel.insertBefore(entry, logPanel.firstChild);
+        }
+        
+        // 清空日志
+        function clearLog() {
+            logPanel.innerHTML = '<div class="log-entry info"><div class="log-time">日志已清空</div></div>';
+        }
+        
+        // HTML 转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 发送自定义命令
+        commandInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey && connected) {
+                try {
+                    const data = JSON.parse(commandInput.value);
+                    ws.send(JSON.stringify(data));
+                    addLog('cmd', '发送: ' + commandInput.value);
+                } catch (e) {
+                    addLog('error', 'JSON 格式错误');
+                }
+            }
+        });
+    </script>
+</body>
+</html>

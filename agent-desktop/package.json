@@ -1,0 +1,48 @@
+{
+  "name": "yunxiclaw",
+  "version": "1.0.0",
+  "description": "yunxiClaw - 让AI能够操作您的电脑",
+  "main": "src/main/index.js",
+  "author": "YGC",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.yunxi.claw",
+    "productName": "yunxiClaw",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "electron": "^41.2.0",
+    "electron-log": "^5.0.0",
+    "ws": "^8.14.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.9.0"
+  }
+}

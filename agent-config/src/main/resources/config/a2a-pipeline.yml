@@ -1,0 +1,171 @@
+# A2A 代码修复流水线生产级配置
+# 集成到现有 agent-core 的配置
+# 支持消息队列: Kafka (默认) / RocketMQ (国产化环境)
+
+# A2A 启用配置
+platform:
+  extensions:
+    a2a:
+      enabled: true
+
+spring:
+  # 方案2: RocketMQ (国产化环境)
+  rocketmq:
+    name-server: ${ROCKETMQ_NAMESRV_ADDR:localhost:9876}
+    producer:
+      group: a2a-pipeline-producer
+      send-timeout: 3000
+      retry-times-when-send-failed: 2
+    consumer:
+      group: a2a-pipeline-consumer
+      topic: a2a-pipeline-topic
+
+  # Redis 配置（用于状态存储和分布式锁）
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redispass}
+      database: 2
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+          max-wait: 1000ms
+        shutdown-timeout: 100ms
+
+# A2A 流水线配置
+a2a:
+  pipeline:
+    enabled: true
+    # 执行引擎配置
+    engine:
+      type: ${A2A_ENGINE_TYPE:local}  # local / distributed
+      worker-count: ${A2A_WORKER_COUNT:4}
+      queue-capacity: ${A2A_QUEUE_CAPACITY:100}
+      
+    # 分布式锁配置
+    distributed-lock:
+      enabled: ${A2A_DISTRIBUTED_LOCK_ENABLED:true}
+      lock-wait-timeout: 30s
+      lock-lease-time: 60s
+      
+    # 状态存储配置
+    state-storage:
+      type: ${A2A_STATE_STORAGE:redis}  # memory / redis
+      retention-days: 30
+      
+    # 重试配置
+    retry:
+      max-attempts: 3
+      initial-interval: 1000ms
+      multiplier: 2.0
+      max-interval: 30000ms
+      
+    # 超时配置
+    timeout:
+      code-review: 300s
+      code-fix: 600s
+      test-execution: 900s
+      deployment: 600s
+      
+    # 人工审核配置
+    manual-approval:
+      enabled: true
+      timeout: 24h
+      notify-channels: [email, dingtalk]
+      
+    # 通知配置
+    notification:
+      enabled: true
+      on-success: true
+      on-failure: true
+      on-approval-required: true
+      
+  # Agent 注册中心配置
+  registry:
+    type: ${A2A_REGISTRY_TYPE:redis}  # memory / redis / consul
+    heartbeat-interval: 30s
+    heartbeat-timeout: 90s
+    cleanup-interval: 300s
+    
+  # 安全配置
+  security:
+    enabled: true
+    authentication:
+      type: jwt  # jwt / oauth2
+      jwt:
+        secret: ${A2A_JWT_SECRET:}
+        expiration: 3600s
+    authorization:
+      enabled: true
+      rbac-config-path: classpath:a2a-rbac.yml
+    audit:
+      enabled: true
+      log-all-requests: true
+      sensitive-fields: [password, token, secret, key]
+
+# 代码修复流水线特定配置
+pipeline:
+  code-fix:
+    # 代码审查配置
+    code-review:
+      static-analysis:
+        enabled: true
+        tools: [spotbugs, pmd, checkstyle]
+      security-scan:
+        enabled: true
+        tools: [dependency-check, snyk]
+      
+    # 代码修复配置
+    code-fix:
+      max-iterations: 5
+      auto-commit: false
+      require-approval: true
+      
+    # 测试执行配置
+    test-execution:
+      parallel: true
+      max-parallelism: 4
+      coverage-threshold: 80
+      
+    # 部署配置
+    deployment:
+      strategy: blue-green  # blue-green / canary / rolling
+      auto-rollback: true
+      health-check:
+        enabled: true
+        interval: 10s
+        timeout: 300s
+        retries: 30
+
+# 监控配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,a2a-pipeline
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      slo:
+        '[a2a.pipeline.execution.time]': 100ms,500ms,1s,5s,10s,30s,60s
+
+# 日志配置
+logging:
+  level:
+    '[io.yunxi.platform.framework.a2a]': INFO
+    '[io.yunxi.platform.framework.a2a.pipeline]': DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{pipelineId}] [%X{taskId}] %-5level %logger{36} - %msg%n"

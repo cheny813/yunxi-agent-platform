@@ -1,0 +1,19 @@
+apiVersion: v2
+name: yunxi-agent-platform
+description: yunxi Agent Platform - Enterprise Multi-Agent Collaboration Framework
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/yunxi/agent-platform
+sources:
+  - https://github.com/yunxi/agent-platform
+maintainers:
+  - name: yunxi Team
+    email: dev@yunxi.io
+keywords:
+  - agent
+  - ai
+  - mcp
+  - multi-agent
+  - collaboration
+  - llm

@@ -1,0 +1,42 @@
+========================================
+yunxi-agent-platform 配置模板
+========================================
+
+# Spring Boot 配置覆盖参数
+# 在启动脚本中设置以下参数，会覆盖所有配置文件的配置
+
+# 基础配置
+-DSERVER_PORT=40001
+
+# 数据库配置
+-DMYSQL_HOST=127.0.0.1
+-DMYSQL_PORT=3306
+-DMYSQL_DATABASE=agent_platform
+-DMYSQL_USERNAME=root
+-DMYSQL_PASSWORD=root
+
+# AI服务配置
+-DDASHSCOPE_API_KEY=your_dashscope_api_key
+-DLLM_MODEL=qwen-plus
+
+# 向量数据库配置
+-DMILVUS_HOST=127.0.0.1
+-DMILVUS_PORT=19530
+-DMILVUS_USERNAME=root
+-DMILVUS_PASSWORD=Milvus
+
+# 缓存配置
+-DREDIS_HOST=127.0.0.1
+-DREDIS_PORT=6379
+-DREDIS_PASSWORD=redispass
+
+# 日志级别（可选）
+-Dlogging.level.com.yunxi.agent=INFO
+-Dlogging.level.root=WARN
+
+========================================
+说明：
+- 这些参数通过 -D 方式传递给 JVM
+- 会覆盖 application.yml 和 application-{profile}.yml 中的配置
+- 优先级：JVM参数 > 环境变量 > 配置文件 > 默认值
+- 修改启动脚本中的参数值即可生效，无需修改配置文件"

@@ -1,0 +1,121 @@
+{
+  "_comment": "yunxi Agent Node 多场景配置模板 - yunxiClaw 桌面端会读取此文件展示配置选项",
+  "templates": [
+    {
+      "id": "local-dev",
+      "name": "本机开发",
+      "description": "本地开发环境，连接本机后端",
+      "config": {
+        "serverUrl": "ws://localhost:40001/ws/desktop",
+        "userId": "",
+        "nodeType": "desktop",
+        "tags": ["dev", "yunxi"],
+        "region": "",
+        "cloudProvider": "internal",
+        "capabilities": ["execute", "file", "list-dir", "read-file", "write-file"],
+        "deploy": {
+          "defaultContainerName": "yunxi-app",
+          "deployScriptPath": "D:/work/code/yunxi-agent-platform/启动项目.bat"
+        },
+        "scan": {
+          "quickOnStart": true,
+          "deepSchedule": "0 3 * * *"
+        }
+      }
+    },
+    {
+      "id": "test-server",
+      "name": "测试服务器",
+      "description": "部署在测试服务器上的无头节点",
+      "config": {
+        "serverUrl": "ws://test-server:40001/ws/desktop",
+        "userId": "",
+        "nodeType": "server",
+        "tags": ["test"],
+        "region": "",
+        "cloudProvider": "",
+        "capabilities": ["execute", "file", "list-dir", "read-file", "write-file"],
+        "deploy": {
+          "defaultContainerName": "yunxi-app",
+          "deployScriptPath": "/opt/yunxi/deploy.sh",
+          "rollbackScriptPath": "/opt/yunxi/rollback.sh"
+        },
+        "scan": {
+          "quickOnStart": true,
+          "deepSchedule": "0 3 * * *"
+        }
+      }
+    },
+    {
+      "id": "prod-server",
+      "name": "生产服务器",
+      "description": "生产环境服务器节点，需要审批后才能部署",
+      "config": {
+        "serverUrl": "ws://prod-gateway:40001/ws/desktop",
+        "userId": "",
+        "nodeType": "server",
+        "tags": ["production"],
+        "region": "",
+        "cloudProvider": "",
+        "capabilities": ["execute", "file", "list-dir", "read-file", "write-file"],
+        "deploy": {
+          "defaultContainerName": "yunxi-app",
+          "deployScriptPath": "/opt/yunxi/deploy-prod.sh",
+          "rollbackScriptPath": "/opt/yunxi/rollback-prod.sh"
+        },
+        "scan": {
+          "quickOnStart": true,
+          "deepSchedule": "0 2 * * *"
+        },
+        "reconnect": {
+          "maxAttempts": 200,
+          "intervalMs": 3000
+        }
+      }
+    },
+    {
+      "id": "cloud-huawei",
+      "name": "华为云",
+      "description": "华为云 ECS 节点",
+      "config": {
+        "serverUrl": "ws://gateway.yunxi.com:40001/ws/desktop",
+        "userId": "",
+        "nodeType": "server",
+        "tags": ["cloud", "huawei"],
+        "region": "cn-north-1",
+        "cloudProvider": "huawei-cloud",
+        "capabilities": ["execute", "file", "list-dir", "read-file", "write-file"],
+        "deploy": {
+          "defaultContainerName": "yunxi-app",
+          "deployScriptPath": "/opt/yunxi/deploy.sh"
+        },
+        "scan": {
+          "quickOnStart": true,
+          "deepSchedule": "0 3 * * *"
+        }
+      }
+    },
+    {
+      "id": "county-deploy",
+      "name": "区县部署",
+      "description": "区县级部署节点，通过标签区分不同区县",
+      "config": {
+        "serverUrl": "ws://gateway.yunxi.com:40001/ws/desktop",
+        "userId": "",
+        "nodeType": "server",
+        "tags": ["county"],
+        "region": "",
+        "cloudProvider": "gov-cloud",
+        "capabilities": ["execute", "file", "list-dir", "read-file", "write-file"],
+        "deploy": {
+          "defaultContainerName": "yunxi-app",
+          "deployScriptPath": "/opt/yunxi/deploy-county.sh"
+        },
+        "scan": {
+          "quickOnStart": true,
+          "deepSchedule": "0 3 * * *"
+        }
+      }
+    }
+  ]
+}

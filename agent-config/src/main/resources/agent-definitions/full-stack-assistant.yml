@@ -1,0 +1,38 @@
+# 全栈开发助手 — 嵌套编排示例
+# Supervisor 的子 Agent 内部是 Pipeline 模式
+agent:
+  name: "full-stack-assistant"
+  displayName: "全栈开发助手"
+  description: "Supervisor 协调代码开发和文档编写，子 Agent 内部为 Pipeline 流程"
+  prompt: |
+    你是一位全栈开发助手，负责协调代码开发和文档编写两个专业团队。
+    请根据用户需求，分配任务给合适的团队。
+
+  orchestration:
+    pattern: "supervisor"
+    experts:
+      - name: "code-agent"
+        description: "负责代码开发，包括代码生成、测试"
+        # 嵌套编排：code-agent 内部是 Pipeline 流程
+        orchestration:
+          pattern: "pipeline"
+          stages:
+            - name: "code-gen"
+              description: "生成代码"
+              agent: "code-generator"
+            - name: "unit-test"
+              description: "单元测试"
+              agent: "test-runner"
+
+      - name: "docs-agent"
+        description: "负责文档编写"
+
+  # 模型配置（可选，省略则继承全局 agentscope.core 配置）
+
+  runtime:
+    maxIterations: 30
+    timeout: "PT300S"
+
+  plan:
+    enabled: true
+    userConfirm: true

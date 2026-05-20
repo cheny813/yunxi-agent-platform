@@ -1,0 +1,62 @@
+# ========================================
+# 统一消息网关配置
+# ========================================
+
+gateway:
+  enabled: true
+  core-url: http://localhost:40001
+  default-agent: coding-assistant
+
+  # 会话管理
+  session:
+    reset-policy: both          # daily / idle / both / none
+    daily-reset-hour: 4         # 每日重置时间
+    idle-timeout-minutes: 1440  # 空闲超时（24小时）
+    store-type: memory          # memory / sqlite
+
+  # 并发控制
+  concurrency:
+    max-concurrent-requests: 10
+    request-timeout-seconds: 300
+
+  # 流式响应
+  streaming:
+    chunk-merge-threshold: 500
+    typing-indicator: true
+
+  # 平台配置
+  platforms:
+    # 企业微信
+    wecom:
+      enabled: false
+      bot-id: ${WECOM_BOT_ID:}
+      secret: ${WECOM_SECRET:}
+      ws-url: wss://openws.work.weixin.qq.com
+      reconnect-backoff: 2,5,10,30,60
+      max-message-length: 2048
+      allowed-users: []
+      allowed-chats: []
+
+    # 钉钉（Stream Mode，无需公网回调地址）
+    # 1. 在钉钉开放平台创建机器人应用，获取 Client ID 和 Client Secret
+    # 2. 设置环境变量 DINGTALK_CLIENT_ID 和 DINGTALK_CLIENT_SECRET
+    # 3. 将 enabled 改为 true
+    dingtalk:
+      enabled: false
+      client-id: ${DINGTALK_CLIENT_ID:}
+      client-secret: ${DINGTALK_CLIENT_SECRET:}
+      allowed-users: []          # 白名单用户 staffId 列表，为空则允许所有人
+      allowed-chats: []          # 白名单群聊 conversationId 列表，为空则允许所有群
+
+    # 飞书
+    feishu:
+      enabled: false
+      app-id: ${FEISHU_APP_ID:}
+      app-secret: ${FEISHU_APP_SECRET:}
+      transport: websocket
+      allowed-users: []
+
+    # Web API
+    webapi:
+      enabled: false
+      api-token: ${GATEWAY_API_TOKEN:}

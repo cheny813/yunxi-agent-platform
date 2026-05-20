@@ -1,0 +1,235 @@
+# A2A 代码修复流水线 - 状态流转配置
+# 定义各阶段的状态流转规则和准入准出条件
+
+workflow:
+  name: code-fix-pipeline
+  version: 1.0.0
+  
+  # 状态定义
+  states:
+    - id: INIT
+      name: 初始化
+      type: start
+      
+    - id: REQUIREMENT_ANALYSIS
+      name: 需求分析
+      type: processing
+      timeout: 300
+      
+    - id: CODE_REVIEW
+      name: 代码审查
+      type: processing
+      timeout: 600
+      max-retries: 1
+      
+    - id: BUG_FIX
+      name: 代码修复
+      type: processing
+      timeout: 900
+      max-retries: 3
+      
+    - id: TEST_EXECUTION
+      name: 测试执行
+      type: processing
+      timeout: 1200
+      max-retries: 2
+      
+    - id: DEPLOYMENT
+      name: 部署发布
+      type: processing
+      timeout: 600
+      
+    - id: COMPLETED
+      name: 完成
+      type: end
+      
+    - id: FAILED
+      name: 失败
+      type: end
+
+  # 状态流转规则
+  transitions:
+    # 初始化 -> 需求分析
+    - from: INIT
+      to: REQUIREMENT_ANALYSIS
+      condition: always
+      
+    # 需求分析 -> 代码审查
+    - from: REQUIREMENT_ANALYSIS
+      to: CODE_REVIEW
+      condition: analysis_complete
+      
+    # 代码审查 -> 代码修复（发现问题）
+    - from: CODE_REVIEW
+      to: BUG_FIX
+      condition: has_issues
+      
+    # 代码审查 -> 测试执行（无问题）
+    - from: CODE_REVIEW
+      to: TEST_EXECUTION
+      condition: no_issues
+      
+    # 代码修复 -> 代码审查（重新审查）
+    - from: BUG_FIX
+      to: CODE_REVIEW
+      condition: fix_complete
+      
+    # 代码修复 -> 失败（修复失败）
+    - from: BUG_FIX
+      to: FAILED
+      condition: fix_failed
+      max-attempts-exceeded: true
+      
+    # 测试执行 -> 部署发布（通过）
+    - from: TEST_EXECUTION
+      to: DEPLOYMENT
+      condition: all_tests_passed
+      
+    # 测试执行 -> 代码修复（失败）
+    - from: TEST_EXECUTION
+      to: BUG_FIX
+      condition: tests_failed
+      
+    # 测试执行 -> 代码审查（严重问题）
+    - from: TEST_EXECUTION
+      to: CODE_REVIEW
+      condition: critical_failure
+      
+    # 部署发布 -> 完成
+    - from: DEPLOYMENT
+      to: COMPLETED
+      condition: deploy_success
+      
+    # 部署发布 -> 失败
+    - from: DEPLOYMENT
+      to: FAILED
+      condition: deploy_failed
+
+  # 准入条件（进入某状态前必须满足的条件）
+  entry-conditions:
+    CODE_REVIEW:
+      - target-file-exists
+      - file-not-locked
+      
+    BUG_FIX:
+      - review-report-exists
+      - issues-confirmed
+      
+    TEST_EXECUTION:
+      - code-compiles
+      - no-syntax-errors
+      
+    DEPLOYMENT:
+      - test-report-exists
+      - coverage-threshold-met
+      - all-critical-tests-passed
+
+  # 准出条件（离开某状态前必须满足的条件）
+  exit-conditions:
+    CODE_REVIEW:
+      - review-report-generated
+      - issues-categorized
+      
+    BUG_FIX:
+      - changes-committed
+      - diff-generated
+      
+    TEST_EXECUTION:
+      - test-report-generated
+      - coverage-calculated
+
+  # 质量门禁
+  quality-gates:
+    code-review-gate:
+      - metric: security-issues
+        threshold: 0
+        operator: eq
+        block: true
+        
+      - metric: critical-bugs
+        threshold: 0
+        operator: eq
+        block: true
+        
+      - metric: major-bugs
+        threshold: 5
+        operator: le
+        block: false
+        
+    test-gate:
+      - metric: test-pass-rate
+        threshold: 90
+        operator: ge
+        unit: percent
+        block: true
+        
+      - metric: line-coverage
+        threshold: 80
+        operator: ge
+        unit: percent
+        block: false
+        
+      - metric: branch-coverage
+        threshold: 70
+        operator: ge
+        unit: percent
+        block: false
+
+  # 失败处理策略
+  failure-handling:
+    # 重试策略
+    retry-policy:
+      CODE_REVIEW:
+        max-attempts: 1
+        backoff: fixed
+        delay: 10
+        
+      BUG_FIX:
+        max-attempts: 3
+        backoff: exponential
+        initial-delay: 30
+        max-delay: 300
+        
+      TEST_EXECUTION:
+        max-attempts: 2
+        backoff: fixed
+        delay: 60
+    
+    # 降级策略
+    fallback-actions:
+      CODE_REVIEW:
+        - action: notify-human-reviewer
+          condition: retry-exhausted
+          
+      BUG_FIX:
+        - action: create-ticket
+          condition: retry-exhausted
+        - action: notify-team
+          condition: retry-exhausted
+          
+      TEST_EXECUTION:
+        - action: skip-non-critical-tests
+          condition: flaky-tests-detected
+        - action: notify-qa-team
+          condition: retry-exhausted
+
+  # 通知配置
+  notifications:
+    events:
+      - state-transition
+      - quality-gate-failed
+      - retry-exhausted
+      - workflow-completed
+      
+    channels:
+      - type: webhook
+        url: ${WORKFLOW_WEBHOOK_URL}
+        events: [workflow-completed, retry-exhausted]
+        
+      - type: log
+        level: INFO
+        events: [state-transition]
+        
+      - type: email
+        recipients: ${DEV_TEAM_EMAILS}
+        events: [quality-gate-failed, retry-exhausted]

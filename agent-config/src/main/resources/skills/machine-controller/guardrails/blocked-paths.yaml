@@ -1,0 +1,61 @@
+# 禁止访问的路径列表
+# Agent 不能访问以下路径
+
+blocked_paths:
+  # Windows 系统关键目录
+  - path: "C:\Windows\System32"
+    description: "Windows 系统目录"
+  - path: "C:\Windows\SysWOW64"
+    description: "Windows 32位系统目录"
+  - path: "C:\Program Files\WindowsApps"
+    description: "Windows 应用商店"
+  - path: "C:\$Recycle.Bin"
+    description: "回收站"
+  - path: "C:\System Volume Information"
+    description: "系统卷信息"
+
+  # Linux/Mac 系统关键目录
+  - path: "/etc/passwd"
+    description: "用户账户文件"
+  - path: "/etc/shadow"
+    description: "用户密码文件"
+  - path: "/etc/sudoers"
+    description: "sudo 配置"
+  - path: "/root"
+    description: "root 主目录"
+  - path: "/boot"
+    description: "启动目录"
+  - path: "/proc"
+    description: "进程信息"
+  - path: "/sys"
+    description: "系统信息"
+  - path: "/dev"
+    description: "设备文件"
+
+  # 用户敏感目录
+  - path: "~/.ssh"
+    description: "SSH 密钥"
+  - path: "~/.gnupg"
+    description: "GPG 密钥"
+  - path: "~/.aws"
+    description: "AWS 凭证"
+  - path: "%APPDATA%/Microsoft"
+    description: "Microsoft 凭据"
+
+# 允许的根目录（可以根据项目配置调整）
+allowed_roots:
+  - "D:\work\code"
+  - "D:\project"
+  - "E:\projects"
+  - "/home/user/project"
+  - "~/workspace"
+  - "/workspace"
+
+# 最大文件大小（字节）
+max_file_size: 10485760  # 10MB
+
+# 最大目录深度
+max_depth: 10
+
+# 执行超时（秒）
+command_timeout: 30

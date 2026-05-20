@@ -1,0 +1,179 @@
+# ============================================================
+# yunxi Agent Platform 主配置文件
+# ============================================================
+# 
+# 【配置说明】
+# 此配置文件为模块开发测试使用。生产环境请使用 agent-config 模块。
+# agent-config 模块通过 spring.config.import 导入所有集中化配置。
+#
+# 【开发测试】
+# 单独运行 agent-core 模块时使用此配置。
+# 通过 mvn spring-boot:run 或 IDE 直接运行。
+#
+# 【生产部署】
+# 使用 agent-app 模块，它已集成 agent-config 模块的配置。
+#
+# ============================================================
+
+debug: false
+
+# ============================================================
+# 服务端口配置
+# ============================================================
+server:
+  port: 40002                                    # 服务端口号（40001被占用，改为40002）
+  servlet:
+    encoding:
+      charset: UTF-8                             # 字符编码
+      enabled: true
+      force: true
+
+# ============================================================
+# 运维端点暴露配置（Actuator）
+# ============================================================
+# 访问地址：http://localhost:40002/actuator/health
+# ============================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus   # 暴露的端点（增加 prometheus）
+      base-path: /actuator
+  endpoint:
+    prometheus:
+      enabled: true
+    health:
+      show-details: when_authorized
+  health:
+    redis:
+      enabled: false                              # 禁用 Redis 健康检查（按需开启）
+  prometheus:
+    metrics:
+      export:
+        enabled: true                            # 启用 Prometheus 指标导出
+  metrics:
+    tags:
+      application: ${spring.application.name:yunxi-agent-platform}
+
+# ============================================================
+# Spring 核心配置
+# ============================================================
+spring:
+  # 导入集中化配置（来自 agent-config 模块）
+  config:
+    import: optional:classpath:config/datasource.yml,optional:classpath:config/redis.yml,optional:classpath:config/llm.yml,optional:classpath:config/milvus.yml,optional:classpath:config/embedding.yml,optional:classpath:config/persistence.yml,optional:classpath:config/mcp-core.yml,optional:classpath:config/mcp-external.yml,optional:classpath:config/mcp-business.yml,optional:classpath:config/skill.yml,optional:classpath:config/resilience.yml,optional:classpath:config/file-upload.yml,optional:classpath:config/a2a-pipeline.yml,optional:classpath:config/agentscope.yml,optional:classpath:config/gateway.yml,optional:classpath:config/business.yml,optional:classpath:config/text2sql.yml,optional:classpath:config/rule-engine.yml,optional:classpath:application-ipdetection.yml
+
+  # 激活的配置文件（按顺序加载）
+  profiles:
+    active: 
+      - datasource
+      - llm
+      - skill
+      - milvus
+      - embedding
+      - persistence
+      - mcp-core
+      - mcp-business
+      - business
+      - file-upload
+      - resilience
+      - ipdetection
+
+  main:
+    allow-bean-definition-overriding: true  # 允许 Bean 定义覆盖（解决与 Studio 配置冲突）
+    banner-mode: off                              # 关闭启动 Banner
+  jackson:
+    default-property-inclusion: non_null          # JSON 序列化忽略 null
+    date-format: yyyy-MM-dd HH:mm:ss              # 日期格式
+    time-zone: Asia/Shanghai                       # 时区
+
+# ============================================================
+# 日志配置
+# ============================================================
+# 注意：使用项目集成的 Logback 配置，支持链路追踪 traceId 显示
+# Logback 配置路径：classpath:logback-spring.xml
+# ============================================================
+logging:
+  config: classpath:logback-spring.xml
+  level:
+    root: info                                   # 全局日志级别
+    io.yunxi.platform: INFO                       # 平台日志级别
+    io.yunxi.platform.shared.mapper: DEBUG        # MyBatis SQL 日志
+
+# ============================================================
+# 限流配置
+# ============================================================
+rate-limit:
+  enabled: true
+  ip:
+    requests-per-second: 10
+  user:
+    requests-per-second: 50
+
+# ============================================================
+# 统一概念配置
+# ============================================================
+# 每个概念可同时用于话题检测（按 domain）和身份识别（按 category）
+# 配置是"词典"，自动识别是"阅读理解"——没有词典就读不懂
+# 业务层自定义概念通过 ConceptRegistry.register() 动态注册
+# ============================================================
+concepts:
+  entries:
+    # ===== 通用生活概念 =====
+    - name: MEDICAL
+      domain: health
+      displayName: 医疗健康
+      keywords: "医疗、诊断、症状、治疗、康复、护理、血压、血糖、健康"
+      category: PROFESSION
+
+    - name: EDUCATION
+      domain: education
+      displayName: 教育教学
+      keywords: "学习、教育、课程、教学、考试、作业、学生、培训、上学、作业辅导"
+      category: PROFESSION
+
+    - name: TECHNOLOGY
+      domain: technology
+      displayName: 科技开发
+      keywords: "代码、编程、开发、系统、架构、软件、算法"
+      category: PROFESSION
+
+    - name: FINANCE
+      domain: finance
+      displayName: 金融财务
+      keywords: "财务、金融、投资、股票、报表、预算、税务、审计"
+      category: PROFESSION
+
+    - name: PARENTING
+      domain: family
+      displayName: 家庭育儿
+      keywords: "孩子、子女、上学、辅导、幼儿园、家长、亲子"
+      category: ROLE
+
+    - name: ELDER_CARE
+      domain: family
+      displayName: 老人照护
+      keywords: "老人、父母、养老、血压、慢性病、陪护"
+      category: ROLE
+
+# ============================================================
+# 记忆场景内置配置
+# ============================================================
+# 格式: "场景标识:显示名:描述:保留天数:关键词"，多个场景用分号分隔
+# 保留天数: -1 表示永久保留
+# 业务层自定义场景通过 MemorySceneRegistry.register() 动态注册
+# ============================================================
+memory:
+  scene:
+    builtins: "PERSONAL_ASSISTANT:个人助手:生活、工作、家庭、情感:-1;GENERAL:通用:通用对话:7"
+  scene-detection:
+    enabled: true
+
+# ============================================================
+# 内置职业阶段配置
+# ============================================================
+# 格式: "标识:显示名:最小年限:最大年限"，多个阶段用分号分隔
+# 业务层自定义阶段通过 CareerStageRegistry.register() 动态注册
+# ============================================================
+career-stage:
+  builtins: "TRAINEE:实习生:0:1;JUNIOR:初级:1:3;MIDDLE:中级:4:8;SENIOR:高级:9:15;EXPERT:专家:16:999"

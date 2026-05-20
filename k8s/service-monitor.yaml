@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: yunxi-agent-platform
+  namespace: yunxi-agent-platform
+  labels:
+    app.kubernetes.io/name: yunxi-agent-platform
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: yunxi-agent-platform
+      app.kubernetes.io/component: metrics
+  endpoints:
+    - port: metrics
+      path: /actuator/prometheus
+      interval: 30s
+      scrapeTimeout: 10s

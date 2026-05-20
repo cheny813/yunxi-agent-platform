@@ -1,0 +1,3 @@
+# Gateway module auto-configuration
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  io.yunxi.platform.gateway.GatewayAutoConfiguration

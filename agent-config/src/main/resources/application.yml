@@ -1,0 +1,58 @@
+# ============================================================
+# yunxi Agent Platform 主配置文件
+# ============================================================
+# 
+# 【配置说明】
+# 此文件为配置入口，使用 spring.config.import 导入 config/ 目录下的所有配置片段
+# 配置加载顺序由 spring.config.import 的顺序决定
+#
+# 【环境切换】
+# 通过设置 SPRING_PROFILES_ACTIVE 环境变量或 --spring.profiles.active 参数切换环境
+# 例如：--spring.profiles.active=datasource,redis,llm,milvus
+#
+# 【本地开发】
+# 本地开发可通过创建 application-local.yml 覆盖配置
+#
+# 【配置模块说明】
+# - server.yml: HTTP服务器配置 (Tomcat线程池、端口、连接数等)
+# - cache.yml: 缓存配置 (Redis、Caffeine二级缓存)
+# - async.yml: 异步处理配置 (多种线程池、任务管理)
+# - datasource.yml: 数据库连接池配置 (HikariCP优化)
+# - redis.yml: Redis集群配置
+# - llm.yml: 大语言模型服务配置
+# - milvus.yml: 向量数据库配置
+# - embedding.yml: 向量嵌入服务配置
+# - resilience.yml: 熔断器、限流、重试配置
+# - gateway.yml: API网关路由配置
+# - business.yml: 业务服务配置
+#
+# 【性能优化特点】
+# ✅ Tomcat线程池优化 (max=200, min-spare=20, max-connections=10000)
+# ✅ Redis分布式缓存 (30分钟TTL, 自动序列化)
+# ✅ HikariCP连接池 (连接泄露检测, 超时优化)
+# ✅ 异步任务框架 (核心/IO/CPU密集型线程池分离)
+# ✅ JVM内存优化 (Xms512m, Xmx2048m, G1GC)
+#
+# 【常用配置修改】
+# 1. 修改端口: 在 server.yml 中修改 server.port
+# 2. 调整线程池: 在 async.yml 中修改各线程池参数  
+# 3. 缓存配置: 在 cache.yml 中调整 TTL 和序列化
+# 4. 数据库连接: 在 datasource.yml 中修改连接池参数
+#
+# 【监控和验证】
+# 项目根目录的 scripts/ 文件夹包含完整监控工具:
+# - performance-test.java: 性能压力测试
+# - performance-monitor.groovy: 实时性能监控
+# - api-performance-monitor.java: API调用监控
+# - optimization-verification.sh: 配置验证脚本
+#
+# ============================================================
+
+# 导入配置片段
+spring:
+  config:
+    import: optional:classpath:config/server.yml,optional:classpath:config/datasource.yml,optional:classpath:config/cache.yml,optional:classpath:config/async.yml,optional:classpath:config/redis.yml,optional:classpath:config/llm.yml,optional:classpath:config/milvus.yml,optional:classpath:config/embedding.yml,optional:classpath:config/persistence.yml,optional:classpath:config/mcp-core.yml,optional:classpath:config/mcp-external.yml,optional:classpath:config/mcp-business.yml,optional:classpath:config/skill.yml,optional:classpath:config/resilience.yml,optional:classpath:config/file-upload.yml,optional:classpath:config/a2a-pipeline.yml,optional:classpath:config/agentscope.yml,optional:classpath:config/gateway.yml,optional:classpath:config/business.yml,optional:classpath:config/text2sql.yml,optional:classpath:config/rule-engine.yml
+
+# 激活的 profile 列表（按顺序加载，后面的覆盖前面的）
+spring.profiles:
+  active: server,datasource,cache,async,redis,llm,milvus,embedding,persistence,mcp-core,mcp-business,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql,rule-engine

@@ -1,0 +1,62 @@
+[
+  {
+    "databaseId": "nutrition",
+    "question": "查看最近10个菜品",
+    "sql": "SELECT * FROM dish_library WHERE deleted = 0 ORDER BY update_time DESC LIMIT 10",
+    "difficulty": "easy"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "统计菜品总数",
+    "sql": "SELECT COUNT(*) as count FROM dish_library WHERE deleted = 0",
+    "difficulty": "easy"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "按菜品类型分组统计数量",
+    "sql": "SELECT type, COUNT(*) as count FROM dish_library WHERE deleted = 0 GROUP BY type",
+    "difficulty": "medium"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "查看所有食材及其分类",
+    "sql": "SELECT fi.name as ingredient_name, fimc.name as main_class_name, fisc.name as sub_class_name FROM food_ingredient fi LEFT JOIN food_ingredient_main_class fimc ON fi.main_class_id = fimc.id LEFT JOIN food_ingredient_sub_class fisc ON fi.sub_class_id = fisc.id WHERE fi.deleted = 0",
+    "difficulty": "medium"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "查询包含指定食材的所有菜品",
+    "sql": "SELECT dl.name as dish_name, fi.name as ingredient_name, dfi.dosage FROM dish_library dl LEFT JOIN dish_food_ingredient dfi ON dl.id = dfi.d_id LEFT JOIN food_ingredient fi ON dfi.fi_id = fi.id WHERE dl.deleted = 0 AND fi.name = '{ingredient_name}'",
+    "difficulty": "hard"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "查看营养标准中蛋白质含量最高的5个标准",
+    "sql": "SELECT ns.name, nsc.age_group, nsc.dining_crowd, dc.n_id, n.name as nutrient_name, dc.nutrient_content FROM nutrient_standard ns LEFT JOIN nutritional_standard_dining_crowd nsc ON ns.id = nsc.ns_id LEFT JOIN nutrient_standard_dcn dc ON ns.id = dc.ns_id LEFT JOIN nutrient n ON dc.n_id = n.id WHERE ns.deleted = 0 AND n.name = '蛋白质' ORDER BY dc.nutrient_content DESC LIMIT 5",
+    "difficulty": "hard"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "查看评分指标类别及明细",
+    "sql": "SELECT c.id as class_id, c.ns_id, c.code, c.index_ratio as class_ratio, c.index_class, c.dimension, d.id as detail_id, d.index_class_id, d.index, d.index_name, d.index_ratio as detail_ratio FROM cook_book_score_index_class c LEFT JOIN cook_book_score_index_detail d ON c.id = d.index_class_id",
+    "difficulty": "medium"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "统计每个菜品分类下的菜品数量",
+    "sql": "SELECT dc.name as class_name, COUNT(dl.id) as dish_count FROM dish_class dc LEFT JOIN dish_library dl ON dc.id = dl.type WHERE dl.deleted = 0 GROUP BY dc.id, dc.name ORDER BY dish_count DESC",
+    "difficulty": "medium"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "查找营养素含量超过指定值的菜品",
+    "sql": "SELECT dl.name as dish_name, n.name as nutrient_name, fin.nutrient_content FROM dish_library dl LEFT JOIN dish_food_ingredient dfi ON dl.id = dfi.d_id LEFT JOIN food_ingredient_nutrient fin ON dfi.fi_id = fin.fi_id LEFT JOIN nutrient n ON fin.nutrient_id = n.id WHERE dl.deleted = 0 AND n.name = '{nutrient_name}' AND fin.nutrient_content > {value}",
+    "difficulty": "hard"
+  },
+  {
+    "databaseId": "nutrition",
+    "question": "查看最近的食谱及评分",
+    "sql": "SELECT cb.id, cb.name, cb.create_time, cbsi.score FROM cook_book cb LEFT JOIN cook_book_score_index cbsi ON cb.id = cbsi.cb_id WHERE cb.deleted = 0 ORDER BY cb.create_time DESC LIMIT 20",
+    "difficulty": "medium"
+  }
+]

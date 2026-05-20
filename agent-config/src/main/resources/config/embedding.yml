@@ -1,0 +1,77 @@
+# ============================================================
+# 嵌入向量服务配置
+# ============================================================
+# 支持多种嵌入模型提供商，通过 embedding.provider 配置切换
+# 可选值：
+#   - dashscope: 阿里云 DashScope (1024维) - 默认
+#   - ollama: 本地 Ollama 服务 (1024维，无API费用)
+#   - openai: OpenAI / Azure OpenAI (1536维)
+#   - baidu: 百度智能云 (384维)
+#   - huawei: 华为云 (1024维)
+# ============================================================
+embedding:
+  # 嵌入服务提供商 (dashscope / ollama / openai / baidu / huawei)
+  # 使用 Ollama 本地服务，无需 API 费用，无批量限制
+  provider: ${EMBEDDING_PROVIDER:ollama}
+
+  # 默认向量维度
+  default-dimension: ${EMBEDDING_DEFAULT_DIMENSION:1024}
+
+  # ============================================================
+  # 本地 Ollama 配置（推荐用于开发环境）
+  # ============================================================
+  # 前置条件：
+  # 1. 安装 Ollama: https://ollama.com/download
+  # 2. 拉取嵌入模型: ollama pull bge-m3
+  # 3. 启动服务: ollama serve (默认端口 11434)
+  #
+  # 推荐模型（中文友好）：
+  #   - bge-m3: 多语言，1024维，中文效果最佳
+  #   - bge-large-zh: 中文专用，1024维
+  #   - nomic-embed-text: 英文友好，768维
+  #   - mxbai-embed-large: 英文友好，1024维
+  # ============================================================
+  ollama:
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${OLLAMA_EMBEDDING_MODEL:bge-m3}
+    # 批量大小（本地服务无严格限制，建议值）
+    batch-size: ${OLLAMA_EMBEDDING_BATCH_SIZE:100}
+
+  # 阿里云 DashScope 配置
+  dashscope:
+    api-key: ${DASHSCOPE_API_KEY:}
+    model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v3}  # 嵌入模型
+    dimension: ${DASHSCOPE_EMBEDDING_DIMENSION:1024}    # 向量维度
+    # 批量大小限制（DashScope API 限制：每批最多 10 条）
+    batch-size: ${DASHSCOPE_EMBEDDING_BATCH_SIZE:10}
+    # 支持的模型：
+    #   - text-embedding-v3: 文本嵌入 (1024维，默认)
+    #   - text-embedding-v4: 文本嵌入 (2048维)
+    #   - multimodal-embedding-v1: 多模态嵌入 (1024维)
+    #   - qwen3-vl-rerank: 重排序模型
+
+  # OpenAI 配置（支持 Azure OpenAI 等兼容服务）
+  openai:
+    api-key: ${OPENAI_API_KEY:}
+    model: ${OPENAI_EMBEDDING_MODEL:text-embedding-ada-002}  # 嵌入模型
+    dimension: ${OPENAI_EMBEDDING_DIMENSION:1536}    # 向量维度 (ada-002 为 1536)
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}  # API 基础地址
+    # 批量大小限制（OpenAI API 限制：最多 2048 条/批）
+    batch-size: ${OPENAI_EMBEDDING_BATCH_SIZE:25}
+
+  # 百度智能云配置
+  baidu:
+    api-key: ${BAIDU_API_KEY:}
+    model: ${BAIDU_EMBEDDING_MODEL:embedding-v1}  # 嵌入模型
+    dimension: ${BAIDU_EMBEDDING_DIMENSION:384}   # 向量维度
+    # 批量大小限制（百度云 API 限制：最多 30 条/批）
+    batch-size: ${BAIDU_EMBEDDING_BATCH_SIZE:25}
+
+  # 华为云配置
+  huawei:
+    api-key: ${HUAWEI_API_KEY:}
+    model: ${HUAWEI_EMBEDDING_MODEL:embedding-001}  # 嵌入模型
+    dimension: ${HUAWEI_EMBEDDING_DIMENSION:1024}   # 向量维度
+    region: ${HUAWEI_REGION:cn-north-4}              # 区域
+    # 批量大小限制（华为云 API 限制：最多 10 条/批）
+    batch-size: ${HUAWEI_EMBEDDING_BATCH_SIZE:10}

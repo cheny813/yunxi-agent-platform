@@ -1,0 +1,94 @@
+# agent-config 模块测试配置
+
+# AgentScope 相关配置
+agentscope:
+  default-agent-timeout: 60000
+  connection-timeout: 30000
+  read-timeout: 60000
+  write-timeout: 30000
+
+# WebSocket 配置
+websocket:
+  api-url: "ws://localhost:8080/ws"
+  endpoint: "/agent-websocket"
+  allowed-origins: "*"
+
+# SSE 配置
+sse:
+  heartbeat-interval: 30000
+  reconnect-delay: 5000
+  max-reconnect-attempts: 10
+
+# 食谱相关配置
+recipe:
+  generator:
+    temperature: 0.7
+    max-tokens: 4000
+    timeout: 60000
+  balancer:
+    method: "auto"
+    tolerance: 0.1
+    max-iterations: 100
+
+# 代理相关配置
+agent:
+  domains:
+    nutrition-assistant: "agent://nutrition-assistant/default"
+    page-navigator: "agent://page-navigator/default"
+    form-filler: "agent://form-filler/default"
+  
+# 概念注册表配置
+concepts:
+  entries:
+    - name: MEDICAL
+      domain: health
+      displayName: 医疗健康
+      keywords: "医疗、诊断、症状、治疗、康复、护理、血压、血糖、健康"
+      category: PROFESSION
+    
+    - name: NUTRITION
+      domain: health
+      displayName: 营养健康
+      keywords: "营养、饮食、膳食、食补、营养均衡"
+      category: PROFESSION
+    
+    - name: PARENTING
+      domain: family
+      displayName: 家庭育儿
+      keywords: "孩子、子女、上学、辅导、幼儿园、家长、亲子"
+      category: ROLE
+
+# 缓存配置
+cache:
+  recipe-data:
+    timeout: 3600000    # 1小时
+    max-entries: 1000
+  
+  conversation:
+    timeout: 1800000     # 30分钟  
+    max-entries: 500
+
+# 线程池配置
+async:
+  thread-pool:
+    core-size: 5
+    max-size: 20
+    queue-capacity: 100
+    keep-alive: 60
+
+# 日志配置
+logging:
+  level:
+    io.yunxi.platform: DEBUG
+    org.springframework.web: INFO
+  file:
+    name: "logs/yangwai-agent-test.log"
+    path: "./logs"
+
+# 安全配置
+security:
+  cors:
+    allowed-origins: "*"
+    allowed-methods: "GET,POST,PUT,DELETE,OPTIONS"
+    allowed-headers: "*"
+    allow-credentials: true

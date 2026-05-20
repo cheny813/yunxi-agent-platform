@@ -1,0 +1,66 @@
+# ============================================================
+# yunxi_agent_platform 平台自身 数据源配置
+# ============================================================
+# 包含 MySQL 配置
+# 支持环境变量覆盖
+# ============================================================
+
+spring:
+  # --------------------- 数据库配置 ---------------------
+  # MySQL 数据源配置
+  # 支持环境变量覆盖：MYSQL_HOST、MYSQL_PORT、MYSQL_USERNAME、MYSQL_PASSWORD
+  # -------------------------------------------------------
+  sql:
+    init:
+      mode: always                                # 始终执行 SQL 初始化脚本
+      schema-locations: classpath:sql/schema.sql  # 初始化脚本位置
+      continue-on-error: true                     # 错误时继续
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:yunxi_agent_platform}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true&createDatabaseIfNotExist=true&connectionCollation=utf8mb4_unicode_ci&cachePrepStmts=true&useServerPrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048&useLocalSessionState=true&useLocalTransactionState=true&rewriteBatchedStatements=true&cacheResultSetMetadata=true&cacheServerConfiguration=true&elideSetAutoCommits=true&maintainTimeStats=false
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DATASOURCE_MAX_POOL:50}          # 最大连接数 - 根据CPU核心数调整
+      minimum-idle: ${DATASOURCE_MIN_IDLE:10}               # 最小空闲连接数
+      connection-timeout: 20000                             # 连接超时（毫秒） - 减少为20秒
+      idle-timeout: 300000                                  # 空闲超时（毫秒） - 减少为5分钟
+      max-lifetime: 1800000                                 # 连接最大生命周期（毫秒） - 保持30分钟
+      connection-test-query: SELECT 1                       # 连接测试查询
+      validation-timeout: 3000                              # 验证超时（毫秒） - 减少为3秒
+      leak-detection-threshold: 60000                       # 泄漏检测阈值（毫秒） - 1分钟
+      initialization-fail-timeout: 1                        # 初始化失败超时（秒）
+      pool-name: yunxi-agent-platform-hikari-pool           # 连接池名称
+      allow-pool-suspension: false                          # 禁止暂停连接池
+      read-only: false                                      # 可写状态
+      register-mbeans: true                                 # 启用JMX监控
+      data-source-properties:
+        cachePrepStmts: true
+        prepStmtCacheSize: 250
+        prepStmtCacheSqlLimit: 2048
+        useServerPrepStmts: true
+        useLocalSessionState: true
+        rewriteBatchedStatements: true
+        cacheResultSetMetadata: true
+        cacheServerConfiguration: true
+        elideSetAutoCommits: true
+        maintainTimeStats: false
+
+# ============================================================
+# MyBatis 配置
+# ============================================================
+mybatis:
+  mapper-locations: classpath:mapper/*.xml        # Mapper XML 文件位置
+  type-aliases-package: io.yunxi.platform.shared.entity,io.yunxi.platform.infra.file  # 实体类包路径
+  configuration:
+    map-underscore-to-camel-case: true            # 下划线转驼峰
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl  # SQL 日志输出
+
+# ============================================================
+# 数据库配置（业务）
+# ============================================================
+database:
+  enabled: true                                  # 是否启用数据库功能
+  backup:
+    enabled: false                               # 是否启用自动备份

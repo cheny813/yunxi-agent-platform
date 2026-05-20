@@ -1,0 +1,160 @@
+# 允许执行的命令白名单
+# 只有在此列表中的命令才能被 Agent 执行
+# platform: windows, linux, darwin (macOS)
+
+allowed_commands:
+  # 文件操作 - Windows
+  - command: "dir"
+    description: "列出目录内容（Windows）"
+    args: ["/b", "/a", "/s", "/o", "*"]
+    platform: "windows"
+
+  - command: "type"
+    description: "查看文件内容（Windows）"
+    args: ["*"]
+    platform: "windows"
+
+  - command: "powershell"
+    description: "PowerShell 命令"
+    args: ["-Command", "*"]
+    platform: "windows"
+
+  # 文件操作 - Linux/Mac
+  - command: "ls"
+    description: "列出目录内容"
+    args: ["-la", "-R", "-lh", "-1", "*"]
+    platform: "linux,darwin"
+
+  - command: "cat"
+    description: "查看文件内容"
+    args: ["*"]
+    platform: "linux,darwin"
+
+  - command: "head"
+    description: "查看文件头部"
+    args: ["-n", "*"]
+    platform: "linux,darwin"
+
+  - command: "tail"
+    description: "查看文件尾部"
+    args: ["-n", "*"]
+    platform: "linux,darwin"
+
+  # 通用命令
+  - command: "git"
+    description: "Git 版本控制"
+    args: ["status", "diff", "log", "branch", "checkout", "add", "commit", "push", "pull", "clone"]
+    platform: "windows,linux,darwin"
+
+  - command: "python"
+    description: "Python 解释器"
+    args: ["*"]
+    platform: "windows,linux,darwin"
+
+  - command: "python3"
+    description: "Python 3 解释器"
+    args: ["*"]
+    platform: "windows,linux,darwin"
+
+  - command: "node"
+    description: "Node.js 运行时"
+    args: ["*"]
+    platform: "windows,linux,darwin"
+
+  - command: "java"
+    description: "Java 运行时"
+    args: ["*"]
+    platform: "windows,linux,darwin"
+
+  - command: "mvn"
+    description: "Maven 构建工具"
+    args: ["clean", "compile", "test", "package", "install", "*"]
+    platform: "windows,linux,darwin"
+
+  - command: "gradle"
+    description: "Gradle 构建工具"
+    args: ["*"]
+    platform: "windows,linux,darwin"
+
+  # 包管理
+  - command: "npm"
+    description: "Node 包管理器"
+    args: ["install", "run", "test", "build", "dev", "*"]
+    platform: "windows,linux,darwin"
+
+  - command: "pnpm"
+    description: "pnpm 包管理器"
+    args: ["install", "run", "test", "build", "dev", "*"]
+    platform: "windows,linux,darwin"
+
+  - command: "yarn"
+    description: "Yarn 包管理器"
+    args: ["install", "run", "test", "build", "dev", "*"]
+    platform: "windows,linux,darwin"
+
+  - command: "pip"
+    description: "Python 包管理器"
+    args: ["install", "list", "show", "*"]
+    platform: "windows,linux,darwin"
+
+  # Docker
+  - command: "docker"
+    description: "Docker 容器管理"
+    args: ["ps", "images", "logs", "exec", "start", "stop", "restart", "build", "run"]
+    platform: "windows,linux,darwin"
+
+  # 系统信息
+  - command: "uname"
+    description: "查看系统信息"
+    args: ["-a", "-r", "-s"]
+    platform: "linux,darwin"
+
+  - command: "systeminfo"
+    description: "查看系统信息（Windows）"
+    args: []
+    platform: "windows"
+
+  - command: "hostname"
+    description: "查看主机名"
+    args: []
+    platform: "windows,linux,darwin"
+
+  - command: "whoami"
+    description: "查看当前用户"
+    args: []
+    platform: "windows,linux,darwin"
+
+  # 网络
+  - command: "curl"
+    description: "HTTP 请求"
+    args: ["-s", "-o", "-I", "-X", "*"]
+    platform: "windows,linux,darwin"
+
+  - command: "ping"
+    description: "网络连通性测试"
+    args: ["-n", "-c", "*"]
+    platform: "windows,linux,darwin"
+
+  - command: "ipconfig"
+    description: "查看 IP 配置（Windows）"
+    args: ["/all", "/flushdns"]
+    platform: "windows"
+
+  - command: "ifconfig"
+    description: "查看 IP 配置（Linux/Mac）"
+    args: ["-a"]
+    platform: "linux,darwin"
+
+  - command: "netstat"
+    description: "查看网络连接"
+    args: ["-an", "-tn"]
+    platform: "windows,linux,darwin"
+
+# 禁止执行的命令模式（危险命令）
+blocked_patterns:
+  - "rm -rf /"
+  - "del /f /s /q C:"
+  - "format"
+  - "dd if="
+  - "mkfs"
+  - ":(){:|:&};:"

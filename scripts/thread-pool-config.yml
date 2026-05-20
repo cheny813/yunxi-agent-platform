@@ -1,0 +1,197 @@
+# 线程池和异步处理配置
+# =============================================================================
+# 异步任务线程池配置
+async:
+  task:
+    # 核心线程数
+    core-pool-size: 10
+    # 最大线程数
+    max-pool-size: 50
+    # 队列容量
+    queue-capacity: 1000
+    # 线程名称前缀
+    thread-name-prefix: "async-task-"
+    # 线程存活时间（秒）
+    keep-alive-seconds: 60
+    # 是否允许核心线程超时
+    allow-core-thread-timeout: true
+    # 等待所有任务完成后关闭
+    wait-for-tasks-to-complete-on-shutdown: true
+    # 关闭等待时间（秒）
+    await-termination-seconds: 30
+
+  # AI推理任务线程池
+  inference:
+    core-pool-size: 5
+    max-pool-size: 20
+    queue-capacity: 200
+    thread-name-prefix: "inference-"
+    keep-alive-seconds: 120
+
+# 定时任务线程池配置
+scheduling:
+  # 定时任务线程池
+  pool:
+    core-pool-size: 3
+    max-pool-size: 10
+    queue-capacity: 50
+    thread-name-prefix: "scheduling-"
+    keep-alive-seconds: 300
+
+# HTTP客户端线程池配置
+http-client:
+  # I/O线程池
+  io:
+    core-pool-size: 20
+    max-pool-size: 100
+    queue-capacity: 500
+    thread-name-prefix: "http-io-"
+    keep-alive-seconds: 60
+
+# 数据库操作线程池配置
+database:
+  # 批量操作线程池
+  batch:
+    core-pool-size: 5
+    max-pool-size: 20
+    queue-capacity: 200
+    thread-name-prefix: "db-batch-"
+    keep-alive-seconds: 120
+
+# MCP服务线程池配置
+mcp:
+  # MCP服务处理线程池
+  service:
+    core-pool-size: 8
+    max-pool-size: 32
+    queue-capacity: 1000
+    thread-name-prefix: "mcp-service-"
+    keep-alive-seconds: 180
+
+# 并发处理配置
+concurrency:
+  # 数据库连接池
+  database:
+    # 最大并发连接数
+    max-connections: 100
+    # 每个查询的最大并发
+    max-concurrent-queries: 50
+  
+  # HTTP请求并发
+  http:
+    # 最大并发请求数
+    max-concurrent-requests: 200
+    # 超时时间（秒）
+    timeout-seconds: 30
+  
+  # 文件处理并发
+  file:
+    # 最大并发文件处理
+    max-concurrent-files: 10
+    # 最大文件大小（MB）
+    max-file-size-mb: 100
+
+# 异步处理配置
+async-processing:
+  # 批量处理配置
+  batch:
+    # 批量大小
+    batch-size: 100
+    # 批量处理间隔（毫秒）
+    interval-millis: 1000
+    # 最大重试次数
+    max-retries: 3
+    # 重试间隔（毫秒）
+    retry-interval-millis: 1000
+  
+  # 任务队列配置
+  queue:
+    # 最大队列大小
+    max-queue-size: 10000
+    # 队列清理间隔（秒）
+    cleanup-interval-seconds: 60
+    # 过期任务清理阈值（秒）
+    expire-threshold-seconds: 3600
+
+# 线程监控配置
+monitoring:
+  thread:
+    # 是否启用线程监控
+    enabled: true
+    # 监控频率（秒）
+    frequency-seconds: 30
+    # 线程使用率告警阈值（百分比）
+    usage-alert-threshold: 80
+    # 线程池队列大小告警阈值
+    queue-size-alert-threshold: 90
+    # 线程堆积告警阈值
+    backlog-alert-threshold: 1000
+
+# CompletableFuture配置
+future:
+  # 默认超时时间（秒）
+  default-timeout-seconds: 60
+  # 是否启用超时控制
+  timeout-enabled: true
+  # 失败重试次数
+  retry-count: 3
+  # 故障处理策略（LOG | EXCEPTION | IGNORE）
+  failure-policy: "LOG"
+
+# 缓存配置
+caching:
+  # 本地缓存配置
+  local:
+    # 最大缓存条数
+    max-entries: 5000
+    # 过期时间（秒）
+    expire-after-write-seconds: 300
+    # 是否启用统计
+    record-stats: true
+  
+  # 分布式缓存配置
+  distributed:
+    # Redis缓存配置
+    redis:
+      # 默认过期时间（秒）
+      default-time-to-live: 3600
+      # 是否缓存空值
+      cache-null-values: true
+      # 是否使用前缀
+      use-key-prefix: true
+
+# 背压配置（防止系统过载）
+backpressure:
+  # 是否启用背压控制
+  enabled: true
+  # 最大处理速率（QPS）
+  max-processing-rate: 1000
+  # 背压阈值（队列使用率百分比）
+  threshold: 0.8
+  # 背压策略（DROP | BLOCK | SLOW_DOWN）
+  strategy: "SLOW_DOWN"
+
+# 路由策略配置
+routing:
+  # 负载均衡策略（ROUND_ROBIN | RANDOM | LEAST_LOAD）
+  load-balancer: "ROUND_ROBIN"
+  # 健康检查间隔（秒）
+  health-check-interval: 30
+  # 故障恢复时间（秒）
+  recovery-timeout: 300
+
+# 性能优化配置
+performance:
+  # JVM线程配置
+  jvm:
+    # 并行GC线程数
+    gc-threads: -1 # -1表示自动配置
+    # 并行计算的并行度
+    parallel-level: Runtime.getRuntime().availableProcessors()
+  
+  # 网络I/O配置
+  network:
+    # TCP缓冲区大小（KB）
+    tcp-buffer-kb: 32
+    # 是否启用TCP_NODELAY
+    tcp-nodelay: true

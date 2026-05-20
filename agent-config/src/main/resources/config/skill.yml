@@ -1,0 +1,22 @@
+# ============================================================
+# SkillBox 技能包配置
+# ============================================================
+# SkillBox 提供渐进式技能加载能力，Agent 可按需加载专业领域知识。
+# 支持 classpath 预置、本地文件系统、Git 远程仓库三种来源。
+# ============================================================
+
+agentscope:
+  skill-box:
+    enabled: true
+    classpath-enabled: true
+    classpath-path: skills
+    filesystem-path: ./skills
+    code-execution-enabled: false
+    git-repositories:
+      - url: https://github.com/anthropics/awesome-skills.git
+        branch: main
+    auto-sync: true
+
+    # Agent 配置文件路径
+    config:
+      path: "classpath:/agents/active/*.yml"

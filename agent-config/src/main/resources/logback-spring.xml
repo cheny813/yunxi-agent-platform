@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration debug="false">
+
+    <!-- 属性定义 -->
+    <property name="FILE_LOG_CHARSET" value="UTF-8"/>
+    <springProperty scope="context" name="LOG_ACTIVE" source="spring.profiles.active" defaultValue="unknown"/>
+    <springProperty scope="context" name="LOG_NAME" source="spring.application.name" defaultValue="yunxi-agent-platform"/>
+    <springProperty scope="context" name="LOG_LEVEL" source="logging.level.root" defaultValue="INFO"/>
+
+    <!-- 链路追踪工具类 -->
+    <conversionRule conversionWord="traceId" class="ch.qos.logback.classic.pattern.MDCConverter">
+        <param name="key" value="traceId"/>
+        <param name="defaultValue" value="-"/>
+    </conversionRule>
+
+    <!-- 控制台日志格式 - 统一MDC显示 -->
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %magenta([%X{threadId}]) %cyan([%X{traceId}]) %green(%logger{36}) - %msg%n"/>
+
+    <!-- 文件日志格式 - 统一MDC显示 -->
+    <property name="FILE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{threadId}] [%X{traceId}] %logger{36} - %msg%n"/>
+
+    <!-- 控制台Appender -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 文件Appender -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/${LOG_NAME}.log</file>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/${LOG_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- 异步文件Appender -->
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="FILE"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>false</neverBlock>
+        <includeCallerData>false</includeCallerData>
+    </appender>
+
+    <!-- 异步控制台Appender -->
+    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="CONSOLE"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>false</neverBlock>
+        <includeCallerData>false</includeCallerData>
+    </appender>
+
+    <!-- 根Logger配置 -->
+    <root level="${LOG_LEVEL}">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+    <!-- 特定包名日志级别调整 -->
+    <logger name="io.yunxi.platform" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </logger>
+
+    <logger name="io.yunxi.platform.shared.mapper" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </logger>
+
+    <!-- 抑制不重要的日志 -->
+    <logger name="org.springframework.boot.autoconfigure" level="WARN"/>
+    <logger name="org.apache.tomcat.util.compat" level="INFO"/>
+    <logger name="org.apache.catalina.startup.DigesterFactory" level="ERROR"/>
+
+</configuration>

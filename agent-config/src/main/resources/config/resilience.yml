@@ -1,0 +1,77 @@
+# ============================================================
+# Resilience4j 熔断和限流配置
+# ============================================================
+# 用于服务降级、限流、熔断保护
+# ============================================================
+
+resilience4j:
+  # 熔断器配置
+  circuitbreaker:
+    instances:
+      # Agent 调用熔断器
+      agentCall:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+
+      # MCP 工具调用熔断器
+      mcpTool:
+        registerHealthIndicator: true
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        permittedNumberOfCallsInHalfOpenState: 5
+        waitDurationInOpenState: 60s
+        failureRateThreshold: 60
+
+  # 限流器配置
+  ratelimiter:
+    instances:
+      # API 请求限流
+      apiRequest:
+        registerHealthIndicator: true
+        limitForPeriod: 100
+        limitRefreshPeriod: 1s
+        timeoutDuration: 0
+
+      # 对话请求限流
+      chatRequest:
+        registerHealthIndicator: true
+        limitForPeriod: 50
+        limitRefreshPeriod: 1s
+        timeoutDuration: 500ms
+
+      # 工具调用限流
+      toolCall:
+        registerHealthIndicator: true
+        limitForPeriod: 200
+        limitRefreshPeriod: 1s
+        timeoutDuration: 0
+
+  # 重试配置
+  retry:
+    instances:
+      defaultRetry:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+
+# Spring Boot Actuator 端点配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,circuitbreakers,ratelimiters
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    ratelimiters:
+      enabled: true

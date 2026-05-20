@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Agent 表单填写演示</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f5f5f5; }
+        .demo-container { max-width: 800px; margin: 50px auto; }
+        .test-form { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h2 class="text-center mb-4">Page Agent 表单填写演示</h2>
+        <p class="text-center text-muted">点击右下角悬浮球，用自然语言操作表单</p>
+
+        <!-- 测试表单 -->
+        <div class="test-form mb-4">
+            <h5 class="mb-3">📝 测试表单</h5>
+            <form>
+                <div class="mb-3">
+                    <label class="form-label">食谱名称</label>
+                    <input type="text" class="form-control" id="recipeName" placeholder="请输入食谱名称">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">菜品类型</label>
+                    <select class="form-select" id="recipeType">
+                        <option value="">请选择...</option>
+                        <option value="早餐">早餐</option>
+                        <option value="午餐">午餐</option>
+                        <option value="晚餐">晚餐</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">食材描述</label>
+                    <textarea class="form-control" id="ingredients" rows="3" placeholder="请输入食材描述"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">热量 (kcal)</label>
+                    <input type="number" class="form-control" id="calories" placeholder="请输入热量">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">烹饪方式</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="cookMethod" id="method1" value="炒">
+                        <label class="form-check-label" for="method1">炒</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="cookMethod" id="method2" value="煮">
+                        <label class="form-check-label" for="method2">煮</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="cookMethod" id="method3" value="蒸">
+                        <label class="form-check-label" for="method3">蒸</label>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary" id="btn-reset">重置</button>
+                <button type="button" class="btn btn-primary" id="btn-submit">提交</button>
+            </form>
+        </div>
+
+        <div class="text-center">
+            <a href="/chat.html" class="btn btn-outline-primary">返回聊天页面</a>
+        </div>
+    </div>
+
+    <!-- 引入 Page Agent SDK -->
+    <script src="/js/page-agent.js"></script>
+
+    <!-- 初始化 Page Agent -->
+    <script>
+        // 初始化 Page Agent（调用我们后端框架的 API）
+        PageAgent.init({
+            apiBase: window.location.origin,
+            welcomeMessage: '你好！我是页面助手，我可以帮你填写表单。试一试对我说"帮我填写食谱名称为红烧肉"'
+        });
+
+        console.log('Page Agent 已初始化完成');
+
+        // 重置按钮功能
+        document.getElementById('btn-reset').addEventListener('click', function() {
+            document.getElementById('recipeName').value = '';
+            document.getElementById('recipeType').value = '';
+            document.getElementById('ingredients').value = '';
+            document.getElementById('calories').value = '';
+            document.querySelectorAll('input[name="cookMethod"]').forEach(function(radio) {
+                radio.checked = false;
+            });
+        });
+
+        // 提交按钮功能
+        document.getElementById('btn-submit').addEventListener('click', function() {
+            alert('提交成功！');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+# 测试环境配置
+spring:
+  # H2 内存数据库配置和SQL初始化
+  datasource:
+    # 数据库连接配置
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  # SQL 初始化配置 (Spring Boot 3.x 方式)
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:sql/schema.sql
+      data-locations: classpath:sql/data.sql
+  datasource:
+    # 数据库连接配置
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+      
+  # JPA/Hibernate 配置 - 禁用DDL自动创建，使用SQL初始化脚本
+  jpa:
+    hibernate:
+      ddl-auto: none  # 禁用JPA自动DDL，使用SQL初始化脚本
+    show-sql: false
+    defer-datasource-initialization: true
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+  
+  # H2 Web Console配置（可选，用于调试）
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  
+# 规则引擎测试配置
+rule-engine:
+  test:
+    enabled: true
+    max-rules: 100
+    enable-metrics: false
+    
+# 日志配置（测试环境详细日志）
+logging:
+  level:
+    io.yunxi.platform.agent.ruleengine: DEBUG
+    org.springframework: DEBUG
+    org.hibernate: DEBUG
+    org.springframework.jdbc.datasource.init: DEBUG
+    org.springframework.boot.sql.init: DEBUG
+    com.zaxxer.hikari: DEBUG
+    org.springframework.jdbc.core.JdbcTemplate: TRACE
+    org.springframework.jdbc.core.StatementCreatorUtils: TRACE
+    org.springframework.boot.autoconfigure.jdbc: DEBUG
+    org.springframework.boot.sql.init.dependency: DEBUG

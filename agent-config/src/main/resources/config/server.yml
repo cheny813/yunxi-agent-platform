@@ -1,0 +1,126 @@
+# ============================================================
+# HTTP服务性能优化配置
+# 针对API响应时间和并发性能调优
+# ============================================================
+
+server:
+  # --------------------- 服务器基本配置 ---------------------
+  port: 40001                                             # 服务端口
+  address: 0.0.0.0                                       # 绑定IP地址
+  servlet:
+    session:
+      timeout: 30m                                       # 会话超时时间
+    context-path: /                                      # 上下文路径
+    encoding:
+      charset: UTF-8                                     # 字符编码
+      enabled: true                                      # 启用编码过滤
+      force: true                                        # 强制使用指定编码
+  
+  # --------------------- 连接超时配置 ---------------------
+  # 提高连接处理效率
+  connection-timeout: 20000                              # 连接超时（毫秒）
+  tomcat:
+    # --------------------- 线程池配置 ---------------------
+    threads:
+      max: 200                                           # 最大线程数
+      min-spare: 20                                      # 最小空闲线程
+    
+    # --------------------- 连接器配置 ---------------------
+    max-connections: 8192                                # 最大连接数
+    max-http-form-post-size: 2MB                         # 最大表单提交大小
+    
+    # --------------------- 缓冲区配置 ---------------------
+    # 优化I/O性能，减少内存分配
+    max-swallow-size: 2MB                                # 最大吞入大小
+    max-http-header-size: 8KB                            # HTTP头部最大大小
+    
+    # --------------------- 性能优化配置 ---------------------
+    background-processor-delay: 30                       # 后台处理延迟（秒）
+    basedir: ./tmp                                        # 临时目录
+    uri-encoding: UTF-8                                  # URI编码
+    
+    # --------------------- 高级优化 ---------------------
+    accept-count: 100                                    # 等待队列长度
+    connection-timeout: 20000                           # 连接超时
+    keep-alive-timeout: 20000                           # 保持连接超时
+    
+  # --------------------- HTTP/2配置 ---------------------
+  # 启用HTTP/2提升性能
+  http2:
+    enabled: true                                        # 启用HTTP/2
+
+# ============================================================
+# Spring Boot Web性能优化
+# ============================================================
+spring:
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          max-age: 3600                                  # 静态资源缓存时间
+      chain:
+        cache: true                                      # 启用资源链缓存
+        compressed: false                                # 禁用GZIP压缩（由代理处理）
+        strategy:
+          content:
+            enabled: true                                # 启用内容策略
+  
+  servlet:
+    multipart:
+      max-file-size: 10MB                                # 最大文件大小
+      max-request-size: 10MB                             # 最大请求大小
+      enabled: true                                      # 启用文件上传
+
+# ============================================================
+# Metrics和监控配置
+# ============================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus          # 监控端点
+      base-path: /actuator                               # 监控端点路径
+  
+  endpoint:
+    health:
+      show-details: when_authorized                      # 健康检查详情
+      probes:
+        enabled: true                                    # 启用探针
+    
+    metrics:
+      enabled: true                                      # 启用指标收集
+      export:
+        prometheus:
+          enabled: true                                  # 启用Prometheus导出
+
+# ============================================================
+# 性能监控配置
+# ============================================================
+metrics:
+  export:
+    prometheus:
+      step: 10s                                          # 指标采集间隔
+      descriptions: true                                 # 包含描述信息
+  
+  distribution:
+    percentiles-histogram:
+      http:
+        server:
+          requests: true                                 # HTTP请求直方图
+
+# ============================================================
+# 响应缓存配置
+# ============================================================
+cache:
+  type: caffeine                                         # 缓存类型
+  caffeine:
+    spec: maximumSize=1000,expireAfterWrite=600s         # 缓存配置
+
+# ============================================================
+# 性能调优验证指标
+# ============================================================
+performance:
+  api:
+    target-response-time: 100ms                         # 目标响应时间
+    max-concurrent-requests: 1000                       # 最大并发请求
+    timeout-threshold: 5000ms                           # 超时阈值

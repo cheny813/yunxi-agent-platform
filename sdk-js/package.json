@@ -1,0 +1,53 @@
+{
+  "name": "yunxi-agent-client",
+  "version": "2.1.0",
+  "description": "yunxi Agent Platform JavaScript/TypeScript Client - 简洁易用的SDK，支持Node.js和浏览器",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "build": "echo 'No build step required for JavaScript'",
+    "prepublishOnly": "echo 'Preparing for publication...'"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "chatbot",
+    "llm",
+    "yunxi",
+    "sdk",
+    "client",
+    "typescript",
+    "nodejs",
+    "browser"
+  ],
+  "author": "yunxi Agent Platform",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yunxi/agent-platform.git"
+  },
+  "homepage": "https://github.com/yunxi/agent-platform#readme",
+  "bugs": {
+    "url": "https://github.com/yunxi/agent-platform/issues"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "peerDependencies": {
+    "node-fetch": "^2.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "browser": {
+    "node-fetch": false
+  }
+}

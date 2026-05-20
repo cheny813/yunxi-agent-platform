@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    Agent Mapper XML 映射文件
+    负责 AgentEntity 与 agent_agent_agents 表之间的映射关系
+    namespace: 对应的 Mapper 接口全限定名
+-->
+<mapper namespace="io.yunxi.platform.shared.mapper.AgentMapper">
+
+    <!--
+        ResultMap: 定义数据库字段与实体属性的映射关系
+        id: resultMap 的唯一标识
+        type: 对应的实体类
+    -->
+    <resultMap id="AgentResultMap" type="io.yunxi.platform.shared.entity.AgentEntity">
+        <!-- id: 主键映射 -->
+        <id property="name" column="name"/>
+        <!-- result: 普通字段映射 -->
+        <result property="prompt" column="prompt"/>
+        <result property="modelName" column="model_name"/>
+        <result property="provider" column="provider"/>
+        <result property="temperature" column="temperature"/>
+        <result property="maxTokens" column="max_tokens"/>
+        <result property="enabled" column="enabled"/>
+        <result property="description" column="description"/>
+        <result property="apiKeyHash" column="api_key_hash"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!--
+        SQL 片段: 可重用的 SQL 语句
+        id: sql 片段的唯一标识
+    -->
+    <sql id="Base_Column_List">
+        name, prompt, model_name, provider, temperature, max_tokens,
+        enabled, description, api_key_hash, created_at, updated_at
+    </sql>
+
+    <!--
+        插入或更新 Agent
+        id: 对应 Mapper 接口的方法名
+        parameterType: 参数类型
+        使用 ON DUPLICATE KEY UPDATE 实现幂等操作
+    -->
+    <insert id="save" parameterType="io.yunxi.platform.shared.entity.AgentEntity">
+        INSERT INTO agent_agents (name, prompt, model_name, provider, temperature, max_tokens,
+                           enabled, description, api_key_hash, created_at, updated_at)
+        VALUES (#{name}, #{prompt}, #{modelName}, #{provider}, #{temperature}, #{maxTokens},
+                #{enabled}, #{description}, #{apiKeyHash},
+                #{createdAt}, #{updatedAt})
+        ON DUPLICATE KEY UPDATE
+            prompt = VALUES(prompt),
+            model_name = VALUES(model_name),
+            provider = VALUES(provider),
+            temperature = VALUES(temperature),
+            max_tokens = VALUES(max_tokens),
+            enabled = VALUES(enabled),
+            description = VALUES(description),
+            api_key_hash = VALUES(api_key_hash),
+            updated_at = VALUES(updated_at)
+    </insert>
+
+    <!--
+        根据 name 删除 Agent
+    -->
+    <delete id="deleteByName" parameterType="string">
+        DELETE FROM agent_agents WHERE name = #{name}
+    </delete>
+
+    <!--
+        根据 name 查询 Agent
+        resultMap: 使用上面定义的 ResultMap
+    -->
+    <select id="findByName" parameterType="string" resultMap="AgentResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_agents
+        WHERE name = #{name}
+    </select>
+
+    <!--
+        查找所有 Agent
+        按创建时间倒序排列
+    -->
+    <select id="findAll" resultMap="AgentResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_agents
+        ORDER BY created_at DESC
+    </select>
+
+    <!--
+        查找所有启用的 Agent
+        条件: enabled = true
+    -->
+    <select id="findByEnabledTrue" resultMap="AgentResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_agents
+        WHERE enabled = true
+        ORDER BY created_at DESC
+    </select>
+
+    <!--
+        按提供商查找启用的 Agent
+        条件: provider = ? AND enabled = true
+    -->
+    <select id="findByProviderAndEnabledTrue" parameterType="string" resultMap="AgentResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_agents
+        WHERE provider = #{provider} AND enabled = true
+        ORDER BY created_at DESC
+    </select>
+
+    <!--
+        按模型名称查找
+        只返回一条记录
+    -->
+    <select id="findByModelName" parameterType="string" resultMap="AgentResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_agents
+        WHERE model_name = #{modelName}
+        LIMIT 1
+    </select>
+
+    <!--
+        统计 Agent 数量
+        resultType: 返回值类型
+    -->
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM agent_agents
+    </select>
+
+</mapper>

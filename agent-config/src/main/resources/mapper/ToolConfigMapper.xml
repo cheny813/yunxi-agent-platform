@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    ToolConfig Mapper XML 映射文件
+    负责 ToolConfigEntity 与 agent_tool_configs 表之间的映射关系
+    namespace: 对应的 Mapper 接口全限定名
+-->
+<mapper namespace="io.yunxi.platform.shared.mapper.ToolConfigMapper">
+
+    <!--
+        ResultMap: 定义数据库字段与实体属性的映射关系
+    -->
+    <resultMap id="ToolConfigResultMap" type="io.yunxi.platform.shared.entity.ToolConfigEntity">
+        <id property="id" column="id"/>
+        <result property="toolName" column="tool_name"/>
+        <result property="enabled" column="enabled"/>
+        <result property="config" column="config"/>
+        <result property="description" column="description"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!--
+        SQL 片段: 可重用的 SQL 语句
+    -->
+    <sql id="Base_Column_List">
+        id, tool_name, enabled, config, description, created_at, updated_at
+    </sql>
+
+    <!--
+        插入工具配置
+        useGeneratedKeys: 使用数据库自增主键
+        keyProperty: 将生成的主键值设置到实体的哪个属性
+        config 字段存储 JSON 格式的工具配置
+    -->
+    <insert id="insert" parameterType="io.yunxi.platform.shared.entity.ToolConfigEntity"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO agent_tool_configs (tool_name, enabled, config, description, created_at, updated_at)
+        VALUES (#{toolName}, #{enabled}, #{config}, #{description}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <!--
+        更新工具配置
+        根据 id 更新记录
+    -->
+    <update id="update" parameterType="io.yunxi.platform.shared.entity.ToolConfigEntity">
+        UPDATE agent_tool_configs
+        SET tool_name = #{toolName},
+            enabled = #{enabled},
+            config = #{config},
+            description = #{description},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <!--
+        根据 id 删除工具配置
+    -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM agent_tool_configs WHERE id = #{id}
+    </delete>
+
+    <!--
+        根据 id 查询工具配置
+    -->
+    <select id="findById" parameterType="long" resultMap="ToolConfigResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_tool_configs
+        WHERE id = #{id}
+    </select>
+
+    <!--
+        查找所有工具配置
+        按创建时间倒序排列
+    -->
+    <select id="findAll" resultMap="ToolConfigResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_tool_configs
+        ORDER BY created_at DESC
+    </select>
+
+    <!--
+        查找所有启用的工具配置
+        条件: enabled = true
+    -->
+    <select id="findByEnabledTrue" resultMap="ToolConfigResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_tool_configs
+        WHERE enabled = true
+        ORDER BY created_at DESC
+    </select>
+
+    <!--
+        按工具名称查找配置
+        工具名称唯一，只返回一条记录
+    -->
+    <select id="findByToolName" parameterType="string" resultMap="ToolConfigResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_tool_configs
+        WHERE tool_name = #{toolName}
+        LIMIT 1
+    </select>
+
+    <!--
+        检查工具是否存在
+        返回 boolean 类型
+        用于避免重复插入
+    -->
+    <select id="existsByToolName" parameterType="string" resultType="boolean">
+        SELECT COUNT(*) > 0 FROM agent_tool_configs WHERE tool_name = #{toolName}
+    </select>
+
+    <!--
+        统计工具配置数量
+    -->
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM agent_tool_configs
+    </select>
+
+</mapper>

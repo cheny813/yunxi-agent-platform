@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <title>yunxiClaw 小龙虾 智能助手</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部状态栏 -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🦞</span>
+                <span class="logo-text">yunxiClaw</span>
+            </div>
+            <div class="status">
+                <span id="connectionStatus" class="status-dot offline"></span>
+                <span id="statusText">未连接</span>
+            </div>
+        </header>
+
+        <!-- 系统信息 -->
+        <section class="info-panel">
+            <div class="info-row">
+                <span class="info-label">系统</span>
+                <span id="systemInfo" class="info-value">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">工作目录</span>
+                <span id="cwdInfo" class="info-value" title="点击切换">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">版本</span>
+                <span id="versionInfo" class="info-value">v1.0.0</span>
+            </div>
+        </section>
+
+        <!-- 本地服务器 -->
+        <section class="config-section local-server">
+            <div class="section-header">
+                <span class="section-icon">🖥️</span>
+                <span>本地服务 (AI 连接)</span>
+                <span id="localServerStatus" class="status-badge">已停止</span>
+            </div>
+            <div class="config-row">
+                <input type="text" id="localServerUrl" readonly placeholder="ws://localhost:9876">
+                <button id="btnStartServer" class="btn btn-success">启动</button>
+            </div>
+            <div class="local-server-tip">
+                启动后，AI 可通过此地址发送命令到您的电脑
+            </div>
+        </section>
+
+        <!-- 远程服务器配置 -->
+        <section class="config-section">
+            <div class="section-header">
+                <span class="section-icon">🔗</span>
+                <span>远程服务器 (中继模式)</span>
+            </div>
+            <div class="config-row">
+                <input type="text" id="serverUrl" placeholder="ws://localhost:40001/ws/desktop" value="ws://localhost:40001/ws/desktop">
+                <button id="btnConnect" class="btn btn-primary">连接</button>
+            </div>
+        </section>
+
+        <!-- 区县选择 + 数据库管理 -->
+        <section class="config-section">
+            <div class="section-header">
+                <span class="section-icon">🗺️</span>
+                <span>区县配置</span>
+            </div>
+            <div class="config-row">
+                <input type="text" id="mcpDatabaseUrl" placeholder="配置中心地址" value="http://localhost:40101">
+                <button id="btnConnectDb" class="btn btn-sm btn-primary">连接</button>
+            </div>
+            <div id="dbStatus" style="font-size: 12px; color: #666; margin: 5px 0;">
+                暂未连接
+            </div>
+            <div class="config-row" style="margin-top: 10px;">
+                <select id="districtSelect" style="flex: 1;">
+                    <option value="">选择区县...</option>
+                </select>
+            </div>
+            <div id="districtInfo" style="font-size: 11px; color: #888; margin-top: 5px;">
+                选择区县后自动加载数据库配置
+            </div>
+            <div id="dbList" style="margin-top: 10px; font-size: 12px;">
+                <!-- 数据库列表将显示在这里 -->
+            </div>
+        </section>
+
+        <!-- 快捷操作 -->
+        <section class="action-panel">
+            <div class="section-header">
+                <span class="section-icon">⚡</span>
+                <span>快捷操作</span>
+            </div>
+            <div class="action-grid">
+                <button class="action-btn" data-action="browse">
+                    <span class="action-icon">📂</span>
+                    <span class="action-text">浏览文件</span>
+                </button>
+                <button class="action-btn" data-action="git-status">
+                    <span class="action-icon">📊</span>
+                    <span class="action-text">Git 状态</span>
+                </button>
+                <button class="action-btn" data-action="git-pull">
+                    <span class="action-icon">⬇️</span>
+                    <span class="action-text">Git Pull</span>
+                </button>
+                <button class="action-btn" data-action="run-test">
+                    <span class="action-icon">🧪</span>
+                    <span class="action-text">运行测试</span>
+                </button>
+                <button class="action-btn" data-action="mvn-build">
+                    <span class="action-icon">📦</span>
+                    <span class="action-text">Maven 构建</span>
+                </button>
+                <button class="action-btn" data-action="npm-install">
+                    <span class="action-icon">📥</span>
+                    <span class="action-text">npm install</span>
+                </button>
+                <button class="action-btn" data-action="mvn-clean">
+                    <span class="action-icon">🧹</span>
+                    <span class="action-text">Maven 清理</span>
+                </button>
+                <button class="action-btn" data-action="system-info">
+                    <span class="action-icon">💻</span>
+                    <span class="action-text">系统信息</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 自定义命令 -->
+        <section class="custom-section">
+            <div class="section-header">
+                <span class="section-icon">⌨️</span>
+                <span>自定义命令</span>
+            </div>
+            <div class="custom-row">
+                <input type="text" id="customCommand" placeholder="输入命令，如: mvn test -Dtest=UserTest">
+            </div>
+            <button id="btnExecute" class="btn btn-full btn-primary">执行命令</button>
+        </section>
+
+        <!-- 输出面板 -->
+        <section class="output-panel">
+            <div class="output-header">
+                <span class="section-icon">📟</span>
+                <span>执行结果</span>
+                <button id="btnClearOutput" class="btn btn-sm btn-secondary">清空</button>
+            </div>
+            <div id="outputContent" class="output-content">
+                <div class="placeholder">等待命令执行...</div>
+            </div>
+        </section>
+
+        <!-- 底部 -->
+        <footer class="footer">
+            <button id="btnSelectFolder" class="btn btn-secondary">
+                <span>📁</span> 切换目录
+            </button>
+            <button id="btnHelp" class="btn btn-secondary">
+                <span>❓</span> 帮助
+            </button>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

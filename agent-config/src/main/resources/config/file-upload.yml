@@ -1,0 +1,109 @@
+# ============================================================
+# 文件上传和多媒体RAG功能配置
+# ============================================================
+
+# 文件上传基础配置
+file-upload:
+  enabled: true
+  storage-type: local  # local|oss|minio
+  max-file-size: 10MB
+  allowed-types:
+    - image
+    - audio
+    - video
+    - document
+
+  # 图像处理模式配置
+  image-processing:
+    # 处理模式: ocr(文字识别)|feature(特征提取)|auto(自动判断)
+    mode: auto
+    # 自动模式下的类型判断规则
+    auto-rules:
+      # 文件名包含这些关键词时使用特征提取
+      feature-keywords:
+        - face
+        - uniform
+        - 工装
+        - 人脸
+        - 员工
+      # 默认处理方式
+      default-mode: ocr
+
+  # OCR配置（图片文字识别）- 用于提取图片中的文字内容
+  ocr:
+    enabled: false  # 启用OCR需要配置阿里云API
+    provider: aliyun  # aliyun|baidu
+
+  # ASR配置（语音转文字）
+  asr:
+    enabled: false  # 启用ASR需要配置阿里云API
+    provider: aliyun  # aliyun|baidu|whisper
+
+  # 图像特征提取配置 - 用于人脸识别、工装识别等场景
+  image-feature:
+    enabled: false  # 启用图像特征提取
+    provider: local  # local|aliyun|custom
+    endpoint: http://localhost:8000/embed
+    api-key: ${IMAGE_FEATURE_API_KEY:}
+    model: clip-vit-base-patch32
+    dimension: 512
+
+  # 人脸识别配置 - 专门用于人脸搜索比对
+  face-recognition:
+    enabled: false  # 启用人脸识别
+    provider: local  # local|aliyun|custom
+    endpoint: http://localhost:8001/face/embed
+    api-key: ${FACE_RECOGNITION_API_KEY:}
+    model: arcface-r50
+    dimension: 512
+    min-confidence: 0.8  # 人脸检测最低置信度
+
+# ============================================================
+# 音频文件服务配置
+# ============================================================
+audio:
+  file-service:
+    type: aliyun-oss  # 服务类型：aliyun-oss | huawei-obs | minio
+
+    # 阿里云OSS配置
+    aliyun:
+      endpoint: ${OSS_ENDPOINT:https://oss-cn-hangzhou.aliyuncs.com}
+      access-key: ${OSS_ACCESS_KEY:}
+      secret-key: ${OSS_SECRET_KEY:}
+      bucket: ${OSS_BUCKET:yunxi-audio}
+      domain: ${OSS_DOMAIN:}  # 自定义域名，可选
+
+    # 华为云OBS配置
+    huawei:
+      endpoint: ${HUAWEI_ENDPOINT:https://obs.cn-east-3.myhuaweicloud.com}
+      access-key: ${HUAWEI_ACCESS_KEY:}
+      secret-key: ${HUAWEI_SECRET_KEY:}
+      bucket: ${HUAWEI_BUCKET:yunxi-audio}
+
+    # MinIO配置 (可选)
+    minio:
+      endpoint: ${MINIO_ENDPOINT:localhost:9000}
+      access-key: ${MINIO_ACCESS_KEY:minioadmin}
+      secret-key: ${MINIO_SECRET_KEY:minioadmin}
+      bucket: ${MINIO_BUCKET:yunxi-audio}
+      use-ssl: false
+
+# 本地文件存储配置
+file-storage:
+  local:
+    base-path: ./uploads  # 本地文件存储基础路径
+
+# ============================================================
+# 阿里云配置
+# ============================================================
+aliyun:
+  ocr:
+    access-key-id: ${ALIYUN_OCR_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIYUN_OCR_ACCESS_KEY_SECRET:}
+    endpoint: https://ocr.cn-shanghai.aliyuncs.com
+  # 阿里云ASR（语音识别）配置
+  asr:
+    access-key-id: ${ALIYUN_ASR_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIYUN_ASR_ACCESS_KEY_SECRET:}
+    app-key: ${ALIYUN_ASR_APP_KEY:}
+    endpoint: https://nls-gateway.cn-shanghai.aliyuncs.com

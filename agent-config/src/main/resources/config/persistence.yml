@@ -1,0 +1,54 @@
+# ============================================================
+# 数据持久化配置
+# ============================================================
+# 通过配置选择持久化策略，支持数据库、Redis、向量数据库
+# 向量数据库可选：milvus 或 qdrant（建议只启用一个）
+# ============================================================
+
+persistence:
+  # 启用的策略列表（可配置）
+  enabled-strategies:
+    - database      # 数据库持久化（必需）
+    - redis         # Redis缓存（推荐）
+    - milvus        # Milvus向量数据库（可选）
+    # - qdrant      # Qdrant向量数据库（可选）
+
+  # 缓存配置
+  cache:
+    max-size: 10000           # 最大缓存条目数
+    ttl-hours: 24            # 缓存过期时间（小时）
+    eviction-policy: LRU     # 缓存淘汰策略：LRU/LFU/FIFO
+
+  # 数据库配置
+  database:
+    enabled: true            # 是否启用数据库
+    batch-size: 100          # 批量保存大小
+
+  # 向量数据库配置（为将来扩展预留）
+  vector:
+    enabled: true            # 是否启用向量数据库（已弃用，使用 milvus.enabled 或 qdrant.enabled）
+    type: milvus             # 类型：milvus/qdrant
+    dimension: 1024          # 向量维度（text-embedding-v3 原生维度为 1024）
+    similarity-threshold: 0.7  # 语义相似度阈值
+
+# ============================================================
+# 会话存储配置
+# ============================================================
+conversation:
+  storage-type: redis                            # 存储类型：redis / memory
+  expire-hours: 24                               # 会话过期时间（小时）
+  cleanup-interval: 3600000                      # 清理间隔（毫秒）
+  storage:
+    type: composite                              # memory | database | composite
+    warmup-cache: false                          # 是否在启动时预热缓存
+
+# ============================================================
+# 智能记忆系统配置
+# ============================================================
+memory:
+  # 场景检测开关
+  scene-detection:
+    enabled: true
+  # 自动记忆提取开关
+  auto-extract:
+    enabled: true

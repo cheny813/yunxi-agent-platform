@@ -1,0 +1,62 @@
+# ConceptRegistry 测试配置
+concepts:
+  entries:
+    - name: MEDICAL
+      domain: health
+      displayName: 医疗健康
+      keywords: "医疗、健康、诊疗、诊断、症状、治疗、康复、护理、血压、血糖、药物、体检、医院、医生、护士、病人"
+      category: PROFESSION
+      
+    - name: NUTRITION
+      domain: health
+      displayName: 营养健康
+      keywords: "营养、饮食、膳食、食补、营养均衡、蛋白质、维生素、矿物质、纤维、卡路里、减肥、增肌、消化、吸收"
+      category: PROFESSION
+      
+    - name: PARENTING
+      domain: family
+      displayName: 家庭育儿
+      keywords: "孩子、子女、上学、辅导、幼儿园、家长、亲子、父母、孩子教育、子女成长、家庭教育、亲子关系"
+      category: ROLE
+      
+    - name: EDUCATION
+      domain: school
+      displayName: 教育学习
+      keywords: "学校、教师、学生、学习、教育、教学、课程、作业、考试、升学、专业知识、学习方法、技能培训"
+      category: PROFESSION
+      
+    - name: SPORTS
+      domain: lifestyle
+      displayName: 体育锻炼
+      keywords: "运动、锻炼、健身、跑步、健身、瑜伽、太极、篮球、足球、羽毛球、体能、骨骼健身、肌肉训练"
+      category: INTEREST
+      
+    - name: COOKING
+      domain: lifestyle
+      displayName: 烹饪饮食
+      keywords: "烹饪、做菜、食材、调味、食谱、早餐、午餐、晚餐、零食、小吃、家常菜、西餐、中餐、刀工、火候"
+      category: SKILL
+      
+    - name: TECHNOLOGY
+      domain: work
+      displayName: 科技技术
+      keywords: "技术、科技、软件、硬件、编程、开发、网络、数据、人工智能、机器学习、云计算、物联网、区块链"
+      category: PROFESSION
+      
+    - name: BUSINESS
+      domain: work
+      displayName: 商业管理
+      keywords: "商业、企业、管理、市场、营销、销售、客户、服务、产品、项目、团队、财务、投资、策略、运营"
+      category: PROFESSION
+      
+    - name: ART
+      domain: life
+      displayName: 艺术创作
+      keywords: "艺术、创作、音乐、绘画、书法、摄影、设计、创意、表达、美感、展览、表演、影视、戏剧"
+      category: INTEREST
+      
+    - name: ENVIRONMENT
+      domain: society
+      displayName: 环境保护
+      keywords: "环境、生态、环保、污染、节能、可持续发展、气候变化、绿色、废物处理、自然保护区、生物多样性"
+      category: COMMITMENT

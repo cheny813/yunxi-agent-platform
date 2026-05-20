@@ -1,0 +1,38 @@
+# ============================================================================
+# ReMe Milvus 向量存储配置文件
+# ============================================================================
+# 本文件配置 ReMe 服务使用的向量存储后端为 Milvus。
+# 配置格式与 reme_ai/config/default.yaml 中的 vector_store 部分一致。
+# 启动时由 start_reme.py 读取并转换为 CLI 参数传递给 ReMeApp。
+# ============================================================================
+
+# 向量存储配置
+vector_store:
+  default:
+    # 后端类型：milvus（由 ReMePython/register.py 注册）
+    backend: milvus
+
+    # 使用的嵌入模型（对应 embedding_model 配置中的名称）
+    embedding_model: default
+
+    # Milvus 集合名称
+    collection_name: reme
+
+    # Milvus 连接参数
+    params:
+      # Milvus 服务地址
+      # 格式: http://<host>:<port>
+      uri: "http://192.168.11.48:19530"
+
+      # 认证令牌（优先级高于 user/password）
+      # 格式: <username>:<password>
+      token: "root:Milvus"
+
+      # 用户名（当未设置 token 时使用）
+      # user: "root"
+
+      # 密码（当未设置 token 时使用）
+      # password: "Milvus"
+
+      # 数据库名称
+      db_name: "ReMeDB"

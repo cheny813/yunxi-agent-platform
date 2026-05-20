@@ -1,0 +1,31 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+*.iml
+.vscode
+
+# Build
+target/
+!target/*.jar
+
+# Documentation
+docs/
+*.md
+
+# Tests
+src/test/
+
+# Local config
+application-local.yml
+application-dev.yml
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

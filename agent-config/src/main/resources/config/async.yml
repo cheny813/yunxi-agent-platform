@@ -1,0 +1,184 @@
+# 异步处理和线程池配置
+# =============================================================================
+
+# Spring异步处理配置
+spring:
+  task:
+    execution:
+      # 异步任务执行器
+      async:
+        thread-name-prefix: "async-task-"
+        core-size: 10
+        max-size: 50
+        queue-capacity: 1000
+        keep-alive: 60s
+        allow-core-thread-timeout: true
+      
+      # 调度任务执行器
+      scheduling:
+        thread-name-prefix: "scheduling-"
+        pool:
+          size: 3
+      
+      # 虚拟线程执行器（Java 21+）
+      virtual:
+        enabled: false
+        thread-name-prefix: "virtual-task-"
+  
+  # 线程池配置
+  async:
+    # 默认线程池
+    executor:
+      core-pool-size: 10
+      max-pool-size: 50
+      queue-capacity: 1000
+      thread-name-prefix: "spring-async-"
+      keep-alive-seconds: 60
+      await-termination-seconds: 30
+      wait-for-tasks-to-complete-on-shutdown: true
+    
+    # AI推理线程池
+    inference-executor:
+      core-pool-size: 5
+      max-pool-size: 20
+      queue-capacity: 200
+      thread-name-prefix: "inference-"
+      keep-alive-seconds: 120
+    
+    # HTTP客户端线程池
+    http-executor:
+      core-pool-size: 20
+      max-pool-size: 100
+      queue-capacity: 500
+      thread-name-prefix: "http-client-"
+      keep-alive-seconds: 60
+
+# 应用特定的异步配置
+async:
+  # 批量处理配置
+  batch:
+    # 批量大小
+    size: 100
+    # 处理间隔毫秒
+    interval-ms: 1000
+    # 最大重试次数
+    max-retries: 3
+    # 重试间隔毫秒
+    retry-interval-ms: 1000
+  
+  # 任务队列配置
+  queue:
+    # 最大队列大小
+    max-size: 10000
+    # 清理间隔秒
+    cleanup-interval-s: 60
+    # 过期任务清理阈值秒
+    expire-threshold-s: 3600
+  
+  # 背压配置
+  backpressure:
+    enabled: true
+    max-processing-rate: 1000
+    threshold: 0.8
+    strategy: SLOW_DOWN
+
+# 并发控制配置
+concurrency:
+  # API限流
+  rate-limit:
+    # 默认QPS限制
+    default-qps: 100
+    # 最大突发流量
+    burst-capacity: 200
+    # 令牌桶配置
+    bucket:
+      capacity: 1000
+      refill-rate: 100
+  
+  # 数据库连接池
+  database:
+    # 最大并发连接数
+    max-connections: 100
+    # 每个查询的最大并发
+    max-concurrent-queries: 50
+  
+  # HTTP请求并发
+  http:
+    # 最大并发请求数
+    max-concurrent-requests: 200
+    # 超时时间秒
+    timeout-s: 30
+
+# 性能监控配置
+monitoring:
+  thread:
+    # 启用线程监控
+    enabled: true
+    # 监控频率秒
+    frequency-s: 30
+    # 告警阈值
+    alert:
+      usage-threshold: 80
+      queue-size-threshold: 90
+      backlog-threshold: 1000
+  
+  # 异步任务监控
+  async-task:
+    # 启用任务监控
+    enabled: true
+    # 慢任务阈值毫秒
+    slow-task-threshold-ms: 5000
+    # 失败任务告警阈值
+    fail-alert-threshold: 10
+
+# CompletableFuture配置
+future:
+  # 默认超时秒
+  default-timeout-s: 60
+  # 启用超时控制
+  timeout-enabled: true
+  # 重试次数
+  retry-count: 3
+  # 故障处理策略
+  failure-policy: LOG
+
+# 缓存配置
+caching:
+  # 本地缓存
+  local:
+    # 最大缓存条数
+    max-entries: 5000
+    # 过期时间秒
+    expire-after-write-s: 300
+    # 启用统计
+    record-stats: true
+  
+  # 异步结果缓存
+  async-result:
+    # 缓存异步调用结果
+    enabled: true
+    # 缓存时间秒
+    ttl-s: 1800
+    # 最大缓存大小
+    max-size: 10000
+
+# 虚拟线程配置（Java 21+）
+virtual-threads:
+  # 启用虚拟线程
+  enabled: false
+  # 虚拟线程调度器
+  scheduler:
+    # 调度器类型
+    type: FIXED
+    # 并行度
+    parallelism: Runtime.getRuntime().availableProcessors()
+
+# 线程本地存储清理
+thread-local:
+  # 自动清理TLS
+  cleanup:
+    enabled: true
+    # 清理模式（AFTER_TASK | PERIODIC）
+    mode: AFTER_TASK
+    # 清理间隔秒
+    interval-s: 60

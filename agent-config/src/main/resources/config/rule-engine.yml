@@ -1,0 +1,104 @@
+# ============================================================
+# Text-to-SQL 模块配置
+# ============================================================
+
+# Text-to-SQL 核心配置
+text2sql:
+  # 是否启用 Text-to-SQL 模块（默认关闭，需要 LLM API Key 才能启用）
+  enabled: false
+
+  # 候选 SQL 数量（用于 Self-Consistency）
+  candidate-count: 3
+
+  # 是否启用投票机制
+  use-voting: true
+
+  # 是否启用 SQL 对齐
+  use-alignment: true
+
+  # 列检索配置
+  retrieval:
+    # Milvus 集合名称
+    collection-name: column_embeddings
+    # 向量维度
+    dimension: 1536
+    # Top-K 数量
+    top-k: 10
+    # Milvus 主机地址
+    milvus-host: ${MILVUS_HOST:localhost}
+    # Milvus 端口
+    milvus-port: ${MILVUS_PORT:19530}
+
+  # Few-shot 示例配置
+  fewshot:
+    # 最大示例数量
+    max-examples: 50
+    # 相似度阈值 [0.0, 1.0]
+    similarity-threshold: 0.7
+
+  # 投票配置
+  voting:
+    # 是否启用投票
+    enabled: true
+    # 超时时间（秒）[1, 300]
+    timeout: 30
+
+# DashScope 配置（用于 SQL 生成）
+# 使用阿里云 DashScope API
+dashscope:
+  # API 密钥（必填）
+  api-key: ${DASHSCOPE_API_KEY:}
+  # 使用的模型（默认 qwen-plus）
+  model: qwen-plus
+  # 温度参数（0.0 表示更确定的结果）
+  temperature: 0.0
+
+# ============================================================
+# 规则引擎配置
+# ============================================================
+agent:
+  rule:
+    # 规则仓库类型：database（默认）或 memory
+    repository:
+      type: database
+    
+    engine:
+      # 是否启用规则引擎
+      enabled: true
+      
+      # 规则执行策略
+      skip-on-first-failed-rule: true
+      skip-on-first-applied-rule: false
+      
+      # 资源限制
+      default-timeout: 300
+      max-instances: 100
+      max-concurrent-tasks: 10
+      memory-threshold: 0.8
+      
+      # 日志配置
+      audit-log-enabled: true
+      execution-log-enabled: true
+
+# ============================================================
+# 内置规则配置（三个核心规则）
+# ============================================================
+rule:
+  # 资源限制规则
+  resource:
+    cpu-threshold: 80.0      # CPU 使用率阈值（百分比）
+    memory-threshold: 85.0   # 内存使用率阈值（百分比）
+    max-instances: 100       # 最大实例数
+    enabled: true            # 是否启用
+  
+  # 超时控制规则
+  timeout:
+    default-timeout: 300     # 默认超时时间（秒）
+    enabled: true            # 是否启用
+  
+  # 频率限制规则
+  ratelimit:
+    global-limit: 1000       # 全局每分钟最大请求数
+    ip-limit: 100            # 单 IP 每分钟最大请求数
+    user-limit: 50           # 单用户每分钟最大请求数
+    enabled: true            # 是否启用

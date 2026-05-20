@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.platform.framework.profile.NodeProfileMapper">
+
+    <insert id="insertOrUpdate" parameterType="io.yunxi.platform.framework.profile.NodeProfile">
+        INSERT INTO node_profile
+        (client_id, user_id, node_type, tags, os_info, hardware, network,
+         services, software, common_paths, cloud_info, cloud_managed_services,
+         last_collected_at, last_online_at, is_online)
+        VALUES
+        (#{clientId}, #{userId}, #{nodeType}, #{tags}, #{osInfo}, #{hardware}, #{network},
+         #{services}, #{software}, #{commonPaths}, #{cloudInfo}, #{cloudManagedServices},
+         #{lastCollectedAt}, #{lastOnlineAt}, #{isOnline})
+        ON DUPLICATE KEY UPDATE
+        user_id = VALUES(user_id),
+        node_type = VALUES(node_type),
+        tags = VALUES(tags),
+        os_info = VALUES(os_info),
+        hardware = VALUES(hardware),
+        network = VALUES(network),
+        services = VALUES(services),
+        software = VALUES(software),
+        common_paths = VALUES(common_paths),
+        cloud_info = VALUES(cloud_info),
+        cloud_managed_services = VALUES(cloud_managed_services),
+        last_collected_at = VALUES(last_collected_at),
+        last_online_at = VALUES(last_online_at),
+        is_online = VALUES(is_online)
+    </insert>
+
+    <select id="selectByClientId" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+        SELECT * FROM node_profile WHERE client_id = #{clientId}
+    </select>
+
+    <select id="selectByUserId" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+        SELECT * FROM node_profile WHERE user_id = #{userId}
+    </select>
+
+    <select id="selectByTag" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+        SELECT * FROM node_profile WHERE JSON_CONTAINS(tags, JSON_QUOTE(#{tag}))
+    </select>
+
+    <select id="selectOnlineNodes" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+        SELECT * FROM node_profile WHERE is_online = true
+    </select>
+
+    <update id="updateOnlineStatus">
+        UPDATE node_profile
+        SET is_online = #{isOnline},
+            last_online_at = #{lastOnlineAt}
+        WHERE client_id = #{clientId}
+    </update>
+
+</mapper>

@@ -1,0 +1,92 @@
+# ============================================================
+# 业务配置 - 营养平台数据同步
+# ============================================================
+# 包含菜品向量同步、静态数据同步等业务配置
+# 此文件由 agent-business 模块提供，通过 business profile 自动加载
+# ============================================================
+
+# ============================================================
+# 菜品向量同步配置
+# ============================================================
+dish-sync:
+  enabled: true                                    # 是否启用定时同步
+  sync-on-startup: false                           # 启动时是否执行同步（默认false，集合已有数据时跳过；设为true则每次启动都全量同步）
+  school-sync-enabled: true                        # 是否启用学校菜品同步（查询所有学校并逐个同步到 school_dishes_{schoolId} 集合）
+  mcp-database:
+    host: ${MCP_DB_HOST:localhost}
+    port: ${MCP_DB_PORT:40101}
+  cron: "0 0 2 * * ?"                              # 每天凌晨2点执行
+  batch-size: 100                                  # 批量处理大小
+  retry-times: 3                                   # 重试次数
+  collection-prefix: "school_dishes_"             # 集合名称前缀
+  query-page-size: 1000                            # 分页查询的页大小（用于支持超过10000条记录）
+  # Embedding 格式配置：json_array / float_vec
+  embedding-format: ${DISH_SYNC_EMBEDDING_FORMAT:json_array}
+
+# ============================================================
+# 静态数据同步配置
+# ============================================================
+# 从营养数据库同步静态数据到 Milvus，供 AI 查询使用
+# 同步内容包括：
+# - 营养标准 (nutrition_standards)
+# - 食材营养成分 (ingredient_nutrients)
+# - 评分指标 (cook_book_score_index)
+# - 食材分类 (ingredient_classes)
+# - 菜品分类 (dish_classes)
+# ============================================================
+static-sync:
+  enabled: true                                    # 是否启用静态数据同步
+  async: true                                      # 异步执行，不阻塞应用启动
+  mcp-database:
+    host: ${MCP_DB_HOST:localhost}
+    port: ${MCP_DB_PORT:40101}
+  batch-size: 100                                  # 批量处理大小
+  embedding-format: ${STATIC_SYNC_EMBEDDING_FORMAT:json_array}
+  sql:
+    nutrition-standards: ${STATIC_SYNC_SQL_NUTRITION_STANDARDS:}
+    ingredients: ${STATIC_SYNC_SQL_INGREDIENTS:}
+    score-index: ${STATIC_SYNC_SQL_SCORE_INDEX:}
+    ingredient-classes: ${STATIC_SYNC_SQL_INGREDIENT_CLASSES:}
+    dish-classes: ${STATIC_SYNC_SQL_DISH_CLASSES:}
+
+# ============================================================
+# 营养扩展配置（默认全部关闭，不影响现有学校配餐流程）
+# ============================================================
+# 扩展功能包括：
+# - L1: 区域菜系字典 / 食材季节性 / 学校民族配置
+# - L2: 天气数据 / 价格数据 / 价格预测
+# - L3: 动态配餐约束服务
+# 启用方式：将对应 enabled 设为 true
+# ============================================================
+nutrition-extension:
+  # L1: 数据丰富层（新增 Milvus 集合）
+  regional-cuisine-sync:
+    enabled: false                                    # 区域菜系字典同步
+  ingredient-seasonality-sync:
+    enabled: false                                    # 食材季节性属性同步
+  school-ethnic-sync:
+    enabled: false                                    # 学校民族配置同步
+
+  # L2: 动态数据层（MySQL 缓存表）
+  weather:
+    enabled: false                                    # 天气数据服务
+    cache-ttl-hours: 1                               # 当日天气缓存时间
+    forecast-cache-ttl-hours: 6                      # 预报缓存时间
+    provider: ${NUTRITION_WEATHER_PROVIDER:qweather} # 天气API提供商: qweather / custom
+    api-url: ${NUTRITION_WEATHER_API_URL:}           # 天气API地址（custom模式时使用）
+    api-key: ${NUTRITION_WEATHER_API_KEY:}           # 天气API密钥
+  price:
+    enabled: false                                    # 价格数据服务
+    cache-ttl-hours: 2                               # 价格缓存时间
+    sync-cron: "0 0 3 * * ?"                         # 价格数据同步定时（每天凌晨3点）
+    api-url: ${NUTRITION_PRICE_API_URL:}             # 价格API地址（可选）
+    api-key: ${NUTRITION_PRICE_API_KEY:}             # 价格API密钥（可选）
+  price-prediction:
+    enabled: false                                    # 价格预测服务
+    history-days: 30                                 # 历史数据回看天数
+    default-predict-days: 7                          # 默认预测天数
+
+  # L3: 配餐约束层
+  constraint:
+    enabled: false                                    # 动态配餐约束服务
+    default-mode: SCHOOL                             # SCHOOL(学校端) / PERSONAL(个人端,预留)

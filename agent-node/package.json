@@ -1,0 +1,14 @@
+{
+  "name": "yunxi-agent-node",
+  "version": "1.0.0",
+  "description": "yunxi Agent Node - Headless node client for server deployment",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "node src/main/index.js",
+    "install-service": "node scripts/install-service.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.0"
+  },
+  "license": "MIT"
+}

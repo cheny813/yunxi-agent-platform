@@ -1,0 +1,21 @@
+# ============================================================
+# Redis 配置
+# ============================================================
+# 用于会话存储和缓存
+# 支持环境变量覆盖：REDIS_HOST、REDIS_PORT、REDIS_PASSWORD
+# ============================================================
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redispass}
+      database: ${REDIS_DATABASE:0}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8                           # 最大活跃连接
+          max-idle: 8                             # 最大空闲连接
+          min-idle: 0                             # 最小空闲连接
+          max-wait: -1ms                          # 最大等待时间

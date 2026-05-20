@@ -1,0 +1,241 @@
+# A2A 代码修复流水线 - 动态配置
+# 支持运行时热更新，无需重启服务
+
+# 版本控制
+version: 1.0.0
+last_modified: 2026-04-13T20:00:00
+
+# 流水线全局配置
+pipeline:
+  # 执行模式: SEQUENTIAL(顺序), PARALLEL(并行), DAG(有向无环图)
+  execution_mode: SEQUENTIAL
+  
+  # 超时配置
+  timeouts:
+    code_review: 300      # 5分钟
+    code_fix: 600         # 10分钟
+    test_execution: 900   # 15分钟
+    deploy: 300           # 5分钟
+    total: 3600           # 1小时总超时
+  
+  # 重试策略
+  retry:
+    max_attempts: 3
+    backoff_strategy: EXPONENTIAL  # FIXED, LINEAR, EXPONENTIAL
+    initial_delay_ms: 1000
+    max_delay_ms: 30000
+    multiplier: 2.0
+  
+  # 熔断器配置
+  circuit_breaker:
+    enabled: true
+    failure_rate_threshold: 50      # 失败率阈值(%)
+    slow_call_rate_threshold: 80    # 慢调用阈值(%)
+    slow_call_duration_threshold: 60 # 慢调用阈值(秒)
+    wait_duration_in_open_state: 60  # 熔断后等待时间(秒)
+    permitted_number_of_calls_in_half_open_state: 3
+  
+  # 限流配置
+  rate_limiter:
+    enabled: true
+    max_concurrent_pipelines: 10
+    max_requests_per_second: 5
+  
+  # 资源配额
+  resource_quota:
+    max_cpu_percent: 80
+    max_memory_mb: 4096
+    max_disk_io_mbps: 100
+
+# Agent 动态配置
+agents:
+  code_reviewer:
+    enabled: true
+    priority: 1
+    replicas: 2  # 副本数，支持负载均衡
+    capabilities:
+      - static_analysis
+      - bug_detection
+      - security_scan
+    llm_config:
+      provider: dashscope
+      model: qwen-coder-plus
+      temperature: 0.3
+      max_tokens: 4000
+    tools:
+      - mcp-code-search
+      - mcp-knowledge
+      - mcp-security-scan
+    # 动态阈值配置
+    thresholds:
+      max_issues_per_file: 50
+      severity_weights:
+        CRITICAL: 10
+        HIGH: 5
+        MEDIUM: 2
+        LOW: 1
+      max_total_score: 100  # 超过此分数需要修复
+    
+  code_fixer:
+    enabled: true
+    priority: 2
+    replicas: 1
+    capabilities:
+      - code_edit
+      - refactor
+    llm_config:
+      provider: dashscope
+      model: qwen-coder-plus
+      temperature: 0.2
+      max_tokens: 8000
+    tools:
+      - mcp-code-edit
+      - mcp-code-search
+    # 修复策略
+    fix_strategy:
+      batch_size: 5           # 每批修复的问题数
+      auto_apply_safe_fixes: true
+      require_confirmation_for_critical: true
+      max_files_per_batch: 3
+    
+  test_executor:
+    enabled: true
+    priority: 3
+    replicas: 3
+    capabilities:
+      - unit_test
+      - integration_test
+      - coverage_analysis
+    llm_config:
+      provider: dashscope
+      model: qwen-plus
+      temperature: 0.1
+    tools:
+      - mcp-database
+      - mcp-filesystem
+    # 测试配置
+    test_config:
+      coverage_threshold: 80
+      min_pass_rate: 95
+      timeout_per_test: 60
+      parallel_workers: 4
+      test_frameworks:
+        - junit5
+        - testng
+        - pytest
+    
+  deployer:
+    enabled: true
+    priority: 4
+    replicas: 1
+    capabilities:
+      - build_package
+      - environment_check
+      - canary_deploy
+    llm_config:
+      provider: dashscope
+      model: qwen-plus
+      temperature: 0.1
+    tools:
+      - mcp-docker
+      - mcp-k8s
+      - mcp-filesystem
+    # 部署策略
+    deploy_strategy:
+      pre_deploy_checklist:
+        - code_review_passed
+        - tests_passed
+        - security_scan_passed
+        - approval_obtained
+      deployment_type: CANARY  # ROLLING, BLUE_GREEN, CANARY
+      canary_config:
+        initial_traffic_percent: 5
+        increment_percent: 10
+        increment_interval_minutes: 5
+        rollback_threshold:
+          error_rate: 1.0
+          latency_p99_ms: 1000
+      rollback_on_failure: true
+      auto_rollback_window_minutes: 30
+
+# 通知配置
+notifications:
+  channels:
+    - type: EMAIL
+      enabled: true
+      recipients:
+        - team@company.com
+      events:
+        - PIPELINE_STARTED
+        - PIPELINE_COMPLETED
+        - PIPELINE_FAILED
+        - DEPLOYMENT_PENDING_APPROVAL
+        
+    - type: SLACK
+      enabled: true
+      webhook_url: ${SLACK_WEBHOOK_URL}
+      channel: "#code-pipeline"
+      events:
+        - PIPELINE_FAILED
+        - DEPLOYMENT_SUCCEEDED
+        
+    - type: WEBHOOK
+      enabled: true
+      url: ${CUSTOM_WEBHOOK_URL}
+      events:
+        - ALL
+  
+  # 通知模板
+  templates:
+    pipeline_started:
+      title: "代码修复流水线启动"
+      content: "Pipeline {pipelineId} 已启动，目标分支: {targetBranch}"
+    
+    deployment_pending:
+      title: "部署等待审核"
+      content: "Pipeline {pipelineId} 已完成测试，等待部署审核"
+      action_url: "{approvalUrl}"
+
+# 质量门禁
+quality_gates:
+  code_review:
+    max_critical_issues: 0
+    max_high_issues: 5
+    max_medium_issues: 20
+    security_scan_passed: true
+    
+  test_execution:
+    min_coverage_percent: 80
+    min_pass_rate_percent: 95
+    max_test_duration_seconds: 300
+    
+  deploy:
+    require_manual_approval: true
+    approvers:
+      - role: TECH_LEAD
+        min_count: 1
+      - role: DEVOPS
+        min_count: 1
+
+# 数据保留策略
+data_retention:
+  pipeline_history_days: 90
+  artifact_storage_days: 30
+  log_retention_days: 30
+  metrics_retention_days: 365
+  
+  # 归档配置
+  archive:
+    enabled: true
+    storage_type: S3
+    bucket: a2a-pipeline-archives
+    compress: true
+
+# 特性开关
+feature_flags:
+  enable_parallel_agent_execution: false
+  enable_auto_rollback: true
+  enable_predictive_analysis: false
+  enable_llm_code_review: true
+  enable_human_in_the_loop: true
+  enable_dry_run_mode: false

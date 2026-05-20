@@ -1,0 +1,15 @@
+{
+  "serverUrl": "ws://localhost:40001/ws/desktop",
+  "userId": "ops",
+  "nodeType": "server",
+  "tags": ["production", "web-server"],
+  "capabilities": ["execute", "file", "list-dir", "read-file", "write-file"],
+  "scan": {
+    "quickOnStart": true,
+    "deepSchedule": "0 3 * * *"
+  },
+  "reconnect": {
+    "maxAttempts": 100,
+    "intervalMs": 5000
+  }
+}

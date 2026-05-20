@@ -1,0 +1,146 @@
+#############################
+# 缓存配置
+#############################
+spring:
+  cache:
+    # 缓存类型
+    type: redis
+    
+    # Redis配置
+    redis:
+      # 缓存过期时间（秒）
+      time-to-live: 1800
+      # 缓存空值
+      cache-null-values: false
+      # 使用key前缀
+      use-key-prefix: true
+      # key前缀
+      key-prefix: "agent:"
+    
+    # Caffeine本地缓存配置
+    caffeine:
+      # 本地缓存最大条数
+      spec: maximumSize=1000,expireAfterWrite=300s
+
+# 自定义缓存配置
+cache:
+  # API响应缓存
+  api:
+    # 是否启用API响应缓存
+    enabled: true
+    # 默认缓存时间（秒）
+    default-ttl: 300
+    # 是否缓存空响应
+    cache-null-responses: false
+    # 最大缓存条目数
+    max-entries: 10000
+  
+  # 会话缓存配置
+  conversation:
+    # 会话缓存过期时间（秒）
+    ttl: 600
+    # 最大会话缓存数
+    max-size: 1000
+  
+  # 字典缓存配置
+  dict:
+    # 字典缓存过期时间（秒）
+    ttl: 3600
+  
+  # 用户信息缓存
+  user:
+    # 用户信息缓存时间（秒）
+    ttl: 1800
+    # 最大用户缓存数
+    max-size: 5000
+
+# API性能监控配置
+api:
+  monitor:
+    # 是否启用API监控
+    enabled: true
+    # 性能数据采样率（0-1）
+    sampling-rate: 1.0
+    # 性能数据保留时长（小时）
+    retention-hours: 24
+    # 慢查询阈值（毫秒）
+    slow-query-threshold: 200
+    
+    # 告警配置
+    alert:
+      # 是否启用告警
+      enabled: true
+      # 响应时间告警阈值（毫秒）
+      response-time-threshold: 500
+      # 错误率告警阈值（百分比）
+      error-rate-threshold: 5
+      # QPS告警阈值
+      qps-threshold: 1000
+  
+  # 限流配置
+  rate-limit:
+    # 是否启用限流
+    enabled: true
+    # 默认QPS限制
+    default-qps: 100
+    # 最大突发流量
+    burst-capacity: 200
+    # 是否启用令牌桶算法
+    token-bucket: true
+    # 令牌桶容量
+    bucket-capacity: 1000
+    # 令牌补充速率（每秒）
+    refill-rate: 100
+
+# 压缩配置
+compression:
+  # 响应压缩
+  response:
+    # 是否启用响应压缩
+    enabled: true
+    # 最小压缩大小
+    min-response-size: 2048
+    # 支持的MIME类型
+    mime-types: 
+      - "text/html"
+      - "text/xml"
+      - "text/plain"
+      - "text/css"
+      - "text/javascript"
+      - "application/javascript"
+      - "application/json"
+      - "application/xml"
+      - "application/rss+xml"
+  
+  # 请求压缩
+  request:
+    # 是否启用请求压缩
+    enabled: false
+    # 支持的压缩算法
+    supported-encodings: 
+      - "gzip"
+      - "deflate"
+
+# HTTP客户端配置
+http-client:
+  # 连接池配置
+  pool:
+    # 最大连接数
+    max-total: 200
+    # 每个路由的最大连接数
+    max-per-route: 20
+    # 连接请求超时时间（毫秒）
+    connection-request-timeout: 3000
+    # 连接超时时间（毫秒）
+    connect-timeout: 5000
+    # Socket超时时间（毫秒）
+    socket-timeout: 10000
+  
+  # 重试配置
+  retry:
+    # 最大重试次数
+    max-retry: 3
+    # 重试间隔（毫秒）
+    retry-interval: 1000
+    # 是否启用指数退避
+    exponential-backoff: true

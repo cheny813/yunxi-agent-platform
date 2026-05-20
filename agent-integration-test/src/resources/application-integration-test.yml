@@ -1,0 +1,230 @@
+# 端到端集成测试配置
+server:
+  port: 0  # 使用随机端口避免冲突
+  servlet:
+    context-path: /api
+  
+spring:
+  application:
+    name: yunxi-agent-platform-integration-test
+  
+  # 测试数据库配置
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+    
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: false
+        
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        show_sql: false
+        format_sql: false
+        use_sql_comments: false
+        
+  # WebFlux配置
+  webflux:
+    static-path-pattern: /static/**
+  
+  # 缓存配置
+  cache:
+    type: simple
+    
+  # 测试环境关闭安全认证
+  security:
+    oauth2:
+      client:
+        registration:
+          test-client:
+            client-id: test-client-id
+            client-secret: test-secret
+            authorization-grant-type: client_credentials
+            scope: read,write
+        
+  # 邮件配置（测试环境禁用）
+  mail:
+    host: localhost
+    port: 3025
+    test-connection: false
+    
+  # 异步配置
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 8
+        queue-capacity: 100
+        
+  # Redis配置（测试环境使用嵌入式）
+  redis:
+    host: localhost
+    port: 6379
+    database: 0
+    timeout: 2000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-wait: -1ms
+        max-idle: 8
+        min-idle: 0
+        
+  # 测试环境日志配置
+  logging:
+    level:
+      io.yunxi.platform: DEBUG
+      org.springframework: WARN
+      org.hibernate: WARN
+    pattern:
+      console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# 应用配置
+yunxi:
+  platform:
+    
+    # SSE配置
+    sse:
+      timeout: 30000
+      reconnect-delay: 5000
+      max-emitters: 100
+      
+    # Agent配置
+    agents:
+      
+      # 用户画像提取配置
+      profile-extraction:
+        max-profiles: 1000
+        cache-ttl: 3600000  # 1小时
+        
+      # 营养分析配置
+      nutrition:
+        max-recipes: 100
+        auto-balance-enabled: true
+        
+      # 智能会话配置
+      conversation:
+        max-history-size: 50
+        context-window: 10
+        
+    # 外部API配置（模拟）
+    external:
+      
+      # 食谱生成API
+      recipe-api:
+        base-url: http://localhost:8081
+        timeout: 30000
+        retry-count: 3
+        
+      # 营养计算API
+      nutrition-api:
+        base-url: http://localhost:8082
+        timeout: 15000
+        
+      # 表单填写API
+      form-api:
+        base-url: http://localhost:8083
+        timeout: 45000
+        
+    # 缓存配置
+    cache:
+      enable-caching: true
+      cache-names:
+        - "concepts"
+        - "profiles"
+        - "sessions"
+        max-size: 1000
+        ttl: 1800000  # 30分钟
+
+# 概念匹配配置
+concepts:
+  entries:
+    
+    # 职业身份概念
+    - name: "MEDICAL"
+      displayName: "医疗健康"
+      domain: "health"
+      keywords: "医疗,健康,诊疗,诊断,医生,医院,护理,治疗,护理,保健"
+      category: "PROFESSION"
+      threshold: 0.7
+      
+    - name: "NUTRITION"
+      displayName: "营养健康"
+      domain: "health"
+      keywords: "营养,膳食,食谱,食物,健康,均衡,营养师,蛋白质,维生素,矿物质"
+      category: "PROFESSION"
+      threshold: 0.6
+      
+    - name: "PARENTING"
+      displayName: "育儿教育"
+      domain: "education"
+      keywords: "孩子,宝宝,父母,养育,育儿,教育,学校,幼儿园,成长,儿童"
+      category: "LIFESTYLE"
+      threshold: 0.5
+      
+    - name: "COOKING"
+      displayName: "烹饪厨艺"
+      domain: "life"
+      keywords: "烹饪,厨艺,炒菜,做饭,煮饭,厨房,美食,调料,食材,食谱"
+      category: "SKILL"
+      threshold: 0.6
+      
+    - name: "FITNESS"
+      displayName: "健身运动"
+      domain: "sports"
+      keywords: "健身,运动,锻炼,健身房,跑步,瑜伽,增肌,减脂,体能"
+      category: "LIFESTYLE"
+      threshold: 0.5
+      
+    # 专业领域概念
+    - name: "EDUCATION"
+      displayName: "教育培训"
+      domain: "education"
+      keywords: "教育,培训,学习,教学,学生,课程,知识,教育机构"
+      category: "PROFESSION"
+      threshold: 0.6
+      
+    - name: "TECHNOLOGY"
+      displayName: "科技技术"
+      domain: "technology"
+      keywords: "科技,技术,编程,软件,硬件,互联网,计算机,人工智能"
+      category: "PROFESSION"
+      threshold: 0.7
+
+# WebFlux测试配置
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    
+# 测试环境调试配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: when-authorized
+
+# 测试Mock配置
+test:
+  mock:
+    enabled: true
+    services:
+      - recipe-api
+      - nutrition-api
+      - form-api
+    timeout: 30000
+    retry:
+      max-attempts: 3
+      backoff-delay: 1000

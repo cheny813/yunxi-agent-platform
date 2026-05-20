@@ -1,0 +1,35 @@
+# 代码修复 Pipeline 配置定义
+# Pipeline 模式示例
+agent:
+  name: "code-fix-pipeline"
+  displayName: "代码自动修复流水线"
+  description: "分析 → 修复 → 审查 → 测试，四阶段代码修复流水线"
+  prompt: "你是一个代码修复流水线的执行入口。"
+
+  # 编排模式：Pipeline 流水线
+  orchestration:
+    pattern: "pipeline"
+    stages:
+      - name: "code-analysis"
+        description: "分析代码问题"
+        agent: "code-analyzer"
+      - name: "code-fix"
+        description: "修复代码问题"
+        agent: "code-fixer"
+        maxRetries: 3
+      - name: "code-review"
+        description: "审查修复结果"
+        agent: "code-reviewer"
+        maxIterations: 3
+        iterationCondition: "pass_rate >= 0.8"
+      - name: "test-execution"
+        description: "执行测试验证"
+        agent: "test-runner"
+    failFast: true
+
+  # 模型配置（可选，省略则继承全局 agentscope.core 配置）
+
+  # 运行时配置
+  runtime:
+    maxIterations: 5
+    timeout: "PT300S"

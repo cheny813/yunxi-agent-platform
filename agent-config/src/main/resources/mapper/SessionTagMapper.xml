@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.platform.framework.session.mapper.SessionTagMapper">
+
+    <resultMap id="SessionTagResultMap" type="io.yunxi.platform.framework.session.entity.SessionTagEntity">
+        <id property="id" column="id"/>
+        <result property="conversationId" column="conversation_id"/>
+        <result property="agentName" column="agent_name"/>
+        <result property="userId" column="user_id"/>
+        <result property="tagType" column="tag_type"/>
+        <result property="tagName" column="tag_name"/>
+        <result property="tagValue" column="tag_value"/>
+        <result property="confidence" column="confidence"/>
+        <result property="weight" column="weight"/>
+        <result property="metadata" column="metadata"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, conversation_id, agent_name, user_id, tag_type, tag_name, tag_value,
+        confidence, weight, metadata, created_at
+    </sql>
+
+    <insert id="save" parameterType="io.yunxi.platform.framework.session.entity.SessionTagEntity">
+        INSERT INTO session_tags (conversation_id, agent_name, user_id, tag_type, tag_name, tag_value,
+                                  confidence, weight, metadata, created_at)
+        VALUES (#{conversationId}, #{agentName}, #{userId}, #{tagType}, #{tagName}, #{tagValue},
+                #{confidence}, #{weight}, #{metadata}, NOW())
+        ON DUPLICATE KEY UPDATE
+            tag_type = VALUES(tag_type),
+            tag_name = VALUES(tag_name),
+            tag_value = VALUES(tag_value),
+            confidence = VALUES(confidence),
+            weight = VALUES(weight),
+            metadata = VALUES(metadata)
+    </insert>
+
+    <insert id="insertBatch">
+        INSERT INTO session_tags (conversation_id, agent_name, user_id, tag_type, tag_name, tag_value,
+                                  confidence, weight, metadata, created_at)
+        VALUES
+        <foreach collection="list" item="tag" separator=",">
+            (#{tag.conversationId}, #{tag.agentName}, #{tag.userId}, #{tag.tagType}, #{tag.tagName},
+             #{tag.tagValue}, #{tag.confidence}, #{tag.weight}, #{tag.metadata}, NOW())
+        </foreach>
+    </insert>
+
+    <select id="findByConversationId" parameterType="string" resultMap="SessionTagResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_tags
+        WHERE conversation_id = #{conversationId}
+    </select>
+
+    <select id="findByUserId" parameterType="string" resultMap="SessionTagResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_tags
+        WHERE user_id = #{userId}
+        ORDER BY weight DESC, created_at DESC
+    </select>
+
+    <select id="findByUserIdAndAgentName" resultMap="SessionTagResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_tags
+        WHERE user_id = #{userId} AND agent_name = #{agentName}
+        ORDER BY weight DESC, created_at DESC
+    </select>
+
+    <select id="findByTagType" parameterType="string" resultMap="SessionTagResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_tags
+        WHERE tag_type = #{tagType}
+    </select>
+
+    <delete id="deleteByConversationId" parameterType="string">
+        DELETE FROM session_tags WHERE conversation_id = #{conversationId}
+    </delete>
+
+    <delete id="deleteByConversationIdIn">
+        DELETE FROM session_tags WHERE conversation_id IN
+        <foreach collection="conversationIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <!-- 全文搜索：使用MySQL FULLTEXT索引 -->
+    <select id="fullTextSearch" resultMap="SessionTagResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_tags
+        WHERE MATCH(tag_name, tag_value) AGAINST(#{query} IN NATURAL LANGUAGE MODE)
+        ORDER BY weight DESC, created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <update id="createSessionTagsTableIfNotExists">
+        CREATE TABLE IF NOT EXISTS session_tags (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '标签ID',
+            conversation_id VARCHAR(100) NOT NULL COMMENT '会话ID',
+            agent_name VARCHAR(100) NOT NULL COMMENT 'Agent名称',
+            user_id VARCHAR(100) COMMENT '用户ID',
+            tag_type VARCHAR(50) NOT NULL COMMENT '标签类型：topic, domain, sentiment, custom',
+            tag_name VARCHAR(200) NOT NULL COMMENT '标签名称',
+            tag_value TEXT COMMENT '标签值/描述',
+            confidence DOUBLE DEFAULT 0.0 COMMENT '置信度（0-1）',
+            weight INT DEFAULT 0 COMMENT '权重（用于排序）',
+            metadata JSON COMMENT '额外元数据',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+            INDEX idx_conversation_id (conversation_id),
+            INDEX idx_user_id (user_id),
+            INDEX idx_agent_name (agent_name),
+            INDEX idx_tag_type (tag_type),
+            FULLTEXT INDEX ft_tag_name_value (tag_name, tag_value) WITH PARSER ngram
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话标签表'
+    </update>
+
+    <select id="createFullTextIndexIfNotExists" resultType="int">
+        <!-- 全文索引已在建表时创建，此方法仅用于兼容性 -->
+        SELECT 1
+    </select>
+
+</mapper>

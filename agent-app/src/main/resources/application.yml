@@ -1,0 +1,22 @@
+# ============================================================
+# yunxi Agent Platform 应用入口配置
+# ============================================================
+# 
+# 【配置说明】
+# 此文件为应用入口，导入 agent-config 模块中的所有配置
+# 通过 spring.config.import 加载配置模块
+#
+# 【环境切换】
+# 设置 SPRING_PROFILES_ACTIVE 或 --spring.profiles.active 参数切换环境
+# 可用 profile: datasource, redis, llm, milvus, embedding, persistence, 
+#               mcp-core, mcp-external, mcp-business, skill, resilience,
+#               file-upload, a2a-pipeline, gateway, business, text2sql, rule-engine
+#
+# ============================================================
+
+spring:
+  config:
+    import: optional:classpath:config/server.yml,optional:classpath:config/datasource.yml,optional:classpath:config/redis.yml,optional:classpath:config/llm.yml,optional:classpath:config/milvus.yml,optional:classpath:config/embedding.yml,optional:classpath:config/persistence.yml,optional:classpath:config/mcp-core.yml,optional:classpath:config/mcp-external.yml,optional:classpath:config/mcp-business.yml,optional:classpath:config/skill.yml,optional:classpath:config/resilience.yml,optional:classpath:config/file-upload.yml,optional:classpath:config/a2a-pipeline.yml,optional:classpath:config/agentscope.yml,optional:classpath:config/gateway.yml,optional:classpath:config/business.yml,optional:classpath:config/text2sql.yml,optional:classpath:config/rule-engine.yml
+
+  profiles:
+    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,mcp-business,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql,rule-engine

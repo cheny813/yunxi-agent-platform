@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.platform.framework.session.mapper.SessionSummaryMapper">
+
+    <resultMap id="SessionSummaryResultMap" type="io.yunxi.platform.framework.session.entity.SessionSummaryEntity">
+        <id property="id" column="id"/>
+        <result property="conversationId" column="conversation_id"/>
+        <result property="agentName" column="agent_name"/>
+        <result property="userId" column="user_id"/>
+        <result property="summary" column="summary"/>
+        <result property="summaryType" column="summary_type"/>
+        <result property="keywords" column="keywords"/>
+        <result property="messageCount" column="message_count"/>
+        <result property="tokenCount" column="token_count"/>
+        <result property="generatedAt" column="generated_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, conversation_id, agent_name, user_id, summary, summary_type, keywords,
+        message_count, token_count, generated_at, created_at, updated_at
+    </sql>
+
+    <insert id="save" parameterType="io.yunxi.platform.framework.session.entity.SessionSummaryEntity">
+        INSERT INTO session_summaries (conversation_id, agent_name, user_id, summary, summary_type, keywords,
+                                       message_count, token_count, generated_at, created_at, updated_at)
+        VALUES (#{conversationId}, #{agentName}, #{userId}, #{summary}, #{summaryType}, #{keywords},
+                #{messageCount}, #{tokenCount}, #{generatedAt}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+            summary = VALUES(summary),
+            summary_type = VALUES(summary_type),
+            keywords = VALUES(keywords),
+            message_count = VALUES(message_count),
+            token_count = VALUES(token_count),
+            generated_at = VALUES(generated_at),
+            updated_at = NOW()
+    </insert>
+
+    <select id="findByConversationId" parameterType="string" resultMap="SessionSummaryResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_summaries
+        WHERE conversation_id = #{conversationId}
+    </select>
+
+    <select id="findByConversationIdAndType" resultMap="SessionSummaryResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_summaries
+        WHERE conversation_id = #{conversationId} AND summary_type = #{summaryType}
+    </select>
+
+    <select id="findByUserId" parameterType="string" resultMap="SessionSummaryResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_summaries
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="findByUserIdAndAgentName" resultMap="SessionSummaryResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_summaries
+        WHERE user_id = #{userId} AND agent_name = #{agentName}
+        ORDER BY created_at DESC
+    </select>
+
+    <delete id="deleteByConversationId" parameterType="string">
+        DELETE FROM session_summaries WHERE conversation_id = #{conversationId}
+    </delete>
+
+    <delete id="deleteByConversationIdIn">
+        DELETE FROM session_summaries WHERE conversation_id IN
+        <foreach collection="conversationIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <select id="findByCreatedAtBefore" resultMap="SessionSummaryResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM session_summaries
+        WHERE created_at &lt; #{beforeTime}
+    </select>
+
+    <update id="createSessionSummariesTableIfNotExists">
+        CREATE TABLE IF NOT EXISTS session_summaries (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '摘要ID',
+            conversation_id VARCHAR(100) UNIQUE NOT NULL COMMENT '会话ID',
+            agent_name VARCHAR(100) NOT NULL COMMENT 'Agent名称',
+            user_id VARCHAR(100) COMMENT '用户ID',
+            summary TEXT COMMENT '会话摘要内容',
+            summary_type VARCHAR(50) DEFAULT 'session_overview' COMMENT '摘要类型：session_overview, key_points, outcomes',
+            keywords JSON COMMENT '关键词（JSON数组）',
+            message_count INT DEFAULT 0 COMMENT '消息数量',
+            token_count INT DEFAULT 0 COMMENT 'Token数量（估算）',
+            generated_at TIMESTAMP COMMENT '摘要生成时间',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+            INDEX idx_conversation_id (conversation_id),
+            INDEX idx_user_id (user_id),
+            INDEX idx_agent_name (agent_name),
+            FULLTEXT INDEX ft_summary (summary) WITH PARSER ngram
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会话摘要表'
+    </update>
+
+</mapper>

@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    Conversation Mapper XML 映射文件
+    负责 ConversationEntity 与 agent_conversations 表之间的映射关系
+    namespace: 对应的 Mapper 接口全限定名
+-->
+<mapper namespace="io.yunxi.platform.shared.mapper.ConversationMapper">
+
+    <!--
+        ResultMap: 定义数据库字段与实体属性的映射关系
+        id: resultMap 的唯一标识
+        type: 对应的实体类
+    -->
+    <resultMap id="ConversationResultMap" type="io.yunxi.platform.shared.entity.ConversationEntity">
+        <id property="id" column="id"/>
+        <result property="agentName" column="agent_name"/>
+        <result property="userId" column="user_id"/>
+        <result property="title" column="title"/>
+        <result property="messages" column="messages" typeHandler="io.yunxi.platform.shared.typehandler.MsgListTypeHandler"/>
+        <result property="messageCount" column="message_count"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="lastUpdatedAt" column="last_updated_at"/>
+        <result property="expiresAt" column="expires_at"/>
+    </resultMap>
+
+    <!--
+        SQL 片段: 可重用的 SQL 语句
+    -->
+    <sql id="Base_Column_List">
+        id, agent_name, user_id, title, messages, message_count,
+        created_at, last_updated_at, expires_at
+    </sql>
+
+    <!--
+        插入或更新会话
+        使用 ON DUPLICATE KEY UPDATE 实现幂等操作
+        messages 字段存储 JSON 格式的消息列表
+    -->
+    <insert id="save" parameterType="io.yunxi.platform.shared.entity.ConversationEntity">
+        INSERT INTO agent_conversations (id, agent_name, user_id, title, messages, message_count,
+                                   created_at, last_updated_at, expires_at)
+        VALUES (#{id}, #{agentName}, #{userId}, #{title}, #{messages, typeHandler=io.yunxi.platform.shared.typehandler.MsgListTypeHandler}, #{messageCount},
+                #{createdAt}, #{lastUpdatedAt}, #{expiresAt})
+        ON DUPLICATE KEY UPDATE
+            agent_name = VALUES(agent_name),
+            user_id = VALUES(user_id),
+            title = VALUES(title),
+            messages = VALUES(messages),
+            message_count = VALUES(message_count),
+            last_updated_at = VALUES(last_updated_at),
+            expires_at = VALUES(expires_at)
+    </insert>
+
+    <!--
+        根据 id 删除会话
+    -->
+    <delete id="deleteById" parameterType="string">
+        DELETE FROM agent_conversations WHERE id = #{id}
+    </delete>
+
+    <!--
+        根据 id 查询会话
+    -->
+    <select id="findById" parameterType="string" resultMap="ConversationResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_conversations
+        WHERE id = #{id}
+    </select>
+
+    <!--
+        查找用户的所有会话
+        按最后更新时间倒序排列
+    -->
+    <select id="findByUserId" parameterType="string" resultMap="ConversationResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_conversations
+        WHERE user_id = #{userId}
+        ORDER BY last_updated_at DESC
+    </select>
+
+    <!--
+        查找 Agent 的所有会话
+        按最后更新时间倒序排列
+    -->
+    <select id="findByAgentName" parameterType="string" resultMap="ConversationResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_conversations
+        WHERE agent_name = #{agentName}
+        ORDER BY last_updated_at DESC
+    </select>
+
+    <!--
+        查找已过期的会话
+        条件: expires_at < now
+        用于定时清理任务
+    -->
+    <select id="findExpired" resultMap="ConversationResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_conversations
+        WHERE expires_at &lt; #{now}
+    </select>
+
+    <!--
+        删除已过期的会话
+        批量删除所有过期的会话
+    -->
+    <delete id="deleteByExpiresAtBefore">
+        DELETE FROM agent_conversations WHERE expires_at &lt; #{dateTime}
+    </delete>
+
+    <!--
+        统计用户的会话数量
+    -->
+    <select id="countByUserId" parameterType="string" resultType="long">
+        SELECT COUNT(*) FROM agent_conversations WHERE user_id = #{userId}
+    </select>
+
+    <!--
+        统计所有会话数量
+    -->
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM agent_conversations
+    </select>
+
+    <!-- ==================== DDL 操作 ==================== -->
+
+    <!--
+        创建 agents 表（如果不存在）
+    -->
+    <update id="createAgentsTableIfNotExists">
+        CREATE TABLE IF NOT EXISTS agents (
+            name VARCHAR(100) PRIMARY KEY COMMENT 'Agent 名称',
+            prompt TEXT COMMENT '系统提示词',
+            model_name VARCHAR(100) NOT NULL COMMENT '模型名称',
+            provider VARCHAR(50) NOT NULL COMMENT '模型提供商',
+            temperature DOUBLE COMMENT '温度参数',
+            max_tokens INT COMMENT '最大 Token 数',
+            enabled BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+            description VARCHAR(500) COMMENT 'Agent 描述',
+            api_key_hash VARCHAR(255) COMMENT 'API Key 哈希值',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    </update>
+
+    <!--
+        创建 agent_conversations 表（如果不存在）
+    -->
+    <update id="createConversationsTableIfNotExists">
+        CREATE TABLE IF NOT EXISTS agent_conversations (
+            id VARCHAR(100) PRIMARY KEY COMMENT '会话 ID',
+            agent_name VARCHAR(100) NOT NULL COMMENT '关联的 Agent 名称',
+            user_id VARCHAR(100) COMMENT '用户 ID',
+            title VARCHAR(500) COMMENT '会话标题',
+            messages TEXT COMMENT '消息历史（JSON 格式）',
+            message_count INT DEFAULT 0 COMMENT '消息数量',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+            last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+            expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL 24 HOUR) COMMENT '过期时间',
+            INDEX idx_user_id (user_id),
+            INDEX idx_agent_name (agent_name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    </update>
+
+    <!--
+        创建 tool_configs 表（如果不存在）
+    -->
+    <update id="createToolConfigsTableIfNotExists">
+        CREATE TABLE IF NOT EXISTS tool_configs (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '配置 ID',
+            tool_name VARCHAR(100) UNIQUE NOT NULL COMMENT '工具名称',
+            enabled BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+            config TEXT COMMENT '工具配置（JSON 格式）',
+            description VARCHAR(500) COMMENT '工具描述',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    </update>
+
+    <!--
+        创建 chat_logs 表（如果不存在）
+    -->
+    <update id="createChatLogsTableIfNotExists">
+        CREATE TABLE IF NOT EXISTS chat_logs (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '日志 ID',
+            conversation_id VARCHAR(100) COMMENT '会话 ID',
+            agent_name VARCHAR(100) NOT NULL COMMENT 'Agent 名称',
+            user_id VARCHAR(100) COMMENT '用户 ID',
+            user_message TEXT COMMENT '用户消息',
+            agent_response TEXT COMMENT 'Agent 响应',
+            model_used VARCHAR(100) COMMENT '使用的模型',
+            duration_ms BIGINT COMMENT '响应耗时（毫秒）',
+            success BOOLEAN DEFAULT TRUE COMMENT '是否成功',
+            error_message VARCHAR(500) COMMENT '错误信息（如果失败）',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    </update>
+
+</mapper>

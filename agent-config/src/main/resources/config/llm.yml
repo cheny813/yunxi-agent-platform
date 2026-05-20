@@ -1,0 +1,46 @@
+# ============================================================
+# LLM 服务提供商配置
+# ============================================================
+# 支持多种 LLM 服务提供商，通过 agentscope.core.provider 配置切换
+# 可选值：
+#   - dashscope: 阿里云 DashScope
+#   - openai: OpenAI / Azure OpenAI
+#   - baidu: 百度智能云
+#   - huawei: 华为云
+#
+# 【必填项】api-key: 必须通过环境变量或配置文件设置
+# 【环境变量优先级】环境变量 > 配置文件默认值 > ConfigDefaults 常量
+# ============================================================
+
+# ============================================================
+# Agentscope 核心配置（与 AgentscopeCoreProperties 对应）
+# ============================================================
+agentscope:
+  core:
+    # 对话超时秒数（8分钟，适应复杂食谱配平计算：5天×搜索+食材+评分）
+    chat-timeout-seconds: 480
+
+    # Provider 专属配置
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      model: ${DASHSCOPE_MODEL:qwen-plus}
+      base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
+      timeout: ${DASHSCOPE_TIMEOUT:60000}
+
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model: ${OPENAI_MODEL:gpt-3.5-turbo}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      timeout: ${OPENAI_TIMEOUT:60000}
+
+    baidu:
+      api-key: ${BAIDU_API_KEY:}
+      model: ${BAIDU_MODEL:ernie-bot}
+      base-url: ${BAIDU_BASE_URL:https://aip.baidubce.com}
+      timeout: ${BAIDU_TIMEOUT:60000}
+
+    huawei:
+      api-key: ${HUAWEI_API_KEY:}
+      model: ${HUAWEI_MODEL:pangu}
+      base-url: ${HUAWEI_BASE_URL:https://aip.baidubce.com}
+      timeout: ${HUAWEI_TIMEOUT:60000}

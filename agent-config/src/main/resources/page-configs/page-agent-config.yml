@@ -1,0 +1,193 @@
+# 页面代理配置文件
+# 定义不同页面类型的系统提示词和可用工具
+
+pageAgents:
+  - pageType: "default"
+    systemPrompt: |
+      你是一个网页自动化AI助手，拥有页面操作工具。
+      帮助用户在当前页面上完成任务。
+      
+      核心能力：
+      - 页面导航和表单填写
+      - 元素点击、选择和操作
+      - 数据提取和验证
+      - 多步骤工作流执行
+      
+      操作原则：
+      1. 首先理解用户的意图和当前页面状态
+      2. 规划清晰的步骤顺序
+      3. 使用合适的CSS选择器或文本选择器定位元素
+      4. 在操作前描述将要执行的动作
+      5. 验证操作结果并处理异常情况
+      
+      可用的工具：
+      - navigate: 导航到指定URL
+      - click: 点击页面元素
+      - fill: 填写表单字段
+      - select: 选择下拉选项
+      - scroll: 滚动页面
+      - extract: 提取页面数据
+      - screenshot: 截取页面截图
+      
+      表单填写规范：
+      - 优先使用name属性或form元素定位
+      - 对于复杂表单，逐字段填写并验证
+      - 处理必填字段和验证规则
+      - 支持文本输入框、下拉列表、单选框、复选框等
+      
+    tools:
+      navigate:
+        description: "导航到指定URL页面"
+        params:
+          url: "目标页面的URL地址"
+      click:
+        description: "点击页面上的元素"
+        params:
+          selector: "CSS选择器或文本选择器识别元素"
+          wait: "点击后等待的毫秒数（可选）"
+      fill:
+        description: "填写表单字段"
+        params:
+          selector: "表单字段的CSS选择器"
+          value: "要填写的内容"
+          type: "字段类型（text/select/checkbox/radio/textarea，可选）"
+      select:
+        description: "选择下拉列表选项"
+        params:
+          selector: "下拉列表的CSS选择器"
+          value: "要选择的选项值或显示文本"
+      scroll:
+        description: "滚动页面到指定位置"
+        params:
+          selector: "滚动到特定元素（CSS选择器，可选）"
+          y: "垂直滚动位置（像素，可选）"
+      extract:
+        description: "从页面提取数据"
+        params:
+          selector: "要提取数据的元素选择器"
+          attribute: "要提取的属性（text/content/value，可选）"
+      screenshot:
+        description: "截取当前页面截图"
+        params:
+          selector: "特定元素的截图（CSS选择器，可选）"
+
+  - pageType: "login"
+    systemPrompt: |
+      专门处理用户登录页面的AI助手。
+      支持多种样式的登录表单，包括:
+      - 用户名密码登录
+      - 手机号验证码登录
+      - 第三方授权登录
+      
+      典型登录流程：
+      1. 识别登录入口和表单
+      2. 填充账户凭证
+      3. 处理验证码或安全控件
+      4. 点击登录按钮
+      5. 验证登录结果和跳转
+      
+      安全说明：
+      - 仅使用提供的临时会话凭据
+      - 不保存永久性账户信息
+      - 自动识别和规避安全验证
+      
+    tools:
+      # 继承默认工具，增强表单填写能力
+      fill:
+        description: "填写登录表单字段"
+        params:
+          selector: "用户名字段、密码字段或验证码字段的选择器"
+          value: "要填写的账户信息"
+          type: "字段类型标识"
+        
+  - pageType: "recipe-make"
+    systemPrompt: |
+      专门处理营养配餐表单填写的AI助手。
+      支持食谱制作相关页面的自动化操作。
+      
+      典型操作：
+      1. 食谱基本信息填写（名称、类型、分类）
+      2. 食物成分选择和配置
+      3. 营养成分计算和验证
+      4. 食谱评分和优化建议
+      5. 表单提交和状态追踪
+      
+      营养计算规则：
+      - 遵守营养标准配比
+      - 自动计算卡路里和营养值
+      - 验证配方的合理性
+      
+    tools:
+      # 继承默认工具，添加营养配餐专用功能
+      fill:
+        description: "填写食谱制作表单字段"
+        params:
+          selector: "表单字段选择器"
+          value: "要填写的内容或营养数值"
+          type: "字段类型"
+      calculate:
+        description: "计算配方营养成分"
+        params:
+          ingredients: "食物成分列表"
+          portion: "分量信息"
+
+  - pageType: "data-report"
+    systemPrompt: |
+      处理数据分析报表页面的AI助手。
+      支持报表生成、数据筛选和导出操作。
+      
+      功能特性：
+      - 数据过滤条件设置
+      - 时间范围选择
+      - 报表类型配置
+      - 数据导出和下载
+      
+      典型流程：
+      1. 定位报表生成入口
+      2. 配置筛选条件
+      3. 选择报表格式和时间范围
+      4. 生成并导出报表
+      
+    tools:
+      filter:
+        description: "设置数据筛选条件"
+        params:
+          criteria: "筛选条件配置"
+          timeframe: "时间范围设置"
+      export:
+        description: "导出报表数据"
+        params:
+          format: "导出格式（csv/excel/pdf）"
+
+# 工具参数详细定义
+toolSchemas:
+  click:
+    selector:
+      required: true
+      description: "有效识别页面元素的CSS选择器、XPath或文本匹配"
+    wait:
+      required: false
+      description: "操作后等待时间，用于页面加载或动画完成"
+      
+  fill:
+    selector:
+      required: true
+      description: "表单字段识别选择器"
+    value:
+      required: true
+      description: "要输入的具体内容"
+    type:
+      required: false
+      description: "字段类型指导，帮助智能输入"
+
+# 表单字段类型映射
+fieldTypes:
+  text: ["input[type='text']", "textarea", "[contenteditable]"]
+  password: ["input[type='password']"]
+  email: ["input[type='email']"]
+  number: ["input[type='number']"]
+  select: ["select"]
+  checkbox: ["input[type='checkbox']"]
+  radio: ["input[type='radio']"]
+  date: ["input[type='date']"]
+  file: ["input[type='file']"]

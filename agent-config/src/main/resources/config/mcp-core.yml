@@ -1,0 +1,88 @@
+# ============================================================
+# MCP 核心服务配置
+# ============================================================
+# 包含：工具缓存配置 + 核心基础设施服务（数据库/Redis/Milvus/知识库）
+# 这些服务是平台运行的基础，默认启用
+# ============================================================
+
+# MCP 工具缓存配置 — 只读工具名称列表，这些工具的调用结果可被缓存
+mcp:
+  cacheable-tools:
+    - search_dishes
+    - batch_query_dish_ingredients
+    - get_dish_details
+    - get_nutrient_standard
+    - search_ingredients
+    - search_knowledge
+    - evaluate_recipe
+
+agentscope:
+  core:
+    mcp-servers:
+      # ========================================================================
+      # 【核心 MCP 服务器】推荐优先启用
+      # ========================================================================
+
+      # --------------------- Database MCP 服务器 ---------------------
+      # 端口：40101
+      # 协议：SSE
+      # 地址：http://localhost:40101/mcp/sse
+      # 提供工具：query_db, list_tables, describe_table
+      # --------------------------------------------------------------------
+      database:
+        enabled: ${MCP_DATABASE_ENABLED:true}
+        type: sse
+        url: ${MCP_DATABASE_URL:http://localhost:40101/mcp/sse}
+        timeout: ${MCP_DATABASE_TIMEOUT:60000}
+        description: "数据库操作 MCP 服务器"
+
+      # --------------------- Redis MCP 服务器 ---------------------
+      # 端口：40102
+      # 协议：SSE
+      # 地址：http://localhost:40102/mcp/sse
+      # 提供工具：redis_get, redis_set, redis_delete, redis_keys, redis_list_ops, redis_hash_ops
+      # --------------------------------------------------------------------
+      redis:
+        enabled: ${MCP_REDIS_ENABLED:true}
+        type: sse
+        url: ${MCP_REDIS_URL:http://localhost:40102/mcp/sse}
+        timeout: ${MCP_REDIS_TIMEOUT:60000}
+        description: "Redis 数据库操作 MCP 服务器"
+
+      # --------------------- Milvus 向量搜索 MCP 服务器 ---------------------
+      # 端口：40103
+      # 协议：SSE
+      # 地址：http://localhost:40103/mcp/sse
+      # 提供工具：search_dishes, get_dish_details（向量搜索学校菜品）
+      # --------------------------------------------------------------------
+      milvus:
+        enabled: ${MCP_MILVUS_ENABLED:true}
+        type: sse
+        url: ${MCP_MILVUS_URL:http://localhost:40103/mcp/sse}
+        timeout: ${MCP_MILVUS_TIMEOUT:60000}
+        description: "Milvus 向量搜索 MCP 服务器（提供学校菜品向量搜索功能）"
+
+      # --------------------- Knowledge MCP 服务器 ---------------------
+      # 端口：40107
+      # 协议：SSE
+      # 地址：http://localhost:40107/mcp/sse
+      # 提供工具：search_knowledge, add_knowledge
+      # --------------------------------------------------------------------
+      knowledge:
+        enabled: ${MCP_KNOWLEDGE_ENABLED:true}
+        type: sse
+        url: ${MCP_KNOWLEDGE_URL:http://localhost:40107/mcp/sse}
+        timeout: ${MCP_KNOWLEDGE_TIMEOUT:60000}
+        description: "知识库 MCP 服务器（提供向量语义搜索功能）"
+
+      # --------------------- Puppeteer 官方 MCP 服务器 ---------------------
+      # 官方提供的 Puppeteer MCP 服务器
+      # --------------------------------------------------------------------
+      puppeteer:
+        enabled: ${MCP_PUPPETEER_ENABLED:true}
+        type: stdio
+        command: npx
+        args:
+          - "-y"
+          - "@modelcontextprotocol/server-puppeteer"
+        description: "官方 Puppeteer 浏览器自动化 MCP 服务器"

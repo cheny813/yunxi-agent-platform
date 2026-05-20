@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.agent.rule.mapper.RuleMapper">
+    
+    <!-- 结果映射 -->
+    <resultMap id="RuleResultMap" type="io.yunxi.agent.rule.model.Rule">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="type" column="type" 
+                typeHandler="org.apache.ibatis.type.EnumTypeHandler"/>
+        <result property="priority" column="priority"/>
+        <result property="conditionExpression" column="condition_expression"/>
+        <result property="actionExpression" column="action_expression"/>
+        <result property="ruleClass" column="rule_class"/>
+        <result property="enabled" column="enabled"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedTime" column="updated_time"/>
+    </resultMap>
+    
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        id, name, description, type, priority, condition_expression, action_expression,
+        rule_class, enabled, created_by, created_time, updated_by, updated_time
+    </sql>
+    
+    <!-- 插入规则 -->
+    <insert id="insert" parameterType="io.yunxi.agent.rule.model.Rule" 
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO agent_rule (
+            name, description, type, priority, condition_expression, action_expression,
+            rule_class, enabled, created_by, created_time, updated_by, updated_time
+        ) VALUES (
+            #{name}, #{description}, #{type}, #{priority}, #{conditionExpression}, #{actionExpression},
+            #{ruleClass}, #{enabled}, #{createdBy}, #{createdTime}, #{updatedBy}, #{updatedTime}
+        )
+    </insert>
+    
+    <!-- 更新规则 -->
+    <update id="update" parameterType="io.yunxi.agent.rule.model.Rule">
+        UPDATE agent_rule
+        <set>
+            <if test="description != null">description = #{description},</if>
+            <if test="type != null">type = #{type},</if>
+            <if test="priority != null">priority = #{priority},</if>
+            <if test="conditionExpression != null">condition_expression = #{conditionExpression},</if>
+            <if test="actionExpression != null">action_expression = #{actionExpression},</if>
+            <if test="ruleClass != null">rule_class = #{ruleClass},</if>
+            <if test="enabled != null">enabled = #{enabled},</if>
+            <if test="updatedBy != null">updated_by = #{updatedBy},</if>
+            updated_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+    
+    <!-- 根据ID查询 -->
+    <select id="findById" resultMap="RuleResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule
+        WHERE id = #{id}
+    </select>
+    
+    <!-- 根据名称查询 -->
+    <select id="findByName" resultMap="RuleResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule
+        WHERE name = #{name}
+    </select>
+    
+    <!-- 查询所有规则 -->
+    <select id="findAll" resultMap="RuleResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule
+        ORDER BY priority DESC, id ASC
+    </select>
+    
+    <!-- 根据类型查询 -->
+    <select id="findByType" resultMap="RuleResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule
+        WHERE type = #{type}
+        ORDER BY priority DESC, id ASC
+    </select>
+    
+    <!-- 根据启用状态查询 -->
+    <select id="findByEnabled" resultMap="RuleResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule
+        WHERE enabled = #{enabled}
+        ORDER BY priority DESC, id ASC
+    </select>
+    
+    <!-- 根据名称删除 -->
+    <delete id="deleteByName">
+        DELETE FROM agent_rule
+        WHERE name = #{name}
+    </delete>
+    
+    <!-- 根据ID删除 -->
+    <delete id="deleteById">
+        DELETE FROM agent_rule
+        WHERE id = #{id}
+    </delete>
+    
+    <!-- 统计名称是否存在 -->
+    <select id="countByName" resultType="int">
+        SELECT COUNT(*)
+        FROM agent_rule
+        WHERE name = #{name}
+    </select>
+    
+</mapper>

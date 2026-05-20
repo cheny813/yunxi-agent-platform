@@ -1,0 +1,98 @@
+# Maven 编译输出
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# Maven 本地仓库
+.mvn/
+
+# Eclipse IDE
+.settings/
+.classpath
+.project
+.factorypath
+.metadata/
+.recommenders/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# NetBeans
+nbproject/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+.claude
+.comate
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Spring Boot
+spring-boot-*.log
+
+# 应用配置（敏感信息）
+application-local.yml
+application-dev-local.yml
+application-prod-local.yml
+
+# 备份文件
+*.bak
+*.backup
+*~
+
+# 测试覆盖率报告
+coverage/
+.coverage
+*.cover
+
+# Node.js (如果有前端资源)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# 构建工具
+.gradle/
+build/
+
+# 数据库文件
+*.db
+*.sqlite
+*.h2.db
+
+# 本地环境文件
+.env
+.env.local
+.env.*.local
+启动项目.bat

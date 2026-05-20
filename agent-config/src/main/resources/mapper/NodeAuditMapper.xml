@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.platform.framework.security.NodeAuditMapper">
+
+    <insert id="insertAudit" parameterType="map">
+        INSERT INTO node_command_audit
+        (request_id, operator_id, target_client_id, target_node_type,
+         command_type, command_text, safety_level, status, confirmed, result_summary)
+        VALUES
+        (#{audit.requestId}, #{audit.operatorId}, #{audit.targetClientId}, #{audit.targetNodeType},
+         #{audit.commandType}, #{audit.commandText}, #{audit.safetyLevel}, #{audit.status},
+         #{audit.confirmed}, #{audit.resultSummary})
+    </insert>
+
+    <select id="queryAudit" resultType="map">
+        SELECT * FROM node_command_audit WHERE 1=1
+        <if test="operatorId != null and operatorId != ''">
+            AND operator_id = #{operatorId}
+        </if>
+        <if test="targetClientId != null and targetClientId != ''">
+            AND target_client_id = #{targetClientId}
+        </if>
+        <if test="safetyLevel != null and safetyLevel != ''">
+            AND safety_level = #{safetyLevel}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

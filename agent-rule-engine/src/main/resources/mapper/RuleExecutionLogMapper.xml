@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.agent.rule.mapper.RuleExecutionLogMapper">
+    
+    <!-- 结果映射 -->
+    <resultMap id="RuleExecutionLogResultMap" type="io.yunxi.agent.rule.model.RuleExecutionLog">
+        <id property="id" column="id"/>
+        <result property="ruleName" column="rule_name"/>
+        <result property="agentId" column="agent_id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="username" column="username"/>
+        <result property="triggered" column="triggered"/>
+        <result property="passed" column="passed"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="executionTime" column="execution_time"/>
+        <result property="createdTime" column="created_time"/>
+    </resultMap>
+    
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        id, rule_name, agent_id, task_id, user_id, username, triggered, passed,
+        error_message, execution_time, created_time
+    </sql>
+    
+    <!-- 插入执行日志 -->
+    <insert id="insert" parameterType="io.yunxi.agent.rule.model.RuleExecutionLog" 
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO agent_rule_execution_log (
+            rule_name, agent_id, task_id, user_id, username, triggered, passed,
+            error_message, execution_time, created_time
+        ) VALUES (
+            #{ruleName}, #{agentId}, #{taskId}, #{userId}, #{username}, #{triggered}, #{passed},
+            #{errorMessage}, #{executionTime}, #{createdTime}
+        )
+    </insert>
+    
+    <!-- 根据ID查询 -->
+    <select id="findById" resultMap="RuleExecutionLogResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule_execution_log
+        WHERE id = #{id}
+    </select>
+    
+    <!-- 根据规则名称查询 -->
+    <select id="findByRuleName" resultMap="RuleExecutionLogResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule_execution_log
+        WHERE rule_name = #{ruleName}
+        ORDER BY created_time DESC
+    </select>
+    
+    <!-- 根据 Agent ID 查询 -->
+    <select id="findByAgentId" resultMap="RuleExecutionLogResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule_execution_log
+        WHERE agent_id = #{agentId}
+        ORDER BY created_time DESC
+    </select>
+    
+    <!-- 根据任务 ID 查询 -->
+    <select id="findByTaskId" resultMap="RuleExecutionLogResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule_execution_log
+        WHERE task_id = #{taskId}
+        ORDER BY created_time DESC
+    </select>
+    
+    <!-- 根据用户 ID 查询 -->
+    <select id="findByUserId" resultMap="RuleExecutionLogResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule_execution_log
+        WHERE user_id = #{userId}
+        ORDER BY created_time DESC
+    </select>
+    
+    <!-- 查询指定时间范围内的日志 -->
+    <select id="findByCreatedTimeBetween" resultMap="RuleExecutionLogResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_rule_execution_log
+        WHERE created_time BETWEEN #{startTime} AND #{endTime}
+        ORDER BY created_time DESC
+    </select>
+    
+    <!-- 统计规则执行次数 -->
+    <select id="countByRuleName" resultType="long">
+        SELECT COUNT(*)
+        FROM agent_rule_execution_log
+        WHERE rule_name = #{ruleName}
+    </select>
+    
+    <!-- 统计规则触发次数 -->
+    <select id="countTriggeredByRuleName" resultType="long">
+        SELECT COUNT(*)
+        FROM agent_rule_execution_log
+        WHERE rule_name = #{ruleName}
+          AND triggered = true
+    </select>
+    
+    <!-- 统计规则拒绝次数 -->
+    <select id="countRejectionByRuleName" resultType="long">
+        SELECT COUNT(*)
+        FROM agent_rule_execution_log
+        WHERE rule_name = #{ruleName}
+          AND passed = false
+    </select>
+    
+    <!-- 删除指定时间之前的日志 -->
+    <delete id="deleteByCreatedTimeBefore">
+        DELETE FROM agent_rule_execution_log
+        WHERE created_time &lt; #{beforeTime}
+    </delete>
+    
+</mapper>

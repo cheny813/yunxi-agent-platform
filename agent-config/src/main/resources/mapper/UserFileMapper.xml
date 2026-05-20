@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.platform.shared.mapper.UserFileMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="UserFileResultMap" type="io.yunxi.platform.shared.entity.UserFileEntity">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="file_name" property="fileName"/>
+        <result column="file_type" property="fileType" typeHandler="org.apache.ibatis.type.EnumTypeHandler"/>
+        <result column="file_path" property="filePath"/>
+        <result column="file_size" property="fileSize"/>
+        <result column="mime_type" property="mimeType"/>
+        <result column="content_extracted" property="contentExtracted"/>
+        <result column="vectorized" property="vectorized"/>
+        <result column="content" property="content"/>
+        <result column="metadata" property="metadata"/>
+        <result column="processing_mode" property="processingMode"/>
+        <result column="image_type" property="imageType"/>
+        <result column="feature_dimension" property="featureDimension"/>
+        <result column="feature_model" property="featureModel"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 保存文件信息 -->
+    <insert id="save" parameterType="io.yunxi.platform.shared.entity.UserFileEntity">
+        INSERT INTO user_files (
+            id,
+            user_id,
+            file_name,
+            file_type,
+            file_path,
+            file_size,
+            mime_type,
+            content_extracted,
+            vectorized,
+            content,
+            metadata,
+            processing_mode,
+            image_type,
+            feature_dimension,
+            feature_model,
+            created_at,
+            updated_at
+        ) VALUES (
+            #{id},
+            #{userId},
+            #{fileName},
+            #{fileType},
+            #{filePath},
+            #{fileSize},
+            #{mimeType},
+            #{contentExtracted},
+            #{vectorized},
+            #{content},
+            #{metadata},
+            #{processingMode},
+            #{imageType},
+            #{featureDimension},
+            #{featureModel},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <!-- 根据ID查询文件 -->
+    <select id="findById" resultMap="UserFileResultMap">
+        SELECT * FROM user_files WHERE id = #{id}
+    </select>
+
+    <!-- 根据用户ID查询文件列表 -->
+    <select id="listByUserId" resultMap="UserFileResultMap">
+        SELECT * FROM user_files 
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 根据用户ID和文件类型查询文件列表 -->
+    <select id="listByUserIdAndFileType" resultMap="UserFileResultMap">
+        SELECT * FROM user_files 
+        WHERE user_id = #{userId} AND file_type = #{fileType}
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 更新文件信息 -->
+    <update id="update" parameterType="io.yunxi.platform.shared.entity.UserFileEntity">
+        UPDATE user_files SET
+            content_extracted = #{contentExtracted},
+            vectorized = #{vectorized},
+            content = #{content},
+            metadata = #{metadata},
+            processing_mode = #{processingMode},
+            image_type = #{imageType},
+            feature_dimension = #{featureDimension},
+            feature_model = #{featureModel},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除文件 -->
+    <delete id="deleteById">
+        DELETE FROM user_files WHERE id = #{id}
+    </delete>
+
+    <!-- 根据用户ID删除所有文件 -->
+    <delete id="deleteByUserId">
+        DELETE FROM user_files WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 统计用户文件数量 -->
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM user_files WHERE user_id = #{userId}
+    </select>
+
+    <!-- 统计用户文件总大小 -->
+    <select id="totalSizeByUserId" resultType="long">
+        SELECT COALESCE(SUM(file_size), 0) FROM user_files WHERE user_id = #{userId}
+    </select>
+
+    <!-- 检查用户文件表是否存在 -->
+    <select id="checkUserFilesTableExists" resultType="boolean">
+        SELECT COUNT(*) > 0 FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'user_files'
+    </select>
+
+    <!-- 创建用户文件表 -->
+    <update id="createUserFilesTable">
+        CREATE TABLE IF NOT EXISTS user_files (
+            id VARCHAR(36) PRIMARY KEY COMMENT '文件ID',
+            user_id VARCHAR(100) NOT NULL COMMENT '用户ID',
+            file_name VARCHAR(255) NOT NULL COMMENT '文件名',
+            file_type VARCHAR(50) NOT NULL COMMENT '文件类型 (image|audio|video|document)',
+            file_path VARCHAR(500) NOT NULL COMMENT '文件存储路径',
+            file_size BIGINT NOT NULL COMMENT '文件大小（字节）',
+            mime_type VARCHAR(100) COMMENT 'MIME类型',
+            content_extracted BOOLEAN DEFAULT FALSE COMMENT '内容是否已提取',
+            vectorized BOOLEAN DEFAULT FALSE COMMENT '是否已向量化',
+            content TEXT COMMENT '提取的文本内容',
+            metadata JSON COMMENT '元数据（JSON格式）',
+            processing_mode VARCHAR(20) COMMENT '图像处理模式 (ocr|feature)',
+            image_type VARCHAR(50) COMMENT '图像类型 (face|uniform|document|general)',
+            feature_dimension INT COMMENT '特征向量维度',
+            feature_model VARCHAR(100) COMMENT '特征提取模型名称',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+            INDEX idx_user_id (user_id),
+            INDEX idx_file_type (file_type),
+            INDEX idx_processing_mode (processing_mode),
+            INDEX idx_image_type (image_type),
+            INDEX idx_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户文件表'
+    </update>
+
+</mapper>

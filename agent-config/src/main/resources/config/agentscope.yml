@@ -1,0 +1,121 @@
+# ============================================================
+# AgentScope 核心配置
+# ============================================================
+# 核心配置前缀：agentscope.core
+# 扩展配置前缀：agentscope.extensions
+# ============================================================
+
+agentscope:
+  core:
+    # AI API 密钥（必填）
+    api-key: ${DASHSCOPE_API_KEY:}
+    
+    # 默认模型名称（可选）
+    model-name: ${AGENTSCOPE_MODEL:qwen-plus}
+    
+    # 模型提供商（可选）
+    provider: ${AGENTSCOPE_PROVIDER:dashscope}
+    
+    # 默认系统提示词（可选）
+    default-prompt: ${AGENTSCOPE_DEFAULT_PROMPT:}
+    
+    # 对话超时秒数（8分钟，适应复杂食谱配平计算：5天×搜索+食材+评分）
+    chat-timeout-seconds: ${AGENTSCOPE_TIMEOUT:480}
+    
+    # Studio 可视化调试配置（可选）
+    studio:
+      enabled: ${AGENTSCOPE_STUDIO_ENABLED:false}
+      url: ${AGENTSCOPE_STUDIO_URL:}
+      project: ${AGENTSCOPE_STUDIO_PROJECT:}
+      run-name-prefix: ${AGENTSCOPE_RUN_PREFIX:run_}
+    
+    # Provider 专属配置
+    dashscope:
+      api-key: ${AGENTSCOPE_DASHSCOPE_API_KEY:}
+      model: ${AGENTSCOPE_DASHSCOPE_MODEL:}
+      base-url: ${AGENTSCOPE_DASHSCOPE_BASE_URL:}
+      timeout: ${AGENTSCOPE_DASHSCOPE_TIMEOUT:60000}
+    
+    openai:
+      api-key: ${AGENTSCOPE_OPENAI_API_KEY:}
+      model: ${AGENTSCOPE_OPENAI_MODEL:}
+      base-url: ${AGENTSCOPE_OPENAI_BASE_URL:}
+      timeout: ${AGENTSCOPE_OPENAI_TIMEOUT:60000}
+    
+    baidu:
+      api-key: ${AGENTSCOPE_BAIDU_API_KEY:}
+      model: ${AGENTSCOPE_BAIDU_MODEL:}
+      base-url: ${AGENTSCOPE_BAIDU_BASE_URL:}
+      timeout: ${AGENTSCOPE_BAIDU_TIMEOUT:60000}
+    
+    huawei:
+      api-key: ${AGENTSCOPE_HUAWEI_API_KEY:}
+      model: ${AGENTSCOPE_HUAWEI_MODEL:}
+      base-url: ${AGENTSCOPE_HUAWEI_BASE_URL:}
+      timeout: ${AGENTSCOPE_HUAWEI_TIMEOUT:60000}
+    
+# MCP 服务器配置（由 mcp-core.yml 和 mcp-external.yml 提供）
+      # 添加具体的MCP服务器配置，如：
+      # local-sqlite:
+      #   enabled: false
+      #   type: stdio
+      #   command: npx
+      #   args: ["-y", "@modelcontextprotocol/server-sqlite", "./data/sample.db"]
+  
+  extensions:
+    # 自动配置开关
+    autoConfigEnabled: ${AGENTSCOPE_AUTO_CONFIG:true}
+
+    # ============================================================
+    # 知识库配置 (RAG)
+    # ============================================================
+    knowledge-bases:
+
+      # 百炼知识库（阿里云）
+      tech-docs:
+        enabled: ${BAILIAN_ENABLED:false}
+        type: bailian
+        access-key-id: ${BAILIAN_ACCESS_KEY_ID:}
+        access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET:}
+        workspace-id: ${BAILIAN_WORKSPACE_ID:}
+        index-id: ${BAILIAN_INDEX_ID:}
+
+      # Dify 知识库
+      product-manual:
+        enabled: ${DIFY_ENABLED:false}
+        type: dify
+        api-key: ${DIFY_API_KEY:}
+        api-url: ${DIFY_API_URL:}
+        dataset-id: ${DIFY_DATASET_ID:}
+
+    # ============================================================
+    # 长期记忆存储配置
+    # ============================================================
+    memory-stores:
+
+      # Mem0 云端记忆
+      mem0:
+        enabled: ${MEM0_ENABLED:false}
+        type: mem0
+        api-key: ${MEM0_API_KEY:}
+        api-base-url: ${MEM0_API_BASE_URL:}
+
+      # ReMe 记忆（现代化配置）
+      reme:
+        enabled: ${REME_ENABLED:true}
+        type: reme
+        api-key: ${REME_API_KEY:}
+        api-base-url: ${REME_API_BASE_URL:http://localhost:8002}
+        timeout-ms: ${REME_TIMEOUT_MS:30000}
+        enabled-users: ${REME_ENABLED_USERS:['user1', 'user2', 'default']}
+
+    # 技能系统
+    skills:
+      enabled: ${SKILLS_ENABLED:false}
+
+    # A2A 协议
+    a2a:
+      enabled: ${A2A_ENABLED:false}
+      registry-type: ${A2A_REGISTRY_TYPE:nacos}
+      registry-addr: ${A2A_REGISTRY_ADDR:localhost:8848}
+      namespace: ${A2A_NAMESPACE:agent-platform}

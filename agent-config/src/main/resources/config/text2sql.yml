@@ -1,0 +1,62 @@
+# ============================================================
+# MCP 业务服务配置
+# ============================================================
+# 包含：图表生成、页面生成、智能表单填写等业务相关 MCP 服务
+# 这些服务与具体业务场景相关，由 agent-business 模块加载
+# ============================================================
+
+platform:
+  mcp:
+  mcp-servers:
+    # ========================================================================
+    # 【业务应用服务】
+    # ========================================================================
+
+    # --------------------- Chart 图表生成 MCP 服务器 ---------------------
+    # 端口：40302
+    # 协议：SSE
+    # 地址：http://localhost:40302/mcp/sse
+    # 提供工具：generate_chart
+    # --------------------------------------------------------------------
+    chart:
+      enabled: ${MCP_CHART_ENABLED:true}
+      type: sse
+      url: ${MCP_CHART_URL:http://localhost:40302/mcp/sse}
+      timeout: ${MCP_CHART_TIMEOUT:60000}
+      description: "图表生成 MCP 服务器"
+
+    # --------------------- PageGen 页面生成 MCP 服务器 ---------------------
+    # 端口：40303
+    # 协议：SSE
+    # 地址：http://localhost:40303/mcp/sse
+    # 提供工具：pagegen_dashboard, pagegen_list, pagegen_detail
+    # 说明：生成完整 HTML 页面（仪表盘、列表页、详情页、业务表单等）
+    #       与 mcp-formfill 的区别：
+    #         - mcp-pagegen: 生成【全新】页面，输出完整 HTML（适用于新建系统）
+    #         - mcp-formfill: 填写【现有】系统表单，通过 WebSocket 推送（适用于对接旧系统）
+    # --------------------------------------------------------------------
+    pagegen:
+      enabled: ${MCP_PAGEGEN_ENABLED:true}
+      type: sse
+      url: ${MCP_PAGEGEN_URL:http://localhost:40303/mcp/sse}
+      timeout: ${MCP_PAGEGEN_TIMEOUT:60000}
+      description: "页面生成 MCP 服务器"
+
+    # --------------------- FormFill 智能表单填写 MCP 服务器 ---------------------
+    # 端口：40601
+    # 协议：SSE + WebSocket (STOMP)
+    # SSE地址：http://localhost:40601/mcp/sse
+    # WebSocket地址：ws://localhost:40601/ws/formfill
+    # 提供工具：formfill_recipe, formfill_weekly_recipe, formfill_safety, formfill_budget, formfill_generic
+    #
+    # 说明：mcp-formfill 与 mcp-pagegen、mcp-playwright 的区别
+    #   - mcp-formfill: 填写【现有】业务系统表单，通过 WebSocket 实时推送指令到前端页面
+    #   - mcp-pagegen: 生成【全新】页面（仪表盘、列表、详情），输出完整 HTML
+    #   - mcp-playwright: 通用浏览器自动化（技术工具，非业务专用）
+    # --------------------------------------------------------------------
+    formfill:
+      enabled: ${MCP_FORMFILL_ENABLED:false}
+      type: sse
+      url: ${MCP_FORMFILL_URL:http://localhost:40601/mcp/sse}
+      timeout: ${MCP_FORMFILL_TIMEOUT:60000}
+      description: "智能表单填写 MCP 服务器（支持食谱、食安、经费等多种场景，需配合前端 WebSocket 集成）"

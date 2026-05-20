@@ -1,0 +1,39 @@
+# ============================================================
+# Milvus 向量数据库配置
+# ============================================================
+# 用于持久化用户记忆、历史食谱等语义可检索数据
+# 启用方式：设置 milvus.enabled=true 并启动 Milvus 服务
+#
+# 认证说明：
+# - 无认证模式：Milvus 默认不启用认证，无需配置用户名密码
+# - 认证模式：如果 Milvus 启用了认证，需配置 username/password 或 token
+#   - 使用用户名密码：设置 milvus.username 和 milvus.password
+#   - 使用 Token：设置 milvus.token（优先级更高）
+# ============================================================
+milvus:
+  enabled: true                                   # 是否启用 Milvus
+  host: ${MILVUS_HOST:192.168.11.48}                   # Milvus 服务地址
+  port: ${MILVUS_PORT:19530}                      # Milvus 服务端口
+  database: ${MILVUS_DATABASE:default}            # 数据库名称
+  username: ${MILVUS_USERNAME:root}                    # 用户名（认证模式时需要）
+  password: ${MILVUS_PASSWORD:root}                    # 密码（认证模式时需要）
+  token: ${MILVUS_TOKEN:}                         # Token（替代用户名密码，优先级更高）
+  connect-timeout: 5                              # 连接超时（秒）
+  query-timeout: 30                               # 查询超时（秒）
+
+  # 集合配置
+  collections:
+    user-memory: user_memory                      # 用户级记忆向量集合
+    recipe-history: recipe_history                # 食谱历史向量集合
+    conversation-memory: conversation_memory      # 会话记忆向量集合
+    school-common-dishes: school_common_dishes    # 公共菜品向量集合（school_id=0，系统级菜品）
+    school-dishes: school_dishes_                 # 学校专属菜品向量集合（前缀，实际集合名=前缀+schoolId）
+
+  # 嵌入向量配置
+  # 注意：dimension 需与 embedding.default-dimension 保持一致
+  embedding:
+    dimension: ${MILVUS_EMBEDDING_DIMENSION:1024} # 向量维度
+    model: ${MILVUS_EMBEDDING_MODEL:text-embedding-v3} # 阿里云嵌入模型
+    index-type: IVF_FLAT                          # 索引类型
+    metric-type: IP                               # 相似度度量（内积）
+    nlist: 1024                                   # IVF 聚类数量

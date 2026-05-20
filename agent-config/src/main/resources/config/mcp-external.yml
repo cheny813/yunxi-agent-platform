@@ -1,0 +1,232 @@
+# ============================================================
+# MCP 外部/可选服务配置
+# ============================================================
+# 包含：所有默认禁用的外部服务和可选工具
+# 作为可选 profile 按需激活：spring.profiles.active: ...,mcp-external
+# ============================================================
+
+agentscope:
+  core:
+    mcp-servers:
+      # ========================================================================
+      # 【外部服务集成】
+      # ========================================================================
+
+      # --------------------- Qdrant 向量数据库 MCP 服务器 ---------------------
+      qdrant:
+        enabled: ${MCP_QDRANT_ENABLED:false}
+        type: sse
+        url: ${MCP_QDRANT_URL:http://localhost:40104/mcp/sse}
+        timeout: ${MCP_QDRANT_TIMEOUT:60000}
+        description: "Qdrant 向量数据库 MCP 服务器"
+
+      # --------------------- GitHub MCP 服务器 ---------------------
+      github:
+        enabled: ${MCP_GITHUB_ENABLED:false}
+        type: sse
+        url: ${MCP_GITHUB_URL:http://localhost:40201/mcp/sse}
+        timeout: ${MCP_GITHUB_TIMEOUT:60000}
+        description: "GitHub API 操作 MCP 服务器"
+
+      # --------------------- 百度 OCR MCP 服务器 ---------------------
+      baidu-ocr:
+        enabled: ${MCP_BAIDU_OCR_ENABLED:false}
+        type: sse
+        url: ${MCP_BAIDU_OCR_URL:http://localhost:40202/mcp/sse}
+        timeout: ${MCP_BAIDU_OCR_TIMEOUT:60000}
+        description: "百度 OCR 文字识别 MCP 服务器"
+
+      # --------------------- 百度语音识别 MCP 服务器 ---------------------
+      baidu-asr:
+        enabled: ${MCP_BAIDU_ASR_ENABLED:false}
+        type: sse
+        url: ${MCP_BAIDU_ASR_URL:http://localhost:40203/mcp/sse}
+        timeout: ${MCP_BAIDU_ASR_TIMEOUT:60000}
+        description: "百度语音识别 MCP 服务器"
+
+      # --------------------- 百度搜索 MCP 服务器 ---------------------
+      baidu-search:
+        enabled: ${MCP_BAIDU_SEARCH_ENABLED:false}
+        type: sse
+        url: ${MCP_BAIDU_SEARCH_URL:http://localhost:40204/mcp/sse}
+        timeout: ${MCP_BAIDU_SEARCH_TIMEOUT:60000}
+        description: "百度搜索 MCP 服务器"
+
+      # --------------------- 钉钉集成 MCP 服务器 ---------------------
+      dingtalk:
+        enabled: ${MCP_DINGTALK_ENABLED:false}
+        type: sse
+        url: ${MCP_DINGTALK_URL:http://localhost:40205/mcp/sse}
+        timeout: ${MCP_DINGTALK_TIMEOUT:60000}
+        description: "钉钉集成 MCP 服务器"
+
+      # ========================================================================
+      # 【AI/ML 服务】
+      # ========================================================================
+
+      # --------------------- Playwright 浏览器自动化 MCP 服务器 ---------------------
+      playwright:
+        enabled: ${MCP_PLAYWRIGHT_ENABLED:false}
+        type: sse
+        url: ${MCP_PLAYWRIGHT_URL:http://localhost:40301/mcp/sse}
+        timeout: ${MCP_PLAYWRIGHT_TIMEOUT:60000}
+        description: "Playwright 浏览器自动化 MCP 服务器"
+
+      # --------------------- Memory Tool 记忆管理 MCP 服务器 ---------------------
+      memory-tool:
+        enabled: ${MCP_MEMORY_TOOL_ENABLED:false}
+        type: sse
+        url: ${MCP_MEMORY_TOOL_URL:http://localhost:40304/mcp/sse}
+        timeout: ${MCP_MEMORY_TOOL_TIMEOUT:60000}
+        description: "记忆管理 MCP 服务器"
+
+      # ========================================================================
+      # 【文档处理服务】
+      # ========================================================================
+
+      # --------------------- PDF 处理 MCP 服务器 ---------------------
+      pdf:
+        enabled: ${MCP_PDF_ENABLED:false}
+        type: sse
+        url: ${MCP_PDF_URL:http://localhost:40401/mcp/sse}
+        timeout: ${MCP_PDF_TIMEOUT:60000}
+        description: "PDF 文档处理 MCP 服务器"
+
+      # --------------------- Excel 处理 MCP 服务器 ---------------------
+      xlsx:
+        enabled: ${MCP_XLSX_ENABLED:false}
+        type: sse
+        url: ${MCP_XLSX_URL:http://localhost:40402/mcp/sse}
+        timeout: ${MCP_XLSX_TIMEOUT:60000}
+        description: "Excel 文档处理 MCP 服务器"
+
+      # --------------------- PPT 处理 MCP 服务器 ---------------------
+      pptx:
+        enabled: ${MCP_PPTX_ENABLED:false}
+        type: sse
+        url: ${MCP_PPTX_URL:http://localhost:40403/mcp/sse}
+        timeout: ${MCP_PPTX_TIMEOUT:60000}
+        description: "PowerPoint 文档处理 MCP 服务器"
+
+      # ========================================================================
+      # 【基础设施服务】
+      # ========================================================================
+
+      # --------------------- FileSystem 文件系统 MCP 服务器 ---------------------
+      filesystem:
+        enabled: ${MCP_FILESYSTEM_ENABLED:false}
+        type: sse
+        url: ${MCP_FILESYSTEM_URL:http://localhost:40501/mcp/sse}
+        timeout: ${MCP_FILESYSTEM_TIMEOUT:60000}
+        description: "文件系统操作 MCP 服务器"
+
+      # --------------------- MQTT 消息队列 MCP 服务器 ---------------------
+      mqtt:
+        enabled: ${MCP_MQTT_ENABLED:false}
+        type: sse
+        url: ${MCP_MQTT_URL:http://localhost:40502/mcp/sse}
+        timeout: ${MCP_MQTT_TIMEOUT:60000}
+        description: "MQTT 消息队列 MCP 服务器"
+
+      # --------------------- Email 邮件服务 MCP 服务器 ---------------------
+      email:
+        enabled: ${MCP_EMAIL_ENABLED:false}
+        type: sse
+        url: ${MCP_EMAIL_URL:http://localhost:40503/mcp/sse}
+        timeout: ${MCP_EMAIL_TIMEOUT:60000}
+        description: "邮件发送 MCP 服务器"
+
+      # --------------------- Docker 容器管理 MCP 服务器 ---------------------
+      docker:
+        enabled: ${MCP_DOCKER_ENABLED:false}
+        type: sse
+        url: ${MCP_DOCKER_URL:http://localhost:40504/mcp/sse}
+        timeout: ${MCP_DOCKER_TIMEOUT:60000}
+        description: "Docker 容器操作 MCP 服务器"
+
+      # --------------------- Kubernetes 集群管理 MCP 服务器 ---------------------
+      k8s:
+        enabled: ${MCP_K8S_ENABLED:false}
+        type: sse
+        url: ${MCP_K8S_URL:http://localhost:40505/mcp/sse}
+        timeout: ${MCP_K8S_TIMEOUT:60000}
+        description: "Kubernetes 集群操作 MCP 服务器"
+
+      # --------------------- AWS S3 对象存储 MCP 服务器 ---------------------
+      s3:
+        enabled: ${MCP_S3_ENABLED:false}
+        type: sse
+        url: ${MCP_S3_URL:http://localhost:40506/mcp/sse}
+        timeout: ${MCP_S3_TIMEOUT:60000}
+        description: "AWS S3 存储操作 MCP 服务器"
+
+      # --------------------- Elasticsearch 搜索引擎 MCP 服务器 ---------------------
+      elasticsearch:
+        enabled: ${MCP_ELASTICSEARCH_ENABLED:false}
+        type: sse
+        url: ${MCP_ELASTICSEARCH_URL:http://localhost:40507/mcp/sse}
+        timeout: ${MCP_ELASTICSEARCH_TIMEOUT:60000}
+        description: "Elasticsearch 搜索引擎 MCP 服务器"
+
+      # --------------------- MongoDB 数据库 MCP 服务器 ---------------------
+      mongodb:
+        enabled: ${MCP_MONGODB_ENABLED:false}
+        type: sse
+        url: ${MCP_MONGODB_URL:http://localhost:40508/mcp/sse}
+        timeout: ${MCP_MONGODB_TIMEOUT:60000}
+        description: "MongoDB 数据库操作 MCP 服务器"
+
+      # --------------------- Git 仓库操作 MCP 服务器 ---------------------
+      git:
+        enabled: ${MCP_GIT_ENABLED:false}
+        type: sse
+        url: ${MCP_GIT_URL:http://localhost:40509/mcp/sse}
+        timeout: ${MCP_GIT_TIMEOUT:60000}
+        description: "Git 仓库操作 MCP 服务器"
+
+      # --------------------- Wikipedia 搜索 MCP 服务器 ---------------------
+      wikipedia:
+        enabled: ${MCP_WIKIPEDIA_ENABLED:false}
+        type: sse
+        url: ${MCP_WIKIPEDIA_URL:http://localhost:40510/mcp/sse}
+        timeout: ${MCP_WIKIPEDIA_TIMEOUT:60000}
+        description: "Wikipedia 搜索 MCP 服务器"
+
+      # ========================================================================
+      # 【诊断/开发服务】
+      # ========================================================================
+
+      # --------------------- Logging MCP 服务器 ---------------------
+      logging:
+        enabled: ${MCP_LOGGING_ENABLED:false}
+        type: sse
+        url: ${MCP_LOGGING_URL:http://localhost:40105/mcp/sse}
+        timeout: ${MCP_LOGGING_TIMEOUT:60000}
+        description: "日志查询 MCP 服务器"
+
+      # --------------------- Code Search MCP 服务器 ---------------------
+      code-search:
+        enabled: ${MCP_CODE_SEARCH_ENABLED:false}
+        type: sse
+        url: ${MCP_CODE_SEARCH_URL:http://localhost:40106/mcp/sse}
+        timeout: ${MCP_CODE_SEARCH_TIMEOUT:60000}
+        description: "代码检索 MCP 服务器"
+
+      # --------------------- Code Edit MCP 服务器 ---------------------
+      code-edit:
+        enabled: ${MCP_CODE_EDIT_ENABLED:false}
+        type: sse
+        url: ${MCP_CODE_EDIT_URL:http://localhost:40108/mcp/sse}
+        timeout: ${MCP_CODE_EDIT_TIMEOUT:60000}
+        description: "代码修改 MCP 服务器"
+
+      # --------------------- Filesystem 官方 MCP 服务器 ---------------------
+      filesystem-official:
+        enabled: ${MCP_FILESYSTEM_OFFICIAL_ENABLED:false}
+        type: stdio
+        command: npx
+        args:
+          - "-y"
+          - "@modelcontextprotocol/server-filesystem"
+          - "/tmp"
+        description: "官方文件系统 MCP 服务器"
