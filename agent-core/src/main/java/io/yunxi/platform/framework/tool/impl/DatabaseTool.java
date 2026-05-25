@@ -64,7 +64,7 @@ public class DatabaseTool implements Tool {
                         },
                         "limit": {
                             "type": "integer",
-                            "default": 100,
+                            "default": 500,
                             "description": "最大返回行数"
                         }
                     },
@@ -79,7 +79,7 @@ public class DatabaseTool implements Tool {
 
         try {
             String sql = input.getString("sql");
-            int limit = input.getInt("limit", 100);
+            int limit = input.getInt("limit", 500);
 
             // 安全检查：只允许SELECT查询
             String sqlUpper = sql.trim().toUpperCase();

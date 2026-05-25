@@ -15,15 +15,15 @@ import java.util.Map;
  * </p>
  *
  * <p>
- * <b>重要说明</b>
+ * <b>自动配置说明</b>
  * </p>
  * <p>
- * 本框架推荐使用 AgentScope SDK 原生 API，通过 {@code @Bean} 注解创建扩展组件。
- * 配置信息仅供参考，实际功能请通过 AgentScope SDK 实现。
+ * 当 {@code agentscope.extensions.autoConfigEnabled=true} 时，框架会自动根据 YAML 配置
+ * 创建知识库（Knowledge）等扩展组件并注册为 Spring Bean。配置即用，无需手动编写 {@code @Bean} 方法。
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @RestController
 @RequestMapping("/api/config")
@@ -60,7 +60,7 @@ public class ConfigManagementController {
             overview.put("skillsEnabled", extensionProperties.getSkills().isEnabled());
         }
         overview.put("status", "active");
-        overview.put("note", "高级功能请使用AgentScope SDK 原生 API，通过 @Bean 注解创建组件");
+        overview.put("note", "autoConfigEnabled=true 时，YAML 配置的知识库、记忆等组件将自动注册为 Spring Bean");
         return overview;
     }
 
@@ -97,29 +97,31 @@ public class ConfigManagementController {
         health.put("timestamp", System.currentTimeMillis());
         health.put("service", "agentscope-config");
         health.put("status", "UP");
-        health.put("note", "请通过 @Bean 创建 AgentScope 扩展组件");
+        health.put("note", "autoConfigEnabled=true 时配置即用，无需手动 @Bean");
         return health;
     }
 
     /**
      * 获取知识库配置信息
      * <p>
-     * 返回已配置的知识库列表及其数量。知识库用于 RAG（检索增强生成）功能。
+     * 返回已配置的知识库列表及其数量。
+     * 当 {@code autoConfigEnabled=true} 时，这些配置将自动创建为 Knowledge Bean 并注册到 Spring 容器。
      * </p>
      *
      * @return 包含知识库配置信息的 Map，包括：
      *         <ul>
      *         <li>knowledgeBases - 知识库配置列表</li>
      *         <li>count - 知识库数量</li>
-     *         <li>note - 使用说明</li>
+     *         <li>note - 自动配置说明</li>
      *         </ul>
      */
     @GetMapping("/knowledge-bases")
     public Map<String, Object> getKnowledgeBases() {
         Map<String, Object> result = new HashMap<>();
         result.put("knowledgeBases", extensionProperties.getKnowledgeBases());
-        result.put("count", extensionProperties.getKnowledgeBases() != null ? extensionProperties.getKnowledgeBases().size() : 0);
-        result.put("note", "配置仅供参考，请通过 @Bean 创建 BailianKnowledge/DifyKnowledge 等实例");
+        result.put("count",
+                extensionProperties.getKnowledgeBases() != null ? extensionProperties.getKnowledgeBases().size() : 0);
+        result.put("note", "autoConfigEnabled=true 时，配置将自动创建对应的 Knowledge Bean，API 请求中按 Bean 名称引用即可");
         return result;
     }
 
@@ -140,7 +142,8 @@ public class ConfigManagementController {
     public Map<String, Object> getMemoryStores() {
         Map<String, Object> result = new HashMap<>();
         result.put("memoryStores", extensionProperties.getMemoryStores());
-        result.put("count", extensionProperties.getMemoryStores() != null ? extensionProperties.getMemoryStores().size() : 0);
+        result.put("count",
+                extensionProperties.getMemoryStores() != null ? extensionProperties.getMemoryStores().size() : 0);
         result.put("note", "配置仅供参考，请通过 @Bean 创建 Mem0Memory/ReMeMemory 等实例");
         return result;
     }

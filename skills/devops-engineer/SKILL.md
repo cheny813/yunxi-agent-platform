@@ -1,6 +1,6 @@
 ---
 name: devops-engineer
-description: DevOps operations including Docker, Kubernetes, CI/CD pipelines, and infrastructure management. Use when building Docker images, managing containers, deploying to Kubernetes, configuring CI/CD, or monitoring services. Triggers on: "docker build", "kubectl", "ci/cd", "deploy", "kubernetes", "docker-compose", or any DevOps task.
+description: DevOps operations including Docker, Kubernetes, CI/CD pipelines, and infrastructure management. Use when building Docker images, managing containers, deploying to Kubernetes, configuring CI/CD, or monitoring services.
 ---
 
 # DevOps Engineer

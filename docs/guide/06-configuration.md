@@ -185,6 +185,116 @@ llm:
 
 ---
 
+## 知识库（RAG）配置
+
+### 理论基础：检索增强生成
+
+RAG 使 Agent 能够从外部知识库中检索相关信息，弥补 LLM 知识截止日期和领域知识不足的问题。本框架支持 5 种知识库，通过统一的自动配置机制注册为 Spring Bean。
+
+### 检索默认参数
+
+```yaml
+agentscope:
+  extensions:
+    retrieve:
+      default-limit: 5                # 默认检索文档数（可选 3-10）
+      default-score-threshold: 0.5    # 默认相似度阈值（可选 0.3-0.7）
+```
+
+这些参数是全局默认值，API 请求中可通过 `retrieveLimit` / `retrieveScoreThreshold` 按需覆盖。
+
+### 启用自动配置
+
+```yaml
+agentscope:
+  extensions:
+    autoConfigEnabled: true   # 开启后，YAML 中的知识库配置会自动创建为 Bean
+    knowledge-bases:
+      # ... 知识库配置 ...
+```
+
+### 百炼知识库（阿里云）
+
+```yaml
+knowledge-bases:
+  tech-docs:
+    enabled: ${BAILIAN_ENABLED:false}
+    type: bailian
+    access-key-id: ${BAILIAN_ACCESS_KEY_ID:}
+    access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET:}
+    workspace-id: ${BAILIAN_WORKSPACE_ID:}
+    index-id: ${BAILIAN_INDEX_ID:}
+```
+
+### Dify 知识库
+
+```yaml
+knowledge-bases:
+  product-manual:
+    enabled: ${DIFY_ENABLED:false}
+    type: dify
+    api-key: ${DIFY_API_KEY:}
+    api-url: ${DIFY_API_URL:}
+    dataset-id: ${DIFY_DATASET_ID:}
+    retrieval-mode: ${DIFY_RETRIEVAL_MODE:HYBRID_SEARCH}  # KEYWORD / SEMANTIC / HYBRID / FULLTEXT
+```
+
+### RAGFlow 知识库
+
+```yaml
+knowledge-bases:
+  company-docs:
+    enabled: ${RAGFLOW_ENABLED:false}
+    type: ragflow
+    api-key: ${RAGFLOW_API_KEY:}
+    api-url: ${RAGFLOW_API_URL:http://localhost:9380}
+    dataset-id: ${RAGFLOW_DATASET_ID:}           # 支持逗号分隔多数据集
+    similarity-threshold: ${RAGFLOW_SIMILARITY_THRESHOLD:0.3}
+    vector-similarity-weight: ${RAGFLOW_VECTOR_WEIGHT:0.3}
+```
+
+### SimpleKnowledge 本地知识库（开发测试）
+
+```yaml
+knowledge-bases:
+  local-docs:
+    enabled: ${SIMPLE_KB_ENABLED:false}
+    type: simple
+    dimension: ${SIMPLE_KB_DIMENSION:1024}    # 向量维度，默认使用 EmbeddingService 的维度
+```
+
+SimpleKnowledge 复用项目已有的 `EmbeddingService`（支持 Ollama/DashScope/OpenAI），无需额外配置嵌入模型。
+
+### 知识库类型对比
+
+| 类型 | 文档管理 | 配置要点 |
+|------|---------|---------|
+| `bailian` | 百炼控制台 | `access-key-id`、`access-key-secret`、`workspace-id`、`index-id` |
+| `dify` | Dify 控制台 | `api-key`、`api-url`、`dataset-id`、`retrieval-mode` |
+| `ragflow` | RAGFlow 控制台 | `api-key`、`api-url`、`dataset-id`（支持多数据集） |
+| `haystack` | HayStack 管道 | 需安装 `agentscope-extensions-rag-haystack` 依赖 |
+| `simple` | 代码管理 | `dimension`（向量维度），复用已有 EmbeddingService |
+
+### 自动配置架构
+
+```
+agentscope.yml knowledge-bases 配置
+    ↓ @ConfigurationProperties
+AgentscopeExtensionProperties
+    ↓ KnowledgeAutoConfiguration（@PostConstruct）
+遍历 enabled=true 的配置 → 按 type 匹配 KnowledgeCreator → 创建 Knowledge 实例
+    ↓ registerSingleton
+Spring 容器中的 Knowledge Bean
+    ↓ @Autowired Map<String, Knowledge>
+AdvancedAgentFactory 运行时使用
+```
+
+### 扩展新知识库类型
+
+参考 [07. 开发指南](./07-development.md#创建自定义知识库类型) 中的 `KnowledgeCreator` SPI 说明。
+
+---
+
 ## Agent 多 Profile 配置
 
 ### 理论基础：多态配置
@@ -202,6 +312,9 @@ agents:
     
     # Agent 级别默认模式
     mode: expert
+    
+    # 默认 RAG 模式（请求未指定时使用此值，可选 GNERIC / AGENTIC / NONE）
+    ragMode: GENERIC
     
     # 默认 prompt（未指定 profile 时使用）
     prompt: |
@@ -479,6 +592,24 @@ management:
 | MILVUS_HOST | Milvus 主机 | localhost |
 | GATEWAY_TOKEN | Gateway Token | 空 |
 | GATEWAY_ADMIN_TOKEN | Gateway Admin Token | 空 |
+| AGENTSCOPE_AUTO_CONFIG | 知识库/记忆自动配置开关 | true |
+| BAILIAN_ENABLED | 启用百炼知识库 | false |
+| BAILIAN_ACCESS_KEY_ID | 百炼 Access Key ID | 空 |
+| BAILIAN_ACCESS_KEY_SECRET | 百炼 Access Key Secret | 空 |
+| BAILIAN_WORKSPACE_ID | 百炼工作空间 ID | 空 |
+| BAILIAN_INDEX_ID | 百炼索引 ID | 空 |
+| DIFY_ENABLED | 启用 Dify 知识库 | false |
+| DIFY_API_KEY | Dify API Key | 空 |
+| DIFY_API_URL | Dify 服务地址 | 空 |
+| DIFY_DATASET_ID | Dify 数据集 ID | 空 |
+| DIFY_RETRIEVAL_MODE | Dify 检索模式 | HYBRID_SEARCH |
+| RAGFLOW_ENABLED | 启用 RAGFlow 知识库 | false |
+| RAGFLOW_API_KEY | RAGFlow API Key | 空 |
+| RAGFLOW_API_URL | RAGFlow 服务地址 | http://localhost:9380 |
+| RAGFLOW_DATASET_ID | RAGFlow 数据集 ID | 空 |
+| SIMPLE_KB_ENABLED | 启用本地知识库 | false |
+| **RAG_DEFAULT_LIMIT** | **默认检索文档数** | **5** |
+| **RAG_DEFAULT_SCORE_THRESHOLD** | **默认相似度阈值** | **0.5** |
 
 ---
 

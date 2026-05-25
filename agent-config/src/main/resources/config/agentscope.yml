@@ -9,51 +9,51 @@ agentscope:
   core:
     # AI API 密钥（必填）
     api-key: ${DASHSCOPE_API_KEY:}
-    
+
     # 默认模型名称（可选）
     model-name: ${AGENTSCOPE_MODEL:qwen-plus}
-    
+
     # 模型提供商（可选）
     provider: ${AGENTSCOPE_PROVIDER:dashscope}
-    
+
     # 默认系统提示词（可选）
     default-prompt: ${AGENTSCOPE_DEFAULT_PROMPT:}
-    
+
     # 对话超时秒数（8分钟，适应复杂食谱配平计算：5天×搜索+食材+评分）
     chat-timeout-seconds: ${AGENTSCOPE_TIMEOUT:480}
-    
+
     # Studio 可视化调试配置（可选）
     studio:
       enabled: ${AGENTSCOPE_STUDIO_ENABLED:false}
       url: ${AGENTSCOPE_STUDIO_URL:}
       project: ${AGENTSCOPE_STUDIO_PROJECT:}
       run-name-prefix: ${AGENTSCOPE_RUN_PREFIX:run_}
-    
+
     # Provider 专属配置
     dashscope:
       api-key: ${AGENTSCOPE_DASHSCOPE_API_KEY:}
       model: ${AGENTSCOPE_DASHSCOPE_MODEL:}
       base-url: ${AGENTSCOPE_DASHSCOPE_BASE_URL:}
       timeout: ${AGENTSCOPE_DASHSCOPE_TIMEOUT:60000}
-    
+
     openai:
       api-key: ${AGENTSCOPE_OPENAI_API_KEY:}
       model: ${AGENTSCOPE_OPENAI_MODEL:}
       base-url: ${AGENTSCOPE_OPENAI_BASE_URL:}
       timeout: ${AGENTSCOPE_OPENAI_TIMEOUT:60000}
-    
+
     baidu:
       api-key: ${AGENTSCOPE_BAIDU_API_KEY:}
       model: ${AGENTSCOPE_BAIDU_MODEL:}
       base-url: ${AGENTSCOPE_BAIDU_BASE_URL:}
       timeout: ${AGENTSCOPE_BAIDU_TIMEOUT:60000}
-    
+
     huawei:
       api-key: ${AGENTSCOPE_HUAWEI_API_KEY:}
       model: ${AGENTSCOPE_HUAWEI_MODEL:}
       base-url: ${AGENTSCOPE_HUAWEI_BASE_URL:}
       timeout: ${AGENTSCOPE_HUAWEI_TIMEOUT:60000}
-    
+
 # MCP 服务器配置（由 mcp-core.yml 和 mcp-external.yml 提供）
       # 添加具体的MCP服务器配置，如：
       # local-sqlite:
@@ -61,10 +61,17 @@ agentscope:
       #   type: stdio
       #   command: npx
       #   args: ["-y", "@modelcontextprotocol/server-sqlite", "./data/sample.db"]
-  
+
   extensions:
     # 自动配置开关
     autoConfigEnabled: ${AGENTSCOPE_AUTO_CONFIG:true}
+
+    # ============================================================
+    # 检索默认参数（API 请求中未指定时使用）
+    # ============================================================
+    retrieve:
+      default-limit: ${RAG_DEFAULT_LIMIT:5}
+      default-score-threshold: ${RAG_DEFAULT_SCORE_THRESHOLD:0.5}
 
     # ============================================================
     # 知识库配置 (RAG)
@@ -87,6 +94,23 @@ agentscope:
         api-key: ${DIFY_API_KEY:}
         api-url: ${DIFY_API_URL:}
         dataset-id: ${DIFY_DATASET_ID:}
+        retrieval-mode: ${DIFY_RETRIEVAL_MODE:HYBRID_SEARCH}
+
+      # RAGFlow 知识库（开源 RAG 引擎）
+      company-docs:
+        enabled: ${RAGFLOW_ENABLED:false}
+        type: ragflow
+        api-key: ${RAGFLOW_API_KEY:}
+        api-url: ${RAGFLOW_API_URL:http://localhost:9380}
+        dataset-id: ${RAGFLOW_DATASET_ID:}
+        similarity-threshold: ${RAGFLOW_SIMILARITY_THRESHOLD:0.3}
+        vector-similarity-weight: ${RAGFLOW_VECTOR_WEIGHT:0.3}
+
+      # Simple 本地知识库（开发测试用，基于项目已有的 EmbeddingService）
+      local-docs:
+        enabled: ${SIMPLE_KB_ENABLED:false}
+        type: simple
+        dimension: ${SIMPLE_KB_DIMENSION:1024}
 
     # ============================================================
     # 长期记忆存储配置

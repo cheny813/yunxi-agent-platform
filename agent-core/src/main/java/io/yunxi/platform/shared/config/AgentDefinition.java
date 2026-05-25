@@ -102,6 +102,11 @@ public class AgentDefinition {
     /** 默认 Profile 名称 */
     private String defaultProfile;
 
+    // ========== RAG 配置 ==========
+
+    /** 默认 RAG 模式：NONE / GENERIC / AGENTIC（请求未指定时使用此默认值） */
+    private String ragMode = io.yunxi.platform.shared.constants.ConfigDefaults.DEFAULT_RAG_MODE;
+
     // ========== Getter / Setter ==========
 
     public AgentDefinition() {
@@ -248,5 +253,13 @@ public class AgentDefinition {
 
     public void setDefaultProfile(String defaultProfile) {
         this.defaultProfile = defaultProfile;
+    }
+
+    public String getRagMode() {
+        return ragMode;
+    }
+
+    public void setRagMode(String ragMode) {
+        this.ragMode = ragMode;
     }
 }

@@ -1,6 +1,6 @@
 ---
 name: git-operator
-description: Perform Git operations including status, commit, push, pull, branch management, and repository inspection. Use when working with Git repositories - checking status, creating commits, pushing to remote, pulling updates, creating/switching branches, or viewing logs. Triggers on: "git status", "git commit", "git push", "git pull", "git branch", "git log", "git checkout", or any Git-related task.
+description: Perform Git operations including status, commit, push, pull, branch management, and repository inspection. Use when working with Git repositories.
 ---
 
 # Git Operator

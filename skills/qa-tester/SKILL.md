@@ -1,6 +1,6 @@
 ---
 name: qa-tester
-description: Run tests, analyze coverage reports, and perform quality assurance for JavaScript/Java projects. Use when executing test suites, checking code coverage, running unit tests, integration tests, or analyzing test results. Supports Jest, Mocha, JUnit, and other test frameworks. Triggers on: "run tests", "test coverage", "jest test", "unit test", "integration test", or any QA/testing task.
+description: Run tests, analyze coverage reports, and perform quality assurance for JavaScript/Java projects. Use when executing test suites, checking code coverage, running unit tests, integration tests, or analyzing test results. Supports Jest, Mocha, JUnit, and other test frameworks.
 ---
 
 # QA Tester

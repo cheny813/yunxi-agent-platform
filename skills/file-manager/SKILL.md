@@ -1,6 +1,6 @@
 ---
 name: file-manager
-description: Read, write, list, and manage files on the local machine. Use when reading source code, editing configuration files, creating new files, listing directory contents, or any file system operations. Triggers on: "read file", "write file", "list directory", "create file", "edit file", "browse files", or any task requiring file system access.
+description: Read, write, list, and manage files on the local machine. Use when reading source code, editing configuration files, creating new files, listing directory contents, or any file system operations.
 ---
 
 # File Manager

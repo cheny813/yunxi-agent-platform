@@ -32,7 +32,11 @@ public class ExtensionConfig {
     /** 扩展参数（传递给扩展点的自由配置） */
     private Map<String, Object> params;
 
-    public ExtensionConfig() { }
+    /** HITL (Human-in-the-Loop) 配置 */
+    private HITLConfig hitl;
+
+    public ExtensionConfig() {
+    }
 
     public String getPreProcessor() {
         return preProcessor;
@@ -64,5 +68,13 @@ public class ExtensionConfig {
 
     public void setParams(Map<String, Object> params) {
         this.params = params;
+    }
+
+    public HITLConfig getHitl() {
+        return hitl;
+    }
+
+    public void setHitl(HITLConfig hitl) {
+        this.hitl = hitl;
     }
 }

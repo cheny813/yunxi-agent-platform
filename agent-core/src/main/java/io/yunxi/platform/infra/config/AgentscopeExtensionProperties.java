@@ -9,17 +9,18 @@ import java.util.Map;
 
 /**
  * AgentScope 扩展功能配置属性类
- * 
+ *
  * <p>
  * 配置知识库、记忆存储、MCP服务器等扩展功能。
  * 与 {@link AgentscopeCoreProperties} 配合使用：
  * <ul>
- *   <li>{@link AgentscopeCoreProperties} - 基础配置（API密钥、模型等）</li>
- *   <li>本类 - 扩展功能配置（知识库、记忆、MCP等）</li>
+ * <li>{@link AgentscopeCoreProperties} - 基础配置（API密钥、模型等）</li>
+ * <li>本类 - 扩展功能配置（知识库、记忆、MCP等）</li>
  * </ul>
  * </p>
  *
  * <h3>配置示例</h3>
+ *
  * <pre>
  * agentscope:
  *   extensions:
@@ -85,11 +86,13 @@ public class AgentscopeExtensionProperties {
 
     /**
      * MCP 服务器配置映射
-     * <p>
-     * 支持多种协议：stdio、http、sse
-     * </p>
      */
     private Map<String, McpServerConfig> mcpServers;
+
+    /**
+     * 检索默认参数配置
+     */
+    private RetrieveConfig retrieve = new RetrieveConfig();
 
     // ==================== 内部配置类定义 ====================
 
@@ -114,12 +117,28 @@ public class AgentscopeExtensionProperties {
         private String indexId;
 
         // Dify 知识库参数
-        /** API 密钥 */
+        /** API 密钥（Dify、RAGFlow 使用） */
         private String apiKey;
-        /** API 服务地址 */
+        /** API 服务地址（Dify、RAGFlow 使用） */
         private String apiUrl;
         /** 数据集ID（Dify、RAGFlow 使用） */
         private String datasetId;
+        /** 检索模式：KEYWORD、SEMANTIC、HYBRID、FULLTEXT（Dify 专用） */
+        private String retrievalMode;
+
+        // RAGFlow 专有参数
+        /** RAGFlow 基础服务地址（与 apiUrl 二选一） */
+        private String baseUrl;
+        /** 相似度阈值（RAGFlow 专用，范围 0.0-1.0） */
+        private Double similarityThreshold;
+        /** 向量相似度权重（RAGFlow 专用，范围 0.0-1.0） */
+        private Double vectorSimilarityWeight;
+
+        // SimpleKnowledge 参数
+        /** 向量维度（Simple 知识库使用） */
+        private Integer dimension;
+        /** 嵌入模型名称（Simple 知识库使用） */
+        private String embeddingModel;
 
         // 通用参数
         /** 检索返回的最大文档数 */
@@ -211,5 +230,16 @@ public class AgentscopeExtensionProperties {
         private Map<String, String> headers;
         /** 环境变量 */
         private Map<String, String> env;
+    }
+
+    /**
+     * 检索默认参数配置
+     */
+    @Data
+    public static class RetrieveConfig {
+        /** 默认检索返回的最大文档数 */
+        private int defaultLimit = ConfigDefaults.DEFAULT_TOP_K;
+        /** 默认相似度阈值 */
+        private double defaultScoreThreshold = ConfigDefaults.DEFAULT_SCORE_THRESHOLD;
     }
 }

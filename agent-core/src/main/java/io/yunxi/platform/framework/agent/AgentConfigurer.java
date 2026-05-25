@@ -124,6 +124,7 @@ public class AgentConfigurer {
             builder.toolkit(toolkit);
 
             builderHelper.injectStandardHooks(builder, toolkit);
+            builderHelper.injectHITLHooks(builder, toolkit, def);
 
             if (def.getRuntime() != null) {
                 builder.maxIters(def.getRuntime().getMaxIterations());
@@ -152,8 +153,9 @@ public class AgentConfigurer {
             // 注册
             agentDomainService.registerAgentInstance(def.getName(), agent);
             agentDomainService.registerAgentInfoDto(def.getName(), description(def), prompt, modelCfg.getModelName());
+            agentDomainService.registerAgentRagMode(def.getName(), def.getRagMode());
             registerStructuredOutputSchema(def);
-            log.info("Agent 初始化成功: {}", def.getName());
+            log.info("Agent 初始化成功: {}, ragMode={}", def.getName(), def.getRagMode());
         } catch (Exception e) {
             log.error("Agent 初始化失败: {}", def.getName(), e);
         }
@@ -208,6 +210,7 @@ public class AgentConfigurer {
         ReActAgent.Builder builder = ReActAgent.builder()
                 .name(def.getName()).sysPrompt(def.getPrompt()).model(modelProvider).toolkit(toolkit);
         builderHelper.injectStandardHooks(builder, toolkit);
+        builderHelper.injectHITLHooks(builder, toolkit, def);
 
         if (def.getRuntime() != null) {
             builder.maxIters(def.getRuntime().getMaxIterations());
@@ -231,6 +234,7 @@ public class AgentConfigurer {
         agentDomainService.registerAgentInstance(def.getName(), supervisor);
         agentDomainService.registerAgentInfoDto(def.getName(), description(def), def.getPrompt(),
                 modelCfg.getModelName());
+        agentDomainService.registerAgentRagMode(def.getName(), def.getRagMode());
         supervisorService.registerSupervisorConfig(def.getName(), experts.stream().map(ExpertConfig::getName).toList());
         registerStructuredOutputSchema(def);
         log.info("Supervisor Agent 创建成功: {}, 专家数量: {}", def.getName(), expertAgents.size());

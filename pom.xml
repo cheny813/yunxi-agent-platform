@@ -35,7 +35,7 @@
     
     <properties>
         <java.version>17</java.version>
-        <agentscope.version>1.0.11</agentscope.version>
+        <agentscope.version>1.1.0-SNAPSHOT</agentscope.version>
         <agentscope-runtime.version>0.1.0</agentscope-runtime.version>
         <jacoco.version>0.8.12</jacoco.version>
         <!-- 第三方依赖版本 -->

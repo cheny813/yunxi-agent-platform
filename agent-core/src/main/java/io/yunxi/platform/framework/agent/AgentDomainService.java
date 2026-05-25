@@ -247,6 +247,9 @@ public class AgentDomainService {
     /** Agent schema 缓存（用于结构化输出） */
     private final Map<String, String> agentSchemaCache = new ConcurrentHashMap<>();
 
+    /** Agent 默认 RAG 模式缓存（name → ragMode） */
+    private final Map<String, String> agentRagModeCache = new ConcurrentHashMap<>();
+
     /**
      * 注册 Agent 的结构化输出 schema
      *
@@ -278,6 +281,29 @@ public class AgentDomainService {
      */
     public boolean hasStructuredOutput(String name) {
         return agentSchemaCache.containsKey(name);
+    }
+
+    /**
+     * 注册 Agent 的默认 RAG 模式
+     *
+     * @param name    Agent 名称
+     * @param ragMode RAG 模式（NONE / GENERIC / AGENTIC）
+     */
+    public void registerAgentRagMode(String name, String ragMode) {
+        if (name != null && !name.isBlank()) {
+            agentRagModeCache.put(name,
+                    ragMode != null ? ragMode : io.yunxi.platform.shared.constants.ConfigDefaults.DEFAULT_RAG_MODE);
+        }
+    }
+
+    /**
+     * 获取 Agent 的默认 RAG 模式
+     *
+     * @param name Agent 名称
+     * @return RAG 模式，如果未注册则返回默认值 NONE
+     */
+    public String getAgentRagMode(String name) {
+        return agentRagModeCache.getOrDefault(name, io.yunxi.platform.shared.constants.ConfigDefaults.DEFAULT_RAG_MODE);
     }
 
     /**

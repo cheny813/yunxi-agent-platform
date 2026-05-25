@@ -7,9 +7,14 @@ import io.agentscope.core.tool.Toolkit;
 import io.yunxi.platform.framework.embedding.ModelConfig;
 import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.plan.ReMePlanStorage;
+import io.yunxi.platform.framework.hitl.HumanToolRegistrar;
+import io.yunxi.platform.framework.hitl.ReasoningReviewHook;
+import io.yunxi.platform.framework.hitl.ToolGateHook;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import io.yunxi.platform.shared.config.ExtensionConfig;
 import io.yunxi.platform.shared.dto.AdvancedAgentConfigDto.ModelConfigDto;
+import java.util.Set;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -87,6 +92,65 @@ public class AgentBuilderHelper {
         }
         TextToolCallParserHook textToolCallParserHook = new TextToolCallParserHook(toolkit);
         builder.hook(textToolCallParserHook);
+    }
+
+    /**
+     * 注入 HITL (Human-in-the-Loop) Hook
+     *
+     * <p>
+     * 根据 AgentDefinition YAML 中的 {@code extensions.hitl} 配置，按需注入：
+     * <ul>
+     * <li>{@link ToolGateHook} — 工具门控（priority=55）</li>
+     * <li>{@link ReasoningReviewHook} — 推理审查（priority=70）</li>
+     * </ul>
+     * 以及注册 HumanTool（SchemaOnlyTool）。
+     *
+     * <p>
+     * Hook 执行顺序：
+     *
+     * <pre>
+     * TextToolCallParserHook(45) → ToolGateHook(55) → ReasoningReviewHook(70)
+     * </pre>
+     *
+     * @param builder Agent 构建器
+     * @param toolkit 工具包
+     * @param def     Agent 定义配置（包含 extensions.hitl）
+     */
+    public void injectHITLHooks(ReActAgent.Builder builder, Toolkit toolkit,
+            AgentDefinition def) {
+        if (def == null) {
+            return;
+        }
+
+        ExtensionConfig extensions = def.getExtensions();
+        if (extensions == null || extensions.getHitl() == null) {
+            return;
+        }
+
+        var hitlConfig = extensions.getHitl();
+
+        // 1. 工具门控 — ToolGateHook
+        if (hitlConfig.getToolGate() != null && hitlConfig.getToolGate().isEnabled()) {
+            ToolGateHook toolGateHook = new ToolGateHook(hitlConfig.getToolGate());
+            builder.hook(toolGateHook);
+        }
+
+        // 2. 推理审查 — ReasoningReviewHook
+        if (hitlConfig.getReasoningReview() != null && hitlConfig.getReasoningReview().isEnabled()) {
+            // 从 ToolGate 配置中获取危险工具列表，用于 on-dangerous-tool 策略
+            var dangerousTools = hitlConfig.getToolGate() != null
+                    ? Set.copyOf(hitlConfig.getToolGate().getTools())
+                    : Set.<String>of();
+            ReasoningReviewHook reviewHook = new ReasoningReviewHook(
+                    hitlConfig.getReasoningReview(), dangerousTools);
+            builder.hook(reviewHook);
+        }
+
+        // 3. 人机协作 — HumanTool (SchemaOnlyTool)
+        if (hitlConfig.getHumanTool() != null && hitlConfig.getHumanTool().isEnabled()) {
+            HumanToolRegistrar registrar = new HumanToolRegistrar(hitlConfig.getHumanTool());
+            registrar.registerTools(toolkit);
+        }
     }
 
     /**

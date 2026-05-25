@@ -27,6 +27,7 @@ import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.Toolkit;
 import io.yunxi.platform.framework.skill.SkillRegistryService;
 import io.yunxi.platform.framework.tool.ToolGroupManager;
+import io.yunxi.platform.infra.config.AgentscopeExtensionProperties;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
 
 /**
@@ -41,17 +42,36 @@ import io.yunxi.platform.shared.dto.UnifiedChatRequest;
  * <li><b>Studio 可视化</b>：自动注入StudioMessageHook</li>
  * </ul>
  *
- * <h3>使用 AgentScope 原生 API 示例</h3>
+ * <h3>知识库自动配置（推荐方式）</h3>
+ *
+ * <p>
+ * 配置 {@code agentscope.extensions.autoConfigEnabled=true} 后，只需在
+ * {@code agentscope.yml}
+ * 中声明知识库配置，框架会自动创建 Knowledge 实例并注册为 Spring Bean。
+ * </p>
  *
  * <pre>
- * // 1. 添加依赖
- * &lt;dependency&gt;
- *     &lt;groupId&gt;io.agentscope&lt;/groupId&gt;
- *     &lt;artifactId&gt;agentscope-extensions-rag-bailian&lt;/artifactId&gt;
- *     &lt;version&gt;1.0.9&lt;/version&gt;
- * &lt;/dependency&gt;
+ * # agentscope.yml
+ * agentscope:
+ *   extensions:
+ *     autoConfigEnabled: true
+ *     knowledge-bases:
+ *       tech-docs:
+ *         enabled: true
+ *         type: bailian
+ *         access-key-id: ${BAILIAN_ACCESS_KEY_ID}
+ *         access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET}
+ *         workspace-id: ${BAILIAN_WORKSPACE_ID}
+ *         index-id: ${BAILIAN_INDEX_ID}
+ * </pre>
  *
- * // 2. 创建配置
+ * <h3>手动 @Bean 方式（备用）</h3>
+ *
+ * <p>
+ * 如需更精细的控制（如自定义检索参数），仍可使用 {@code @Bean} 手动创建：
+ * </p>
+ *
+ * <pre>
  * &#64;Configuration
  * public class AgentscopeConfiguration {
  *     &#64;Bean
@@ -70,13 +90,16 @@ import io.yunxi.platform.shared.dto.UnifiedChatRequest;
  *                 .build();
  *     }
  * }
+ * </pre>
  *
- * // 3. 在请求中指定知识库名
+ * <h3>API 请求中引用知识库</h3>
+ *
+ * <pre>
  * POST /api/chat
  * {
  *   "message": "查询产品信息",
  *   "ragMode": "GENERIC",
- *   "knowledgeBases": ["productKnowledge"]
+ *   "knowledgeBases": ["techDocs"]
  * }
  * </pre>
  *
@@ -104,16 +127,10 @@ import io.yunxi.platform.shared.dto.UnifiedChatRequest;
  * <li><b>agentscope-extensions-a2a-server</b> - A2A 服务端</li>
  * </ul>
  *
- * <h4>其他：</h4>
- * <ul>
- * <li><b>agentscope-extensions-a2a</b> - A2A 协议（Agent-to-Agent）</li>
- * <li><b>agentscope-extensions-skill-git-repository</b> - Git 仓库技能加载</li>
- * <li><b>agentscope-extensions-studio</b> - Studio 可视化调试</li>
- * </ul>
- *
  * @author yunxi-agent-platform
  * @version 3.2.0
  * @see <a href="https://java.agentscope.io">AgentScope Java 文档</a>
+ * @see io.yunxi.platform.infra.config.KnowledgeAutoConfiguration
  */
 @Service
 public class AdvancedAgentFactory {
@@ -156,24 +173,43 @@ public class AdvancedAgentFactory {
     @Autowired
     private ObjectProvider<ToolGroupManager> toolGroupManagerProvider;
 
-    /**
-     * 默认检索配置
-     */
-    private static final RetrieveConfig DEFAULT_RETRIEVE_CONFIG = RetrieveConfig.builder()
-            .limit(5)
-            .scoreThreshold(0.5)
-            .build();
+    /** 默认检索配置（来自 YAML 或硬编码默认值） */
+    private RetrieveConfig defaultRetrieveConfig;
 
     /** Agent 领域服务 */
     private final AgentDomainService agentDomainService;
 
+    /** AgentScope 扩展配置（含检索默认参数） */
+    private final AgentscopeExtensionProperties extensionProperties;
+
     /**
      * 构造高级 Agent 工厂
      *
-     * @param agentDomainService Agent 领域服务
+     * @param agentDomainService  Agent 领域服务
+     * @param extensionProperties AgentScope 扩展配置
      */
-    public AdvancedAgentFactory(AgentDomainService agentDomainService) {
+    public AdvancedAgentFactory(AgentDomainService agentDomainService,
+            AgentscopeExtensionProperties extensionProperties) {
         this.agentDomainService = agentDomainService;
+        this.extensionProperties = extensionProperties;
+        this.defaultRetrieveConfig = buildDefaultRetrieveConfig();
+    }
+
+    /**
+     * 从 YAML 配置构建默认检索配置
+     */
+    private RetrieveConfig buildDefaultRetrieveConfig() {
+        var yamlConfig = extensionProperties.getRetrieve();
+        if (yamlConfig != null) {
+            return RetrieveConfig.builder()
+                    .limit(yamlConfig.getDefaultLimit())
+                    .scoreThreshold(yamlConfig.getDefaultScoreThreshold())
+                    .build();
+        }
+        return RetrieveConfig.builder()
+                .limit(5)
+                .scoreThreshold(0.5)
+                .build();
     }
 
     /**
@@ -203,6 +239,9 @@ public class AdvancedAgentFactory {
 
             // 配置工具
             Toolkit toolkit = new Toolkit();
+
+            // 应用 Agent 默认 RAG 模式（请求未指定时使用）
+            applyDefaultRagMode(baseAgentName, request);
 
             // 应用高级配置
             applyRAGConfig(request, builder);
@@ -270,11 +309,34 @@ public class AdvancedAgentFactory {
     }
 
     /**
+     * 应用 Agent 默认 RAG 模式
+     * <p>
+     * 当 API 请求未指定 RAG 模式（或为 NONE）时，使用 Agent YAML 配置的默认值。
+     * 实现"Agent 配置默认 + API 请求覆盖"的分层覆盖模式。
+     * </p>
+     */
+    private void applyDefaultRagMode(String baseAgentName, UnifiedChatRequest request) {
+        String requestRagMode = request.getRagMode();
+        if (requestRagMode == null || "NONE".equals(requestRagMode)) {
+            String agentRagMode = agentDomainService.getAgentRagMode(baseAgentName);
+            if (!"NONE".equals(agentRagMode)) {
+                request.setRagMode(agentRagMode);
+                log.info("使用 Agent 默认 RAG 模式: agent={}, ragMode={}", baseAgentName, agentRagMode);
+            }
+        }
+    }
+
+    /**
      * 应用 RAG 配置
      * <p>
-     * 从Spring Bean容器中获取Knowledge实例
-     * 用户应通过 @Bean 注解创建知识库实例，例如：
+     * 从Spring Bean容器中获取Knowledge实例。
+     * 知识库可通过自动配置（推荐）或手动 @Bean 方式注册：
      * </p>
+     * <ol>
+     * <li><b>自动配置</b>（推荐）：{@code agentscope.extensions.autoConfigEnabled=true}，
+     * YAML 配置的知识库自动注册为 Bean</li>
+     * <li><b>手动 @Bean</b>（备用）：在 @Configuration 类中手动创建</li>
+     * </ol>
      *
      * <pre>
      * &#64;Bean
@@ -304,7 +366,7 @@ public class AdvancedAgentFactory {
             Set<Knowledge> knowledgeBases = getKnowledgeBases(request.getKnowledgeBases());
             if (knowledgeBases.isEmpty()) {
                 log.warn("未找到知识库实例，RAG功能可能无法正常工作");
-                log.info("提示：请通过 @Bean 创建知识库实例");
+                log.info("提示：请在 agentscope.yml 中配置知识库（autoConfigEnabled=true），或通过 @Bean 手动创建");
                 return;
             }
 
@@ -323,18 +385,18 @@ public class AdvancedAgentFactory {
                 if (request.getRetrieveLimit() != null) {
                     configBuilder.limit(request.getRetrieveLimit());
                 } else {
-                    configBuilder.limit(DEFAULT_RETRIEVE_CONFIG.getLimit());
+                    configBuilder.limit(defaultRetrieveConfig.getLimit());
                 }
 
                 if (request.getRetrieveScoreThreshold() != null) {
                     configBuilder.scoreThreshold(request.getRetrieveScoreThreshold());
                 } else {
-                    configBuilder.scoreThreshold(DEFAULT_RETRIEVE_CONFIG.getScoreThreshold());
+                    configBuilder.scoreThreshold(defaultRetrieveConfig.getScoreThreshold());
                 }
 
                 builder.retrieveConfig(configBuilder.build());
             } else {
-                builder.retrieveConfig(DEFAULT_RETRIEVE_CONFIG);
+                builder.retrieveConfig(defaultRetrieveConfig);
             }
 
             log.info("RAG配置完成: mode={}, knowledgeCount={}", mode, knowledgeBases.size());
@@ -454,7 +516,7 @@ public class AdvancedAgentFactory {
     /**
      * 应用记忆配置
      */
-private void applyMemoryConfig(UnifiedChatRequest request, ReActAgent.Builder builder) {
+    private void applyMemoryConfig(UnifiedChatRequest request, ReActAgent.Builder builder) {
         String memoryMode = request.getMemoryMode();
         if (memoryMode == null || "NONE".equals(memoryMode)) {
             return;
@@ -490,8 +552,9 @@ private void applyMemoryConfig(UnifiedChatRequest request, ReActAgent.Builder bu
 
             if (memory != null) {
                 builder.longTermMemory(memory)
-                       .longTermMemoryMode(io.agentscope.core.memory.LongTermMemoryMode.BOTH);
-                // BOTH = StaticLongTermMemoryHook (自动 record/retrieve) + LongTermMemoryTools (Agent 可调用)
+                        .longTermMemoryMode(io.agentscope.core.memory.LongTermMemoryMode.BOTH);
+                // BOTH = StaticLongTermMemoryHook (自动 record/retrieve) + LongTermMemoryTools
+                // (Agent 可调用)
                 log.info("长期记忆配置完成: mode=BOTH (自动 Hook + Agent Tool)");
             } else {
                 log.warn("未找到可用的长期记忆 Bean");
@@ -592,7 +655,7 @@ private void applyMemoryConfig(UnifiedChatRequest request, ReActAgent.Builder bu
 
     /**
      * 尝试通过反射设置 Model 参数
-     * 
+     *
      * @param model      Model 实例
      * @param paramName  参数名
      * @param paramValue 参数值

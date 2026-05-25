@@ -380,7 +380,75 @@ public class MyContextEnricher implements ContextEnricher {
 - **supports**：判断是否支持处理该上下文
 - **enrich**：搜索/补充额外信息
 - **formatKey**：格式化特定 key 的数据
-- **appendPrompt**：追加提示文本
+---
+
+## 创建自定义知识库类型
+
+### 扩展点：KnowledgeCreator
+
+`KnowledgeCreator` SPI 接口用于扩展新的知识库类型。新增类型只需三步，无需修改任何已有代码。
+
+**接口定义**：
+
+```java
+public interface KnowledgeCreator {
+    /** 返回知识库类型标识（如 "elasticsearch"、"pgvector"），与 YAML 中 type 字段对应 */
+    String getType();
+    /** 根据配置创建 Knowledge 实例 */
+    Knowledge create(KnowledgeBaseConfig config);
+    /** 是否默认启用 */
+    default boolean isEnabledByDefault() { return false; }
+}
+```
+
+### 扩展示例：Elasticsearch 知识库
+
+```java
+@Component
+public class ElasticsearchKnowledgeCreator implements KnowledgeCreator {
+
+    @Override
+    public String getType() {
+        return "elasticsearch";
+    }
+
+    @Override
+    public Knowledge create(KnowledgeBaseConfig config) {
+        // 使用 AgentScope SDK 的 Builder API 创建
+        return ElasticsearchKnowledge.builder()
+                .config(ElasticsearchConfig.builder()
+                        .url(config.getApiUrl())
+                        .apiKey(config.getApiKey())
+                        .indexName(config.getDatasetId())
+                        .build())
+                .build();
+    }
+}
+```
+
+### 配置 YAML
+
+```yaml
+agentscope:
+  extensions:
+    knowledge-bases:
+      my-elastic:
+        enabled: true
+        type: elasticsearch       # ← 与 getType() 返回值一致
+        api-url: http://localhost:9200
+        api-key: ${ES_API_KEY:}
+        dataset-id: my-index
+```
+
+### 自动注册流程
+
+```
+@Component 扫描 → KnowledgeAutoConfiguration 发现 ElasticsearchKnowledgeCreator
+                         ↓ 注册到 creatorMap（type → creator）
+YAML 中配置 type: elasticsearch → 匹配 ElasticsearchKnowledgeCreator
+                         ↓ create(config)
+ElasticsearchKnowledge 实例 → registerSingleton("myElastic")
+```
 
 ---
 

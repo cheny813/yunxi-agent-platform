@@ -1,6 +1,6 @@
 ---
 name: java-developer
-description: Java development workflow for building, testing, and managing Java projects. Use when building Java applications with Maven/Gradle, running tests, analyzing code, or working with Spring Boot projects. Supports Maven commands (mvn), Gradle (gradle), and Java tools. Triggers on: "build project", "run tests", "maven build", "gradle build", "java compile", or any Java development task.
+description: Java development workflow for building, testing, and managing Java projects. Use when building Java applications with Maven/Gradle, running tests, analyzing code, or working with Spring Boot projects. Supports Maven commands (mvn), Gradle (gradle), and Java tools.
 ---
 
 # Java Developer

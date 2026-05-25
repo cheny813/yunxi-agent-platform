@@ -106,6 +106,7 @@ agent-core/
 │   ├── profile/       # 用户画像
 │   ├── embedding/     # 嵌入模型
 │   ├── security/      # 安全
+│   ├── knowledge/      # 知识库创建器（KnowledgeCreator SPI 扩展点）
 │   ├── a2a/           # 跨服务协作
 │   ├── intelligent/   # 智能子系统
 │   ├── controller/    # 控制器
@@ -127,6 +128,7 @@ agent-core/
 | 场景贡献 | SceneContributor | 注册业务场景 |
 | 上下文增强 | ContextEnricher | 丰富对话上下文 |
 | 工具处理器 | ToolHandler | 处理特定工具调用 |
+| **知识库创建** | **KnowledgeCreator** | **新增知识库类型扩展** |
 
 ---
 

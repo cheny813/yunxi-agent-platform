@@ -76,6 +76,7 @@ agents:
     name: "营养专家助手"
     system-prompt: "你是营养专家..."  # 提示词
     model: "qwen-max"                  # LLM
+    rag-mode: GENERIC                  # 默认 RAG 模式（请求未指定时自动生效）
     memory:                            # 记忆
       type: "smart"
       max-memories: 100
@@ -85,6 +86,81 @@ agents:
     mcp-servers:                       # MCP 工具
       - nutrition-knowledge
 ```
+
+---
+
+## 知识库 (RAG)
+
+### 理论基础：检索增强生成
+
+RAG（Retrieval-Augmented Generation）是一种将信息检索与文本生成相结合的技术。Agent 在回答用户问题前，先从知识库中检索相关信息，再将检索结果作为上下文交给 LLM 生成回答。
+
+```
+用户问题
+    ↓
+┌─────────────────────┐
+│  知识库检索          │
+│  - 向量相似度搜索     │
+│  - 语义匹配           │
+└─────────┬───────────┘
+          ↓
+┌─────────────────────┐     ┌─────────────────┐
+│  检索结果            │────→│  LLM 生成回答    │
+│  (相关文本片段)       │     │  (结合上下文)    │
+└─────────────────────┘     └─────────────────┘
+```
+
+### 支持的 5 种知识库类型
+
+| 类型 | 实现 | 依赖 | 文档管理 | 适用场景 |
+|------|------|------|---------|---------|
+| `bailian` | BailianKnowledge | 阿里云百炼 | 百炼控制台 | 企业级、多轮对话、查询重写 |
+| `dify` | DifyKnowledge | Dify 平台 | Dify 控制台 | 多种检索模式、Reranking |
+| `ragflow` | RAGFlowKnowledge | RAGFlow | RAGFlow 控制台 | 强大OCR、知识图谱、多数据集 |
+| `haystack` | HayStackKnowledge | HayStack | HayStack 管道 | 深度学习 RAG 框架 |
+| `simple` | SimpleKnowledge | 内置 | 代码管理 | 开发、测试、完全控制数据 |
+
+### 自动配置（推荐方式）
+
+当 `agentscope.extensions.autoConfigEnabled=true` 时，框架会根据 `agentscope.yml` 中的 `knowledge-bases` 配置，自动创建对应的 Knowledge 实例并注册为 Spring Bean：
+
+```yaml
+agentscope:
+  extensions:
+    autoConfigEnabled: true
+    knowledge-bases:
+      tech-docs:
+        enabled: true
+        type: bailian
+        access-key-id: ${BAILIAN_ACCESS_KEY_ID}
+        access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET}
+        workspace-id: ${BAILIAN_WORKSPACE_ID}
+        index-id: ${BAILIAN_INDEX_ID}
+```
+
+自动配置由 `KnowledgeAutoConfiguration` 和 `KnowledgeCreator` SPI 机制实现：
+
+```
+YAML 配置 → KnowledgeAutoConfiguration (调度器)
+              ↓ @Autowired List<KnowledgeCreator>
+    BailianCreator / DifyCreator / RAGFlowCreator / SimpleCreator / HayStackCreator
+              ↓ creator.create(config)
+          Knowledge 实例 → registerSingleton(beanName)
+              ↓
+    AdvancedAgentFactory @Autowired Map<String, Knowledge>
+```
+
+### 在 API 请求中使用
+
+```json
+{
+  "message": "查询产品信息",
+  "ragMode": "GENERIC",
+  "knowledgeBases": ["techDocs"]
+}
+```
+
+Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`product-manual` → `productManual`。
 
 ---
 

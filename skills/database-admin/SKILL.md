@@ -1,6 +1,6 @@
 ---
 name: database-admin
-description: Database operations including SQL query execution, backup/restore, schema management, and performance optimization. Use when running SQL queries, managing database schemas, performing backups, or optimizing query performance. Supports MySQL, PostgreSQL, and other databases. Triggers on: "sql query", "database backup", "create table", "run sql", "mysql", or any database task.
+description: Database operations including SQL query execution, backup/restore, schema management, and performance optimization. Use when running SQL queries, managing database schemas, performing backups, or optimizing query performance. Supports MySQL, PostgreSQL, and other databases.
 ---
 
 # Database Admin

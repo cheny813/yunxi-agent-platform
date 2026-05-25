@@ -145,6 +145,40 @@ export REDIS_PASSWORD=your_password
 
 # LLM API Key
 export DASHSCOPE_API_KEY=your_api_key
+
+# ============================================
+# 可选：知识库（RAG）配置
+# ============================================
+# 启用知识库自动配置后，agentscope.yml 中配置的知识库将自动注册为 Bean
+export AGENTSCOPE_AUTO_CONFIG=true
+
+# 百炼知识库（阿里云 RAG）
+export BAILIAN_ENABLED=false
+export BAILIAN_ACCESS_KEY_ID=
+export BAILIAN_ACCESS_KEY_SECRET=
+export BAILIAN_WORKSPACE_ID=
+export BAILIAN_INDEX_ID=
+
+# Dify 知识库
+export DIFY_ENABLED=false
+export DIFY_API_KEY=
+export DIFY_API_URL=
+export DIFY_DATASET_ID=
+
+# RAGFlow 知识库
+export RAGFLOW_ENABLED=false
+export RAGFLOW_API_KEY=
+export RAGFLOW_API_URL=http://localhost:9380
+export RAGFLOW_DATASET_ID=
+
+# Simple 本地知识库（开发测试用）
+export SIMPLE_KB_ENABLED=false
+
+# ============================================
+# 可选：RAG 检索默认参数
+# ============================================
+export RAG_DEFAULT_LIMIT=5
+export RAG_DEFAULT_SCORE_THRESHOLD=0.5
 ```
 
 **为什么使用环境变量**：

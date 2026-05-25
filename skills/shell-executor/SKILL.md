@@ -1,6 +1,6 @@
 ---
 name: shell-executor
-description: Execute shell commands on Windows, Linux, or macOS. Use when running system commands, scripts, or console applications that require shell access. Supports Windows (cmd/powershell), Linux (bash), and macOS (zsh/bash). Commands execute in the user's working directory with proper environment. Triggers on: "run command", "execute shell", "run script", "run tests", "build project", "install dependencies", or any task requiring command-line execution.
+description: Execute shell commands on Windows, Linux, or macOS. Use when running system commands, scripts, or console applications that require shell access.
 ---
 
 # Shell Executor

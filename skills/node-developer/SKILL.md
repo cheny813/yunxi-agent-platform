@@ -1,6 +1,6 @@
 ---
 name: node-developer
-description: Node.js and JavaScript development workflow for building, testing, and managing npm projects. Use when working with Node.js applications, running npm/yarn commands, building frontend projects, or managing JavaScript dependencies. Triggers on: "npm install", "npm run build", "yarn install", "node script", "npm test", or any Node.js development task.
+description: Node.js and JavaScript development workflow for building, testing, and managing npm projects. Use when working with Node.js applications, running npm/yarn commands, building frontend projects, or managing JavaScript dependencies.
 ---
 
 # Node Developer
