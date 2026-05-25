@@ -393,8 +393,8 @@ mysql -u yunxi_agent -p yunxi_agent < migration/v1.1.0.sql
 ---
 
 **技术支持**
-- GitHub Issues: https://github.com/yunxi/yunxi-agent-platform/issues
-- 项目文档: https://github.com/yunxi/yunxi-agent-platform/tree/main/docs
+- GitCode Issues: https://gitcode.com/chenyao813/yunxi-agent-platform/issues
+- 项目文档: https://gitcode.com/chenyao813/yunxi-agent-platform/tree/main/docs
 - 运维文档更新: 每次部署后更新此文档
 
 **⚠️ 注意事项**

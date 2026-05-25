@@ -42,7 +42,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/yunxi/yunxi-agent-platform.git
+git clone https://gitcode.com/chenyao813/yunxi-agent-platform.git
 cd yunxi-agent-platform
 
 # 2. 编译安装
@@ -120,7 +120,7 @@ curl -X POST http://localhost:8080/api/chat \
 
 ## MCP 工具生态
 
-yunxi 与 [yunxi-mcp-servers](https://github.com/yunxi/yunxi-mcp-servers) 配合使用，提供 30+ 即插即用的 MCP 工具：
+yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 配合使用，提供 30+ 即插即用的 MCP 工具：
 
 | 类别 | 工具 |
 |------|------|

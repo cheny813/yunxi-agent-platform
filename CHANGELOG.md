@@ -121,6 +121,6 @@
 - 基础 Agent 抽象
 - 简单对话功能
 
-[未发布]: https://github.com/yunxi/yunxi-agent-platform/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/yunxi/yunxi-agent-platform/releases/tag/v1.0.0
-[0.x.x]: https://github.com/yunxi/yunxi-agent-platform/releases/tag/initial
+[未发布]: https://gitcode.com/chenyao813/yunxi-agent-platform/compare/v1.0.0...HEAD
+[1.0.0]: https://gitcode.com/chenyao813/yunxi-agent-platform/releases/tag/v1.0.0
+[0.x.x]: https://gitcode.com/chenyao813/yunxi-agent-platform/releases/tag/initial

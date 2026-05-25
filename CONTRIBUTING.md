@@ -10,7 +10,7 @@
 
 ### 1. 报告问题
 
-- 使用 GitHub Issues 报告 Bug 或功能请求
+- 使用 GitCode Issues 报告 Bug 或功能请求
 - 提交问题时，请提供：
   - 清晰的标题和描述
   - 复现步骤
@@ -22,7 +22,7 @@
 
 1. **Fork 仓库**
    ```bash
-   git clone https://github.com/your-username/yunxi-agent-platform.git
+   git clone https://gitcode.com/your-username/yunxi-agent-platform.git
    cd yunxi-agent-platform
    ```
 
@@ -105,7 +105,7 @@
 ### 快速开始
 ```bash
 # 克隆项目
-git clone https://github.com/yunxi/yunxi-agent-platform.git
+git clone https://gitcode.com/chenyao813/yunxi-agent-platform.git
 cd yunxi-agent-platform
 
 # 安装依赖
@@ -139,7 +139,7 @@ yunxi-agent-platform/
 
 ## 联系方式
 
-- GitHub Issues: https://github.com/yunxi/yunxi-agent-platform/issues
+- GitCode Issues: https://gitcode.com/chenyao813/yunxi-agent-platform/issues
 - 邮箱: dev@yunxi.cn
 
 ## 致谢
