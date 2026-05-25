@@ -24,11 +24,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yunxi/agent-platform.git"
+    "url": "https://gitcode.com/chenyao813/yunxi-agent-platform.git"
   },
-  "homepage": "https://github.com/yunxi/agent-platform#readme",
+  "homepage": "https://gitcode.com/chenyao813/yunxi-agent-platform#readme",
   "bugs": {
-    "url": "https://github.com/yunxi/agent-platform/issues"
+    "url": "https://gitcode.com/chenyao813/yunxi-agent-platform/issues"
   },
   "engines": {
     "node": ">=14.0.0"

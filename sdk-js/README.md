@@ -564,5 +564,5 @@ MIT License
 
 ## 📞 技术支持
 
-- GitHub Issues: [https://github.com/yunxi/agent-platform/issues](https://github.com/yunxi/agent-platform/issues)
+- GitCode Issues: [https://gitcode.com/chenyao813/yunxi-agent-platform/issues](https://gitcode.com/chenyao813/yunxi-agent-platform/issues)
 - 文档: [SDK使用指南](../SDK_USAGE_GUIDE.md)
