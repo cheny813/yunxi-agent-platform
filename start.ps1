@@ -73,7 +73,7 @@ $MYSQL_DATABASE = "agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32b521ea86488c972a0d60d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32bxxxx08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"

@@ -96,3 +96,6 @@ build/
 .env.local
 .env.*.local
 启动项目.bat
+
+# 本地测试文件
+.agentscope/
