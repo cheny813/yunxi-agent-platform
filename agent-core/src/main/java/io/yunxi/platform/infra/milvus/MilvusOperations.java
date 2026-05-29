@@ -1,10 +1,24 @@
 package io.yunxi.platform.infra.milvus;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
+
 import com.google.gson.JsonObject;
+
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.collection.request.GetCollectionStatsReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
+import io.milvus.v2.service.collection.response.GetCollectionStatsResp;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;
 import io.milvus.v2.service.vector.request.SearchReq;
@@ -14,18 +28,6 @@ import io.milvus.v2.service.vector.response.SearchResp;
 import io.yunxi.platform.framework.embedding.EmbeddingService;
 import io.yunxi.platform.framework.sync.EmbeddingBatchService;
 import io.yunxi.platform.infra.config.MilvusConfig;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.lang.Nullable;
-import org.springframework.stereotype.Service;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Milvus 操作门面
@@ -153,6 +155,34 @@ public class MilvusOperations {
     }
 
     /**
+     * 获取集合统计信息（行数）
+     * <p>
+     * 使用 Milvus SDK v2 的 getCollectionStatistics API，直接从元数据获取行数。
+     * 相比 QueryIterator 遍历计数：O(1) 复杂度，可靠性更高。
+     * </p>
+     *
+     * @param collectionName 集合名称
+     * @return 集合中的行数，查询失败或 Milvus 不可用时返回 -1
+     */
+    public long getCollectionStatistics(String collectionName) {
+        if (!isAvailable()) {
+            return -1;
+        }
+        try {
+            GetCollectionStatsReq req = GetCollectionStatsReq.builder()
+                    .collectionName(collectionName)
+                    .build();
+            GetCollectionStatsResp resp = milvusClient.getCollectionStats(req);
+            long numRows = resp.getNumOfEntities();
+            log.debug("集合 {} 统计信息: numRows={}", collectionName, numRows);
+            return numRows;
+        } catch (Exception e) {
+            log.error("获取集合统计信息失败: {}", collectionName, e);
+            return -1;
+        }
+    }
+
+    /**
      * 创建集合
      *
      * @param collectionName 集合名称
@@ -180,12 +210,40 @@ public class MilvusOperations {
     }
 
     /**
-     * 创建集合（带索引参数）
+     * 创建集合（带集合描述和索引参数）
      *
      * @param collectionName 集合名称
+     * @param description    集合中文描述（如"菜品分类向量库"）
      * @param schema         集合 schema
      * @param indexParams    索引参数
      * @return true-创建成功
+     */
+    public boolean createCollection(String collectionName, String description,
+            CreateCollectionReq.CollectionSchema schema,
+            List<IndexParam> indexParams) {
+        if (!isAvailable()) {
+            log.warn("Milvus 不可用，跳过创建集合: {}", collectionName);
+            return false;
+        }
+        try {
+            CreateCollectionReq req = CreateCollectionReq.builder()
+                    .collectionName(collectionName)
+                    .description(description != null ? description : "")
+                    .collectionSchema(schema)
+                    .indexParams(indexParams)
+                    .build();
+            milvusClient.createCollection(req);
+            initializedCollections.add(collectionName);
+            log.info("集合创建成功(含索引): {} - {}", collectionName, description);
+            return true;
+        } catch (Exception e) {
+            log.error("创建集合失败(含索引): {}", collectionName, e);
+            return false;
+        }
+    }
+
+    /**
+     * 创建集合（带索引参数）
      */
     public boolean createCollection(String collectionName, CreateCollectionReq.CollectionSchema schema,
             List<IndexParam> indexParams) {

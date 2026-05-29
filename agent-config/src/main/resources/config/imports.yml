@@ -1,0 +1,31 @@
+# ============================================================
+# 集中化配置导入
+# ============================================================
+# 此文件汇总所有公共配置片段，三个 application.yml 只需导入此一处。
+# 新增配置文件只需在此文件中添加一行。
+# ============================================================
+spring:
+  config:
+    import: >
+      optional:classpath:config/server.yml,
+      optional:classpath:config/datasource.yml,
+      optional:classpath:config/cache.yml,
+      optional:classpath:config/async.yml,
+      optional:classpath:config/redis.yml,
+      optional:classpath:config/llm.yml,
+      optional:classpath:config/milvus.yml,
+      optional:classpath:config/embedding.yml,
+      optional:classpath:config/persistence.yml,
+      optional:classpath:config/mcp-core.yml,
+      optional:classpath:config/mcp-external.yml,
+      optional:classpath:config/mcp-business.yml,
+      optional:classpath:config/skill.yml,
+      optional:classpath:config/resilience.yml,
+      optional:classpath:config/file-upload.yml,
+      optional:classpath:config/a2a-pipeline.yml,
+      optional:classpath:config/agentscope.yml,
+      optional:classpath:config/gateway.yml,
+      optional:classpath:config/business.yml,
+      optional:classpath:config/text2sql.yml,
+      optional:classpath:config/rule-engine.yml,
+      optional:classpath:config/sync-pipelines.yml

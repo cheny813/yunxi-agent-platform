@@ -1,10 +1,10 @@
 package io.yunxi.platform.framework.agent;
 
+import io.agentscope.core.agent.Agent;
 import io.agentscope.core.message.Msg;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.StructuredChatRequest;
 import io.yunxi.platform.shared.exception.BadRequestException;
-import io.agentscope.core.ReActAgent;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -14,13 +14,6 @@ import java.time.Duration;
  *
  * <p>
  * 【领域层】处理结构化输出请求（单一职责）
- * </p>
- * <p>
- * 支持两种配置方式：
- * <ul>
- * <li><b>预定义模式</b>：使用预定义的字符串模式（推荐）</li>
- * <li><b>自定义Schema</b>：使用JSON Schema定义输出格式</li>
- * </ul>
  * </p>
  *
  * @author yunxi-agent-platform
@@ -55,7 +48,7 @@ public class StructuredOutputDomainService {
         }
 
         // 获取Agent实例
-        ReActAgent agent = agentDomainService.getAgentInstance(name);
+        Agent agent = agentDomainService.getAgentInstance(name);
 
         // 构建消息
         Msg userMsg = Msg.builder()
@@ -74,12 +67,7 @@ public class StructuredOutputDomainService {
         return parseStructuredResponse(responseMsg.getTextContent(), request);
     }
 
-    /**
-     * 解析结构化响应
-     */
     private Object parseStructuredResponse(String content, StructuredChatRequest request) {
-        // 简单实现：直接返回文本内容
-        // 实际应用中可以根据schema进行解析
         return content;
     }
 }

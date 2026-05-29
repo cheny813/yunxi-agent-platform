@@ -24,22 +24,21 @@
 ```
 第 4 层: 你的业务代码
   - 实现 yunxi 的 SPI 接口 (DomainContributor, SceneContributor)
-  - 调用 yunxi 的服务接口 (AgentDomainService, ChatAppService)
+  - 调用 yunxi 的服务接口 (AgentDomainService, AgentGateway)
   - 编写业务逻辑
 
 第 3 层: yunxi Agent Platform
-  - AgentDomainService (Agent 生命周期管理)
-  - ChatAppService (对话编排)
+  - AgentDomainService (Agent 生命周期管理，HarnessAgent 包装)
+  - AgentGateway (统一调用入口，含拦截链)
+  - ChatAppService (对话编排，精简版)
   - SupervisorService (多 Agent 编排)
   - RuleEngine (规则管控)
-  - SceneRouter (场景路由)
-  - McpClientService (MCP 工具调用)
-  - A2AClient (跨服务 Agent 调用)
-  - IntelligentFacadeService (智能服务门面)
+  - SceneDetectionService (场景路由)
+  - A2AServer (跨服务 Agent 调用)
 
-第 2 层: AgentScope-Java
-  - ChatAppService (实际 Agent 编排运行时)
-  - McpClient (MCP 协议客户端)
+第 2 层: AgentScope-Java + Harness
+  - HarnessAgent (Agent 运行时包装器，管理记忆/会话/上下文)
+  - ReActAgent (实际 Agent 编排运行时)
   - MemoryManager (记忆管理)
   - A2AProtocol (Agent 间通信协议)
 

@@ -20,7 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.Agent;
 import io.agentscope.core.studio.StudioMessageHook;
 import io.yunxi.platform.framework.embedding.ChatModelProvider;
 import io.yunxi.platform.framework.embedding.ModelConfig;
@@ -53,21 +53,11 @@ class AgentDomainServiceTest {
 
     @BeforeEach
     void setUp() {
-        // 设置模拟对象
         when(properties.getApiKey()).thenReturn("test-api-key");
         when(properties.getModelName()).thenReturn("test-model");
         when(properties.getDefaultPrompt()).thenReturn("test-prompt");
 
         agentDomainService = new AgentDomainService(properties, modelFactory);
-
-        // 使用反射注入StudioMessageHook
-        try {
-            var field = AgentDomainService.class.getDeclaredField("studioMessageHook");
-            field.setAccessible(true);
-            field.set(agentDomainService, studioMessageHook);
-        } catch (Exception e) {
-            // 注入失败不影响主要测试
-        }
     }
 
     @Test
@@ -80,7 +70,6 @@ class AgentDomainServiceTest {
 
     @Test
     void testListAgentsWithData() {
-        // 预注册一些Agent信息
         agentDomainService.registerAgentInfoDto("agent1", "", "prompt1", "model1");
         agentDomainService.registerAgentInfoDto("agent2", "", "prompt2", "model2");
 
@@ -89,7 +78,6 @@ class AgentDomainServiceTest {
         assertNotNull(agents);
         assertEquals(2, agents.size());
 
-        // 验证Agent信息
         AgentInfoDto agent1 = agents.stream()
                 .filter(a -> "agent1".equals(a.getName()))
                 .findFirst()
@@ -119,7 +107,6 @@ class AgentDomainServiceTest {
 
     @Test
     void testCreateAgentWithValidConfig() {
-        // 设置模型工厂模拟
         when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
 
         AgentConfigDto config = new AgentConfigDto();
@@ -138,9 +125,8 @@ class AgentDomainServiceTest {
         assertEquals("custom-model", agent.getModelName());
         assertNotNull(agent.getCreatedAt());
 
-        // 验证缓存中已存在
         assertNotNull(agentDomainService.getAgent("test-agent"));
-        assertNotNull(agentDomainService.getReActAgent("test-agent"));
+        assertNotNull(agentDomainService.getAgent("test-agent"));
     }
 
     @Test
@@ -151,8 +137,8 @@ class AgentDomainServiceTest {
 
         assertNotNull(agent);
         assertEquals("test-agent", agent.getName());
-        assertEquals("test-prompt", agent.getPrompt()); // 使用默认值
-        assertEquals("test-model", agent.getModelName()); // 使用默认值
+        assertEquals("test-prompt", agent.getPrompt());
+        assertEquals("test-model", agent.getModelName());
     }
 
     @Test
@@ -172,7 +158,7 @@ class AgentDomainServiceTest {
         when(properties.getApiKey()).thenReturn(null);
 
         AgentConfigDto config = new AgentConfigDto();
-        config.setApiKey(""); // 空字符串
+        config.setApiKey("");
 
         assertThrows(BadRequestException.class,
                 () -> agentDomainService.createAgent("test-agent", config));
@@ -182,13 +168,10 @@ class AgentDomainServiceTest {
     void testDeleteAgentExists() {
         agentDomainService.registerAgentInfoDto("test-agent", "", "test-prompt", "test-model");
 
-        // 确保Agent存在
         assertNotNull(agentDomainService.getAgent("test-agent"));
 
-        // 删除Agent
         agentDomainService.deleteAgent("test-agent");
 
-        // 验证Agent已删除
         assertThrows(NotFoundException.class,
                 () -> agentDomainService.getAgent("test-agent"));
     }
@@ -201,12 +184,10 @@ class AgentDomainServiceTest {
 
     @Test
     void testGetAgentInstanceExists() {
-        // 创建Agent实例
         when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
         agentDomainService.createAgent("test-agent", null);
 
-        ReActAgent agent = agentDomainService.getAgentInstance("test-agent");
-
+        Agent agent = agentDomainService.getAgentInstance("test-agent");
         assertNotNull(agent);
     }
 
@@ -217,18 +198,17 @@ class AgentDomainServiceTest {
     }
 
     @Test
-    void testGetReActAgentExists() {
+    void testGetAgentExistsMethod() {
         when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
         agentDomainService.createAgent("test-agent", null);
 
-        ReActAgent agent = agentDomainService.getReActAgent("test-agent");
-
+        Agent agent = agentDomainService.findAgent("test-agent");
         assertNotNull(agent);
     }
 
     @Test
-    void testGetReActAgentNotExists() {
-        assertNull(agentDomainService.getReActAgent("non-existent-agent"));
+    void testFindAgentNotExists() {
+        assertNull(agentDomainService.findAgent("non-existent-agent"));
     }
 
     @Test
@@ -255,101 +235,72 @@ class AgentDomainServiceTest {
 
     @Test
     void testRegisterAgentSchemaWithNullValues() {
-        // null名称 - 应该不注册
         agentDomainService.registerAgentSchema(null, "{\"schema\": \"test\"}");
         assertNull(agentDomainService.getAgentSchema(null));
 
-        // null schema - 应该不注册
         agentDomainService.registerAgentSchema("test-agent", null);
         assertNull(agentDomainService.getAgentSchema("test-agent"));
 
-        // 空白名称 - 应该不注册
         agentDomainService.registerAgentSchema("  ", "{\"schema\": \"test\"}");
         assertNull(agentDomainService.getAgentSchema("  "));
 
-        // 空白 schema - 应该不注册
         agentDomainService.registerAgentSchema("test-agent", "  ");
         assertNull(agentDomainService.getAgentSchema("test-agent"));
     }
 
     @Test
     void testHasStructuredOutput() {
-        // 初始状态
         assertFalse(agentDomainService.hasStructuredOutput("non-existent-agent"));
 
-        // 注册后
         agentDomainService.registerAgentSchema("test-agent", "{\"type\": \"object\"}");
         assertTrue(agentDomainService.hasStructuredOutput("test-agent"));
 
-        // 不存在的Agent
         assertFalse(agentDomainService.hasStructuredOutput("other-agent"));
     }
 
     @Test
-    void testGetAgentToolkitReflectionSafety() {
-        // 该方法依赖反射和运行环境，主要测试异常处理
+    void testAgentSysPromptCache() {
+        when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
 
-        // 测试不存在Agent的情况
-        assertNull(agentDomainService.getAgentToolkit("non-existent-agent"));
+        agentDomainService.createAgent("test-agent", null);
+        String prompt = agentDomainService.getAgentSysPrompt("test-agent");
+        assertNotNull(prompt);
+        assertEquals("test-prompt", prompt);
+    }
 
-        // TODO: 更详细的反射测试需要Mock复杂的内部结构
-        // 在实际环境中，这个方法的测试需要更复杂的设置
+    @Test
+    void testAgentModelProviderCache() {
+        when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
+
+        agentDomainService.createAgent("test-agent", null);
+        ChatModelProvider provider = agentDomainService.getAgentModelProvider("test-agent");
+        assertNotNull(provider);
     }
 
     @Test
     void testOverrideExistingAgent() {
         when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
 
-        // 第一次创建
         AgentConfigDto config1 = new AgentConfigDto();
         config1.setPrompt("first-prompt");
         AgentInfoDto agent1 = agentDomainService.createAgent("test-agent", config1);
 
-        // 修改配置后再次创建（覆盖）
         AgentConfigDto config2 = new AgentConfigDto();
         config2.setPrompt("second-prompt");
         AgentInfoDto agent2 = agentDomainService.createAgent("test-agent", config2);
 
-        // 验证使用新配置
         assertEquals("second-prompt", agent2.getPrompt());
-
-        // Agent数量应该不变（重用同一个名称）
         assertEquals(1, agentDomainService.countAgents());
     }
 
     @Test
     void testModelFactoryInteraction() {
-        // 验证模型工厂被正确调用
         when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
 
         AgentDomainService service = new AgentDomainService(properties, modelFactory);
         service.createAgent("test-agent", null);
 
-        // 验证模型工厂被调用
         verify(modelFactory, times(1)).createProvider(any(ModelConfig.class));
-    }
-
-    @Test
-    void testStudioMessageHookInjection() {
-        when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
-
-        // 注入Studio Hook的服务
-        AgentDomainService serviceWithHook = new AgentDomainService(properties, modelFactory);
-
-        // 使用反射注入hook
-        try {
-            var field = AgentDomainService.class.getDeclaredField("studioMessageHook");
-            field.setAccessible(true);
-            field.set(serviceWithHook, studioMessageHook);
-        } catch (Exception e) {
-            // 跳过hook相关测试
-            return;
-        }
-
-        // 创建Agent，应该使用hook
-        serviceWithHook.createAgent("test-agent", null);
-
-        // TODO: 验证hook是否被调用（需要更复杂的ReActAgent模拟）
     }
 
     @Test
@@ -363,10 +314,22 @@ class AgentDomainServiceTest {
 
         assertNotNull(agent.getCreatedAt());
 
-        // 验证创建时间在前后时间范围内
         assertTrue(agent.getCreatedAt().isAfter(beforeCreation.minusSeconds(1)) ||
                 agent.getCreatedAt().equals(beforeCreation));
         assertTrue(agent.getCreatedAt().isBefore(afterCreation.plusSeconds(1)) ||
                 agent.getCreatedAt().equals(afterCreation));
+    }
+
+    @Test
+    void testRegisterAgentInstance() {
+        when(modelFactory.createProvider(any(ModelConfig.class))).thenReturn(chatModelProvider);
+        agentDomainService.createAgent("test-agent", null);
+
+        Agent agent = agentDomainService.getAgentInstance("test-agent");
+        assertNotNull(agent);
+
+        agentDomainService.registerAgentInstance("test-agent-2", agent);
+        Agent agent2 = agentDomainService.findAgent("test-agent-2");
+        assertNotNull(agent2);
     }
 }

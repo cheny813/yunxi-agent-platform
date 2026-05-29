@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -93,23 +94,60 @@ public class McpQueryService {
      * @return 查询结果
      */
     public String callMcpDatabase(String host, int port, String sql) {
-        return callMcpDatabase(host, port, sql, 10000);
+        return callMcpDatabase(host, port, null, sql, 10000);
     }
 
     /**
-     * 通过 MCP 调用外部数据库执行SQL查询
+     * 通过 MCP 调用外部数据库执行SQL查询（指定数据库）
      *
      * @param host  MCP 数据库服务地址
      * @param port  MCP 数据库服务端口
+     * @param dbId  数据库ID（如 "school_db"），null 则使用默认库
      * @param sql   SQL 查询语句
      * @param limit 返回结果数量限制
      * @return 查询结果
      */
-    public String callMcpDatabase(String host, int port, String sql, int limit) {
+    public String callMcpDatabase(String host, int port, String dbId, String sql, int limit) {
         Map<String, Object> arguments = new HashMap<>();
+        arguments.put("db_id", dbId != null ? dbId : "default");
         arguments.put("sql", sql);
         arguments.put("limit", limit);
-        return callMcpTool(host, port, "query_db", arguments);
+        arguments.put("format", "json");
+        String rawResponse = callMcpTool(host, port, "query_db", arguments);
+        return extractTextContent(rawResponse);
+    }
+
+    /**
+     * 从 MCP JSON-RPC 响应中提取 text 内容
+     * <p>
+     * 检测 isError 标记，发生错误时返回 "[]" 而非错误文本，
+     * 避免上游 parseJsonResult() 解析错误文本导致 JSON 解析异常。
+     * </p>
+     */
+    @SuppressWarnings("unchecked")
+    private String extractTextContent(String rawResponse) {
+        try {
+            Map<String, Object> resp = objectMapper.readValue(rawResponse, Map.class);
+            Map<String, Object> result = (Map<String, Object>) resp.get("result");
+            if (result != null) {
+                // 检测 isError 标记，发生错误时返回空结果
+                if (Boolean.TRUE.equals(result.get("isError"))) {
+                    List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
+                    if (content != null && !content.isEmpty()) {
+                        String errorText = (String) content.get(0).get("text");
+                        log.warn("MCP 查询返回错误: {}", errorText);
+                    }
+                    return "[]";
+                }
+                List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
+                if (content != null && !content.isEmpty()) {
+                    return (String) content.get(0).get("text");
+                }
+            }
+        } catch (Exception e) {
+            log.warn("提取 MCP 响应内容失败: {}", e.getMessage());
+        }
+        return "[]";
     }
 
     /**

@@ -88,6 +88,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
         log.error("服务器内部错误", ex);
+
+        // 对 Path 文件系统类型不匹配异常做友好提示
+        String message = ex.getMessage();
+        if (ex instanceof IllegalArgumentException
+                && message != null
+                && message.contains("different type of Path")) {
+            log.warn("检测到 Path 文件系统类型不匹配。"
+                    + "可尝试设置 agentscope.skill-box.enabled=false", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(createError("INTERNAL_ERROR", "服务内部错误，请联系管理员"));
+        }
+
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(createError("INTERNAL_ERROR", ex.getMessage()));
     }

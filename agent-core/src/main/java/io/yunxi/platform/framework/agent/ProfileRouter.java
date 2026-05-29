@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import io.agentscope.core.agent.Agent;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.ProfileDefinition;
@@ -28,31 +29,57 @@ import io.yunxi.platform.shared.dto.ProfileInfo;
 @Component
 public class ProfileRouter {
 
+    /** 日志记录器 */
     private static final Logger log = LoggerFactory.getLogger(ProfileRouter.class);
 
+    /** Agent 领域服务 — 获取 Agent 实例 */
     private final AgentDomainService agentDomainService;
+
+    /** Agent 定义加载器 — 读取 Profile 配置（YAML 中的 profiles 字段） */
     private final AgentDefinitionLoader definitionLoader;
 
+    /**
+     * 构造 Profile 路由器
+     *
+     * @param agentDomainService Agent 领域服务
+     * @param definitionLoader   Agent 定义加载器
+     */
     public ProfileRouter(AgentDomainService agentDomainService, AgentDefinitionLoader definitionLoader) {
         this.agentDomainService = agentDomainService;
         this.definitionLoader = definitionLoader;
     }
 
     /**
-     * 构建复合键：agentName + "#" + profileName
+     * 构建复合缓存键：agentName + "#" + profileName
+     * <p>
+     * AgentDomainService 中同个 Agent 的不同 Profile 实例通过此复合键区分存储。
+     * 例如 "nutrition-assistant#dietitian" 是校园餐场景，使用 dietitian 配置的实例。
+     * </p>
+     *
+     * @param agentName Agent 名称
+     * @param profile   Profile 名称
+     * @return 复合键字符串
      */
     public String buildCompositeKey(String agentName, String profile) {
         return agentName + "#" + profile;
     }
 
     /**
-     * 解析 Agent 实例
+     * 解析 Agent 实例（支持 Profile 路由）
+     * <p>
+     * 路由规则：
+     * <ol>
+     * <li>profile 为 null 或空 → 直接返回默认 Agent 实例</li>
+     * <li>profile 存在 → 构造复合键查询 Profile Agent 实例</li>
+     * <li>Profile 未找到 → 记录警告日志，回退到默认 Agent 实例</li>
+     * </ol>
+     * </p>
      *
      * @param agentName Agent 名称
      * @param profile   Profile 名称（null 或空 = 使用默认 Agent）
-     * @return ReActAgent 实例
+     * @return Agent 实例（Profile 不存在时回退到默认）
      */
-    public Object resolve(String agentName, String profile) {
+    public Agent resolve(String agentName, String profile) {
         if (profile == null || profile.isBlank()) {
             return agentDomainService.getAgentInstance(agentName);
         }
@@ -68,9 +95,14 @@ public class ProfileRouter {
 
     /**
      * 获取 Agent 的可用 Profile 列表
+     * <p>
+     * 从 AgentDefinition YAML 配置的 {@code profiles} 字段读取，
+     * 返回包含名称、标签、描述的 Profile 信息列表。
+     * 无 Profile 配置时返回空列表。
+     * </p>
      *
      * @param agentName Agent 名称
-     * @return Profile 信息列表
+     * @return Profile 信息列表（可能为空）
      */
     public List<ProfileInfo> getAvailableProfiles(String agentName) {
         AgentDefinition def = definitionLoader.getAgentDefinition(agentName);

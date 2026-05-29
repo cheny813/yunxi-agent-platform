@@ -63,7 +63,7 @@
 
 ```
 D:\work\code\yunxi-agent-platform
-├── 启动ReMe服务.bat   # ReMe 启动脚本
+├── 启动ReMe服务.ps1   # ReMe 启动脚本（PowerShell）
 ├── docs/              # 本文档位置
 └── [其他 yunxi 文件]
 ```
@@ -111,31 +111,31 @@ ls ~/agentscope-ReMe
 
 yunxi Agent Platform 已提供完整的启动脚本：
 
-```bash
+```powershell
 # 进入 yunxi 项目目录
 cd D:\work\code\yunxi-agent-platform
 
 # 启动 ReMe 服务
-启动ReMe服务.bat
+.\启动ReMe服务.ps1
 ```
 
 ### 启动脚本详解
 
-**启动脚本位置**: `D:\work\code\yunxi-agent-platform\启动ReMe服务.bat`
+**启动脚本位置**: `D:\work\code\yunxi-agent-platform\启动ReMe服务.ps1`
 
 **配置项**:
 
-```batch
-REM 端口配置
-set PORT=8002
+```powershell
+# 端口配置
+$PORT=8002
 
-REM AI 模型配置
-set LLM_MODEL=ollama/qwen2.5:7b
-set EMBEDDING_MODEL=ollama/bge-m3
-set OLLAMA_BASE_URL=http://localhost:11434
+# AI 模型配置
+$LLM_MODEL="ollama/qwen2.5:7b"
+$EMBEDDING_MODEL="ollama/bge-m3"
+$OLLAMA_BASE_URL="http://localhost:11434"
 
-REM API 密钥配置 (本地模式使用占位符)
-set FLOW_EMBEDDING_API_KEY=ollama
+# API 密钥配置 (本地模式使用占位符)
+$FLOW_EMBEDDING_API_KEY="ollama"
 ```
 
 ### 手动启动方式

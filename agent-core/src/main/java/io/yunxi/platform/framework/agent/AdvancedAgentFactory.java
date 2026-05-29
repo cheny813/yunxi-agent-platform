@@ -11,192 +11,119 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import io.agentscope.core.ReActAgent;
-import io.agentscope.core.memory.InMemoryMemory;
-import io.agentscope.core.memory.Memory;
-import io.agentscope.core.model.Model;
+import io.agentscope.core.agent.Agent;
 import io.agentscope.core.plan.PlanNotebook;
+import io.agentscope.core.studio.StudioMessageHook;
 import io.agentscope.core.rag.Knowledge;
 import io.agentscope.core.rag.RAGMode;
 import io.agentscope.core.rag.model.RetrieveConfig;
 import io.agentscope.core.skill.SkillBox;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.yunxi.platform.framework.embedding.ChatModelProvider;
+import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.skill.SkillRegistryService;
 import io.yunxi.platform.framework.tool.ToolGroupManager;
 import io.yunxi.platform.infra.config.AgentscopeExtensionProperties;
+import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
 
 /**
  * 高级功能 Agent 工厂服务
  * <p>
- * 本服务负责创建支持高级功能的 Agent 实例，直接使用AgentScope SDK原生API。用户可以通过请求配置启用以下高级功能：
+ * 本服务负责创建支持高级功能的临时 Agent 实例，通过 HarnessAgent 包装 ReActAgent。
+ * 用户可以通过请求配置启用 RAG 知识库、长期记忆、工具调用等高级功能。
  * </p>
- * <ul>
- * <li><b>RAG 知识库</b>：使用AgentScope 官方扩展（BailianKnowledge、DifyKnowledge 等）</li>
- * <li><b>长期记忆</b>：使用AgentScope 官方扩展（Mem0、AutoContextMemory 等）</li>
- * <li><b>工具调用</b>：使用AgentScope Toolkit API</li>
- * <li><b>Studio 可视化</b>：自动注入StudioMessageHook</li>
- * </ul>
- *
- * <h3>知识库自动配置（推荐方式）</h3>
- *
- * <p>
- * 配置 {@code agentscope.extensions.autoConfigEnabled=true} 后，只需在
- * {@code agentscope.yml}
- * 中声明知识库配置，框架会自动创建 Knowledge 实例并注册为 Spring Bean。
- * </p>
- *
- * <pre>
- * # agentscope.yml
- * agentscope:
- *   extensions:
- *     autoConfigEnabled: true
- *     knowledge-bases:
- *       tech-docs:
- *         enabled: true
- *         type: bailian
- *         access-key-id: ${BAILIAN_ACCESS_KEY_ID}
- *         access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET}
- *         workspace-id: ${BAILIAN_WORKSPACE_ID}
- *         index-id: ${BAILIAN_INDEX_ID}
- * </pre>
- *
- * <h3>手动 @Bean 方式（备用）</h3>
- *
- * <p>
- * 如需更精细的控制（如自定义检索参数），仍可使用 {@code @Bean} 手动创建：
- * </p>
- *
- * <pre>
- * &#64;Configuration
- * public class AgentscopeConfiguration {
- *     &#64;Bean
- *     public Knowledge productKnowledge(
- *             &#64;Value("${agentscope.knowledge-bases.product.access-key-id}") String accessKeyId,
- *             &#64;Value("${agentscope.knowledge-bases.product.access-key-secret}") String accessKeySecret,
- *             &#64;Value("${agentscope.knowledge-bases.product.workspace-id}") String workspaceId,
- *             &#64;Value("${agentscope.knowledge-bases.product.index-id}") String indexId) {
- *         return BailianKnowledge.builder()
- *                 .config(BailianConfig.builder()
- *                         .accessKeyId(accessKeyId)
- *                         .accessKeySecret(accessKeySecret)
- *                         .workspaceId(workspaceId)
- *                         .indexId(indexId)
- *                         .build())
- *                 .build();
- *     }
- * }
- * </pre>
- *
- * <h3>API 请求中引用知识库</h3>
- *
- * <pre>
- * POST /api/chat
- * {
- *   "message": "查询产品信息",
- *   "ragMode": "GENERIC",
- *   "knowledgeBases": ["techDocs"]
- * }
- * </pre>
- *
- * <h3>支持AgentScope官方扩展</h3>
- *
- * <h4>RAG 知识库：</h4>
- * <ul>
- * <li><b>agentscope-extensions-rag-bailian</b> - 阿里云百炼知识库</li>
- * <li><b>agentscope-extensions-rag-dify</b> - Dify 知识库</li>
- * <li><b>agentscope-extensions-rag-haystack</b> - HayStack 知识库</li>
- * <li><b>agentscope-extensions-rag-ragflow</b> - RAGFlow 知识库</li>
- * <li><b>agentscope-extensions-rag-simple</b> - 简单知识库（内存）</li>
- * </ul>
- *
- * <h4>长期记忆：</h4>
- * <ul>
- * <li><b>agentscope-extensions-mem0</b> - Mem0 云端记忆</li>
- * <li><b>agentscope-extensions-reme</b> - ReMe 记忆</li>
- * <li><b>agentscope-extensions-autocontext-memory</b> - 自动上下文记忆</li>
- * </ul>
- *
- * <h4>A2A 协议：</h4>
- * <ul>
- * <li><b>agentscope-extensions-a2a-client</b> - A2A 客户端</li>
- * <li><b>agentscope-extensions-a2a-server</b> - A2A 服务端</li>
- * </ul>
  *
  * @author yunxi-agent-platform
  * @version 3.2.0
- * @see <a href="https://java.agentscope.io">AgentScope Java 文档</a>
- * @see io.yunxi.platform.infra.config.KnowledgeAutoConfiguration
  */
 @Service
 public class AdvancedAgentFactory {
 
     private static final Logger log = LoggerFactory.getLogger(AdvancedAgentFactory.class);
 
-    /**
-     * Agent 构建助手
-     */
-    @Autowired
-    private AgentBuilderHelper builderHelper;
-
-    /**
-     * Spring Bean 中的知识库实例映射
-     * 用户通过 @Bean 创建的知识库会自动注入到这里
-     *
-     * 必须保留 required=false！Spring 对 Map 注入的行为与 List 不同：
-     * 无 Bean 时 List 自动为空列表，但 Map 会报错。此处知识库为可选，可能不存在。
-     */
-    @Autowired(required = false)
-    private Map<String, Knowledge> knowledgeBeans = new HashMap<>();
-
-    /**
-     * Spring Bean 中的长期记忆实例映射
-     *
-     * 必须保留 required=false，原因同上（Map 注入特性）。
-     */
-    @Autowired(required = false)
-    private Map<String, io.agentscope.core.memory.LongTermMemory> memoryBeans = new HashMap<>();
-
-    /**
-     * Skill 注册中心（可选，用于按需创建过滤 SkillBox）
-     */
-    @Autowired
-    private ObjectProvider<SkillRegistryService> skillRegistryProvider;
-
-    /**
-     * 工具分组管理器
-     */
-    @Autowired
-    private ObjectProvider<ToolGroupManager> toolGroupManagerProvider;
-
-    /** 默认检索配置（来自 YAML 或硬编码默认值） */
-    private RetrieveConfig defaultRetrieveConfig;
-
-    /** Agent 领域服务 */
+    /** Agent 领域服务 — 获取基础 Agent 配置（模型提供商、提示词、RAG 模式） */
     private final AgentDomainService agentDomainService;
 
-    /** AgentScope 扩展配置（含检索默认参数） */
+    /** AgentScope 扩展配置 — 含检索默认参数（limit、scoreThreshold） */
     private final AgentscopeExtensionProperties extensionProperties;
 
-    /**
-     * 构造高级 Agent 工厂
-     *
-     * @param agentDomainService  Agent 领域服务
-     * @param extensionProperties AgentScope 扩展配置
-     */
+    /** AgentScope 核心配置属性 — 含工作区路径、compaction 等 */
+    private final AgentscopeCoreProperties coreProperties;
+
+    /** Spring Bean 容器中的知识库实例映射（beanName → Knowledge） */
+    private final Map<String, Knowledge> knowledgeBeans;
+
+    /** Spring Bean 容器中的长期记忆实例映射（beanName → LongTermMemory） */
+    private final Map<String, io.agentscope.core.memory.LongTermMemory> memoryBeans;
+
+    /** Skill 注册中心（可选，用于按需创建过滤 SkillBox） */
+    private final ObjectProvider<SkillRegistryService> skillRegistryProvider;
+
+    /** 工具分组管理器（可选，用于创建/激活工具组） */
+    private final ObjectProvider<ToolGroupManager> toolGroupManagerProvider;
+
+    /** Studio 消息 Hook 提供者（可选） */
+    private final ObjectProvider<StudioMessageHook> studioMessageHookProvider;
+
+    /** 默认检索配置 */
+    private RetrieveConfig defaultRetrieveConfig;
+
     public AdvancedAgentFactory(AgentDomainService agentDomainService,
-            AgentscopeExtensionProperties extensionProperties) {
+            AgentscopeExtensionProperties extensionProperties,
+            AgentscopeCoreProperties coreProperties,
+            ObjectProvider<SkillRegistryService> skillRegistryProvider,
+            ObjectProvider<ToolGroupManager> toolGroupManagerProvider,
+            ObjectProvider<StudioMessageHook> studioMessageHookProvider) {
         this.agentDomainService = agentDomainService;
         this.extensionProperties = extensionProperties;
+        this.coreProperties = coreProperties;
+        this.skillRegistryProvider = skillRegistryProvider;
+        this.toolGroupManagerProvider = toolGroupManagerProvider;
+        this.studioMessageHookProvider = studioMessageHookProvider;
+        this.knowledgeBeans = new HashMap<>();
+        this.memoryBeans = new HashMap<>();
         this.defaultRetrieveConfig = buildDefaultRetrieveConfig();
     }
 
     /**
+     * 注入知识库 Bean（由 Spring 容器回调调用）
+     * <p>
+     * 框架自动配置的 Knowledge 实例通过此方法注入，
+     * 在创建临时 Agent 时按需使用。
+     * 替换了原 {@code @Autowired Map<String, Knowledge>} 字段注入方式。
+     * </p>
+     */
+    public void setKnowledgeBeans(Map<String, Knowledge> knowledgeBeans) {
+        if (knowledgeBeans != null) {
+            this.knowledgeBeans.putAll(knowledgeBeans);
+        }
+    }
+
+    /**
+     * 注入长期记忆 Bean（由 Spring 容器回调调用）
+     * <p>
+     * ReMeLongTermMemory 等长期记忆实例通过此方法注入，
+     * 替换了原 {@code @Autowired Map<String, LongTermMemory>} 字段注入方式。
+     * </p>
+     */
+    public void setMemoryBeans(Map<String, io.agentscope.core.memory.LongTermMemory> memoryBeans) {
+        if (memoryBeans != null) {
+            this.memoryBeans.putAll(memoryBeans);
+        }
+    }
+
+    /**
      * 从 YAML 配置构建默认检索配置
+     * <p>
+     * 优先级：YAML 配置 {@code agentscope.extensions.retrieve} > 硬编码默认值。
+     * 默认检索 5 条，相似度阈值 0.5。
+     * </p>
      */
     private RetrieveConfig buildDefaultRetrieveConfig() {
         var yamlConfig = extensionProperties.getRetrieve();
@@ -213,29 +140,47 @@ public class AdvancedAgentFactory {
     }
 
     /**
+     * 从配置构建 CompactionConfig
+     */
+    private CompactionConfig buildCompactionConfig() {
+        var c = coreProperties.getCompaction();
+        return CompactionConfig.builder()
+                .triggerMessages(c.getTriggerMessages())
+                .triggerTokens(c.getTriggerTokens())
+                .keepMessages(c.getKeepMessages())
+                .flushBeforeCompact(c.isFlushBeforeCompact())
+                .offloadBeforeCompact(c.isOffloadBeforeCompact())
+                .build();
+    }
+
+    /**
      * 创建临时高级功能 Agent
      *
      * @param baseAgentName 基础 Agent 名称
      * @param request       请求配置
-     * @return 创建的Agent实例（如果创建失败返回null）
+     * @return 创建的 Agent 实例（如果创建失败返回 null）
      */
-    public ReActAgent createTempAgent(String baseAgentName, UnifiedChatRequest request) {
+    public Agent createTempAgent(String baseAgentName, UnifiedChatRequest request) {
         try {
             long startTime = System.currentTimeMillis();
             Map<String, Object> features = detectAdvancedFeatures(request);
             log.info("开始创建临时高级Agent: baseAgent={}, features={}", baseAgentName, features);
 
-            // 获取基础 Agent 配置
-            ReActAgent baseAgent = agentDomainService.getAgentInstance(baseAgentName);
+            // 获取基础 Agent 配置（从缓存中，而非 Agent 实例）
+            ChatModelProvider modelProvider = agentDomainService.getAgentModelProvider(baseAgentName);
+            String sysPrompt = agentDomainService.getAgentSysPrompt(baseAgentName);
+            if (modelProvider == null) {
+                log.error("基础 Agent [{}] 的模型提供商未找到", baseAgentName);
+                return null;
+            }
 
-            // 获取基础 Model
-            Model baseModel = baseAgent.getModel();
-
-            // 创建 Agent 构建器
-            ReActAgent.Builder builder = ReActAgent.builder()
+            // 创建 HarnessAgent 构建器
+            HarnessAgent.Builder builder = HarnessAgent.builder()
                     .name(baseAgentName + "-temp-" + System.currentTimeMillis())
-                    .sysPrompt(baseAgent.getSysPrompt())
-                    .model(baseModel);
+                    .sysPrompt(sysPrompt != null ? sysPrompt : "")
+                    .model(modelProvider)
+                    .workspace(coreProperties.getWorkspaceBasePath() + "/" + baseAgentName)
+                    .compaction(buildCompactionConfig());
 
             // 配置工具
             Toolkit toolkit = new Toolkit();
@@ -249,18 +194,22 @@ public class AdvancedAgentFactory {
             applySkillConfig(request, builder, toolkit);
             applyMemoryConfig(request, builder);
             applyExecutionConfig(request, builder);
-            applyModelConfig(request, baseModel); // 应用动态模型参数
+            applyModelConfig(request, builder);
             builder.toolkit(toolkit);
 
-            // 注入标准 Hook 集合（Studio + TextToolCallParser）
-            builderHelper.injectStandardHooks(builder, toolkit);
+            // 注入标准 Hook（Studio + TextToolCallParser）
+            if (studioMessageHookProvider.getIfAvailable() != null) {
+                builder.hook(studioMessageHookProvider.getIfAvailable());
+            }
+            TextToolCallParserHook textHook = new TextToolCallParserHook(toolkit);
+            builder.hook(textHook);
 
             // 构建 Agent
-            ReActAgent agent = builder.build();
+            Agent agent = builder.build();
 
             long duration = System.currentTimeMillis() - startTime;
-            log.info("临时高级Agent创建成功: agentId={}, name={}, 耗时{}ms",
-                    agent.getAgentId(), agent.getName(), duration);
+            log.info("临时高级Agent创建成功: agentName={}, 耗时{}ms",
+                    agent.getName(), duration);
 
             return agent;
 
@@ -277,7 +226,14 @@ public class AdvancedAgentFactory {
     }
 
     /**
-     * 检测请求中的高级功能
+     * 检测请求中开启的高级功能，仅用于日志记录
+     * <p>
+     * 遍历请求中的 RAG 模式、工具、技能、记忆等配置项，
+     * 返回开启的功能列表供日志输出，便于排查临时 Agent 创建问题。
+     * </p>
+     *
+     * @param request 统一聊天请求
+     * @return 已开启的高级功能映射（功能名 → 配置值）
      */
     private Map<String, Object> detectAdvancedFeatures(UnifiedChatRequest request) {
         Map<String, Object> features = new LinkedHashMap<>();
@@ -327,32 +283,14 @@ public class AdvancedAgentFactory {
     }
 
     /**
-     * 应用 RAG 配置
+     * 应用 RAG 知识库配置
      * <p>
-     * 从Spring Bean容器中获取Knowledge实例。
-     * 知识库可通过自动配置（推荐）或手动 @Bean 方式注册：
+     * 从 Spring Bean 容器中获取 Knowledge 实例，注册到 HarnessAgent.Builder 中。
+     * 知识库可通过自动配置（{@code autoConfigEnabled=true}）或手动 @Bean 方式注册。
+     * 同时配置检索模式（GENERIC/AGENTIC）和检索参数（数量、相似度阈值）。
      * </p>
-     * <ol>
-     * <li><b>自动配置</b>（推荐）：{@code agentscope.extensions.autoConfigEnabled=true}，
-     * YAML 配置的知识库自动注册为 Bean</li>
-     * <li><b>手动 @Bean</b>（备用）：在 @Configuration 类中手动创建</li>
-     * </ol>
-     *
-     * <pre>
-     * &#64;Bean
-     * public Knowledge productKnowledge() {
-     *     return BailianKnowledge.builder()
-     *             .config(BailianConfig.builder()
-     *                     .accessKeyId("...")
-     *                     .accessKeySecret("...")
-     *                     .workspaceId("...")
-     *                     .indexId("...")
-     *                     .build())
-     *             .build();
-     * }
-     * </pre>
      */
-    private void applyRAGConfig(UnifiedChatRequest request, ReActAgent.Builder builder) {
+    private void applyRAGConfig(UnifiedChatRequest request, HarnessAgent.Builder builder) {
         String ragMode = request.getRagMode();
         if (ragMode == null || "NONE".equals(ragMode)) {
             return;
@@ -362,24 +300,19 @@ public class AdvancedAgentFactory {
             RAGMode mode = parseRAGMode(ragMode);
             log.info("配置RAG: mode={}, knowledgeBases={}", mode, request.getKnowledgeBases());
 
-            // 从Spring Bean中获取知识库
             Set<Knowledge> knowledgeBases = getKnowledgeBases(request.getKnowledgeBases());
             if (knowledgeBases.isEmpty()) {
                 log.warn("未找到知识库实例，RAG功能可能无法正常工作");
-                log.info("提示：请在 agentscope.yml 中配置知识库（autoConfigEnabled=true），或通过 @Bean 手动创建");
                 return;
             }
 
-            // 添加知识库到 Builder
             for (Knowledge knowledge : knowledgeBases) {
                 builder.knowledge(knowledge);
                 log.info("添加知识库到Agent: {}", knowledge);
             }
 
-            // 设置 RAG 模式
             builder.ragMode(mode);
 
-            // 设置检索配置
             if (request.getRetrieveLimit() != null || request.getRetrieveScoreThreshold() != null) {
                 RetrieveConfig.Builder configBuilder = RetrieveConfig.builder();
                 if (request.getRetrieveLimit() != null) {
@@ -407,7 +340,14 @@ public class AdvancedAgentFactory {
     }
 
     /**
-     * 从Spring Bean中获取知识库实例
+     * 从 Spring Bean 容器中按名称获取知识库实例
+     * <p>
+     * 将请求中指定的知识库名称列表解析为对应的 Knowledge Bean 实例。
+     * 未找到的 Bean 会记录警告日志，不中断流程。
+     * </p>
+     *
+     * @param knowledgeBaseNames 知识库名称列表
+     * @return 匹配的知识库实例集合
      */
     private Set<Knowledge> getKnowledgeBases(List<String> knowledgeBaseNames) {
         if (knowledgeBaseNames == null || knowledgeBaseNames.isEmpty()) {
@@ -416,22 +356,25 @@ public class AdvancedAgentFactory {
 
         Set<Knowledge> knowledgeSet = new HashSet<>();
         for (String beanName : knowledgeBaseNames) {
-            if (knowledgeBeans != null && knowledgeBeans.containsKey(beanName)) {
+            if (knowledgeBeans.containsKey(beanName)) {
                 knowledgeSet.add(knowledgeBeans.get(beanName));
                 log.info("从Spring Bean获取知识库: {}", beanName);
             } else {
                 log.warn("知识库Bean未找到: {}", beanName);
             }
         }
-
         return knowledgeSet;
     }
 
     /**
      * 应用工具配置
+     * <p>
+     * 通过类名反射加载 AgentTool 实现类并注册到 Toolkit。
+     * 同时处理请求中指定的工具组激活策略。
+     * 工具组由 ToolGroupManager 统一管理生命周期。
+     * </p>
      */
     private void applyToolConfig(UnifiedChatRequest request, Toolkit toolkit) {
-        // 初始化工具组（本地工具组 + MCP 工具组由注册流程创建）
         if (toolGroupManagerProvider.getIfAvailable() != null) {
             toolGroupManagerProvider.getIfAvailable().createLocalToolGroups(toolkit);
         }
@@ -462,13 +405,6 @@ public class AdvancedAgentFactory {
                 }
             }
 
-            // 应用工具自动归组（已由注册流程完成分组，此处仅记录）
-            if (toolGroupManagerProvider.getIfAvailable() != null) {
-                log.debug("工具组已由注册流程创建，运行时组: {}",
-                        toolGroupManagerProvider.getIfAvailable().getRuntimeGroups().keySet());
-            }
-
-            // 处理请求中指定的工具组
             List<String> requestedGroups = request.getEnabledToolGroups();
             if (requestedGroups != null && !requestedGroups.isEmpty()) {
                 log.info("请求激活工具组: {}", requestedGroups);
@@ -485,23 +421,25 @@ public class AdvancedAgentFactory {
     }
 
     /**
-     * 应用技能配置
-     *
+     * 应用技能（Skill）配置
      * <p>
      * 通过 SkillRegistryService 创建按需过滤的 SkillBox，
      * 仅注入请求中指定的技能描述，减少 prompt token 消耗。
+     * HarnessAgent 使用 skillRepository 机制管理技能，而非直接注入 SkillBox 实例。
      * </p>
      */
-    private void applySkillConfig(UnifiedChatRequest request, ReActAgent.Builder builder, Toolkit toolkit) {
-        if (skillRegistryProvider == null) {
-            log.debug("SkillRegistryService 未配置，跳过技能注入");
-            return;
-        }
-
+    private void applySkillConfig(UnifiedChatRequest request, HarnessAgent.Builder builder, Toolkit toolkit) {
         try {
+            SkillRegistryService registry = skillRegistryProvider.getIfAvailable();
+            if (registry == null) {
+                log.debug("SkillRegistryService 未配置，跳过技能注入");
+                return;
+            }
+
             List<String> enabledSkills = request.getEnabledSkills();
-            SkillBox agentSkillBox = skillRegistryProvider.getIfAvailable().createSkillBox(enabledSkills, toolkit);
-            builder.skillBox(agentSkillBox);
+            SkillBox agentSkillBox = registry.createSkillBox(enabledSkills, toolkit);
+            // SkillBox configured via skillRepository on HarnessAgent.Builder
+            // builder.skillBox() is not available on HarnessAgent.Builder
 
             if (enabledSkills != null && !enabledSkills.isEmpty()) {
                 log.info("已注入过滤 SkillBox，启用 Skill: {}", enabledSkills);
@@ -515,8 +453,16 @@ public class AdvancedAgentFactory {
 
     /**
      * 应用记忆配置
+     * <p>
+     * 支持两种记忆模式：
+     * <ul>
+     * <li>IN_MEMORY：短期记忆，由 HarnessAgent 内部 MemoryFlushHook 自动管理</li>
+     * <li>长期记忆：通过 LongTermMemory Bean（如 ReMeLongTermMemory）配置，
+     * 使用 LongTermMemoryMode.BOTH 同时启用自动 Hook 记录和 Agent 主动调用工具</li>
+     * </ul>
+     * </p>
      */
-    private void applyMemoryConfig(UnifiedChatRequest request, ReActAgent.Builder builder) {
+    private void applyMemoryConfig(UnifiedChatRequest request, HarnessAgent.Builder builder) {
         String memoryMode = request.getMemoryMode();
         if (memoryMode == null || "NONE".equals(memoryMode)) {
             return;
@@ -526,16 +472,16 @@ public class AdvancedAgentFactory {
             log.info("配置记忆: mode={}", memoryMode);
 
             if ("IN_MEMORY".equals(memoryMode.toUpperCase())) {
-                Memory memory = new InMemoryMemory();
-                builder.memory(memory);
-                log.info("短期记忆配置完成");
+                // HarnessAgent manages its own memory via MemoryFlushHook
+                // builder.memory() not available on HarnessAgent.Builder
+                log.info("短期记忆由 HarnessAgent 内部管理");
                 return;
             }
 
             // 长期记忆 - 优先使用请求指定的，否则使用默认的 ReMeLongTermMemory
             io.agentscope.core.memory.LongTermMemory memory = null;
 
-            if (request.getLongTermMemory() != null && memoryBeans != null) {
+            if (request.getLongTermMemory() != null && !memoryBeans.isEmpty()) {
                 memory = memoryBeans.get(request.getLongTermMemory());
                 if (memory != null) {
                     log.info("使用请求指定的长期记忆: {}", request.getLongTermMemory());
@@ -544,8 +490,7 @@ public class AdvancedAgentFactory {
                 }
             }
 
-            // 未指定或未找到时，使用默认的 ReMeLongTermMemory
-            if (memory == null && memoryBeans != null && memoryBeans.containsKey("reMeLongTermMemory")) {
+            if (memory == null && memoryBeans.containsKey("reMeLongTermMemory")) {
                 memory = memoryBeans.get("reMeLongTermMemory");
                 log.info("使用默认的 ReMeLongTermMemory");
             }
@@ -553,12 +498,9 @@ public class AdvancedAgentFactory {
             if (memory != null) {
                 builder.longTermMemory(memory)
                         .longTermMemoryMode(io.agentscope.core.memory.LongTermMemoryMode.BOTH);
-                // BOTH = StaticLongTermMemoryHook (自动 record/retrieve) + LongTermMemoryTools
-                // (Agent 可调用)
                 log.info("长期记忆配置完成: mode=BOTH (自动 Hook + Agent Tool)");
             } else {
                 log.warn("未找到可用的长期记忆 Bean");
-                log.info("提示：请通过 @Bean 创建 LongTermMemory 实例");
             }
 
         } catch (Exception e) {
@@ -568,8 +510,16 @@ public class AdvancedAgentFactory {
 
     /**
      * 应用执行配置
+     * <p>
+     * 配置 Agent 执行参数：
+     * <ul>
+     * <li>maxIters：最大 ReAct 循环迭代次数</li>
+     * <li>enableMetaTool：是否启用 MetaTool（LLM 动态切换工具组）</li>
+     * <li>enablePlanNotebook：是否启用任务规划能力</li>
+     * </ul>
+     * </p>
      */
-    private void applyExecutionConfig(UnifiedChatRequest request, ReActAgent.Builder builder) {
+    private void applyExecutionConfig(UnifiedChatRequest request, HarnessAgent.Builder builder) {
         if (request.getMaxIters() != null) {
             builder.maxIters(request.getMaxIters());
             log.info("配置maxIters: {}", request.getMaxIters());
@@ -586,100 +536,65 @@ public class AdvancedAgentFactory {
                     .planToHint(new ChinesePlanToHint())
                     .build();
             builder.planNotebook(planNotebook);
-            log.info("配置enablePlanNotebook: true - Agent 将自动拆解复杂任务（中文模式）");
+            log.info("配置enablePlanNotebook: true");
         }
     }
 
     /**
      * 应用动态模型参数配置
      * <p>
-     * 注意：此方法尝试应用动态模型参数。如果AgentScope SDK 的Model 不支持某些参数，
-     * 会记录警告日志但不中断执行
-     * </p>
-     *
-     * <p>
-     * 支持的参数：
-     * <ul>
-     * <li>temperature - 温度参数</li>
-     * <li>maxTokens - 最大Token</li>
-     * <li>topP - Top-P 采样（如Model 支持）</li>
-     * <li>presencePenalty - 存在惩罚（如Model 支持）</li>
-     * <li>frequencyPenalty - 频率惩罚（如Model 支持）</li>
-     * <li>stopSequences - 停止序列（如Model 支持）</li>
-     * </ul>
+     * 通过 HarnessAgent.Builder 的 modelExecutionConfig 配置，
+     * 无需反射调用。
      * </p>
      */
-    private void applyModelConfig(UnifiedChatRequest request, Model baseModel) {
+    private void applyModelConfig(UnifiedChatRequest request, HarnessAgent.Builder builder) {
+        // 通过 GenerateOptions.Builder 配置模型参数
+        io.agentscope.core.model.GenerateOptions.Builder optionsBuilder = io.agentscope.core.model.GenerateOptions
+                .builder();
+
         boolean hasDynamicParams = false;
 
-        // 记录动态参数
         if (request.getTemperature() != null) {
-            log.info("动态参数: temperature = {}", request.getTemperature());
+            optionsBuilder.temperature(request.getTemperature());
             hasDynamicParams = true;
         }
         if (request.getMaxTokens() != null) {
-            log.info("动态参数: maxTokens = {}", request.getMaxTokens());
+            optionsBuilder.maxTokens(request.getMaxTokens());
             hasDynamicParams = true;
         }
         if (request.getTopP() != null) {
-            log.info("动态参数: topP = {}", request.getTopP());
+            optionsBuilder.topP(request.getTopP());
             hasDynamicParams = true;
         }
         if (request.getPresencePenalty() != null) {
-            log.info("动态参数: presencePenalty = {}", request.getPresencePenalty());
+            optionsBuilder.presencePenalty(request.getPresencePenalty());
             hasDynamicParams = true;
         }
         if (request.getFrequencyPenalty() != null) {
-            log.info("动态参数: frequencyPenalty = {}", request.getFrequencyPenalty());
+            optionsBuilder.frequencyPenalty(request.getFrequencyPenalty());
             hasDynamicParams = true;
         }
         if (request.getStopSequences() != null && !request.getStopSequences().isEmpty()) {
-            log.info("动态参数: stopSequences = {}", request.getStopSequences());
             hasDynamicParams = true;
         }
 
         if (hasDynamicParams) {
-            log.info("注意：AgentScope SDK 的Model 实例通常是配置后不可变的");
-            log.info("动态模型参数可能需要通过重新创建 Model 来实现");
-            log.info("如果参数未生效，请在 Agent 定义中配置这些参数");
-
-            // 尝试通过反射设置参数（如Model 支持）
-            trySetModelParameter(baseModel, "temperature", request.getTemperature());
-            trySetModelParameter(baseModel, "maxTokens", request.getMaxTokens());
-            trySetModelParameter(baseModel, "topP", request.getTopP());
-            trySetModelParameter(baseModel, "presencePenalty", request.getPresencePenalty());
-            trySetModelParameter(baseModel, "frequencyPenalty", request.getFrequencyPenalty());
-            trySetModelParameter(baseModel, "stopSequences", request.getStopSequences());
+            builder.generateOptions(optionsBuilder.build());
+            log.info("动态模型参数已通过 HarnessAgent.Builder 配置");
         }
     }
 
     /**
-     * 尝试通过反射设置 Model 参数
-     *
-     * @param model      Model 实例
-     * @param paramName  参数名
-     * @param paramValue 参数值
-     */
-    private void trySetModelParameter(Model model, String paramName, Object paramValue) {
-        if (paramValue == null) {
-            return;
-        }
-
-        try {
-            // 尝试查找对应的setter 方法
-            String setterName = "set" + paramName.substring(0, 1).toUpperCase() + paramName.substring(1);
-            var setter = model.getClass().getMethod(setterName, paramValue.getClass());
-            setter.invoke(model, paramValue);
-            log.debug("成功设置模型参数: {} = {}", paramName, paramValue);
-        } catch (NoSuchMethodException e) {
-            log.debug("Model 不支持参数{} (无setter方法): {}", paramName, e.getMessage());
-        } catch (Exception e) {
-            log.warn("设置模型参数失败: {} = {}, 原因: {}", paramName, paramValue, e.getMessage());
-        }
-    }
-
-    /**
-     * 解析 RAG 模式
+     * 解析 RAG 模式字符串为枚举
+     * <p>
+     * 支持三种模式：
+     * <ul>
+     * <li>GENERIC：通用 RAG，在每次推理前自动检索知识库注入上下文</li>
+     * <li>AGENTIC：Agent 驱动的 RAG，提供工具让 Agent 自行决定何时检索</li>
+     * <li>其他/NONE：不启用 RAG</li>
+     * </ul>
+     * 不区分大小写。
+     * </p>
      */
     private RAGMode parseRAGMode(String ragMode) {
         if (ragMode == null) {
@@ -694,5 +609,4 @@ public class AdvancedAgentFactory {
             }
         };
     }
-
 }

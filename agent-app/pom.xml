@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -12,7 +11,7 @@
 
     <artifactId>agent-app</artifactId>
     <name>Agent App</name>
-    <description>应用打包模块 - 聚合 agent-core 和 agent-business 为可执行 Spring Boot JAR</description>
+    <description>应用打包模块 - 聚合 agent-core 等为可执行 Spring Boot JAR</description>
 
     <dependencies>
         <!-- Agent Config 模块 (配置集中管理) -->
@@ -26,13 +25,6 @@
         <dependency>
             <groupId>io.yunxi</groupId>
             <artifactId>agent-core</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <!-- Agent Business（包含 a2apipeline、nutrition、pagegen 业务） -->
-        <dependency>
-            <groupId>io.yunxi</groupId>
-            <artifactId>agent-business</artifactId>
             <version>${project.version}</version>
         </dependency>
 

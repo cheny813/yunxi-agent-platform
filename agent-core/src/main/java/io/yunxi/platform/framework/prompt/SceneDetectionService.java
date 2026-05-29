@@ -4,7 +4,7 @@ import io.agentscope.core.message.Msg;
 import io.yunxi.platform.framework.memory.MemoryScene;
 import io.yunxi.platform.framework.memory.MemorySceneRegistry;
 import io.yunxi.platform.framework.profile.ConceptRegistry;
-import io.yunxi.platform.framework.spi.SceneContributor;
+import io.yunxi.platform.framework.workspace.WorkspaceAutoDiscoveryEngine;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,12 +19,17 @@ import java.util.Map;
  * 场景检测服务
  *
  * <p>
- * 自动检测用户当前对话的场景。优先通过 SceneContributor SPI 检测业务场景，
- * 其次通过 MemorySceneRegistry 检测注册的自定义场景，最后回退到框架内置关键词检测。
+ * 自动检测用户当前对话的场景。检测链优先级：
+ * <ol>
+ *   <li>工作区 AGENTS.md 场景规则（由 {@link WorkspaceAutoDiscoveryEngine} 自动发现）</li>
+ *   <li>MemorySceneRegistry 自定义场景关键词检测</li>
+ *   <li>ConceptRegistry 领域概念检测</li>
+ *   <li>框架内置关键词检测（兜底）</li>
+ * </ol>
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 3.0.0
+ * @version 3.3.0
  */
 @Slf4j
 @Service
@@ -35,9 +40,9 @@ public class SceneDetectionService {
     @Value("${memory.scene-detection.enabled:true}")
     private boolean enabled;
 
-    /** 场景贡献者 SPI 列表 */
-    @Autowired
-    private ObjectProvider<List<SceneContributor>> sceneContributorsProvider;
+    /** 场景检测模式 */
+    @Value("${framework.scene-detection.mode:workspace-agents}")
+    private String sceneDetectionMode;
 
     /** 记忆场景注册表 */
     @Autowired
@@ -46,6 +51,10 @@ public class SceneDetectionService {
     /** 统一概念注册表（可选，业务层通过 YAML 配置领域概念） */
     @Autowired
     private ObjectProvider<ConceptRegistry> conceptRegistryProvider;
+
+    /** 工作区自动发现引擎 */
+    @Autowired
+    private WorkspaceAutoDiscoveryEngine discoveryEngine;
 
     // 个人助手相关关键词（通用场景，保留在框架层）
     private static final List<String> PERSONAL_ASSISTANT_KEYWORDS = List.of(
@@ -64,10 +73,12 @@ public class SceneDetectionService {
             return SceneDetectionResult.general();
         }
 
-        // 1. 业务层 SceneContributor 关键词检测
-        SceneDetectionResult contributorResult = detectByContributors(query);
-        if (!contributorResult.isGeneral()) {
-            return contributorResult;
+        // 1. 工作区 AGENTS.md 场景规则检测
+        if ("workspace-agents".equals(sceneDetectionMode) || "hybrid".equals(sceneDetectionMode)) {
+            SceneDetectionResult workspaceResult = detectByWorkspaceRules(query);
+            if (!workspaceResult.isGeneral()) {
+                return workspaceResult;
+            }
         }
 
         // 2. MemorySceneRegistry 自定义场景关键词检测
@@ -76,7 +87,7 @@ public class SceneDetectionService {
             return registryResult;
         }
 
-        // 3. ConceptRegistry 领域概念检测（优先于硬编码关键词）
+        // 3. ConceptRegistry 领域概念检测
         SceneDetectionResult conceptResult = detectByConcepts(query);
         if (!conceptResult.isGeneral()) {
             return conceptResult;
@@ -87,22 +98,13 @@ public class SceneDetectionService {
     }
 
     /**
-     * 通过 SceneContributor 检测场景
+     * 通过工作区 AGENTS.md 规则检测场景
      */
-    private SceneDetectionResult detectByContributors(String text) {
-        String lowerText = text.toLowerCase();
-        List<SceneContributor> contributors = sceneContributorsProvider.getIfAvailable();
-        if (contributors != null) {
-            for (SceneContributor contributor : contributors) {
-                Map<String, List<String>> sceneKeywords = contributor.getSceneKeywords();
-                for (Map.Entry<String, List<String>> entry : sceneKeywords.entrySet()) {
-                    for (String keyword : entry.getValue()) {
-                        if (lowerText.contains(keyword.toLowerCase())) {
-                            log.debug("通过 SceneContributor 检测到场景 {}: {}", entry.getKey(), text);
-                            return SceneDetectionResult.of(entry.getKey());
-                        }
-                    }
-                }
+    private SceneDetectionResult detectByWorkspaceRules(String text) {
+        for (var entry : discoveryEngine.getDiscoveredSceneRules().entrySet()) {
+            if (entry.getValue().matches(text)) {
+                log.debug("通过工作区规则检测到场景: scene={}", entry.getKey());
+                return SceneDetectionResult.of(entry.getKey());
             }
         }
         return SceneDetectionResult.general();
@@ -128,10 +130,6 @@ public class SceneDetectionService {
 
     /**
      * 通过 ConceptRegistry 检测领域场景
-     * <p>
-     * 将概念领域映射到 MemoryScene：例如 "nutrition" → CAMPUS_MEAL，"personal" →
-     * PERSONAL_ASSISTANT
-     * </p>
      */
     private SceneDetectionResult detectByConcepts(String text) {
         if (conceptRegistryProvider.getIfAvailable() == null) {
@@ -143,14 +141,12 @@ public class SceneDetectionService {
             return SceneDetectionResult.general();
         }
 
-        // 取得分最高的领域
         var best = domains.entrySet().stream()
                 .max(Map.Entry.comparingByValue())
                 .orElse(null);
 
         if (best != null && best.getValue() > 0) {
             String domain = best.getKey();
-            // 将领域名映射到 MemoryScene（领域名作为场景标识）
             log.debug("通过 ConceptRegistry 检测到领域 {}: score={}, text={}", domain, best.getValue(), text);
             return SceneDetectionResult.of(domain);
         }
@@ -160,9 +156,6 @@ public class SceneDetectionService {
 
     /**
      * 通过框架内置关键词检测场景（兜底逻辑）
-     * <p>
-     * 仅在 ConceptRegistry 未配置时作为兜底使用。
-     * </p>
      */
     private SceneDetectionResult detectByBuiltinKeywords(String text) {
         String lowerText = text.toLowerCase();

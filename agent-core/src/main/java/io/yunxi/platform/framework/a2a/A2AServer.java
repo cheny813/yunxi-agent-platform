@@ -1,22 +1,34 @@
 package io.yunxi.platform.framework.a2a;
 
-import io.agentscope.core.ReActAgent;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import io.agentscope.core.agent.Agent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.yunxi.platform.framework.agent.AgentDomainService;
 import io.yunxi.platform.infra.config.AgentscopeExtensionProperties.A2AConfig;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A2A (Agent-to-Agent) 服务端
- * 
+ *
  * <p>
  * 提供 Agent 暴露为远程服务的入口，支持：
  * </p>
@@ -45,20 +57,22 @@ import java.util.concurrent.ConcurrentHashMap;
 @ConditionalOnProperty(name = "agentscope.extensions.a2a.enabled", havingValue = "true")
 public class A2AServer {
 
-    /** A2A 配置 */
+    /** A2A 配置（registryType、registryAddr、namespace 等） */
     private final A2AConfig config;
-    /** A2A 注册中心 */
+
+    /** A2A 注册中心（本地/远程，负责 Agent 发现） */
     private final A2ARegistry registry;
-    /** Agent 领域服务 */
+
+    /** Agent 领域服务 — 获取和验证 Agent 实例 */
     private final AgentDomainService agentDomainService;
 
-    /** 本地 Agent 实例缓存 */
+    /** 本地 Agent 实例缓存（agentName → AgentInstance） */
     private final Map<String, AgentInstance> localAgents = new ConcurrentHashMap<>();
 
-    /** 服务端口（从配置读取） */
+    /** 服务端口（默认 40001，由 A2AConfig 注入） */
     private int serverPort = 40001;
 
-    /** 服务主机 */
+    /** 服务主机（默认 localhost，由外部配置注入） */
     private String serverHost = "localhost";
 
     /**
@@ -80,7 +94,7 @@ public class A2AServer {
      */
     public record AgentInstance(
             String name,
-            ReActAgent agent,
+            Agent agent,
             List<String> capabilities,
             long registeredAt) {
     }
@@ -99,7 +113,7 @@ public class A2AServer {
 
         try {
             // 验证 Agent 是否存在（从 AgentDomainService 获取）
-            ReActAgent agent = agentDomainService.getReActAgent(request.agentName());
+            Agent agent = agentDomainService.findAgent(request.agentName());
             if (agent == null) {
                 // 如果本地不存在，尝试创建
                 try {
@@ -208,11 +222,11 @@ public class A2AServer {
         try {
             // 获取 Agent 实例
             AgentInstance instance = localAgents.get(request.agentName());
-            ReActAgent agent = null;
+            Agent agent = null;
 
             if (instance == null) {
                 // 尝试从 AgentDomainService 获取
-                agent = agentDomainService.getReActAgent(request.agentName());
+                agent = agentDomainService.findAgent(request.agentName());
                 if (agent == null) {
                     log.warn("Agent 未找到: {}", request.agentName());
 
@@ -399,7 +413,7 @@ public class A2AServer {
      * @param agent        Agent 实例
      * @param capabilities 能力列表
      */
-    public void registerAgent(ReActAgent agent, List<String> capabilities) {
+    public void registerAgent(Agent agent, List<String> capabilities) {
         String agentName = agent.getName();
         log.info("程序化注册 Agent: {}", agentName);
 

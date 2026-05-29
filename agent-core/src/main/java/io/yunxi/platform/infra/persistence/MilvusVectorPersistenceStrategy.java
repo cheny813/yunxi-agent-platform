@@ -104,7 +104,7 @@ public class MilvusVectorPersistenceStrategy implements DataPersistenceStrategy,
     }
 
     /**
-     * 初始化：创建向量集合（如果不存在）
+     * 初始化：检测向量维度（集合创建由 MilvusSchemaInitializer 统一管理）
      */
     @PostConstruct
     public void init() {
@@ -114,11 +114,8 @@ public class MilvusVectorPersistenceStrategy implements DataPersistenceStrategy,
         }
 
         try {
-            // 先检测实际向量维度
+            // 检测实际向量维度
             detectAndSyncDimension();
-
-            createCollectionIfNotExists(config.getCollections().getUserMemory());
-            createCollectionIfNotExists(config.getCollections().getConversationMemory());
             log.info("Milvus 向量存储策略初始化完成，向量维度: {}", config.getEmbedding().getDimension());
         } catch (Exception e) {
             log.error("Milvus 初始化失败: {}", e.getMessage(), e);
@@ -152,11 +149,10 @@ public class MilvusVectorPersistenceStrategy implements DataPersistenceStrategy,
     }
 
     /**
-     * 创建向量集合
+     * 创建向量集合（运行时维度变化时重建使用，初始创建由 MilvusSchemaInitializer 统一管理）
      */
     private void createCollectionIfNotExists(String collectionName) {
         try {
-            // 检查集合是否存在
             HasCollectionReq hasReq = HasCollectionReq.builder()
                     .collectionName(collectionName)
                     .build();
@@ -524,7 +520,7 @@ public class MilvusVectorPersistenceStrategy implements DataPersistenceStrategy,
                 return Collections.emptyList();
             }
 
-            // 构建搜索请求 - Milvus SDK 2.4.x API
+            // 构建搜索请求 - Milvus SDK 3.0.x API
             // 使用 FloatVec 包装向量数据
             FloatVec queryFloatVec = new FloatVec(queryVector);
             SearchReq searchReq = SearchReq.builder()
@@ -761,7 +757,7 @@ public class MilvusVectorPersistenceStrategy implements DataPersistenceStrategy,
 
     /**
      * 智能去重检查：判断是否应该跳过保存
-     * 
+     *
      * @param userId      用户ID
      * @param content     新内容
      * @param contentType 内容类型

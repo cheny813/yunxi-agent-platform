@@ -397,8 +397,88 @@ public enum BuiltinMode {
 
 ### 理论基础：记忆分层
 
-记忆系统为 Agent 提供持久化和结构化的记忆能力，支持短期记忆、长期记忆和场景化记忆管理。
+记忆系统为 Agent 提供持久化和结构化的记忆能力，支持短期记忆、长期记忆和场景化记忆管理。框架委托 `agentscope-harness` 模块管理 Agent 运行时记忆，业务层通过 `MemorySceneRegistry` 定义场景分类。
 
+```
+┌─────────────────────────────────────────┐
+│           记忆系统架构                    │
+├─────────────────────────────────────────┤
+│                                         │
+│  ┌─────────────────────────────────┐    │
+│  │  HarnessAgent（运行时记忆管理）    │    │
+│  │  - MemoryFlushHook              │    │
+│  │  - MemoryMaintenanceHook         │    │
+│  │  - CompactionHook                │    │
+│  └───────────┬─────────────────────┘    │
+│              │                          │
+│     ┌────────┴────────┐                │
+│     ▼                 ▼                 │
+│  ┌─────────┐   ┌───────────┐           │
+│  │Scene 检测│   │ ReMe 记忆  │           │
+│  │(场景化)  │   │ (持久化)   │           │
+│  └─────────┘   └─────┬─────┘           │
+│                       │                 │
+│              ┌────────┼────────┐        │
+│              ▼        ▼        ▼        │
+│         ┌────────┐┌────────┐┌────────┐ │
+│         │Working ││ Task   ││ Tool   │ │
+│         │Memory  ││ Memory ││ Memory │ │
+│         └────────┘└────────┘└────────┘ │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+### HarnessAgent 记忆管理（运行时）
+
+HarnessAgent 通过内置 Hook 自动管理 Agent 执行过程中的记忆持久化：
+
+| Hook | 优先级 | 职责 |
+|------|--------|------|
+| `MemoryFlushHook` | 5 | 每次 Agent 调用完成后将记忆刷新到持久化存储 |
+| `MemoryMaintenanceHook` | 6 | 定期归档和压缩记忆文件，防止无限增长 |
+| `CompactionHook` | 10 | 上下文溢出时通过 LLM 摘要压缩，然后重试调用 |
+| `ToolResultEvictionHook` | — | 将过大的工具调用结果卸载到文件系统 |
+
+当前集成阶段，这些 Hook 默认**禁用**（通过 `disableMemoryHooks()`），后续可按需启用。
+
+### MemoryScene / MemorySceneRegistry（场景化管理）
+
+MemoryScene 和 MemorySceneRegistry 提供场景化的识别能力，根据不同的业务场景关键词自动匹配场景。
+
+**MemoryScene**：定义单个场景的元数据
+| 属性 | 说明 | 示例 |
+|------|------|------|
+| **sceneName** | 场景名称 | `SCHOOL_MEAL`, `chat` |
+| **retentionPolicy** | 保留策略 | `session`, `persistent` |
+| **maxMemories** | 最大记忆条数 | `100` |
+| **ttl** | 过期时间 | `30m`, `24h` |
+
+**MemorySceneRegistry**：管理全局场景注册表
+- 根据用户输入关键词自动匹配场景
+- 支持动态注册和卸载自定义场景
+- 未匹配时回退到 `GENERAL` 场景
+
+```java
+@Component
+public class MemorySceneRegistry {
+    private final Map<String, SceneEntry> scenes = new LinkedHashMap<>();
+    
+    /**
+     * 注册自定义场景
+     */
+    public void register(String name, String displayName, String description,
+            int retentionDays, List<String> keywords) {
+        scenes.put(name, new SceneEntry(name, displayName, description, retentionDays, keywords, false));
+    }
+    
+    /**
+     * 通过关键词检测当前对话属于哪个场景
+     */
+    public String detect(String text) {
+        // 遍历场景，关键词匹配（大小写不敏感）
+        // 返回第一个匹配的场景名称，未匹配返回 GENERAL
+    }
+}
 ```
 ┌─────────────────────────────────────────┐
 │           记忆系统架构                    │

@@ -61,7 +61,7 @@ management:
 spring:
   # 导入集中化配置（来自 agent-config 模块）
   config:
-    import: optional:classpath:config/datasource.yml,optional:classpath:config/redis.yml,optional:classpath:config/llm.yml,optional:classpath:config/milvus.yml,optional:classpath:config/embedding.yml,optional:classpath:config/persistence.yml,optional:classpath:config/mcp-core.yml,optional:classpath:config/mcp-external.yml,optional:classpath:config/mcp-business.yml,optional:classpath:config/skill.yml,optional:classpath:config/resilience.yml,optional:classpath:config/file-upload.yml,optional:classpath:config/a2a-pipeline.yml,optional:classpath:config/agentscope.yml,optional:classpath:config/gateway.yml,optional:classpath:config/business.yml,optional:classpath:config/text2sql.yml,optional:classpath:config/rule-engine.yml,optional:classpath:application-ipdetection.yml
+    import: optional:classpath:config/imports.yml,optional:classpath:application-ipdetection.yml
 
   # 激活的配置文件（按顺序加载）
   profiles:
@@ -166,8 +166,20 @@ concepts:
 memory:
   scene:
     builtins: "PERSONAL_ASSISTANT:个人助手:生活、工作、家庭、情感:-1;GENERAL:通用:通用对话:7"
-  scene-detection:
+scene-detection:
     enabled: true
+
+# ============================================================
+# 框架场景检测配置
+# ============================================================
+# mode 可选值:
+#   workspace-agents : 从工作区 AGENTS.md 读取场景规则（替代 SceneContributor SPI）
+#   llm             : 由 LLM 自行判断场景
+#   hybrid          : 工作区规则 + LLM 兜底
+# ============================================================
+framework:
+  scene-detection:
+    mode: workspace-agents
 
 # ============================================================
 # 内置职业阶段配置

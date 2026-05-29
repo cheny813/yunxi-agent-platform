@@ -225,15 +225,16 @@ cd agent-core
 mvn spring-boot:run
 ```
 
-### 方式二：脚本启动（Windows）
+### 方式二：脚本启动（Windows PowerShell）
 
-```bash
-# 双击启动脚本
-启动规则引擎.bat
-启动 agent-app 模块
+```powershell
+# 推荐：使用统一启动脚本（自动打包并启动 agent-app，端口 40001）
+.\启动项目.ps1
 
-# 可选：启动记忆系统服务
-启动ReMe服务.bat
+# 可选参数：
+.\启动项目.ps1 -Fast     # 快速启动（已打包时使用，跳过打包步骤）
+.\启动项目.ps1 -Maven    # Maven spring-boot:run 模式（支持热重载）
+.\启动项目.ps1 -Clean    # 清理并重新打包启动
 ```
 
 ---
