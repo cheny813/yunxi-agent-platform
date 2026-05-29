@@ -192,13 +192,28 @@ public class MemoryCoordinatorService {
 - 不处理技术细节
 
 **示例**：
-```java
-@Component
-public class NutritionDomainContributor implements DomainContributor {
-    // 实现 Framework 的 SPI 接口
-    // 编写营养领域业务逻辑
-}
+```yaml
+# 在 agent-definitions/<name>.yaml 中声明
+name: nutrition-assistant
+workspace: ./workspace/nutrition-assistant
+tools:
+  mcpServers:
+    - name: nutrition-data-mcp
+      type: sse
+      url: http://localhost:40602/sse
 ```
+
+然后在工作区目录中放置 AGENTS.md 定义人格和行为：
+
+```markdown
+<!-- workspace/nutrition-assistant/AGENTS.md -->
+# 场景检测
+- 场景: nutrition
+- 触发关键词: 食谱, 营养, 配餐, 热量
+- 场景上下文: 你是一个学校营养餐专家...
+```
+
+框架自动从配置 + 工作区文件完成 Agent 装配，无需 Java 代码。
 
 ### 依赖关系图
 
@@ -275,31 +290,44 @@ Agent 的生命周期可以看作一个状态机：
 ```java
 @Service
 public class AgentDomainService {
-    // Agent 缓存
-    private final Map<String, ChatAppService> agentInstanceCache = new ConcurrentHashMap<>();
+    // Agent 缓存（统一使用 Agent 接口）
+    private final Map<String, Agent> agentInstanceCache = new ConcurrentHashMap<>();
     
-    public ChatAppService getAgentInstance(String name) {
-        // 从缓存获取，如果不存在则创建
-        return agentInstanceCache.computeIfAbsent(name, this::createAgent);
+    public Agent getAgentInstance(String name) {
+        // 从缓存获取，如果不存在则抛出 NotFoundException
+        Agent agent = agentInstanceCache.get(name);
+        if (agent == null) {
+            throw new NotFoundException("Agent not found: " + name);
+        }
+        return agent;
     }
     
-    private ChatAppService createAgent(String name) {
+    public AgentInfoDto createAgent(String name, AgentConfigDto config) {
         // 1. 读取配置
-        AgentDefinition definition = loadDefinition(name);
+        ModelConfig modelCfg = buildModelConfig(config);
         
         // 2. 创建模型
-        LanguageModel model = createModel(definition.getModel());
+        ChatModelProvider modelProvider = modelFactory.createProvider(modelCfg);
         
-        // 3. 创建工具集
-        Toolkit toolkit = createToolkit(definition.getTools());
-        
-        // 4. 构建 ChatAppService
-        return ChatAppService.builder()
+        // 3. 构建 ReActAgent delegate
+        ReActAgent delegate = ReActAgent.builder()
             .name(name)
-            .sysPrompt(definition.getSystemPrompt())
-            .model(model)
-            .toolkit(toolkit)
+            .sysPrompt(prompt)
+            .model(modelProvider)
             .build();
+        
+        // 4. 用 HarnessAgent 包装（薄包装器）
+        Agent agent = HarnessAgent.from(delegate)
+            .disableSubagents()
+            .disableSessionPersistence()
+            .disableMemoryHooks()
+            .disableFilesystemTools()
+            .disableShellTool()
+            .build();
+        
+        // 5. 放入缓存
+        agentInstanceCache.put(name, agent);
+        return new AgentInfoDto(name, prompt, modelName, Instant.now());
     }
 }
 ```
@@ -481,79 +509,188 @@ public class ProfileRouter {
 ---
 ## 与 AgentScope-Java 的集成
 
-### 架构层次关系
+### 核心关系：引擎 vs 平台
+
+理解 yunxi-agent-platform 与 agentscope-javaRC2 的关系，可以用一个比喻：
 
 ```
-┌─────────────────────────────────────────┐
-│  第 4 层: 业务代码                         │
-│  - 实现 SPI 接口                          │
-│  - 调用 yunxi 服务                         │
-├─────────────────────────────────────────┤
-│  第 3 层: yunxi Agent Platform             │
-│  - 封装 AgentScope 功能                   │
-│  - 提供企业级能力                         │
-├─────────────────────────────────────────┤
-│  第 2 层: AgentScope-Java                 │
-│  - ChatAppService 运行时                      │
-│  - MCP/A2A 协议实现                       │
-├─────────────────────────────────────────┤
-│  第 1 层: 基础设施                         │
-│  - Spring Boot / LLM API                  │
-└─────────────────────────────────────────┘
+agentscope-javaRC2 = 发动机 + 变速箱 + 底盘（汽车核心组件）
+yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘、安全气囊、中控系统、导航）
 ```
 
-### Agent 运行时三层抽象
+**agentscope-javaRC2** 是通用 Agent SDK，提供 Agent 抽象、LLM 集成、消息系统、工具系统、Hook 机制——但它是**被嵌入的组件**，不是一个可部署的生产系统。
 
-除了上述代码模块分层，从 **Agent 运行时** 视角看，框架还提供另一套三层抽象，帮助不同角色理解系统：
+**yunxi-agent-platform** 在此基础上构建了完整的**生产平台**，增加了以下 **7 层能力**：
+
+### 7 层价值分层
+
+| 层次 | 能力范畴 | 关键代码 | agentscope 内置？ |
+|------|---------|---------|:--:|
+| **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
+| **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl` 8 步拦截链 | 否 |
+| **3. 多通道网关层** | 钉钉/飞书/企微/Web API 多渠道接入 | `agent-gateway` 模块、`MessageChannel` | 否 |
+| **4. 生产特性层** | 熔断器、HITL 人工审核、会话管理、分布式缓存、多租户 | `ToolCircuitBreaker`、`ToolGateHook`、`ConversationDomainService` | 否 |
+| **5. 国产化 LLM 适配层** | DashScope/百度/华为/Claude 统一接入 | `ModelProviderFactory`、`ChatModelProvider` | 部分 |
+| **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、ReMe 记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
+| **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Pipeline/Routing | `AgentConfigurer`（~555行） | 否 |
+
+### 关键接线：具体桥接代码解读
+
+#### 1. AgentGatewayImpl — 统一调用入口
+
+`AgentGatewayImpl` 是**所有 Agent 调用必须经过的唯一入口**，它自动插入的 8 步拦截链：
+
+```java
+// AgentGatewayImpl.java (核心: callWithChain 方法)
+private Mono<String> callWithChain(String agentName, AgentInvokeInfo info,
+        String message, CallOptions options) {
+    return Mono.just(message)
+        // 2.限流检查
+        .transformDeferred(this::rateLimit)
+        // 3.优雅关闭检查
+        .doOnSubscribe(s -> GracefulShutdownManager.getInstance().ensureAcceptingRequests())
+        // 4.超时控制 + 实际 Agent 调用（这里才用到 agentscope 的 Agent.call()）
+        .flatMap(m -> {
+            Duration timeout = resolveTimeout(info.definition(), options);
+            Msg userMsg = Msg.builder().textContent(m).build();  // ← agentscope Msg
+            return info.agent().call(userMsg).timeout(timeout);   // ← agentscope Agent
+        })
+        .map(Msg::getTextContent)        // ← agentscope Msg
+        // 5.PreProcessor → 7.PostProcessor → 8.监控
+        .flatMap(text -> applyPreProcessorsOnMono(agentName, text))
+        .flatMap(result -> applyPostProcessors(agentName, message, result))
+        .doOnSubscribe(s -> metricsStart(agentName))
+        .doOnError(e -> metricsError(agentName, e));
+}
+```
+
+**关键点**：实际调用 agentscope 的 `Agent.call()` 只占其中一步（第4步），其余7步都是平台治理能力。如果不用 AgentGateway，每个调用方都要自己写限流、超时、监控——这正是"平台代码多"的原因。
+
+#### 2. AgentConfigurer — 配置驱动的自动装配
+
+```java
+// AgentConfigurer.java (ApplicationReadyEvent 触发)
+@EventListener(ApplicationReadyEvent.class)
+public void configureAgents() {
+    // 第一轮：初始化所有独立 Agent
+    for (AgentDefinition def : definitions) {
+        if (!isOrchestrated(def))
+            initializeSingleAgent(def);  // YAML → Model → HarnessAgent → 注册
+    }
+    // 第二轮：创建编排 Agent（Supervisor/Pipeline/Routing）
+    for (AgentDefinition def : definitions) {
+        if (isOrchestrated(def))
+            createOrchestratedAgent(def);
+    }
+}
+```
+
+这本质上是一个 **Agent 容器**——读取 YAML、创建 ModelProvider、构建 HarnessAgent、注册工具、注入 Hook。agentscope 只提供了 `ReActAgent.builder()`，但"怎么把几十个 YAML 配置变成可运行的 Agent 实例"这件事，完全是平台层的。
+
+#### 3. ToolAdapter — 平台工具到 agentscope 的桥梁
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  业务层：只需选择模式，无需理解底层机制                        │
-│                                                             │
-│  nutrition-assistant:                                        │
-│    mode: expert         ← 一句话选择模式                      │
-│    profiles:                                                 │
-│      chat:  mode: chat  ← 覆盖为聊天模式                      │
-│      make:  mode: expert                                    │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  框架层：提供内置模式 + Profile 路由                          │
-│                                                             │
-│  Built-in Modes:                                             │
-│    chat    → tools:[], iters:3, no plan, no expert           │
-│    tool    → tools:all, iters:10, no plan, single agent      │
-│    expert  → tools:all, iters:25, plan:true, multi-agent     │
-│    advanced→ 业务完全自定义                                   │
-│                                                             │
-│  ProfileRouter: agentName + profileName → Agent 实例         │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│  引擎层：AgentScope ChatAppService 运行时                         │
-│  工具管理、Prompt 注入、迭代控制                               │
-└─────────────────────────────────────────────────────────────┘
+我们的 Tool 接口:         agentscope 的 AgentTool 接口:
+  getName()                getName()
+  getDescription()         getDescription()
+  getParameterSchema()     getParameters()
+  execute(ToolInput)       callAsync(ToolCallParam)
+                              ↓
+                         ToolAdapter (桥梁)
+                           集成熔断器保护
+                           统一结果格式转换
 ```
 
-| 层 | 用户 | 复杂度 | 需要知道什么 |
-|----|------|--------|------------|
-| 业务层 | 业务配置人员 | 低 | 只需选 `chat` 或 `expert` |
-| 框架层 | 平台开发者 | 中 | 理解 Profile、Mode、路由机制 |
-| 引擎层 | 框架开发者 | 高 | AgentScope SDK、工具管理 |
+```java
+// ToolAdapter.callAsync() — 桥梁核心
+public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+    // 熔断检查（平台特色）
+    if (circuitBreaker != null && circuitBreaker.isCircuitOpen(tool.getName())) {
+        return Mono.just(ToolResultBlock.error("工具暂时不可用"));
+    }
+    // 调用平台 Tool 接口
+    ToolInput input = new ToolInput(param.getInput());
+    ToolResult result = tool.execute(input);
+    // 转换为 agentscope 的 ToolResultBlock
+    return Mono.just(ToolResultBlock.text(resultJson));
+}
+```
 
-**80% 的业务场景只需选模式，20% 需要高级自定义。**
+业务工具只需实现简单的 `Tool` 接口，不需要直接依赖 agentscope 的 `AgentTool`——这是**解耦**，不是重复。
+
+#### 4. ModelProviderFactory — 模型提供商的统一工厂
+
+```java
+public ChatModelProvider createProvider(ModelConfig config) {
+    return switch (config.getProvider().toLowerCase()) {
+        case "dashscope" -> new DashScopeModelProvider(config);
+        case "baidu"     -> new BaiduModelProvider(config);
+        case "huawei"    -> new HuaweiModelProvider(config);
+        case "openai"    -> new OpenAIModelProvider(config);
+        case "claude"    -> new ClaudeModelProvider(config);
+    };
+}
+```
+
+agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `ChatModelProvider` 在此基础上增加了：配置管理、多厂商统一抽象、与 `ReActAgent.builder().model(provider)` 的无缝集成。
+
+### 完整架构对比
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  yunxi-agent-platform                                            │
+│                                                                  │
+│  第 7 层: 编排与自动装配 (AgentConfigurer)                        │
+│    YAML定义 → 两轮初始化 → Supervisor/Pipeline/Routing            │
+│  ─────────────────────────────────────────────────────────────── │
+│  第 6 层: 持久化与记忆 (PersistenceManager, ConversationService)  │
+│    5种持久化策略 | ReMe记忆 | 分布式会话                            │
+│  ─────────────────────────────────────────────────────────────── │
+│  第 5 层: 国产化LLM适配 (ModelProviderFactory)                    │
+│    DashScope | 百度 | 华为 | Claude | OpenAI                     │
+│  ─────────────────────────────────────────────────────────────── │
+│  第 4 层: 生产特性 (CircuitBreaker, HITL, Audit, Metrics)        │
+│    熔断器 | 人工审核 | 审计 | 监控 | 多租户 Profile                │
+│  ─────────────────────────────────────────────────────────────── │
+│  第 3 层: 多通道网关 (agent-gateway)                              │
+│    钉钉 | 飞书 | 企微 | Web API | WS                              │
+│  ─────────────────────────────────────────────────────────────── │
+│  第 2 层: 统一治理 (AgentGatewayImpl)                             │
+│    审计→限流→优雅关闭→超时→Pre→Agent.call→Post→监控               │
+│  ─────────────────────────────────────────────────────────────── │
+│  第 1 层: Spring Boot 集成 (AutoConfiguration)                    │
+│    @ConditionalOnProperty | Bean注册 | YAML加载                   │
+├──────────────────────────────────────────────────────────────────┤
+│  agentscope-javaRC2 (嵌入式 SDK)                                  │
+│                                                                  │
+│  ReActAgent | Agent接口 | Msg | Toolkit | Hook系统 | Pipeline     │
+│  这是被嵌入的引擎，不是平台                                             │
+├──────────────────────────────────────────────────────────────────┤
+│  基础设施: Spring Boot / LLM API / MySQL / Redis / Milvus        │
+└──────────────────────────────────────────────────────────────────┘
+```
 
 ### 封装与增强对比
 
-| 功能 | AgentScope-Java | yunxi 封装 | 增强点 |
-|------|-----------------|-----------|--------|
-| Agent 创建 | 代码创建 | YAML 配置 | 配置驱动 |
-| MCP 支持 | 基础客户端 | 完整服务端+客户端 | 工具注册表 |
-| 多 Agent | A2A 协议 | Supervisor 模式 | 业务编排 |
-| 规则管控 | 无 | 三阶段规则引擎 | 企业合规 |
-| 多平台 | 无 | Gateway 统一适配 | 即开即用 |
+| 功能 | AgentScope 提供 | yunxi 增强 | 增加的文件数 |
+|------|---------------|-----------|:---------:|
+| Agent 创建 | ReActAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 | ~15 |
+| 工具系统 | Tool + AgentTool 接口 | ToolAdapter 桥接 + 熔断器 + 本地/远程/MCP 统一注册 | ~12 |
+| LLM 集成 | ModelRegistry + SPI | 模型工厂 + 国产化适配 (百度/华为) + 配置绑定 | ~10 |
+| 记忆 | InMemoryMemory | ReMe + 5 种持久化策略 + 场景管理 | ~15 |
+| MCP | 基础客户端 | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
+| 多 Agent | A2A 协议 | Supervisor/Pipeline/Routing 编排 + Profile 路由 | ~10 |
+| 网关 | 无 | 4 通道 + 会话 + 限流 + 认证 | ~20 |
+| 规则管控 | 无 | 三阶段规则引擎 + SpEL | ~15 |
+| 生产治理 | 无 | 熔断/审计/监控/HITL/优雅关闭 | ~12 |
+
+### 诚实的评估：哪些代码可以优化？
+
+1. **YAML 配置 → DTO 的转换链**：`AgentDefinition` → `AgentConfigDto` → `AgentInfoDto` 有多层映射，部分可以合并
+2. **WorkspaceAutoDiscoveryEngine + SceneDetectionService**：场景检测逻辑可能和 agentscope 现有能力有重叠
+3. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
+
+但**绝大多数代码是合理的**——它们解决的是不同层次的问题。业务工具只需实现简单的 `Tool` 接口就能被 Agent 调用，这才是平台的价值所在。
 
 ---
 
@@ -571,7 +708,7 @@ public class ProfileRouter {
 - **领域服务 (Domain Service)**：跨实体的业务逻辑
 
 **在本框架中的实践**：
-- Domain：通过 DomainContributor 定义
+- Domain：通过 YAML Agent 定义 + 工作区 AGENTS.md 声明
 - Bounded Context：通过模块划分
 - Entity：Agent、Scene、Rule
 - Domain Service：SupervisorService、RuleEngine
@@ -602,12 +739,17 @@ private final CacheProvider cacheProvider;
 - 对修改关闭
 
 **实践方式**：
-```java
-// 新增业务领域，无需修改框架代码
-@Component
-public class NewDomainContributor implements DomainContributor {
-    // 自动被框架识别和使用
-}
+```yaml
+# 新增业务领域，无需修改框架代码
+# 在 agent-definitions/ 目录新增 YAML 文件
+# 在工作区目录新建知识/技能文件即可
+- name: new-business-agent
+  workspace: ./workspace/new-business-agent
+  tools:
+    mcpServers:
+      - name: business-mcp
+        type: sse
+        url: http://localhost:40603/sse
 ```
 
 ### 4. 单一职责原则 (SRP)

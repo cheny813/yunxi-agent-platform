@@ -35,11 +35,13 @@ import java.util.Map;
 @RequestMapping("/agents")
 public class AgentController {
 
-    /**
-     * Agent 领域服务
-     */
-private final AgentDomainService agentDomainService;
+    /** Agent 领域服务 — Agent 的创建、查询、删除、缓存管理 */
+    private final AgentDomainService agentDomainService;
+
+    /** Agent 配置缓存 — 临时 Agent 实例的缓存与清理 */
     private final AgentConfigDtoCache agentConfigDtoCache;
+
+    /** Profile 路由器 — 获取 Profile 列表 */
     private final ProfileRouter profileRouter;
 
     public AgentController(AgentDomainService agentDomainService,
@@ -203,8 +205,8 @@ private final AgentDomainService agentDomainService;
             var info = Map.of(
                     "agentId", agent.getAgentId(),
                     "name", agent.getName(),
-                    "maxIters", agent.getMaxIters(),
-                    "model", agent.getModel().getModelName());
+                    "maxIters", "N/A (managed by HarnessAgent)",
+                    "model", agent.getAgentId());
 
             return switch (mode.toLowerCase()) {
                 case "info" -> Map.of("info", info);
@@ -214,7 +216,7 @@ private final AgentDomainService agentDomainService;
 
         } catch (Exception e) {
             return Map.of("error", e.getMessage());
-}
+        }
     }
 
     /**

@@ -7,7 +7,6 @@ import java.util.Map;
  *
  * @author yunxi-agent-platform
  */
-@SuppressWarnings("unchecked")
 public class ToolInput {
 
     /**

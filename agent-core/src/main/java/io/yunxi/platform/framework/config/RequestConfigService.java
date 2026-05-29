@@ -1,6 +1,6 @@
 package io.yunxi.platform.framework.config;
 
-import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.Agent;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
 
 import org.slf4j.Logger;
@@ -23,15 +23,16 @@ import java.util.Map;
 @Service
 public class RequestConfigService {
 
+    /** 日志记录器 */
     private static final Logger log = LoggerFactory.getLogger(RequestConfigService.class);
 
     /**
-     * 配置结果
+     * 配置结果 — 封装高级功能检测结果和配置映射
      */
     public static class ConfigResult {
-        /** 是否具有高级功能 */
+        /** 是否包含 RAG、记忆、技能等高级功能 */
         public final boolean hasAdvancedFeatures;
-        /** 配置映射 */
+        /** 配置键值对映射（ragMode、memoryMode 等） */
         public final Map<String, Object> configMap;
 
         /**
@@ -47,26 +48,35 @@ public class RequestConfigService {
     }
 
     /**
-     * 请求配置
+     * 请求配置 — 解析后的请求级别高级功能配置
+     * <p>
+     * 包含 RAG 模式、知识库、记忆模式、技能、工具、执行参数等配置项。
+     * 每个字段对应 UnifiedChatRequest 中的一个可选参数。
+     * </p>
      */
     public static class RequestConfig {
-        /** RAG 模式 */
+        /** RAG 检索模式（NONE / GENERIC / AGENTIC） */
         public String ragMode;
-        /** 知识库列表 */
+        /** 知识库名称列表 */
         public java.util.List<String> knowledgeBases;
-        /** 记忆模式 */
+        /** 记忆模式（NONE / IN_MEMORY / PERSISTENT） */
         public String memoryMode;
         /** 启用的技能列表 */
         public java.util.List<String> enabledSkills;
-        /** 启用的工具列表 */
+        /** 启用的工具类名列表 */
         public java.util.List<String> enabledTools;
-        /** 最大迭代次数 */
+        /** 最大 ReAct 循环迭代次数 */
         public Integer maxIters;
-        /** 温度参数 */
+        /** 模型温度参数（0.0～2.0） */
         public Double temperature;
-        /** 最大 Token 数 */
+        /** 最大输出 Token 数 */
         public Integer maxTokens;
 
+        /**
+         * 检查是否包含高级功能
+         *
+         * @return true 如果任一高级功能已配置
+         */
         public boolean hasAdvancedFeatures() {
             return ragMode != null ||
                     (knowledgeBases != null && !knowledgeBases.isEmpty()) ||
@@ -231,7 +241,7 @@ public class RequestConfigService {
      * @param agent  Agent 实例
      * @param config 请求配置
      */
-    public void applyConfigToAgent(ReActAgent agent, RequestConfig config) {
+    public void applyConfigToAgent(Agent agent, RequestConfig config) {
         if (agent == null || config == null) {
             return;
         }

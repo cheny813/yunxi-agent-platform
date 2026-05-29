@@ -96,6 +96,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- AgentScope Harness -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+        </dependency>
+
         <!-- AgentScope Core -->
         <dependency>
             <groupId>io.agentscope</groupId>

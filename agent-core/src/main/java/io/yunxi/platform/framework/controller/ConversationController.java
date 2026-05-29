@@ -2,7 +2,7 @@ package io.yunxi.platform.framework.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.agent.StreamOptions;
 import io.agentscope.core.message.Msg;
@@ -48,24 +48,34 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ConversationController {
 
-    /** 对话应用服务 */
+    /** 对话应用服务 — 编排 Agent 调用、会话管理、记忆管理、RAG 检索 */
     private final ChatAppService chatAppService;
-    /** 会话领域服务 */
+
+    /** 会话领域服务 — 会话 CRUD、三级缓存（Local → Redis → DB） */
     private final ConversationDomainService conversationDomainService;
-    /** Schema 类注册表 */
+
+    /** Schema 类注册表 — 结构化输出时按 agentName 查找 Schema Class */
     private final SchemaClassRegistry schemaClassRegistry;
-    /** Agent 领域服务 */
+
+    /** Agent 领域服务 — 获取 Agent 实例 */
     private final AgentDomainService agentDomainService;
-    /** SSE 消息构建器 */
+
+    /** SSE 消息构建器 — 构建标准 SSE 事件格式（start/thinking/content/done） */
     private final SseMessageBuilder sseMessageBuilder;
-    /** 分布式请求管理器 */
+
+    /** 分布式请求管理器 — 支持请求取消、活跃请求计数 */
     private final DistributedRequestManager requestManager;
+
     /** JSON 序列化工具 */
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 工具分组管理器（可选） */
+    /** 工具分组管理器（可选，用于动态切换 Agent 工具组） */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private ToolGroupManager toolGroupManager;
+
+    /** Agent 中断服务（可选，用于中断/恢复 Agent 执行） */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private AgentInterruptService agentInterruptService;
 
     /**
      * 获取用户会话列表
@@ -146,7 +156,7 @@ public class ConversationController {
         String agentName = request.getAgentName();
 
         // 获取 Agent 实例
-        ReActAgent agent = agentDomainService.getAgentInstance(agentName);
+        Agent agent = agentDomainService.getAgentInstance(agentName);
 
         // 构建用户消息
         Msg userMsg = Msg.builder()
@@ -295,7 +305,7 @@ public class ConversationController {
         return Flux.defer(() -> {
             try {
                 // 获取 Agent 实例
-                ReActAgent agent = agentDomainService.getAgentInstance(agentName);
+                Agent agent = agentDomainService.getAgentInstance(agentName);
 
                 // 获取 Schema 类（支持多 Schema 选择）
                 Class<?> schemaClass = resolveSchemaClass(agentName, request);
@@ -639,13 +649,9 @@ public class ConversationController {
             return Map.of("success", false, "message", "ToolGroupManager not available");
         }
 
-        // 获取 Agent 实例的 Toolkit
-        io.agentscope.core.tool.Toolkit toolkit = agentDomainService.getAgentToolkit(name);
-        if (toolkit == null) {
-            // 如果 Agent 没有 Toolkit，创建一个新的
-            toolkit = new io.agentscope.core.tool.Toolkit();
-            log.info("Agent [{}] 无 Toolkit，创建新的工具包", name);
-        }
+        // 创建新的 Toolkit（HarnessAgent 内部管理工具生命周期）
+        io.agentscope.core.tool.Toolkit toolkit = new io.agentscope.core.tool.Toolkit();
+        log.info("Agent [{}] 创建工具包以激活工具组: {}", name, activateIds);
 
         // 激活指定的工具组
         toolGroupManager.activateGroups(toolkit, activateIds);
@@ -655,8 +661,4 @@ public class ConversationController {
                 "message", "Tool groups updated successfully",
                 "activatedGroups", activateIds);
     }
-
-    // ========== 注入 AgentInterruptService ==========
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private AgentInterruptService agentInterruptService;
 }

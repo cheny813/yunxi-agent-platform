@@ -29,16 +29,22 @@ public abstract class BaseSyncService {
 
     /** Milvus 操作门面 */
     protected final MilvusOperations milvusOps;
+
     /** 向量嵌入服务 */
     protected final EmbeddingService embeddingService;
+
     /** MCP 查询服务 */
     protected final McpQueryService mcpQueryService;
+
     /** Milvus 集合管理服务 */
     protected final MilvusCollectionService milvusCollectionService;
+
     /** 向量嵌入批量服务 */
     protected final EmbeddingBatchService embeddingBatchService;
+
     /** JSON 对象映射器 */
     protected final ObjectMapper objectMapper = new ObjectMapper();
+
     /** Gson 序列化器 */
     protected final Gson gson = new GsonBuilder().create();
 
@@ -121,7 +127,7 @@ public abstract class BaseSyncService {
      * @return 查询结果
      */
     protected String callMcpDatabase(String host, int port, String sql, int limit) {
-        return mcpQueryService.callMcpDatabase(host, port, sql, limit);
+        return mcpQueryService.callMcpDatabase(host, port, null, sql, limit);
     }
 
     // ==================== EmbeddingBatchService 委托方法 ====================

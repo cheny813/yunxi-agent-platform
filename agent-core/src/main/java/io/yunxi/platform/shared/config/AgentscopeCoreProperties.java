@@ -6,17 +6,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
 import java.util.Map;
 
 /**
  * AgentScope 核心配置属性类
- * 
+ *
  * <p>
  * 核心业务配置入口，配置前缀为 agentscope.core 以避免与WebSocket配置冲突
  * </p>
- * 
+ *
  * <h3>配置示例 (application.yml)</h3>
- * 
+ *
  * <pre>
  * agentscope.core:
  *   api-key: ${DASHSCOPE_API_KEY}
@@ -71,6 +72,32 @@ public class AgentscopeCoreProperties {
      * MCP 服务器配置映射
      */
     private Map<String, McpServerConfig> mcpServers;
+
+    /**
+     * Agent 工作区基础路径
+     */
+    private String workspaceBasePath = "./.agentscope/workspace";
+
+    /**
+     * 获取 Agent 工作区基础路径（始终返回绝对路径）
+     * <p>
+     * 重写 Lombok {@code @Data} 生成的 getter，确保路径为绝对路径，
+     * 避免在 Windows 上与 {@code filesystem.glob()} 返回的绝对路径
+     * 做 {@code Path.relativize()} 时因路径类型不一致而抛出异常。
+     * </p>
+     */
+    public String getWorkspaceBasePath() {
+        if (workspaceBasePath == null || workspaceBasePath.isBlank()) {
+            return "./.agentscope/workspace";
+        }
+        // 转换为绝对路径字符串
+        return Path.of(workspaceBasePath).toAbsolutePath().normalize().toString();
+    }
+
+    /**
+     * Compaction（消息压缩）配置
+     */
+    private CompactionProperties compaction = new CompactionProperties();
 
     /**
      * 各 Provider 配置
@@ -204,5 +231,28 @@ public class AgentscopeCoreProperties {
         private Map<String, String> headers;
         /** 环境变量 */
         private Map<String, String> env;
+    }
+
+    /**
+     * Compaction（消息压缩）配置类
+     *
+     * <p>
+     * 控制 HarnessAgent 的消息压缩策略，当消息数量或 token 数超过阈值时自动触发压缩。
+     * </p>
+     *
+     * @author yunxi-agent-platform
+     */
+    @Data
+    public static class CompactionProperties {
+        /** 触发压缩的消息数量阈值 */
+        private int triggerMessages = 50;
+        /** 触发压缩的 token 数量阈值 */
+        private int triggerTokens = 80000;
+        /** 压缩后保留的消息数量 */
+        private int keepMessages = 20;
+        /** 压缩前是否刷新记忆 */
+        private boolean flushBeforeCompact = true;
+        /** 压缩前是否卸载记忆 */
+        private boolean offloadBeforeCompact = true;
     }
 }

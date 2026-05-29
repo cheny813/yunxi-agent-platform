@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.yunxi.platform.shared.mapper.SyncCursorMapper">
+
+    <resultMap id="SyncCursorResultMap" type="io.yunxi.platform.shared.entity.SyncCursorEntity">
+        <id property="pipelineName" column="pipeline_name"/>
+        <result property="cursorValue" column="cursor_value"/>
+        <result property="syncedRows" column="synced_rows"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        pipeline_name, cursor_value, synced_rows, updated_at
+    </sql>
+
+    <select id="findByPipelineName" resultMap="SyncCursorResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_sync_cursors
+        WHERE pipeline_name = #{pipelineName}
+        LIMIT 1
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO agent_sync_cursors (pipeline_name, cursor_value, synced_rows)
+        VALUES (#{pipelineName}, #{cursorValue}, #{syncedRows})
+        ON DUPLICATE KEY UPDATE
+            cursor_value = VALUES(cursor_value),
+            synced_rows  = VALUES(synced_rows),
+            updated_at   = CURRENT_TIMESTAMP
+    </insert>
+
+</mapper>

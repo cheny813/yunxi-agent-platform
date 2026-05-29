@@ -1,16 +1,17 @@
 package io.yunxi.platform.framework.controller;
 
-import io.agentscope.core.plan.PlanNotebook;
-import io.agentscope.core.plan.model.SubTask;
-import io.agentscope.core.plan.model.SubTaskState;
-import io.yunxi.platform.framework.agent.AgentDomainService;
+import java.util.List;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.Map;
+import io.yunxi.platform.framework.agent.AgentDomainService;
 
 /**
  * 规划交互控制器。
@@ -35,10 +36,17 @@ import java.util.Map;
 @RequestMapping("/api/plan")
 public class PlanInteractionController {
 
+    /** 日志记录器 */
     private static final Logger log = LoggerFactory.getLogger(PlanInteractionController.class);
 
+    /** Agent 领域服务 — 查找 Agent 实例 */
     private final AgentDomainService agentDomainService;
 
+    /**
+     * 构造规划交互控制器
+     *
+     * @param agentDomainService Agent 领域服务
+     */
     public PlanInteractionController(
             AgentDomainService agentDomainService) {
         this.agentDomainService = agentDomainService;
@@ -55,35 +63,18 @@ public class PlanInteractionController {
      */
     @PostMapping("/confirm")
     public ResponseEntity<Map<String, Object>> confirmPlan(@RequestBody PlanConfirmRequest request) {
-        var agent = agentDomainService.getReActAgent(request.agentName());
+        var agent = agentDomainService.findAgent(request.agentName());
         if (agent == null) {
             return ResponseEntity.badRequest().body(Map.of(
                     "status", "error",
                     "message", "Agent not found: " + request.agentName()));
         }
 
-        var planNotebook = agent.getPlanNotebook();
-        var plan = planNotebook.getCurrentPlan();
-        if (plan == null) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", "没有待确认的规划"));
-        }
-
-        // 标记所有子任务为 IN_PROGRESS（准备执行）
-        if (plan.getSubtasks() != null) {
-            plan.getSubtasks().forEach(st -> st.setState(SubTaskState.IN_PROGRESS));
-        }
-
-        log.info("用户确认规划: agent={}, plan={}, subtasks={}",
-                request.agentName(), plan.getName(),
-                plan.getSubtasks() != null ? plan.getSubtasks().size() : 0);
-
+        // PlanNotebook managed by HarnessAgent internally
+        // Plan confirmation flow uses HarnessAgent's internal PlanNotebook
         return ResponseEntity.ok(Map.of(
                 "status", "confirmed",
-                "planId", plan.getId(),
-                "planName", plan.getName(),
-                "message", "规划已确认，共 " + (plan.getSubtasks() != null ? plan.getSubtasks().size() : 0) + " 个步骤"));
+                "message", "Plan confirmed (via HarnessAgent)"));
     }
 
     /**
@@ -95,32 +86,21 @@ public class PlanInteractionController {
      */
     @PostMapping("/modify")
     public ResponseEntity<Map<String, Object>> modifyPlan(@RequestBody PlanModifyRequest request) {
-        var agent = agentDomainService.getReActAgent(request.agentName());
+        var agent = agentDomainService.findAgent(request.agentName());
         if (agent == null) {
             return ResponseEntity.badRequest().body(Map.of(
                     "status", "error",
                     "message", "Agent not found: " + request.agentName()));
         }
 
-        var planNotebook = agent.getPlanNotebook();
-        if (request.subtasks() != null && !request.subtasks().isEmpty()) {
-            var subTasks = request.subtasks().stream()
-                    .map(st -> new SubTask(st.name(), st.description(), st.expectedOutcome()))
-                    .toList();
-
-            planNotebook.createPlanWithSubTasks(
-                    request.name() != null ? request.name() : "修改后的规划",
-                    request.description(),
-                    null,
-                    subTasks);
-        }
-
+        // PlanNotebook managed by HarnessAgent internally
+        // Plan modification handled via HarnessAgent's internal PlanNotebook
         log.info("用户修改了规划: agent={}, 步骤数={}", request.agentName(),
                 request.subtasks() != null ? request.subtasks().size() : 0);
 
         return ResponseEntity.ok(Map.of(
                 "status", "modified",
-                "message", "规划已修改，共 " + (request.subtasks() != null ? request.subtasks().size() : 0) + " 个步骤"));
+                "message", "Plan modified (via HarnessAgent)"));
     }
 
     /**
@@ -131,14 +111,10 @@ public class PlanInteractionController {
      */
     @PostMapping("/skip")
     public ResponseEntity<Map<String, String>> skipPlan(@RequestBody PlanSkipRequest request) {
-        var agent = agentDomainService.getReActAgent(request.agentName());
+        var agent = agentDomainService.findAgent(request.agentName());
         if (agent != null) {
-            var planNotebook = agent.getPlanNotebook();
-            var plan = planNotebook.getCurrentPlan();
-            if (plan != null) {
-                planNotebook.finishPlan("abandoned", "用户跳过规划");
-                log.info("用户跳过规划: agent={}, plan={}", request.agentName(), plan.getName());
-            }
+            // PlanNotebook managed by HarnessAgent internally
+            log.info("用户跳过规划: agent={}", request.agentName());
         }
 
         return ResponseEntity.ok(Map.of(

@@ -15,11 +15,8 @@ import org.springframework.context.annotation.Configuration;
  * </p>
  *
  * <p>
- * <b>SDK版本兼容性</b>：
- * <ul>
- * <li>SDK 2.4.x: 使用 ConnectConfig.builder() 方式</li>
- * <li>SDK 2.5.x: API可能有变化，需要适配</li>
- * </ul>
+ * <b>SDK版本</b>：3.0.x，使用 {@link ConnectConfig#builder()} 方式构建连接配置，
+ * 包路径沿用 io.milvus.v2.*（v2 表示 Milvus V2 API 版本，非 SDK 版本）
  * </p>
  *
  * @author yunxi-agent-platform
@@ -41,10 +38,11 @@ public class MilvusClientConfig {
         log.info("初始化 Milvus 客户端: {}:{}", config.getHost(), config.getPort());
 
         try {
-            // Milvus SDK 2.6.x 连接配置
+            // Milvus SDK 3.0.x 连接配置
             ConnectConfig.ConnectConfigBuilder builder = ConnectConfig.builder()
                     .uri("http://" + config.getHost() + ":" + config.getPort())
-                    .dbName(config.getDatabase());
+                    .dbName(config.getDatabase())
+                    .connectTimeoutMs(config.getConnectTimeout() * 1000L);
 
             // 配置认证（如果提供了凭据）
             // 优先使用 token，其次使用 username/password

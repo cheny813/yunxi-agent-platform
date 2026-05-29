@@ -1,7 +1,7 @@
 package io.yunxi.platform.framework.tool.impl;
 
-import io.yunxi.platform.framework.controller.DesktopRelayHandler;
-import io.yunxi.platform.framework.controller.NodeInfo;
+import io.yunxi.platform.framework.desktop.relay.DesktopRelayHandler;
+import io.yunxi.platform.framework.desktop.model.NodeInfo;
 import io.yunxi.platform.framework.security.CommandSafety;
 import io.yunxi.platform.framework.security.CommandSafetyClassifier;
 import io.yunxi.platform.framework.tool.Tool;

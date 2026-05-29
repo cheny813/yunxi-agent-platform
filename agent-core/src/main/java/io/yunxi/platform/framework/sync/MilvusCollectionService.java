@@ -1,16 +1,11 @@
 package io.yunxi.platform.framework.sync;
 
 import com.google.gson.JsonObject;
-import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.service.vector.request.QueryIteratorReq;
-import io.milvus.orm.iterator.QueryIterator;
-import io.milvus.response.QueryResultsWrapper;
 import io.yunxi.platform.infra.milvus.MilvusOperations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -54,6 +49,10 @@ public class MilvusCollectionService {
 
     /**
      * 获取 Milvus 集合中的记录数量
+     * <p>
+     * 使用 {@link MilvusOperations#getCollectionStatistics(String)} 从元数据获取行数，
+     * O(1) 复杂度，相比 QueryIterator 遍历计数更高效可靠。
+     * </p>
      *
      * @param collectionName 集合名称
      * @return 记录数量，集合不存在返回0，查询失败返回-1，Milvus不可用返回0
@@ -62,36 +61,10 @@ public class MilvusCollectionService {
         if (!milvusOps.isAvailable()) {
             return 0;
         }
-        MilvusClientV2 client = milvusOps.getRawClient();
-        if (client == null) {
+        if (!isCollectionExists(collectionName)) {
             return 0;
         }
-        try {
-            if (!isCollectionExists(collectionName)) {
-                return 0;
-            }
-            QueryIteratorReq req = QueryIteratorReq.builder()
-                    .collectionName(collectionName)
-                    .outputFields(Collections.singletonList("id"))
-                    .expr("")
-                    .batchSize(1000L)
-                    .build();
-
-            QueryIterator iterator = client.queryIterator(req);
-
-            long count = 0;
-            while (true) {
-                List<QueryResultsWrapper.RowRecord> results = iterator.next();
-                if (results.isEmpty()) {
-                    break;
-                }
-                count += results.size();
-            }
-            return count;
-        } catch (Exception e) {
-            log.error("获取集合 [{}] 数据量失败: {}", collectionName, e.getMessage());
-            return -1;
-        }
+        return milvusOps.getCollectionStatistics(collectionName);
     }
 
     /**
