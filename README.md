@@ -16,6 +16,7 @@
 | 特性 | 说明 |
 |------|------|
 | **多 Agent 编排** | 支持 Supervisor 模式、Agent 路由、Pipeline 编排 |
+| **AgentScope-Harness** | 集成 agentscope-harness 1.1.0-RC2，完整的会话管理、工作空间与记忆系统 |
 | **规则引擎** | 内置轻量级规则引擎，支持 SpEL 表达式、动态规则加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
 | **记忆系统** | 基于 ReMe 的反射式记忆，支持长期/短期/工作记忆 |
@@ -68,11 +69,10 @@ curl -X POST http://localhost:8080/api/chat \
 
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
-| **agent-core** | 核心框架：Agent 编排、对话管理、记忆、技能 | Spring Boot, ReAct |
-| **agent-business** | 业务模块：营养餐领域示例 | DDD, SPI |
+| **agent-core** | 核心框架：Agent 编排、会话管理、记忆、技能 | Spring Boot, agentscope-harness |
 | **agent-gateway** | 网关：通道管理、流控、认证 | WebSocket, SSE |
 | **agent-rule-engine** | 规则引擎：动态规则、SpEL 评估 | Spring SpEL |
-| **agent-text2sql** | 自然语言转 SQL | LLM, Few-shot |
+| **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
 | **agent-spi** | SPI 接口定义 | Java SPI |
 | **agent-config** | 统一配置：YAML、数据库初始化 | Spring Cloud |
 | **agent-app** | 启动入口：整合所有模块 | Spring Boot |
@@ -82,21 +82,21 @@ curl -X POST http://localhost:8080/api/chat \
 ## 架构概览
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  接入层 (Gateway)                     │
-│   WebSocket · SSE · 飞书 · 钉钉 · 企业微信 · Web API  │
-└─────────────────────┬───────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────┐
-│                  编排层 (Core)                        │
-│    Agent 编排 · 对话管理 · 路由 · Pipeline · 技能     │
-└──────┬──────────────┬──────────────┬────────────────┘
-       │              │              │
-┌──────▼──────┐ ┌─────▼──────┐ ┌────▼──────────────┐
-│  规则引擎    │ │  MCP 协议  │ │  记忆系统 (ReMe)   │
-│  SpEL 规则  │ │  30+ 工具  │ │  短期/长期/工作记忆 │
-│  动态加载   │ │  SPI 扩展  │ │  反射式记忆        │
-└─────────────┘ └────────────┘ └───────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                  接入层 (Gateway)                         │
+│   WebSocket · SSE · 飞书 · 钉钉 · 企业微信 · Web API      │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│                 编排层 (Core + Harness)                   │
+│   Agent 编排 · 会话管理 · 路由 · Pipeline · 技能 · 工作空间 │
+└───────┬──────────────┬──────────────┬───────────────────┘
+        │              │              │
+┌───────▼───────┐ ┌────▼──────┐ ┌────▼─────────────────┐
+│   规则引擎     │ │ MCP 协议  │ │  记忆系统 (ReMe)      │
+│   SpEL 规则   │ │ 40+ 工具  │ │  短期/长期/工作记忆    │
+│   动态加载     │ │ SPI 扩展  │ │  反射式记忆           │
+└───────────────┘ └───────────┘ └──────────────────────┘
 ```
 
 ---
@@ -120,18 +120,17 @@ curl -X POST http://localhost:8080/api/chat \
 
 ## MCP 工具生态
 
-yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 配合使用，提供 30+ 即插即用的 MCP 工具：
+yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 配合使用，提供 40+ 即插即用的 MCP 工具：
 
 | 类别 | 工具 |
 |------|------|
-| **数据库** | MySQL 查询、数据库元数据、跨库查询 |
-| **文件** | 文件读写、目录管理、搜索 |
-| **搜索** | 百度搜索、代码搜索 |
-| **AI 能力** | OCR、ASR、Embedding、知识库 |
-| **办公** | Excel、PDF、PPTX 处理 |
-| **消息** | 钉钉、飞书、企业微信、邮件 |
-| **运维** | Docker、K8s、Redis、Elasticsearch、日志查询 |
-| **其他** | 浏览器自动化（Playwright）、MQTT、Git、表单填写 |
+| **数据库与存储** | MySQL、Redis、Milvus、Qdrant、MongoDB、Elasticsearch |
+| **文件系统** | 文件读写、目录管理、搜索 |
+| **外部服务** | GitHub、百度 OCR/ASR/搜索、钉钉、企微 |
+| **AI 能力** | 浏览器自动化（Playwright）、图表生成、页面生成、知识库、记忆管理 |
+| **文档处理** | PDF、Excel、PPTX |
+| **基础设施** | Docker、K8s、Git、S3、MQTT、日志查询、系统监控 |
+| **其他** | 邮件、Wikipedia、表单填写、营养配餐、API 网关 |
 
 ---
 
