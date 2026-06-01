@@ -187,7 +187,7 @@ public class AdvancedAgentConfigDto {
      */
     @Data
     public static class MemoryConfig {
-        /** 记忆类型：in-memory（内存）、autocontext（自动上下文）、reme、mem0 */
+        /** 记忆类型：in-memory（内存）、autocontext（自动上下文） */
         private String type;
         /** 最大 Token 数（限制上下文窗口大小） */
         private Integer maxTokens;

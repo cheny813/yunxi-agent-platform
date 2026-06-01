@@ -144,7 +144,7 @@ public class ConfigManagementController {
         result.put("memoryStores", extensionProperties.getMemoryStores());
         result.put("count",
                 extensionProperties.getMemoryStores() != null ? extensionProperties.getMemoryStores().size() : 0);
-        result.put("note", "配置仅供参考，请通过 @Bean 创建 Mem0Memory/ReMeMemory 等实例");
+        result.put("note", "配置仅供参考，请通过 @Bean 创建 LongTermMemory 实例");
         return result;
     }
 

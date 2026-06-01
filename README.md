@@ -19,7 +19,7 @@
 | **AgentScope-Harness** | 集成 agentscope-harness 1.1.0-RC2，完整的会话管理、工作空间与记忆系统 |
 | **规则引擎** | 内置轻量级规则引擎，支持 SpEL 表达式、动态规则加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
-| **记忆系统** | 基于 ReMe 的反射式记忆，支持长期/短期/工作记忆 |
+| **记忆系统** | Harness 内置双层文件系统记忆，支持每日日志 + MEMORY.md 精选记忆 |
 | **技能系统** | 可插拔技能架构，支持文件和技能仓库管理 |
 | **SPI 扩展** | 基于 Java SPI 的插件化扩展机制 |
 | **多通道** | 支持 WebSocket、SSE、飞书、钉钉、企业微信等通道 |
@@ -93,7 +93,7 @@ curl -X POST http://localhost:8080/api/chat \
 └───────┬──────────────┬──────────────┬───────────────────┘
         │              │              │
 ┌───────▼───────┐ ┌────▼──────┐ ┌────▼─────────────────┐
-│   规则引擎     │ │ MCP 协议  │ │  记忆系统 (ReMe)      │
+│   规则引擎     │ │ MCP 协议  │ │  记忆系统 (Harness 内置) │
 │   SpEL 规则   │ │ 40+ 工具  │ │  短期/长期/工作记忆    │
 │   动态加载     │ │ SPI 扩展  │ │  反射式记忆           │
 └───────────────┘ └───────────┘ └──────────────────────┘
@@ -161,4 +161,3 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 
 - [AgentScope](https://github.com/modelscope/agentscope) — 多 Agent 框架
 - [Spring AI](https://spring.io/projects/spring-ai) — Spring AI 生态
-- [ReMe](https://github.com/modelscope/agentscope-ReMe) — 反射式记忆系统

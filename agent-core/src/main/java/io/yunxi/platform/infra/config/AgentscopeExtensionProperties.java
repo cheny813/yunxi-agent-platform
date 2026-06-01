@@ -64,7 +64,7 @@ public class AgentscopeExtensionProperties {
     /**
      * 记忆存储配置映射
      * <p>
-     * 支持多种记忆存储：mem0、reme、autocontext
+     * 支持多种记忆存储：autocontext
      * </p>
      */
     private Map<String, MemoryStoreConfig> memoryStores;
@@ -154,7 +154,7 @@ public class AgentscopeExtensionProperties {
     public static class MemoryStoreConfig {
         /** 是否启用 */
         private boolean enabled = false;
-        /** 存储类型：mem0、reme、autocontext */
+        /** 存储类型：autocontext */
         private String type;
 
         // API 参数
@@ -170,7 +170,7 @@ public class AgentscopeExtensionProperties {
         // 用户隔离
         /** 默认用户 ID */
         private String userId;
-        /** 启用 ReMe 的用户列表（空表示所有用户都启用） */
+        /** 启用长期记忆的用户列表（空表示所有用户都启用） */
         private java.util.List<String> enabledUsers;
     }
 

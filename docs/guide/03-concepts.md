@@ -583,41 +583,13 @@ public class MemorySceneRegistry {
 }
 ```
 
-### ReMe 集成（持久化记忆）
+### Harness 内置文件系统记忆
 
-ReMe 是框架集成的持久化记忆系统，提供三类结构化的长期记忆：
+框架集成 agentscope-harness 后，使用双层文件系统记忆替代了独立的 ReMe 服务：
 
-**1. WorkingMemory（工作记忆）**
-- 记录当前任务的中间状态和临时数据
-- 生命周期与任务绑定，任务结束后自动清理
-- 用于跨步骤的上下文传递
-
-**2. TaskMemory（任务记忆）**
-- 记录历史任务的执行记录和结果
-- 持久化存储，长期可用
-- 支持按任务类型、时间范围检索
-
-**3. ToolMemory（工具记忆）**
-- 记录工具调用的输入、输出和执行状态
-- 用于工具调用的历史追溯和性能分析
-- 支持工具调用链的完整回溯
-
-```java
-// WorkingMemory 使用示例
-workingMemory.set("currentStep", "analysis");
-workingMemory.set("intermediateResult", resultData);
-
-// TaskMemory 使用示例
-taskMemory.saveTaskRecord(taskId, taskType, taskResult);
-List<TaskRecord> history = taskMemory.queryTaskHistory(taskType, startTime, endTime);
-
-// ToolMemory 使用示例
-toolMemory.recordToolCall(toolName, inputArgs, outputResult, status);
-List<ToolCallRecord> calls = toolMemory.getToolCallHistory(toolName);
-```
-
-**集成方式**：
-- ReMe 通过 SPI 集成到 MemoryCoordinatorService
+- **每日日志**：`memory/YYYY-MM-DD.md`，每次对话后 LLM 提取事实追加写入
+- **精选记忆**：`MEMORY.md`，定期合并去重
+- **检索**：通过 `memory_search` / `memory_get` Agent 工具进行关键词检索
 - 业务层通过 MemoryCoordinatorService 统一接口访问所有记忆类型
 - 框架自动在对话生命周期中同步短期记忆与持久化记忆
 

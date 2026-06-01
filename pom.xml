@@ -160,23 +160,6 @@
                 <version>${agentscope.version}</version>
             </dependency>
 
-            <!-- 长期记忆扩展 -->
-            <dependency>
-                <groupId>io.agentscope</groupId>
-                <artifactId>agentscope-extensions-mem0</artifactId>
-                <version>${agentscope.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.agentscope</groupId>
-                <artifactId>agentscope-extensions-reme</artifactId>
-                <version>${agentscope.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.agentscope</groupId>
-                <artifactId>agentscope-extensions-autocontext-memory</artifactId>
-                <version>${agentscope.version}</version>
-            </dependency>
-
             <!-- Harness Agent 运行时 -->
             <dependency>
                 <groupId>io.agentscope</groupId>

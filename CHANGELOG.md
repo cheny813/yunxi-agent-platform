@@ -15,6 +15,9 @@
 - 底层框架 agentscope 从 1.0.9 升级至 1.1.0-RC2，全面对接 agentscope-harness
 - Milvus SDK 从旧版升级至 3.0.1，适配 v2 API 包路径（io.milvus.v2.*）
 - 清除 SDK 版本兼容性注释，统一为 3.0.x 基准
+- 移除 ReMe 独立记忆系统，默认使用 Harness 内置双层文件系统记忆（每日日志 + MEMORY.md）
+- 移除 agentscope-extensions-reme 依赖、ReMePython 后端及启动脚本
+- 移除 agentscope-extensions-mem0 和 agentscope-extensions-autocontext-memory 依赖及其配置
 
 ### 废弃
 - 即将移除的功能
@@ -23,6 +26,14 @@
 - Bug 修复
 - Milvus 客户端连接超时配置未传递的问题：添加 connectTimeoutMs 参数传递
 - Milvus SDK 3.0.1 API 兼容修复：GetCollectionStatisticsReq/Resp 迁移至 GetCollectionStatsReq/Resp，getCollectionStatistics 迁移至 getCollectionStats，getNumRows 迁移至 getNumOfEntities
+
+### 移除
+- ReMe 记忆系统及其 Python 后端服务
+- agentscope-extensions-reme 依赖
+- ReMeAutoConfiguration / ToolMemoryTool / WorkingMemoryTool / TaskMemoryTool
+- ReMePlanStorage（计划存储改由 Harness 内置记忆承载）
+- 启动ReMe服务.ps1 及 ReMePython/ 目录
+- 相关文档章节 17-agentscope-reme-integration.md
 
 ### 安全
 - 安全相关修复

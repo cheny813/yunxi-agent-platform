@@ -490,9 +490,8 @@ public class AdvancedAgentFactory {
                 }
             }
 
-            if (memory == null && memoryBeans.containsKey("reMeLongTermMemory")) {
-                memory = memoryBeans.get("reMeLongTermMemory");
-                log.info("使用默认的 ReMeLongTermMemory");
+            if (memory == null) {
+                log.warn("未找到可用的长期记忆 Bean，将使用 Harness 内置文件系统记忆");
             }
 
             if (memory != null) {

@@ -178,4 +178,4 @@ Agent 级 model:（如果省略，则继承全局）
 | 开启/关闭 PlanNotebook | Agent 定义中 | `enablePlanNotebook` (旧) / `plan.enabled` (新) |
 | 配置数据库 | `config/datasource.yml` | 连接池参数 |
 | 关闭技能系统 | `config/skill.yml` | `agentscope.skill-box.enabled: false` |
-| 关闭记忆系统 | `config/agentscope.yml` | `extensions.memory-stores.reme.enabled: false` |
+| 关闭记忆系统 | `config/agentscope.yml` | `extensions.memory-stores.*.enabled: false` |

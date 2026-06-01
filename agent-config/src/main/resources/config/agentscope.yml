@@ -113,26 +113,8 @@ agentscope:
         dimension: ${SIMPLE_KB_DIMENSION:1024}
 
     # ============================================================
-    # 长期记忆存储配置
+    # 长期记忆存储配置（Harness 内置记忆，无需额外配置）
     # ============================================================
-    memory-stores:
-
-      # Mem0 云端记忆
-      mem0:
-        enabled: ${MEM0_ENABLED:false}
-        type: mem0
-        api-key: ${MEM0_API_KEY:}
-        api-base-url: ${MEM0_API_BASE_URL:}
-
-      # ReMe 记忆（现代化配置）
-      reme:
-        enabled: ${REME_ENABLED:true}
-        type: reme
-        api-key: ${REME_API_KEY:}
-        api-base-url: ${REME_API_BASE_URL:http://localhost:8002}
-        timeout-ms: ${REME_TIMEOUT_MS:30000}
-        enabled-users: ${REME_ENABLED_USERS:['user1', 'user2', 'default']}
-
     # 技能系统
     skills:
       enabled: ${SKILLS_ENABLED:false}
