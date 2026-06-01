@@ -83,7 +83,6 @@
 | [14. 智能子系统](./14-intelligent-system.md) | 自适应策略、自我改进、智能监控 | 40 分钟 |
 | [15. A2A 协议](./15-a2a-protocol.md) | 跨服务 Agent 协作、分布式架构 | 30 分钟 |
 | [16. Model Context Protocol](./16-mcp.md) | MCP 标准与实现 | 30 分钟 |
-| [17. Agentscope-ReMe 集成](./17-agentscope-reme-integration.md) | 反射式记忆系统集成与使用 | 30 分钟 |
 
 ---
 
@@ -108,7 +107,7 @@
 → 查看 [14. 智能子系统](./14-intelligent-system.md) 和 [15. A2A 协议](./15-a2a-protocol.md)
 
 **我要集成第三方AI服务**
-→ 查看 [17. Agentscope-ReMe 集成](./17-agentscope-reme-integration.md)
+→ 查看 [16. Model Context Protocol](./16-mcp.md)
 
 ---
 

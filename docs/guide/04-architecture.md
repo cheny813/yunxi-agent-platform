@@ -531,7 +531,7 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 | **3. 多通道网关层** | 钉钉/飞书/企微/Web API 多渠道接入 | `agent-gateway` 模块、`MessageChannel` | 否 |
 | **4. 生产特性层** | 熔断器、HITL 人工审核、会话管理、分布式缓存、多租户 | `ToolCircuitBreaker`、`ToolGateHook`、`ConversationDomainService` | 否 |
 | **5. 国产化 LLM 适配层** | DashScope/百度/华为/Claude 统一接入 | `ModelProviderFactory`、`ChatModelProvider` | 部分 |
-| **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、ReMe 记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
+| **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
 | **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Pipeline/Routing | `AgentConfigurer`（~555行） | 否 |
 
 ### 关键接线：具体桥接代码解读
@@ -644,7 +644,7 @@ agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `Ch
 │    YAML定义 → 两轮初始化 → Supervisor/Pipeline/Routing            │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 6 层: 持久化与记忆 (PersistenceManager, ConversationService)  │
-│    5种持久化策略 | ReMe记忆 | 分布式会话                            │
+│    5种持久化策略 | Harness 内置记忆 | 分布式会话                            │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 5 层: 国产化LLM适配 (ModelProviderFactory)                    │
 │    DashScope | 百度 | 华为 | Claude | OpenAI                     │
@@ -677,7 +677,7 @@ agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `Ch
 | Agent 创建 | ReActAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 | ~15 |
 | 工具系统 | Tool + AgentTool 接口 | ToolAdapter 桥接 + 熔断器 + 本地/远程/MCP 统一注册 | ~12 |
 | LLM 集成 | ModelRegistry + SPI | 模型工厂 + 国产化适配 (百度/华为) + 配置绑定 | ~10 |
-| 记忆 | InMemoryMemory | ReMe + 5 种持久化策略 + 场景管理 | ~15 |
+| 记忆 | InMemoryMemory | Harness 内置文件系统记忆 + 5 种持久化策略 + 场景管理 | ~15 |
 | MCP | 基础客户端 | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
 | 多 Agent | A2A 协议 | Supervisor/Pipeline/Routing 编排 + Profile 路由 | ~10 |
 | 网关 | 无 | 4 通道 + 会话 + 限流 + 认证 | ~20 |

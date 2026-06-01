@@ -111,7 +111,7 @@ agent-core/src/main/java/io/yunxi/platform/
 | 组件 | 说明 |
 |------|------|
 | `a2a/` | 跨服务 Agent 协作协议（A2AServer/A2AClient/A2ARegistry） |
-| `memory/` | 记忆系统（MemoryRecord/MemoryScene/MemorySceneRegistry + ReMe） |
+| `memory/` | 记忆系统（MemoryRecord/MemoryScene/MemorySceneRegistry + Harness 内置记忆） |
 | `skill/` | 技能系统（SkillManager/SkillRegistryService/SkillAdapter/SkillAutoCreator） |
 | `conversation/` | 对话编排（ChatAppService/ConversationDomainService） |
 | `workspace/` | 工作区自动发现引擎 |

@@ -160,20 +160,6 @@
             <artifactId>agentscope-extensions-skill-git-repository</artifactId>
         </dependency>
 
-        <!-- Long-term Memory -->
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-mem0</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-reme</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-autocontext-memory</artifactId>
-        </dependency>
-
         <!-- A2A Protocol -->
         <dependency>
             <groupId>io.agentscope</groupId>

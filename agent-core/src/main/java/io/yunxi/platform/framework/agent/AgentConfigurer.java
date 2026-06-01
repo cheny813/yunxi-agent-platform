@@ -30,7 +30,6 @@ import io.yunxi.platform.framework.hitl.ReasoningReviewHook;
 import io.yunxi.platform.framework.hitl.ToolGateHook;
 import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.mcp.McpToolRegistry;
-import io.yunxi.platform.framework.plan.ReMePlanStorage;
 import io.yunxi.platform.framework.tool.Tool;
 import io.yunxi.platform.framework.tool.ToolAdapter;
 import io.yunxi.platform.framework.tool.ToolCircuitBreaker;
@@ -85,9 +84,6 @@ public class AgentConfigurer {
     /** Agent 工作区初始化器 — 创建 AGENTS.md、knowledge/ 等目录结构 */
     private final AgentWorkspaceInitializer workspaceInitializer;
 
-    /** PlanNotebook 持久化存储（替换默认 InMemoryPlanStorage） */
-    private final ReMePlanStorage reMePlanStorage;
-
     /** Studio 消息 Hook 提供者（可选） */
     private final ObjectProvider<StudioMessageHook> studioMessageHookProvider;
 
@@ -105,7 +101,6 @@ public class AgentConfigurer {
             ToolRegistry toolRegistry,
             ToolCircuitBreaker circuitBreaker,
             AgentWorkspaceInitializer workspaceInitializer,
-            ReMePlanStorage reMePlanStorage,
             ObjectProvider<StudioMessageHook> studioMessageHookProvider,
             ObjectProvider<AgentCustomizer> customizerProvider,
             WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine) {
@@ -117,7 +112,6 @@ public class AgentConfigurer {
         this.toolRegistry = toolRegistry;
         this.circuitBreaker = circuitBreaker;
         this.workspaceInitializer = workspaceInitializer;
-        this.reMePlanStorage = reMePlanStorage;
         this.studioMessageHookProvider = studioMessageHookProvider;
         this.customizerProvider = customizerProvider;
         this.workspaceDiscoveryEngine = workspaceDiscoveryEngine;
