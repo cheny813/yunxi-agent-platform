@@ -75,6 +75,19 @@ agentscope:
         timeout: ${MCP_KNOWLEDGE_TIMEOUT:60000}
         description: "知识库 MCP 服务器（提供向量语义搜索功能）"
 
+      # --------------------- Nutrition MCP 服务器 ---------------------
+      # 端口：40602
+      # 协议：HTTP（JSON-RPC over HTTP）
+      # 提供工具：searchDishes, evaluateRecipe
+      # 源码：D:\work\code\yunxi-mcp-servers\mcp-nutrition
+      # --------------------------------------------------------------------
+      mcp-nutrition:
+        enabled: ${MCP_NUTRITION_ENABLED:true}
+        type: http
+        url: ${MCP_NUTRITION_URL:http://localhost:40602/mcp}
+        timeout: ${MCP_NUTRITION_TIMEOUT:60000}
+        description: "营养配餐数据查询 MCP 服务器（菜品搜索、营养评估）"
+
       # --------------------- Puppeteer 官方 MCP 服务器 ---------------------
       # 官方提供的 Puppeteer MCP 服务器
       # --------------------------------------------------------------------

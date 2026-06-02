@@ -99,6 +99,9 @@ public class AgentscopeCoreProperties {
      */
     private CompactionProperties compaction = new CompactionProperties();
 
+    /** Session 持久化配置 */
+    private SessionProperties session = new SessionProperties();
+
     /**
      * 各 Provider 配置
      */
@@ -254,5 +257,19 @@ public class AgentscopeCoreProperties {
         private boolean flushBeforeCompact = true;
         /** 压缩前是否卸载记忆 */
         private boolean offloadBeforeCompact = true;
+    }
+
+    /**
+     * Session 持久化配置
+     * <p>
+     * 控制 Agent 运行时状态的持久化后端。
+     * 默认使用 {@code workspace}（文件系统），无需额外依赖。
+     * 跨实例共享需配置 {@code redis}（需 spring-boot-starter-data-redis）。
+     * </p>
+     */
+    @Data
+    public static class SessionProperties {
+        /** Session 后端类型：workspace（默认）/ redis */
+        private String type = "workspace";
     }
 }

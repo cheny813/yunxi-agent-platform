@@ -19,19 +19,23 @@ import java.util.stream.Stream;
 /**
  * 工作区自动发现引擎
  *
- * <p>在应用启动时自动扫描所有已注册 Agent 的工作区，完成以下发现：</p>
+ * <p>
+ * 在应用启动时自动扫描所有已注册 Agent 的工作区，完成以下发现：
+ * </p>
  * <ul>
- *   <li>解析 AGENTS.md → 场景检测规则（替代 {@code SceneContributor} SPI）</li>
- *   <li>扫描 knowledge/ → 知识库文件列表</li>
- *   <li>扫描 skills/ → 技能注册</li>
- *   <li>扫描 subagents/ → 子智能体发现</li>
- *   <li>验证工作区完整性 → 启动时报告缺失</li>
+ * <li>解析 AGENTS.md → 场景检测规则（替代 {@code SceneContributor} SPI）</li>
+ * <li>扫描 knowledge/ → 知识库文件列表</li>
+ * <li>扫描 skills/ → 技能注册</li>
+ * <li>扫描 subagents/ → 子智能体发现</li>
+ * <li>验证工作区完整性 → 启动时报告缺失</li>
  * </ul>
  *
- * <p>与 {@link AgentWorkspaceInitializer} 的区别：</p>
+ * <p>
+ * 与 {@link AgentWorkspaceInitializer} 的区别：
+ * </p>
  * <ul>
- *   <li>Initializer：启动时创建目录结构和默认文件（写操作）</li>
- *   <li>DiscoveryEngine：启动时扫描读取现有工作区内容（读操作），来配置框架行为</li>
+ * <li>Initializer：启动时创建目录结构和默认文件（写操作）</li>
+ * <li>DiscoveryEngine：启动时扫描读取现有工作区内容（读操作），来配置框架行为</li>
  * </ul>
  *
  * @author yunxi-agent-platform
@@ -74,13 +78,41 @@ public class WorkspaceAutoDiscoveryEngine {
 
         try (Stream<Path> dirs = Files.list(workspaceRoot)) {
             dirs.filter(Files::isDirectory)
-                    .forEach(this::discoverSingleWorkspace);
+                    .forEach(this::discoverOrRecurse);
         } catch (IOException e) {
             log.warn("扫描工作区根目录失败: {}", workspaceRoot, e);
         }
 
         log.info("WorkspaceAutoDiscoveryEngine: 扫描完成，发现 {} 个工作区, {} 个场景规则",
                 discoveredWorkspaces.size(), discoveredSceneRules.size());
+    }
+
+    /**
+     * 递归发现工作区：直接扫描 agent 目录，或进入 users/ 按用户扫描。
+     */
+    private void discoverOrRecurse(Path dir) {
+        String name = dir.getFileName().toString();
+        if ("users".equals(name)) {
+            // users/{userId}/{agentName}/ 是多级结构，需递归扫描子目录
+            try (Stream<Path> userDirs = Files.list(dir)) {
+                userDirs.filter(Files::isDirectory)
+                        .forEach(this::recurseUserWorkspaces);
+            } catch (IOException e) {
+                log.warn("扫描用户工作区目录失败: {}", dir, e);
+            }
+        } else {
+            discoverSingleWorkspace(dir);
+        }
+    }
+
+    /** 扫描单个用户下的所有 Agent 工作区 */
+    private void recurseUserWorkspaces(Path userDir) {
+        try (Stream<Path> agentDirs = Files.list(userDir)) {
+            agentDirs.filter(Files::isDirectory)
+                    .forEach(this::discoverSingleWorkspace);
+        } catch (IOException e) {
+            log.warn("扫描用户 Agent 工作区失败: {}", userDir, e);
+        }
     }
 
     /**

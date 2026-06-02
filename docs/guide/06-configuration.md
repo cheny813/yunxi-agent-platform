@@ -607,6 +607,19 @@ management:
 | RAGFLOW_API_KEY | RAGFlow API Key | 空 |
 | RAGFLOW_API_URL | RAGFlow 服务地址 | http://localhost:9380 |
 | RAGFLOW_DATASET_ID | RAGFlow 数据集 ID | 空 |
+
+## Session 持久化配置
+
+Agent 运行时状态默认通过 `WorkspaceSession` 持久化到工作区文件系统（零配置）。跨实例共享时切换为 Redis：
+
+```yaml
+agentscope:
+  core:
+    session:
+      type: redis      # workspace（默认）| redis
+```
+
+`workspace` 模式无需额外依赖，数据存储在 `workspace/agents/<agentId>/context/<sessionId>/`。`redis` 模式需 `spring-boot-starter-data-redis`，通过 `RedisTemplateAdapter` 适配。配置文件修改后重启即生效，无需改动 Java 代码。
 | SIMPLE_KB_ENABLED | 启用本地知识库 | false |
 | **RAG_DEFAULT_LIMIT** | **默认检索文档数** | **5** |
 | **RAG_DEFAULT_SCORE_THRESHOLD** | **默认相似度阈值** | **0.5** |

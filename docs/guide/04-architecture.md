@@ -319,8 +319,7 @@ public class AgentDomainService {
         // 4. 用 HarnessAgent 包装（薄包装器）
         Agent agent = HarnessAgent.from(delegate)
             .disableSubagents()
-            .disableSessionPersistence()
-            .disableMemoryHooks()
+            .disableMemoryHooks()   // 非必需可禁用
             .disableFilesystemTools()
             .disableShellTool()
             .build();
@@ -691,6 +690,80 @@ agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `Ch
 3. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
 
 但**绝大多数代码是合理的**——它们解决的是不同层次的问题。业务工具只需实现简单的 `Tool` 接口就能被 Agent 调用，这才是平台的价值所在。
+
+---
+
+## 状态持久化与优雅关闭
+
+### 状态持久化架构
+
+Agent 运行时状态（Memory、PlanNotebook、消息历史等）由底层框架自动管理，上层无需干预：
+
+```
+                         HarnessAgent.call()
+                              │
+            ┌─────────────────┼─────────────────┐
+            ▼                 ▼                  ▼
+    PreCallEvent      PostReasoningEvent     PostActingEvent
+    (每轮 ReAct)      (每轮推理后)           (每轮工具后)
+            │                 │                  │
+            ▼                 ▼                  ▼
+    GracefulShutdown    CompactionHook     GracefulShutdown
+    (去重检测)           (消息压缩)          (checkpoint)
+            │
+            ▼
+      PostCallEvent / ErrorEvent
+            │
+            ▼
+    SessionPersistenceHook (优先级 900)
+    → saveTo(session, sessionKey)
+    → 递归收集所有 StateModule 的状态
+    → 写入 Session 后端
+```
+
+**状态数据流向**：
+
+```
+Agent 运行时                        Session 后端
+┌─────────────────┐               ┌─────────────────────┐
+│ InMemoryMemory  │──getState()──▶│  WorkspaceSession   │
+│  (StateModule)  │               │  (文件系统, 默认)    │
+├─────────────────┤               │                     │
+│ PlanNotebook    │──getState()──▶│  RedisSession       │
+│  (StateModule)  │               │  (跨实例共享, 可选)  │
+├─────────────────┤               └─────────────────────┘
+│ 其他 StateModule│
+└─────────────────┘
+     agent.saveTo(session, sessionKey)
+```
+
+**恢复流程**：
+
+```java
+// 被中断后重新创建 Agent 并恢复
+ReActAgent newAgent = createAgent();
+newAgent.loadIfExists(session, sessionKey);
+// loadIfExists() 内部调用 setState() 恢复所有 StateModule
+```
+
+**配置方式**（`application.yml`）：
+
+```yaml
+agentscope:
+  core:
+    session:
+      type: redis   # workspace（默认）| redis
+```
+
+### 存储分层
+
+| 数据 | 存储后端 | 职责 | 查询方式 |
+|------|---------|------|---------|
+| Agent 运行时状态 | Session（workspace/redis） | 崩溃恢复、弹性迁移 | `agent.loadIfExists()` |
+| 会话元数据 | MySQL + Redis（ConversationDomainService） | 前端列表展示、标题搜索 | REST API |
+| 长期记忆 | workspace/MEMORY.md + memory/ 文件 | 跨会话知识积累 | HarnessAgent 内部 Hook |
+
+三个存储层各司其职，不重复。Session 负责运行时恢复，ConversationDomainService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
 
 ---
 
