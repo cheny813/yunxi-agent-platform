@@ -47,9 +47,7 @@ agent:
   # ============================================================
   tools:
     mcpServers:
-      - name: nutrition-data-mcp
-        type: sse
-        url: http://localhost:40602/sse
+      - mcp-nutrition
 
   # ============================================================
   # 运行时配置

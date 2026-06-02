@@ -10,12 +10,16 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.plan.PlanNotebook;
+import io.agentscope.core.session.Session;
+import io.agentscope.core.shutdown.GracefulShutdownHook;
+import io.agentscope.core.shutdown.GracefulShutdownManager;
 import io.agentscope.core.studio.StudioMessageHook;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.tool.subagent.SubAgentConfig;
@@ -93,6 +97,9 @@ public class AgentConfigurer {
     /** 工作区自动发现引擎 */
     private final WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine;
 
+    /** 跨实例 Session（可选），由 AgentSessionConfig 按配置创建 */
+    private Session session;
+
     public AgentConfigurer(AgentDefinitionLoader definitionLoader,
             AgentDomainService agentDomainService,
             AgentscopeCoreProperties coreProperties,
@@ -115,6 +122,11 @@ public class AgentConfigurer {
         this.studioMessageHookProvider = studioMessageHookProvider;
         this.customizerProvider = customizerProvider;
         this.workspaceDiscoveryEngine = workspaceDiscoveryEngine;
+    }
+
+    @Autowired(required = false)
+    public void setSession(Session session) {
+        this.session = session;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -369,6 +381,11 @@ public class AgentConfigurer {
         builder.workspace(coreProperties.getWorkspaceBasePath() + "/" + def.getName())
                 .compaction(buildCompactionConfig());
 
+        // Session 持久化：默认用 WorkspaceSession（文件系统），配置 redis 时跨实例共享
+        if (session != null) {
+            builder.session(session);
+        }
+
         injectStandardHooks(builder, toolkit);
         injectHITLHooks(builder, toolkit, def);
 
@@ -402,12 +419,18 @@ public class AgentConfigurer {
     }
 
     /**
-     * 注入标准 Hook 集合（Studio + TextToolCallParser）
+     * 注入标准 Hook 集合（Studio + TextToolCallParser + GracefulShutdown +
+     * SessionPersistence）
+     * <p>
+     * SessionPersistenceHook 由 HarnessAgent 自动注册，无需手动添加。
+     * GracefulShutdownHook 在每轮 ReAct 后做 checkpoint，支持优雅关闭后恢复。
+     * </p>
      */
     private void injectStandardHooks(HarnessAgent.Builder builder, Toolkit toolkit) {
         if (studioMessageHookProvider.getIfAvailable() != null) {
             builder.hook(studioMessageHookProvider.getIfAvailable());
         }
+        builder.hook(new GracefulShutdownHook(GracefulShutdownManager.getInstance()));
         TextToolCallParserHook textToolCallParserHook = new TextToolCallParserHook(toolkit);
         builder.hook(textToolCallParserHook);
     }

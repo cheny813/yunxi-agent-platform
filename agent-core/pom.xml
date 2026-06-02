@@ -166,6 +166,14 @@
             <artifactId>spring-boot-starter-runtime-a2a</artifactId>
         </dependency>
 
+        <!-- Redis Session（跨实例状态共享，可选） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-session-redis</artifactId>
+            <version>1.0.12</version>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

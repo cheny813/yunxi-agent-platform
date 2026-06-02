@@ -1,6 +1,28 @@
 # 13. 更新日志
 
-## [3.1.0] - 2026-05-26
+## [3.2.0] - 2026-06-02
+
+### 架构变更
+
+- **启用底层 Session 持久化**：HarnessAgent 已内置 `SessionPersistenceHook`，自动在每轮 `call()` 后保存 Agent 运行时状态（Memory、PlanNotebook 等），无需上层代码干预。不再重复建设 ConversationDomainService 的写路径
+- **GracefulShutdown 支持**：注册 `GracefulShutdownHook`，在 PostReasoningEvent/PostActingEvent 后做 checkpoint。被优雅关闭中断后，客户端检测 `shutdown_interrupted` 标记后可通过 `agent.loadIfExists()` 恢复
+- **新增 `agentscope-extensions-session-redis` 可选依赖**：配置 `agentscope.core.session.type=redis` 即可切换为 Redis 后端，实现跨实例状态共享。默认使用 `WorkspaceSession`（文件系统），零配置可用
+
+### 修复
+
+- **WorkspaceAutoDiscoveryEngine 误报 WARN**：`users/` 目录不再被误判为 Agent 工作区，改为递归扫描 `users/{userId}/{agentName}/` 层级，正确发现用户级 Agent 工作区
+
+### 新增
+
+- **AgentSessionConfig**：按配置自动创建 Session Bean，`@ConditionalOnProperty` 控制，`RedisTemplateAdapter` 将 Spring RedisTemplate 适配为 agentscope 的 `RedisClientAdapter`
+- **GracefulShutdownHook 注册**：在 `AgentConfigurer.injectStandardHooks()` 中调用 `builder.hook(new GracefulShutdownHook(GracefulShutdownManager.getInstance()))`
+- **Session 配置项**：`agentscope.core.session.type`（workspace/redis）
+
+### 移除
+
+- 无重复轮子被移除。ConversationDomainService 保留读路径（前端列表查询），写路径已由 SessionPersistenceHook 接管
+
+---
 
 ### 架构变更
 
