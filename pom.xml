@@ -38,6 +38,7 @@
         <jacoco.version>0.8.12</jacoco.version>
         <!-- 第三方依赖版本 -->
         <okhttp.version>4.12.0</okhttp.version>
+        <okio.version>3.6.0</okio.version>
         <socket-io.version>2.1.0</socket-io.version>
         <opentelemetry.version>1.62.0</opentelemetry.version>
         <resilience4j.version>2.2.0</resilience4j.version>

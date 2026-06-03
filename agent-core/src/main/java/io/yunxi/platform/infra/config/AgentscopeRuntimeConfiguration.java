@@ -135,11 +135,8 @@ public class AgentscopeRuntimeConfiguration {
         /** 部署配置 */
         private DeployConfig deploy = new DeployConfig();
 
-        /** 可观测性配置 */
-        private ObservabilityConfig observability = new ObservabilityConfig();
-
         /**
-         * 沙箱配置类
+         * 部署配置类
          */
         @Data
         public static class SandboxConfig {
@@ -218,25 +215,6 @@ public class AgentscopeRuntimeConfiguration {
             private String host = "0.0.0.0";
             /** 是否启用 A2A 协议 */
             private boolean a2aEnabled = false;
-        }
-
-        /**
-         * 可观测性配置类
-         */
-        @Data
-        public static class ObservabilityConfig {
-            /** 是否启用可观测性 */
-            private boolean enabled = false;
-            /** 是否启用追踪 */
-            private boolean tracingEnabled = true;
-            /** 是否启用指标 */
-            private boolean metricsEnabled = true;
-            /** 是否启用日志 */
-            private boolean loggingEnabled = true;
-            /** OpenTelemetry 端点 */
-            private String otelEndpoint = "http://localhost:4317";
-            /** 采样率（0.0-1.0） */
-            private double samplingRate = 1.0;
         }
     }
 }

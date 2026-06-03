@@ -28,7 +28,8 @@
 
 第四阶段：精通（可选，约1.5小时）
 ├── 14. 智能子系统    → 自适应策略、自我改进
-└── 15. A2A 协议      → 跨服务 Agent 协作
+├── 15. A2A 协议      → 跨服务 Agent 协作
+└── 16. 可观测性      → 追踪、指标与日志
 ```
 
 ### 不同角色的阅读建议
@@ -82,7 +83,7 @@
 |------|------|----------|
 | [14. 智能子系统](./14-intelligent-system.md) | 自适应策略、自我改进、智能监控 | 40 分钟 |
 | [15. A2A 协议](./15-a2a-protocol.md) | 跨服务 Agent 协作、分布式架构 | 30 分钟 |
-| [16. Model Context Protocol](./16-mcp.md) | MCP 标准与实现 | 30 分钟 |
+| [16. 可观测性](./16-observability.md) | 追踪、指标、日志与 OpenTelemetry 集成 | 20 分钟 |
 
 ---
 
@@ -104,10 +105,10 @@
 → 查看 [12. 常见问题](./12-faq.md)
 
 **我要了解高级功能**
-→ 查看 [14. 智能子系统](./14-intelligent-system.md) 和 [15. A2A 协议](./15-a2a-protocol.md)
+→ 查看 [14. 智能子系统](./14-intelligent-system.md)、[15. A2A 协议](./15-a2a-protocol.md) 和 [16. 可观测性](./16-observability.md)
 
-**我要集成第三方AI服务**
-→ 查看 [16. Model Context Protocol](./16-mcp.md)
+**我要排查生产问题**
+→ 查看 [12. 常见问题](./12-faq.md) 和 [16. 可观测性](./16-observability.md)
 
 ---
 

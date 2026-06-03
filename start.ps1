@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     yunxi-agent-platform 统一启动脚本（PowerShell 版）
@@ -66,6 +66,11 @@ Stop-JavaProcess
 # ===== 配置参数（集中管理） =====
 # 【智能体框架 服务端口】
 $SERVER_PORT   = "40001"
+# 【OpenTelemetry 可观测性】
+#   如需启用，取消底部 $otelExtra 块的注释。默认值定义在此，统一管理：
+$OTEL_OTLP_ENDPOINT = "http://127.0.0.1:4318/v1/traces"
+$OTEL_TRACES_SAMPLER = "parentbased_always_on"
+$OTEL_SERVICE_NAME = "yunxi-agent-platform"
 # 【智能体框架 数据库】
 $MYSQL_HOST     = "127.0.0.1"
 $MYSQL_PORT     = "3306"
@@ -73,7 +78,7 @@ $MYSQL_DATABASE = "agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32bxxxx08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32xxxxxxxxxx08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -129,8 +134,15 @@ $configArgs = @(
     "-Dmilvus.password=$MILVUS_PASSWORD",
     "-Dspring.data.redis.host=$REDIS_HOST",
     "-Dspring.data.redis.port=$REDIS_PORT",
-    "-Dspring.data.redis.password=$REDIS_PASSWORD"
+    "-Dspring.data.redis.password=$REDIS_PASSWORD",
+    "-Dotel.service.name=$OTEL_SERVICE_NAME"
 )
+# OTLP 导出到 Jaeger（取消下方注释启用）
+$otelExtra = @(
+    "-Dotel.exporter.otlp.endpoint=$OTEL_OTLP_ENDPOINT",
+    "-Dotel.traces.sampler=$OTEL_TRACES_SAMPLER"
+)
+$configArgs += $otelExtra
 
 # ===== 模式执行 =====
 switch ($mode) {
