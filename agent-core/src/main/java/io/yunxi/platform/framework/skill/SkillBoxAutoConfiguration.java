@@ -4,7 +4,6 @@ import io.agentscope.core.skill.AgentSkill;
 import io.agentscope.core.skill.SkillBox;
 import io.agentscope.core.skill.repository.ClasspathSkillRepository;
 import io.agentscope.core.skill.repository.FileSystemSkillRepository;
-import io.agentscope.core.skill.repository.GitSkillRepository;
 import io.agentscope.core.tool.Toolkit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -12,12 +11,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.io.IOException;
-import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * SkillBox 自动配置
@@ -36,7 +32,6 @@ import java.util.stream.Stream;
  * <ol>
  * <li>Classpath（src/main/resources/skills/）- 预置 Skill</li>
  * <li>本地文件系统（./skills/）- 自定义 Skill</li>
- * <li>Git 远程仓库 - 开源社区 Skill</li>
  * </ol>
  *
  * @author yunxi-agent-platform
@@ -63,11 +58,8 @@ public class SkillBoxAutoConfiguration {
             totalLoaded += loadFromClasspath(registry, properties);
         }
 
-        // 2. 从 Git 远程仓库 clone 并合并 Skill 到统一目录
+        // 2. 从统一文件系统目录加载所有 Skill
         String skillDir = resolveSkillDir(properties);
-        totalLoaded += loadFromGit(registry, properties, skillDir);
-
-        // 3. 从统一文件系统目录加载所有 Skill（手写 + Git 合并的）
         totalLoaded += loadFromFileSystem(registry, skillDir);
 
         log.info("SkillRegistry initialized: {} skills loaded", totalLoaded);
@@ -140,121 +132,6 @@ public class SkillBoxAutoConfiguration {
         } catch (Exception e) {
             log.warn("Failed to load skills from '{}': {}", skillDir, e.getMessage());
             return 0;
-        }
-    }
-
-    /**
-     * 从 Git 仓库 clone Skill 并合并到统一 skill 目录。
-     *
-     * <p>
-     * 策略：clone 到 skillDir/.git-cache/&lt;repo-name&gt;/，
-     * 然后将 Skill 子目录复制到 skillDir/，实现所有 Skill 同目录共存。
-     * </p>
-     */
-    private int loadFromGit(SkillRegistryService registry, SkillBoxProperties properties, String skillDir) {
-        List<SkillBoxProperties.GitRepoConfig> gitRepos = properties.getGitRepositories();
-        if (gitRepos == null || gitRepos.isEmpty()) {
-            return 0;
-        }
-
-        Path baseSkillPath = Path.of(skillDir).toAbsolutePath();
-        int total = 0;
-
-        for (SkillBoxProperties.GitRepoConfig gitConfig : gitRepos) {
-            if (gitConfig.getUrl() == null || gitConfig.getUrl().isBlank()) {
-                log.warn("Git skill repository URL is empty, skipping");
-                continue;
-            }
-
-            try {
-                Path cloneDir;
-                if (gitConfig.getLocalPath() != null && !gitConfig.getLocalPath().isBlank()) {
-                    cloneDir = Path.of(gitConfig.getLocalPath()).toAbsolutePath();
-                } else {
-                    String repoName = extractRepoName(gitConfig.getUrl());
-                    cloneDir = baseSkillPath.resolve(".git-cache").resolve(repoName);
-                }
-                Files.createDirectories(cloneDir.getParent());
-
-                try (GitSkillRepository repo = new GitSkillRepository(
-                        gitConfig.getUrl(),
-                        gitConfig.getBranch(),
-                        cloneDir,
-                        gitConfig.getSource(),
-                        gitConfig.isAutoSync())) {
-                    // 只用 clone 效果，不通过 repo 读 skills
-                }
-
-                int merged = mergeSkillsFromCloneDir(cloneDir, baseSkillPath, gitConfig.getUrl());
-                total += merged;
-                log.info("Merged {} skills from git: {}", merged, gitConfig.getUrl());
-            } catch (Exception e) {
-                log.warn("Failed to load git skills from '{}': {}", gitConfig.getUrl(), e.getMessage());
-            }
-        }
-        return total;
-    }
-
-    /**
-     * 扫描 Git clone 目录中的 Skill 子目录，复制到统一的 skill 目录。
-     * 如果同名 Skill 已存在则跳过（本地优先）。
-     */
-    private int mergeSkillsFromCloneDir(Path cloneDir, Path unifiedDir, String sourceUrl) {
-        Path skillsSource;
-        Path skillsSubDir = cloneDir.resolve("skills");
-        if (Files.exists(skillsSubDir) && Files.isDirectory(skillsSubDir)) {
-            skillsSource = skillsSubDir;
-        } else {
-            skillsSource = cloneDir;
-        }
-
-        int merged = 0;
-        try (Stream<Path> subdirs = Files.list(skillsSource)) {
-            for (Path dir : (Iterable<Path>) subdirs::iterator) {
-                if (!Files.isDirectory(dir)) {
-                    continue;
-                }
-                if (!Files.exists(dir.resolve("SKILL.md"))) {
-                    continue;
-                }
-
-                String skillDirName = dir.getFileName().toString();
-                Path targetDir = unifiedDir.resolve(skillDirName);
-
-                if (Files.exists(targetDir)) {
-                    log.info("Skill '{}' already exists, skipping (local takes priority)", skillDirName);
-                    merged++;
-                    continue;
-                }
-
-                copyDirectory(dir, targetDir);
-                log.info("Merged skill '{}' from {} to {}", skillDirName, sourceUrl, targetDir.getFileName());
-                merged++;
-            }
-        } catch (IOException e) {
-            log.warn("Failed to scan skills from clone dir '{}': {}", cloneDir, e.getMessage());
-        }
-        return merged;
-    }
-
-    private String extractRepoName(String url) {
-        String normalized = url.endsWith(".git") ? url.substring(0, url.length() - 4) : url;
-        int lastSlash = normalized.lastIndexOf('/');
-        return lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
-    }
-
-    private void copyDirectory(Path source, Path target) throws IOException {
-        Files.createDirectories(target);
-        try (Stream<Path> entries = Files.walk(source, FileVisitOption.FOLLOW_LINKS)) {
-            for (Path entry : (Iterable<Path>) entries::iterator) {
-                Path relative = source.relativize(entry);
-                Path destination = target.resolve(relative);
-                if (Files.isDirectory(entry)) {
-                    Files.createDirectories(destination);
-                } else {
-                    Files.copy(entry, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
         }
     }
 }

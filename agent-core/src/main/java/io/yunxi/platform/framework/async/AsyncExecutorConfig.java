@@ -59,9 +59,6 @@ public class AsyncExecutorConfig {
         // 拒绝策略：由调用线程执行
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
 
-        // MDC上下文传播装饰器，确保异步线程能正确显示链路追踪信息
-        executor.setTaskDecorator(new MdcAwareTaskDecorator());
-
         // 等待所有任务完成后再关闭线程池
         executor.setWaitForTasksToCompleteOnShutdown(true);
 

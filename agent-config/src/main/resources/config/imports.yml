@@ -1,8 +1,17 @@
 # ============================================================
-# 集中化配置导入
+# 配置加载清单
 # ============================================================
-# 此文件汇总所有公共配置片段，三个 application.yml 只需导入此一处。
-# 新增配置文件只需在此文件中添加一行。
+# 此文件被 application.yml 通过 spring.config.import 引用。
+# 下面列出的所有 yml 文件在应用启动时被加载。
+#
+# 【想新增一个配置文件】
+# 只需在此文件中添加一行，文件放入 config/ 目录即可。
+#
+# 【想删除一个配置文件】
+# 从此文件中移除对应行，config/ 下的 yml 文件保留或删除均可。
+#
+# 【optional: 前缀的含义】
+# 加了这个前缀，文件不存在也不会报错。适合按需启用的配置。
 # ============================================================
 spring:
   config:
@@ -18,7 +27,6 @@ spring:
       optional:classpath:config/persistence.yml,
       optional:classpath:config/mcp-core.yml,
       optional:classpath:config/mcp-external.yml,
-      optional:classpath:config/mcp-business.yml,
       optional:classpath:config/skill.yml,
       optional:classpath:config/resilience.yml,
       optional:classpath:config/file-upload.yml,

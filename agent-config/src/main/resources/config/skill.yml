@@ -12,10 +12,6 @@ agentscope:
     classpath-path: skills
     filesystem-path: ./skills
     code-execution-enabled: false
-    git-repositories:
-      - url: https://github.com/anthropics/awesome-skills.git
-        branch: main
-    auto-sync: true
 
     # Agent 配置文件路径
     config:

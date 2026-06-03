@@ -20,3 +20,10 @@ spring:
 
   profiles:
     active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,mcp-business,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql,rule-engine
+
+# ============================================================
+# Agent 可观测性配置
+# ============================================================
+yunxi:
+  observability:
+    enabled: true

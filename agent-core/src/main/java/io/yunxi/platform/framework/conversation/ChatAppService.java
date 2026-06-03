@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.message.Msg;
-import io.micrometer.core.instrument.Timer;
 // 规则引擎集成
 import io.yunxi.agent.rule.core.RuleContext;
 import io.yunxi.agent.rule.core.RuleEngine;
@@ -23,7 +22,6 @@ import io.yunxi.platform.framework.agent.AgentDomainService;
 import io.yunxi.platform.framework.agent.ProfileRouter;
 import io.yunxi.platform.framework.agent.UserWorkspaceService;
 import io.yunxi.platform.framework.plan.PlanPreCreator;
-import io.yunxi.platform.framework.metrics.AgentMetricsService;
 import io.yunxi.platform.framework.prompt.SceneDetectionService;
 import io.yunxi.platform.infra.file.FileUploadService;
 import io.yunxi.platform.infra.file.dto.FileSearchRequest;
@@ -111,9 +109,6 @@ public class ChatAppService {
     /** 规则引擎 */
     private final RuleEngine ruleEngine;
 
-    /** 指标服务 */
-    private final AgentMetricsService metricsService;
-
     /** 规划预创建器 */
     private final PlanPreCreator planPreCreator;
 
@@ -139,7 +134,6 @@ public class ChatAppService {
             SseMessageBuilder sseMessageBuilder,
             SceneDetectionService sceneDetectionService,
             FileUploadService fileUploadService,
-            ObjectProvider<AgentMetricsService> metricsServiceProvider,
             ObjectProvider<RuleEngine> ruleEngineProvider,
             SecurityContext securityContext,
             ProfileRouter profileRouter,
@@ -154,7 +148,6 @@ public class ChatAppService {
         this.fileUploadService = fileUploadService;
         this.securityContext = securityContext;
         this.ruleEngine = ruleEngineProvider.getIfAvailable();
-        this.metricsService = metricsServiceProvider.getIfAvailable();
         this.planPreCreator = planPreCreator;
         this.userWorkspaceService = userWorkspaceService;
     }
@@ -211,8 +204,6 @@ public class ChatAppService {
      * @return 对话响应
      */
     public ChatResponse chat(String name, ChatRequest request) {
-        Timer.Sample requestSample = metricsService != null ? metricsService.startRequest() : null;
-
         try {
             // 获取真实 Agent 实例（支持用户工作区隔离）
             String userId = securityContext.getCurrentUserId();
@@ -252,9 +243,6 @@ public class ChatAppService {
                 // ==================== 规则引擎集成：后置规则验证 ====================
                 checkPostRules(ruleContext, reply);
 
-                if (metricsService != null) {
-                    metricsService.recordRequestCompleted(requestSample);
-                }
                 return new ChatResponse(reply);
 
             } catch (RuleViolationException e) {
@@ -271,9 +259,6 @@ public class ChatAppService {
                 throw new RuntimeException("对话执行失败", e);
             }
         } catch (Exception e) {
-            if (metricsService != null && requestSample != null) {
-                metricsService.recordRequestFailed(requestSample);
-            }
             throw e;
         }
     }

@@ -34,6 +34,7 @@ import io.yunxi.platform.framework.hitl.ReasoningReviewHook;
 import io.yunxi.platform.framework.hitl.ToolGateHook;
 import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.mcp.McpToolRegistry;
+import io.yunxi.platform.framework.observability.ReActSpanHook;
 import io.yunxi.platform.framework.tool.Tool;
 import io.yunxi.platform.framework.tool.ToolAdapter;
 import io.yunxi.platform.framework.tool.ToolCircuitBreaker;
@@ -97,6 +98,9 @@ public class AgentConfigurer {
     /** 工作区自动发现引擎 */
     private final WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine;
 
+    /** ReAct 追踪 Hook（可选） */
+    private final ObjectProvider<ReActSpanHook> reActSpanHookProvider;
+
     /** 跨实例 Session（可选），由 AgentSessionConfig 按配置创建 */
     private Session session;
 
@@ -110,7 +114,8 @@ public class AgentConfigurer {
             AgentWorkspaceInitializer workspaceInitializer,
             ObjectProvider<StudioMessageHook> studioMessageHookProvider,
             ObjectProvider<AgentCustomizer> customizerProvider,
-            WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine) {
+            WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine,
+            ObjectProvider<ReActSpanHook> reActSpanHookProvider) {
         this.definitionLoader = definitionLoader;
         this.agentDomainService = agentDomainService;
         this.coreProperties = coreProperties;
@@ -122,6 +127,7 @@ public class AgentConfigurer {
         this.studioMessageHookProvider = studioMessageHookProvider;
         this.customizerProvider = customizerProvider;
         this.workspaceDiscoveryEngine = workspaceDiscoveryEngine;
+        this.reActSpanHookProvider = reActSpanHookProvider;
     }
 
     @Autowired(required = false)
@@ -433,6 +439,10 @@ public class AgentConfigurer {
         builder.hook(new GracefulShutdownHook(GracefulShutdownManager.getInstance()));
         TextToolCallParserHook textToolCallParserHook = new TextToolCallParserHook(toolkit);
         builder.hook(textToolCallParserHook);
+        // ReAct 追踪 Hook（可选，OTel 未启用时自动跳过）
+        if (reActSpanHookProvider.getIfAvailable() != null) {
+            builder.hook(reActSpanHookProvider.getIfAvailable());
+        }
     }
 
     /**

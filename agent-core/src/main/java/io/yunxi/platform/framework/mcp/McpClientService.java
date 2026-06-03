@@ -13,7 +13,8 @@ import org.springframework.web.client.RestTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import io.yunxi.platform.framework.tracing.TraceContext;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import lombok.extern.slf4j.Slf4j;
 
@@ -82,8 +83,9 @@ public class McpClientService {
             url = url.replace("/sse", "/message");
         }
 
-        // 获取当前 TraceId 并传递到请求头
-        String traceId = TraceContext.getCurrentTraceId();
+        // 获取当前 TraceId 并传递到请求头（从 OTel SpanContext 获取）
+        SpanContext spanContext = Span.current().getSpanContext();
+        String traceId = spanContext.isValid() ? spanContext.getTraceId() : null;
 
         try {
             // 构建JSON-RPC请求
@@ -102,7 +104,7 @@ public class McpClientService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             if (traceId != null) {
-                headers.set(TraceContext.TRACE_ID_HEADER, traceId);
+                headers.set("X-Trace-Id", traceId);
             }
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
