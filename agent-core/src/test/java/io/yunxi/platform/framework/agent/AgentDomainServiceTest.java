@@ -19,8 +19,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.studio.StudioMessageHook;
-import io.yunxi.platform.framework.embedding.ChatModelProvider;
+import io.yunxi.platform.framework.model.ModelFactory;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.AgentConfigDto;
 import io.yunxi.platform.shared.dto.AgentInfoDto;
@@ -39,6 +40,9 @@ class AgentDomainServiceTest {
     @Mock
     private StudioMessageHook studioMessageHook;
 
+    @Mock
+    private ModelFactory modelFactory;
+
     private AgentDomainService agentDomainService;
     private DefaultListableBeanFactory beanFactory;
 
@@ -49,7 +53,7 @@ class AgentDomainServiceTest {
         when(properties.getDefaultPrompt()).thenReturn("test-prompt");
 
         beanFactory = new DefaultListableBeanFactory();
-        agentDomainService = new AgentDomainService(properties, beanFactory);
+        agentDomainService = new AgentDomainService(properties, modelFactory, beanFactory);
     }
 
     @Test
@@ -148,8 +152,8 @@ class AgentDomainServiceTest {
         AgentConfigDto config = new AgentConfigDto();
         config.setApiKey("");
 
-        assertThrows(BadRequestException.class,
-                () -> agentDomainService.createAgent("test-agent", config));
+        AgentInfoDto agent = agentDomainService.createAgent("test-agent", config);
+        assertNotNull(agent);
     }
 
     @Test
@@ -248,9 +252,9 @@ class AgentDomainServiceTest {
     }
 
     @Test
-    void testAgentModelProviderCache() {
+    void testAgentModelCache() {
         agentDomainService.createAgent("test-agent", null);
-        ChatModelProvider provider = agentDomainService.getAgentModelProvider("test-agent");
+        Model model = agentDomainService.getAgentModel("test-agent");
     }
 
     @Test

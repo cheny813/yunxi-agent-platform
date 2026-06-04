@@ -1,5 +1,50 @@
 # 更新日志
 
+## [3.4.0] - 2026-06-04
+
+### 🏗️ 复用底层框架能力（避免重复造轮子）
+
+- **复用 agentscope 框架的 Model 体系**：拆除自建的 `ChatModelProvider` 接口及 `OpenAIModelProvider`/`ClaudeModelProvider`/`DashScopeModelProvider`（约 500 行），改用框架内置的 `OpenAIChatModel`/`AnthropicChatModel`/`DashScopeChatModel`，利用其正确的角色映射和 Prompt Caching 支持。新增 `model/` 包与 `embedding/` 包分离，消除包名误导。保留 `BaiduModelProvider`/`HuaweiModelProvider`（因认证协议不兼容标准 API），但修复了角色硬编码 Bug。
+- **复用框架的 Shell 安全能力**：拆除自建的 `CommandSafety` 枚举和 `CommandSafetyClassifier`（约 310 行），改用框架 `ShellCommandTool` 的白名单 + 平台验证器（Unix/Windows 自动检测）+ 审批回调 + 多命令分隔符/路径穿越检测。
+- **新建提示注入防护 Hook**：基于框架 `Hook` 接口实现 `ContentFilterHook`，在 `PostReasoningEvent` 阶段检测中英文注入模式并调用 `stopAgent()` 阻断，弥补框架无现成注入防护的空缺。
+- **Prompt Caching 配置化**：`AgentscopeCoreProperties` 新增 `GenerationConfig` 配置段，`cache-control: true` 即可利用框架内置的 Prompt Caching 能力（OpenAI 前缀缓存 / Anthropic cache_control 标记 / DashScope 前缀缓存）。
+- **DeepSeek 支持**：通过框架 `DeepSeekFormatter` 即开即用，无需自建 Provider。
+
+### ✨ 新增
+
+- **ModelFactory**：统一创建框架 Model 实例的 Spring Bean，支持 openai/claude/dashscope/deepseek/baidu/huawei 六种提供商。
+- **ShellToolFactory**：封装框架 `ShellCommandTool`，从配置注入白名单和审批回调。
+- **ContentFilterHook**：基于框架 `Hook` 接口的提示注入防护，含中英文双模式检测。
+- **生成参数配置**：`agentscope.core.generation` 全局配置段（temperature/maxTokens/topP/cacheControl）。
+
+### 🔥 移除（已被框架能力替代）
+
+- **ChatModelProvider 接口** → 改用框架 `Model` 接口
+- **OpenAIModelProvider** → 改用框架 `OpenAIChatModel`
+- **ClaudeModelProvider** → 改用框架 `AnthropicChatModel`
+- **DashScopeModelProvider** → 改用框架 `DashScopeChatModel`
+- **CommandSafety 枚举** + **CommandSafetyClassifier** → 框架 `ShellCommandTool` 替代
+
+### 🔧 变更
+
+- **AgentConfigurer**：注入 `ContentFilterHook`；`createModelProvider()` 改为 `modelFactory.create()`
+- **AgentDomainService**：`ModelFactory` 注入替换自建 `createProvider()`；缓存 `Map<String, ChatModelProvider>` → `Map<String, Model>`
+- **AdvancedAgentFactory**：`getAgentModelProvider()` → `getAgentModel()`，类型 `ChatModelProvider` → `Model`
+- **PageAgentService**：字段 `ChatModelProvider` → `Model`，构造器注入 `ModelFactory`
+- **IntelligentLlmService**：重写为 `ModelFactory.create()`，移除自建 `createModel()`
+- **NodeTool**：`CommandSafetyClassifier` 依赖 → `ShellToolFactory`
+- **NodeAuditService**：`CommandSafety` 参数类型改为 `String`
+- **BaiduModelProvider** / **HuaweiModelProvider**：接口 `ChatModelProvider` → `Model`，修复 role 映射
+- **datsource.yml**：数据库连接 URL 固定库名，消除环境变量与 schema.sql 不一致问题
+
+### 📝 文档更新
+
+- README.md：核心特性增加提示注入防护/Shell 安全/Prompt Caching；框架适配表新增 2 条 ✅ 已修复项
+- `docs/guide/04-architecture.md`：7 层架构第 5 层改为"模型层"；ModelProviderFactory → ModelFactory；诚实的评估新增 2 条 ✅ 已修复
+- `docs/guide/06-configuration.md`：新增"生成参数配置"（含 cache-control 表格）和"Shell 命令安全配置"段
+
+---
+
 ## [3.3.1] - 2026-06-03
 
 ### 🐛 修复

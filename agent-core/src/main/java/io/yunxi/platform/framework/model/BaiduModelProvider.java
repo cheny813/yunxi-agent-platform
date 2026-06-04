@@ -1,11 +1,13 @@
-package io.yunxi.platform.framework.embedding;
+package io.yunxi.platform.framework.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ToolSchema;
 import okhttp3.*;
 import org.slf4j.Logger;
@@ -16,21 +18,23 @@ import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 百度文心一言模型提供商实现
+ * 百度文心一言模型实现
  * <p>
- * 使用百度千帆大模型平台API
+ * 使用百度千帆大模型平台 API。百度使用 OAuth 2.0 access_token 认证，
+ * 不兼容 OpenAI 协议，因此保留自建 HTTP 实现。
+ * 已修复 role 映射：根据 {@link MsgRole} 正确映射角色。
  * </p>
  *
  * @author yunxi-agent-platform
  */
-public class BaiduModelProvider implements ChatModelProvider {
+public class BaiduModelProvider implements Model {
 
-    /** 日志记录器 */
     private static final Logger log = LoggerFactory.getLogger(BaiduModelProvider.class);
 
     /** 百度 Access Token 获取地址 */
@@ -44,6 +48,8 @@ public class BaiduModelProvider implements ChatModelProvider {
     private final String secretKey;
     /** 模型名称 */
     private final String modelName;
+    /** 默认生成参数 */
+    private final GenerateOptions defaultOptions;
     /** HTTP 客户端 */
     private final OkHttpClient httpClient;
     /** JSON 序列化工具 */
@@ -54,15 +60,18 @@ public class BaiduModelProvider implements ChatModelProvider {
     private volatile long tokenExpireTime;
 
     /**
-     * 构造百度模型提供商
+     * 构造百度模型
      *
-     * @param apiKey    API Key
-     * @param secretKey Secret Key
+     * @param apiKey         百度 API Key
+     * @param secretKey      百度 Secret Key
+     * @param modelName      模型名称（如 ernie-bot-turbo）
+     * @param defaultOptions 默认生成参数
      */
-    public BaiduModelProvider(String apiKey, String secretKey) {
-        this.apiKey = apiKey; // API Key
-        this.secretKey = secretKey; // Secret Key
-        this.modelName = "ernie-bot-turbo"; // 百度默认模型
+    public BaiduModelProvider(String apiKey, String secretKey, String modelName, GenerateOptions defaultOptions) {
+        this.apiKey = apiKey;
+        this.secretKey = secretKey;
+        this.modelName = modelName != null ? modelName : "ernie-bot-turbo";
+        this.defaultOptions = defaultOptions != null ? defaultOptions : GenerateOptions.builder().build();
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .readTimeout(Duration.ofSeconds(60))
@@ -78,8 +87,7 @@ public class BaiduModelProvider implements ChatModelProvider {
         return Mono.fromCallable(() -> getAccessToken())
                 .flatMapMany(token -> {
                     try {
-                        // 构建请求
-                        Map<String, Object> requestBody = buildRequestBody(messages, token);
+                        Map<String, Object> requestBody = buildRequestBody(messages, token, options);
                         String jsonBody = objectMapper.writeValueAsString(requestBody);
 
                         Request request = new Request.Builder()
@@ -97,7 +105,6 @@ public class BaiduModelProvider implements ChatModelProvider {
                         JsonNode jsonNode = objectMapper.readTree(responseBody);
                         String content = jsonNode.path("result").asText();
 
-                        // 构造返回消息 - 使用 TextBlock
                         TextBlock textBlock = TextBlock.builder().text(content).build();
                         ChatResponse chatResponse = ChatResponse.builder()
                                 .content(List.of(textBlock))
@@ -113,17 +120,20 @@ public class BaiduModelProvider implements ChatModelProvider {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
+    @Override
+    public String getModelName() {
+        return modelName;
+    }
+
     /**
-     * 获取 access_token
+     * 获取 access_token（带缓存和双重检查锁）
      */
     private String getAccessToken() throws IOException {
-        // 检查token是否过期
         if (accessToken != null && System.currentTimeMillis() < tokenExpireTime) {
             return accessToken;
         }
 
         synchronized (this) {
-            // 双重检查
             if (accessToken != null && System.currentTimeMillis() < tokenExpireTime) {
                 return accessToken;
             }
@@ -150,53 +160,51 @@ public class BaiduModelProvider implements ChatModelProvider {
     }
 
     /**
-     * 构建请求体
+     * 构建请求体（百度格式），修复 role 映射
      */
-    private Map<String, Object> buildRequestBody(List<Msg> messages, String token) {
+    private Map<String, Object> buildRequestBody(List<Msg> messages, String token, GenerateOptions options) {
         Map<String, Object> body = new ConcurrentHashMap<>();
         body.put("access_token", token);
 
-        // 百度 API 消息格式
+        // 根据 MsgRole 正确映射百度角色
         body.put("messages", messages.stream()
-                .map(msg -> Map.of(
-                        "role", "user",
-                        "content", msg.getTextContent()))
+                .map(msg -> {
+                    Map<String, Object> msgMap = new HashMap<>();
+                    // 修复：根据 MsgRole 映射，不再硬编码 "user"
+                    msgMap.put("role", mapBaiduRole(msg.getRole()));
+                    msgMap.put("content", msg.getTextContent());
+                    return msgMap;
+                })
                 .toList());
 
-        // 添加模型参数
-        body.put("temperature", 0.7);
-        body.put("top_p", 0.8);
+        // 合并生成参数：优先使用调用时传入的 options，否则用 defaultOptions
+        GenerateOptions effective = options != null ? options : defaultOptions;
+        if (effective.getTemperature() != null) {
+            body.put("temperature", effective.getTemperature());
+        } else {
+            body.put("temperature", 0.7);
+        }
+        if (effective.getTopP() != null) {
+            body.put("top_p", effective.getTopP());
+        } else {
+            body.put("top_p", 0.8);
+        }
 
         return body;
     }
 
     /**
-     * 获取当前模型名称
-     *
-     * @return 模型名称
+     * 将框架 MsgRole 映射到百度 API 角色字符串
+     * <p>
+     * 百度千帆平台支持：user / assistant
+     * 注意：百度目前不支持 system 角色，system 消息合并到 user 中
+     * </p>
      */
-    @Override
-    public String getModelName() {
-        return modelName;
-    }
-
-    /**
-     * 获取提供商标识
-     *
-     * @return "baidu"
-     */
-    @Override
-    public String getProvider() {
-        return "baidu";
-    }
-
-    /**
-     * 检查配置是否有效（API Key 不为空）
-     *
-     * @return 配置是否有效
-     */
-    @Override
-    public boolean isValid() {
-        return apiKey != null && !apiKey.isBlank();
+    private String mapBaiduRole(MsgRole role) {
+        return switch (role) {
+            case ASSISTANT -> "assistant";
+            case TOOL -> "user"; // 百度不支持 tool，回退到 user
+            default -> "user"; // SYSTEM / USER 统一走 user
+        };
     }
 }

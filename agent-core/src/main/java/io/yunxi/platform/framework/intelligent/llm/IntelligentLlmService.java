@@ -15,10 +15,8 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
-import io.yunxi.platform.framework.embedding.ChatModelProvider;
-import io.yunxi.platform.framework.embedding.ClaudeModelProvider;
-import io.yunxi.platform.framework.embedding.DashScopeModelProvider;
-import io.yunxi.platform.framework.embedding.OpenAIModelProvider;
+import io.agentscope.core.model.Model;
+import io.yunxi.platform.framework.model.ModelFactory;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import reactor.core.publisher.Flux;
 
@@ -27,29 +25,17 @@ import reactor.core.publisher.Flux;
  *
  * <p>
  * 封装 AgentScope 模型调用，为智能化模块提供统一的 LLM 访问接口。
+ * 直接使用框架 {@link Model} 接口（通过 {@link ModelFactory} 创建），
+ * 利用框架内置的正确角色映射和缓存支持。
  * </p>
- *
- * <h3>设计说明</h3>
- * <p>
- * 本服务直接使用 {@link ChatModelProvider#stream} 进行模型调用，
- * 而非通过 ReActAgent 包装。原因：
- * </p>
- * <ul>
- * <li>ReActAgent 适用于「推理 + 工具调用」的 ReAct 循环场景，
- * 其内部会执行思考→选工具→执行→观察的迭代流程</li>
- * <li>本服务的调用场景（背景审查、技能生成、会话摘要）均为简单的
- * prompt → response 纯文本生成，不涉及工具调用和推理循环</li>
- * <li>使用 ReActAgent 做简单文本生成属于语义错配，会引入不必要的开销
- * （Agent 对象创建、迭代循环检查、额外 prompt 格式化等）</li>
- * </ul>
  *
  * <h3>调用链路</h3>
  *
  * <pre>
  *   IntelligentLlmService.generate()
- *     → ModelProviderFactory.createProvider()  // 创建 ChatModelProvider
- *     → ChatModelProvider.stream(messages)     // 直接调模型，不经过 Agent
- *     → Flux&lt;ChatResponse&gt; → blockFirst()     // 同步阻塞获取结果
+ *     → ModelFactory.create()             // 创建框架 Model
+ *     → Model.stream(messages)            // 直接调模型
+ *     → Flux&lt;ChatResponse&gt; → blockFirst() // 同步阻塞获取结果
  *     → 提取 TextBlock 文本
  * </pre>
  *
@@ -63,6 +49,10 @@ public class IntelligentLlmService {
     /** AgentScope 配置属性 */
     @Autowired
     private AgentscopeCoreProperties agentscopeProperties;
+
+    /** 模型工厂 — 创建框架 Model 实例 */
+    @Autowired
+    private ModelFactory modelFactory;
 
     /**
      * 使用默认系统提示词生成文本
@@ -79,8 +69,9 @@ public class IntelligentLlmService {
      * 使用指定系统提示词生成文本
      *
      * <p>
-     * 直接调用 {@link ChatModelProvider#stream} 获取模型响应，
+     * 直接调用 {@link Model#stream} 获取模型响应，
      * 无需经过 ReActAgent 的推理循环，适用于纯文本生成场景。
+     * 消息角色映射和缓存由框架内部自动处理。
      * </p>
      *
      * @param systemPrompt 系统提示词（可为 null）
@@ -90,7 +81,8 @@ public class IntelligentLlmService {
     @Nullable
     public String generate(@Nullable String systemPrompt, String userPrompt) {
         try {
-            ChatModelProvider model = createModel();
+            // 使用 ModelFactory 创建框架 Model（使用全局默认配置）
+            Model model = modelFactory.create(null);
 
             // 构建消息列表：system 消息（如有）+ user 消息
             List<Msg> messages = new ArrayList<>();
@@ -106,6 +98,7 @@ public class IntelligentLlmService {
                     .build());
 
             // 直接调用模型 stream 接口，同步阻塞获取首个响应
+            // 框架自动处理 role 映射和 cache_control（如已配置）
             Duration timeout = Duration.ofSeconds(agentscopeProperties.getChatTimeoutSeconds());
             Flux<ChatResponse> responseFlux = model.stream(messages, null, null);
             ChatResponse response = responseFlux.blockFirst(timeout);
@@ -145,27 +138,5 @@ public class IntelligentLlmService {
     public String generateOrDefault(@Nullable String systemPrompt, String userPrompt, String defaultResult) {
         String result = generate(systemPrompt, userPrompt);
         return result != null ? result : defaultResult;
-    }
-
-    /**
-     * 创建模型提供者
-     * <p>
-     * 使用 AgentscopeCoreProperties 中配置的默认模型。
-     * </p>
-     */
-    private ChatModelProvider createModel() {
-        String provider = agentscopeProperties.getProvider();
-        String apiKey = agentscopeProperties.getApiKey();
-        String modelName = agentscopeProperties.getModelName();
-        return createProvider(provider, apiKey, modelName);
-    }
-
-    private ChatModelProvider createProvider(String provider, String apiKey, String modelName) {
-        return switch (provider.toLowerCase()) {
-            case "dashscope" -> new DashScopeModelProvider(apiKey, modelName);
-            case "openai" -> new OpenAIModelProvider(apiKey, modelName);
-            case "claude" -> new ClaudeModelProvider(apiKey, modelName);
-            default -> throw new IllegalArgumentException("不支持的模型提供商: " + provider);
-        };
     }
 }

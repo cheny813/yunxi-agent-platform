@@ -183,6 +183,45 @@ llm:
       base-url: https://api.openai.com/v1
 ```
 
+### 生成参数配置
+
+通过 `agentscope.core.generation` 全局控制 LLM 生成参数，Agent 定义 YAML 中的配置会覆盖全局默认：
+
+```yaml
+agentscope:
+  core:
+    generation:
+      temperature: 0.7        # 生成温度（默认 0.7）
+      max-tokens: 4096        # 最大输出 token 数（默认 4096）
+      top-p: 0.9              # top_p 采样参数（默认 0.9）
+      cache-control: false    # 是否启用 Prompt Caching（默认关闭）
+```
+
+**Prompt Caching**（`cache-control: true`）：
+
+| 提供商 | 机制 | 说明 |
+|--------|------|------|
+| OpenAI | 自动前缀缓存（>1024 token） | 框架自动添加 `cache_control: {"type": "ephemeral"}` 到 system 消息和最后一条消息 |
+| Anthropic | 显式 cache_control 标记 | 通过 SDK 原生支持 |
+| DashScope (Qwen) | 自动前缀缓存 | 框架自动处理 |
+
+> **注意**：启用缓存时，确保 system prompt 中不包含时间戳、随机数等动态内容，否则会导致缓存频繁失效。
+
+### Shell 命令安全配置
+
+通过 `agentscope.core.shell` 控制框架 `ShellCommandTool` 的安全策略：
+
+```yaml
+agentscope:
+  core:
+    shell:
+      allowed-commands: [ls, cat, grep, python, node]  # 白名单：自动执行的命令
+      approval-enabled: false                           # 是否启用人工审批回调
+      base-dir: /data/workspace                         # 工作目录限制（null=不限制）
+```
+
+**安全策略**：白名单内的命令自动执行；白名单外的命令如果启用了审批则等待人工确认，否则直接拒绝。框架还内置了多命令分隔符检测（`&`、`|`、`;`、换行符）和路径穿越检测（`../`）。
+
 ---
 
 ## 知识库（RAG）配置

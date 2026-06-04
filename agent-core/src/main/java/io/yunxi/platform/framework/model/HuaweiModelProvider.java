@@ -1,9 +1,10 @@
-package io.yunxi.platform.framework.embedding;
+package io.yunxi.platform.framework.model;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,9 +17,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ToolSchema;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -31,15 +34,17 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 /**
- * 华为盘古大模型提供商实现
+ * 华为盘古大模型实现
  * <p>
- * 使用华为ModelArts Studio V2 接口（兼容OpenAI格式）
+ * 使用华为 ModelArts Studio V2 接口（兼容 OpenAI 格式），
+ * 使用 AK/SK 签名认证。不兼容 OpenAI 标准协议，因此保留自建 HTTP 实现。
+ * 已修复 role 映射：根据 {@link MsgRole} 正确映射角色。
  * </p>
  *
  * @author yunxi-agent-platform
  */
 @Slf4j
-public class HuaweiModelProvider implements ChatModelProvider {
+public class HuaweiModelProvider implements Model {
 
     /** 华为盘古 API 地址 */
     private static final String API_URL = "https://pangu.huaweicloud.com/api/v2/chat/completions";
@@ -50,23 +55,26 @@ public class HuaweiModelProvider implements ChatModelProvider {
     private final String secretKey;
     /** 模型名称 */
     private final String modelName;
+    /** 默认生成参数 */
+    private final GenerateOptions defaultOptions;
     /** HTTP 客户端 */
     private final OkHttpClient httpClient;
     /** JSON 序列化工具 */
     private final ObjectMapper objectMapper;
 
     /**
-     * 构造华为盘古模型提供商
+     * 构造华为盘古模型
      *
-     * @param accessKey Access Key
-     * @param secretKey Secret Key
+     * @param accessKey      华为 Access Key
+     * @param secretKey      华为 Secret Key
+     * @param modelName      模型名称（如 pangu-chat）
+     * @param defaultOptions 默认生成参数
      */
-    public HuaweiModelProvider(String accessKey, String secretKey) {
-        // 从config中获取AK/SK
-        this.accessKey = accessKey; // Access Key
-        this.secretKey = secretKey; // Secret Key
-        this.modelName = "pangu-chat"; // 华为默认模型
-
+    public HuaweiModelProvider(String accessKey, String secretKey, String modelName, GenerateOptions defaultOptions) {
+        this.accessKey = accessKey;
+        this.secretKey = secretKey;
+        this.modelName = modelName != null ? modelName : "pangu-chat";
+        this.defaultOptions = defaultOptions != null ? defaultOptions : GenerateOptions.builder().build();
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .readTimeout(Duration.ofSeconds(60))
@@ -80,16 +88,14 @@ public class HuaweiModelProvider implements ChatModelProvider {
         log.info("Huawei Pangu chat request: {}, model: {}", messages, modelName);
 
         return Mono.fromCallable(() -> {
-            // 构建请求
-            Map<String, Object> requestBody = buildRequestBody(messages);
+            Map<String, Object> requestBody = buildRequestBody(messages, options);
             String jsonBody = objectMapper.writeValueAsString(requestBody);
 
-            // 生成签名
+            // 生成华为 HMAC-SHA256 签名
             String timestamp = String.valueOf(Instant.now().toEpochMilli());
             String nonce = UUID.randomUUID().toString().replace("-", "");
             String signature = generateSignature(timestamp, nonce, jsonBody);
 
-            // 构建请求
             Request request = new Request.Builder()
                     .url(API_URL)
                     .post(RequestBody.create(jsonBody, MediaType.parse("application/json; charset=utf-8")))
@@ -111,14 +117,10 @@ public class HuaweiModelProvider implements ChatModelProvider {
             JsonNode choices = jsonNode.path("choices");
             if (choices.isArray() && choices.size() > 0) {
                 String content = choices.get(0).path("message").path("content").asText();
-
-                // 构造返回消息 - 使用 TextBlock
                 TextBlock textBlock = TextBlock.builder().text(content).build();
-                ChatResponse chatResponse = ChatResponse.builder()
+                return ChatResponse.builder()
                         .content(List.of(textBlock))
                         .build();
-
-                return chatResponse;
             }
 
             throw new RuntimeException("Invalid response from Huawei Pangu API");
@@ -127,73 +129,70 @@ public class HuaweiModelProvider implements ChatModelProvider {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    /**
-     * 生成华为API签名
-     */
-    private String generateSignature(String timestamp, String nonce, String body) throws Exception {
-        // 构建签名字符串
-        String stringToSign = timestamp + nonce + body;
-
-        // HMAC-SHA256 签名
-        Mac mac = Mac.getInstance("HmacSHA256");
-        SecretKeySpec secretKeySpec = new SecretKeySpec(
-                secretKey.getBytes(StandardCharsets.UTF_8),
-                "HmacSHA256");
-        mac.init(secretKeySpec);
-        byte[] signatureBytes = mac.doFinal(stringToSign.getBytes(StandardCharsets.UTF_8));
-
-        return Base64.getEncoder().encodeToString(signatureBytes);
-    }
-
-    /**
-     * 构建请求体（兼容OpenAI格式）
-     */
-    private Map<String, Object> buildRequestBody(List<Msg> messages) {
-        Map<String, Object> body = new ConcurrentHashMap<>();
-        body.put("model", modelName);
-
-        // 转换消息格式
-        body.put("messages", messages.stream()
-                .map(msg -> Map.of(
-                        "role", "user",
-                        "content", msg.getTextContent()))
-                .toList());
-
-        // 添加生成参数
-        body.put("temperature", 0.7);
-        body.put("top_p", 0.9);
-
-        return body;
-    }
-
-    /**
-     * 获取当前模型名称
-     *
-     * @return 模型名称
-     */
     @Override
     public String getModelName() {
         return modelName;
     }
 
     /**
-     * 获取提供商标识
-     *
-     * @return "huawei"
+     * 生成华为 API HMAC-SHA256 签名
      */
-    @Override
-    public String getProvider() {
-        return "huawei";
+    private String generateSignature(String timestamp, String nonce, String body) throws Exception {
+        String stringToSign = timestamp + nonce + body;
+        Mac mac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec secretKeySpec = new SecretKeySpec(
+                secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        mac.init(secretKeySpec);
+        byte[] signatureBytes = mac.doFinal(stringToSign.getBytes(StandardCharsets.UTF_8));
+        return Base64.getEncoder().encodeToString(signatureBytes);
     }
 
     /**
-     * 检查配置是否有效（Access Key 和 Secret Key 不为空）
-     *
-     * @return 配置是否有效
+     * 构建请求体（华为兼容 OpenAI 格式），修复 role 映射
      */
-    @Override
-    public boolean isValid() {
-        return accessKey != null && !accessKey.isBlank()
-                && secretKey != null && !secretKey.isBlank();
+    private Map<String, Object> buildRequestBody(List<Msg> messages, GenerateOptions options) {
+        Map<String, Object> body = new ConcurrentHashMap<>();
+        body.put("model", modelName);
+
+        // 根据 MsgRole 正确映射角色，不再硬编码 "user"
+        body.put("messages", messages.stream()
+                .map(msg -> {
+                    Map<String, Object> msgMap = new HashMap<>();
+                    msgMap.put("role", mapHuaweiRole(msg.getRole()));
+                    msgMap.put("content", msg.getTextContent());
+                    return msgMap;
+                })
+                .toList());
+
+        // 合并生成参数
+        GenerateOptions effective = options != null ? options : defaultOptions;
+        if (effective.getTemperature() != null) {
+            body.put("temperature", effective.getTemperature());
+        } else {
+            body.put("temperature", 0.7);
+        }
+        if (effective.getTopP() != null) {
+            body.put("top_p", effective.getTopP());
+        } else {
+            body.put("top_p", 0.9);
+        }
+
+        return body;
+    }
+
+    /**
+     * 将框架 MsgRole 映射到华为 API 角色字符串
+     * <p>
+     * 华为盘古兼容 OpenAI 格式，支持：system / user / assistant
+     * 此映射与 OpenAI 标准一致。
+     * </p>
+     */
+    private String mapHuaweiRole(MsgRole role) {
+        return switch (role) {
+            case SYSTEM -> "system";
+            case ASSISTANT -> "assistant";
+            case TOOL -> "tool";
+            default -> "user";
+        };
     }
 }
