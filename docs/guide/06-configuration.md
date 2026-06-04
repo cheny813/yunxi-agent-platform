@@ -654,5 +654,76 @@ logging:
 
 ---
 
+## Agent 工具组配置
+
+Agent 的工具按职责分组隔离，避免 LLM 调用不相关的工具导致偏离主题或安全风险。
+
+工具组分为两大类：**系统内置组**（框架代码定义）和 **MCP 服务器组**（由 MCP 服务器动态创建）。
+
+### 一、系统内置组（所有 Agent 通用）
+
+这些组由框架代码硬编码定义，组名固定，不依赖外部配置。
+
+| 组名 | 包含的工具 | 用途 |
+|------|-----------|------|
+| `memory` | `memory_search`, `memory_get`, `session_history`, `session_search`, `session_list` | 查询对话历史和长期记忆 |
+| `filesystem` | `read_file`, `write_file`, `edit_file`, `glob_files`, `list_files`, `grep_files` | 读写工作区文件 |
+| `execute` | `execute` | 执行 Shell 命令（高危） |
+| `agent` | `call_agent`, `agent_send`, `agent_spawn`, `task_list`, `task_cancel`, `task_output` | 调用其他 Agent |
+| `page` | `pagegen_xxx`（以 `pagegen_` 开头的工具） | 生成前端页面 |
+| `general` | 未归类的其他本地工具 | 兜底组 |
+
+### 二、MCP 服务器组（由 MCP 服务器注册时动态创建）
+
+组名 = MCP 服务器名。你在 `tools.mcpServers` 里配了哪个服务器，就多了哪个组。
+
+例如配置了 `mcpServers: [database, redis]`，则生成的组：
+
+| 组名 | 包含的工具 | 来源 |
+|------|-----------|------|
+| `database` | `database_query`, `database_execute` 等 | database MCP 服务器注册 |
+| `redis` | `redis_get`, `redis_set` 等 | redis MCP 服务器注册 |
+
+### 配置示例
+
+```yaml
+# 只用系统内置组
+agent:
+  name: my-chat-agent
+  toolsGroup:
+    systemToolsGroup: [memory]
+
+# 只用 MCP 工具（mcpServersToolsGroup 同时加载服务器 + 激活组）
+agent:
+  name: safety-assistant
+  toolsGroup:
+    mcpServersToolsGroup: [redis, database]
+
+# 混合使用
+agent:
+  name: nutrition-assistant
+  toolsGroup:
+    systemToolsGroup: [agent, search]          # 系统内置组 + @Tool 派生组
+    mcpServersToolsGroup: [formfill, database] # MCP 服务器，自动加载并激活
+```
+
+### 如何知道一个组是系统内置还是 MCP 的？
+
+| 特征 | 系统内置组 | MCP 服务器组 |
+|------|-----------|-------------|
+| 配置位置 | `toolsGroup.systemToolsGroup` | `toolsGroup.mcpServersToolsGroup` 或 `tools.mcpServers` |
+| 组名来源 | 代码硬编码（见上表） | 你配的 `mcpServers` 列表 |
+| 包含哪些工具 | 上表列出了每个组的所有工具 | 由 MCP 服务器的实现决定 |
+| 是否需要 `tools.mcpServers` | 不需要 | 需要（或通过 `mcpServersToolsGroup` 隐含） |
+| 举例 | `memory`, `filesystem`, `execute`, `agent`, `page`, `general` | `database`, `redis`, `formfill`, `milvus`, `pagegen`, `playwright` |
+
+**简单记忆法**：上表"系统内置组"列出来的就是内置的，不在表里的都是 MCP 服务器组。
+
+### 默认行为
+
+**不配 `tools` 字段时，Agent 默认仅激活 `memory` 组**，只能查询记忆，无法读写文件或执行命令。
+
+---
+
 **上一页**: [05. 模块说明](./05-modules.md)  
 **下一页**: [07. 开发指南 →](./07-development.md)

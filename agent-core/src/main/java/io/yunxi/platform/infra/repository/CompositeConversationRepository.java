@@ -1,12 +1,12 @@
 package io.yunxi.platform.infra.repository;
 
-import lombok.extern.slf4j.Slf4j;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.stereotype.Repository;
 
 import io.yunxi.platform.shared.entity.ConversationEntity;
-
-import java.util.List;
-import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 组合存储实现（缓存 + 数据库）
@@ -156,6 +156,20 @@ public class CompositeConversationRepository implements ConversationRepository {
         } catch (Exception e) {
             log.error("数据库查询Agent会话失败，降级到缓存: agentName={}, error={}", agentName, e.getMessage());
             return cacheRepository.findByAgentName(agentName);
+        }
+    }
+
+    @Override
+    public Optional<ConversationEntity> findByUserIdAndAgentName(String userId, String agentName) {
+        if (userId == null || agentName == null) {
+            return Optional.empty();
+        }
+
+        try {
+            return databaseRepository.findByUserIdAndAgentName(userId, agentName);
+        } catch (Exception e) {
+            log.error("数据库查询用户+Agent会话失败，降级到缓存: userId={}, agentName={}, error={}", userId, agentName, e.getMessage());
+            return cacheRepository.findByUserIdAndAgentName(userId, agentName);
         }
     }
 

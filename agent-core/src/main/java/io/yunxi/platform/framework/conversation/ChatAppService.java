@@ -2,6 +2,7 @@ package io.yunxi.platform.framework.conversation;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -12,8 +13,10 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.Event;
+import io.agentscope.core.agent.EventType;
+import io.agentscope.core.agent.StreamOptions;
 import io.agentscope.core.message.Msg;
-// 规则引擎集成
 import io.yunxi.agent.rule.core.RuleContext;
 import io.yunxi.agent.rule.core.RuleEngine;
 import io.yunxi.agent.rule.exception.RuleViolationException;
@@ -37,7 +40,6 @@ import io.yunxi.platform.shared.exception.BadRequestException;
 import io.yunxi.platform.shared.security.SecurityContext;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 /**
@@ -401,8 +403,8 @@ public class ChatAppService {
             conversation.addMessage(userMsg);
             conversation.addMessage(responseMsg);
 
-            // 会话持久化由 HarnessAgent SessionPersistenceHook 自动处理
-            // （同步对话的会话元数据更新由 ConversationDomainService 管理）
+            // 持久化会话到数据库（含消息内容）
+            conversationDomainService.saveConversation(conversation);
 
             String reply = responseMsg.getTextContent();
 
@@ -795,16 +797,6 @@ public class ChatAppService {
             log.info("深度/A2A 协作模式已启用，超时时间: {}s", timeoutSeconds);
         }
 
-        Mono<Msg> responseMono;
-
-        if (inputMsg instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<Msg> messages = (List<Msg>) inputMsg;
-            responseMono = agent.call(messages);
-        } else {
-            responseMono = agent.call((Msg) inputMsg);
-        }
-
         // 4. A2A 进度心跳流（让用户知道系统在工作）
         Flux<String> heartbeatFlux = useA2A
                 ? Flux.interval(Duration.ofSeconds(8))
@@ -813,50 +805,87 @@ public class ChatAppService {
                         .take(20) // 最多 20 条心跳（160 秒）
                 : Flux.empty();
 
-        // 5. 将响应转换为流式内容
-        Flux<String> contentFlux = responseMono
+        // 5. 使用 agent.stream() 获取流式事件
+        // REASONING → SSE thinking（推理过程），AGENT_RESULT → SSE content（最终回答）
+        // 推理内容同时积累在 thinkingAccumulator 中，最终保存到 Msg.metadata
+        StreamOptions streamOptions = StreamOptions.builder()
+                .eventTypes(EventType.REASONING, EventType.AGENT_RESULT)
+                .incremental(true)
+                .includeReasoningChunk(true)
+                .includeReasoningResult(false)
+                .build();
+
+        Flux<Event> eventFlux;
+        if (inputMsg instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Msg> messages = (List<Msg>) inputMsg;
+            eventFlux = agent.stream(messages, streamOptions);
+        } else {
+            eventFlux = agent.stream((Msg) inputMsg, streamOptions);
+        }
+
+        // 积累推理文本，最终存入 Msg metadata
+        StringBuilder thinkingAccumulator = new StringBuilder();
+
+        // 6. 将 Event 流转换为 SSE 事件流
+        // REASONING → thinking（推理过程，灰色独立块 + 积累）
+        // AGENT_RESULT → content（最终回答，切块平滑显示，附带 thinking）
+        Flux<String> contentFlux = eventFlux
                 .timeout(timeout)
-                .flatMapMany(responseMsg -> {
-                    if (responseMsg == null) {
-                        return Flux.just(sseMessageBuilder.buildContentMessage("（模型未返回内容）"));
+                .flatMapSequential(event -> {
+                    if (event.getType() == EventType.REASONING) {
+                        String text = event.getMessage() != null
+                                ? event.getMessage().getTextContent()
+                                : null;
+                        if (text != null && !text.isEmpty()) {
+                            thinkingAccumulator.append(text);
+                            return Flux.just(sseMessageBuilder.buildThinkingMessage(text));
+                        }
+                        return Flux.empty();
                     }
-
-                    // 保存响应到会话（会话持久化由 HarnessAgent SessionPersistenceHook 自动处理）
-                    if (conversation != null) {
-                        conversation.addMessage(responseMsg);
+                    if (event.getType() == EventType.AGENT_RESULT && event.isLast()) {
+                        // 保存完整响应到会话（附带推理内容）
+                        Msg resultMsg = event.getMessage();
+                        String reasoningText = thinkingAccumulator.toString();
+                        if (!reasoningText.isEmpty()) {
+                            Map<String, Object> metadata = new HashMap<>();
+                            if (resultMsg.getMetadata() != null) {
+                                metadata.putAll(resultMsg.getMetadata());
+                            }
+                            metadata.put("thinking", reasoningText);
+                            resultMsg = Msg.builder()
+                                    .role(resultMsg.getRole())
+                                    .textContent(resultMsg.getTextContent())
+                                    .metadata(metadata)
+                                    .build();
+                        }
+                        if (conversation != null) {
+                            conversation.addMessage(resultMsg);
+                            conversationDomainService.saveConversation(conversation);
+                        }
+                        String content = resultMsg.getTextContent();
+                        if (content == null || content.isEmpty()) {
+                            return Flux.just(
+                                    sseMessageBuilder.buildContentMessage("（模型未返回内容）"),
+                                    sseMessageBuilder.buildDoneMessage());
+                        }
+                        log.info("流式对话完成，内容长度: {}, 推理长度: {}",
+                                content.length(), reasoningText.length());
+                        // 最终回答切块为 content 事件
+                        List<String> chunks = new ArrayList<>();
+                        int chunkSize = 500;
+                        for (int i = 0; i < content.length(); i += chunkSize) {
+                            int end = Math.min(i + chunkSize, content.length());
+                            chunks.add(sseMessageBuilder.buildContentMessage(content.substring(i, end)));
+                        }
+                        return Flux.concat(
+                                Flux.fromIterable(chunks),
+                                Flux.just(sseMessageBuilder.buildDoneMessage()));
                     }
-
-                    // 助手回复记忆持久化由 HarnessAgent MemoryFlushHook 自动处理
-                    // （MemoryCoordinatorService.addMessages 已移除）
-
-                    String content = responseMsg.getTextContent();
-                    log.info("流式对话内容长度: {}", content != null ? content.length() : 0);
-                    if (content != null && !content.isEmpty()) {
-                        log.info("流式对话内容预览: {}",
-                                content.substring(0, Math.min(100, content.length())));
-                    }
-
-                    // 分块发送，并在最后添加完成消息
-                    return Flux.concat(
-                            createChunkedContentFlux(content, request.getChunkSize()),
-                            Flux.just(sseMessageBuilder.buildDoneMessage()));
+                    return Flux.empty();
                 })
                 .onErrorResume(e -> {
-                    log.error("Agent 调用失败", e);
-
-                    // 对 JAR/类路径与文件系统路径不匹配的 Path 异常做友好提示
-                    String message = e.getMessage();
-                    if (e instanceof IllegalArgumentException
-                            && message != null
-                            && message.contains("different type of Path")) {
-                        log.warn("检测到 Path 文件系统类型不匹配。"
-                                + "这通常发生在从 JAR 加载 classpath 资源时，"
-                                + "可尝试设置 agentscope.skill-box.enabled=false 或"
-                                + "确保工作区目录存在: {}", message);
-                        return Flux.just(sseMessageBuilder.buildErrorMessage(
-                                "服务内部路径错误，请检查工作区配置"));
-                    }
-
+                    log.error("Agent 流式调用失败", e);
                     return Flux.just(sseMessageBuilder.buildErrorMessage(e.getMessage()));
                 });
 
@@ -868,25 +897,6 @@ public class ChatAppService {
         } else {
             return Flux.concat(startFlux, thinkingFlux, contentFlux);
         }
-    }
-
-    private Flux<String> createChunkedContentFlux(String content, int chunkSize) {
-        if (content == null || content.isEmpty()) {
-            return Flux.just(sseMessageBuilder.buildContentMessage("（模型未返回内容）"));
-        }
-
-        List<String> chunks = new ArrayList<>();
-        for (int i = 0; i < content.length(); i += chunkSize) {
-            int end = Math.min(i + chunkSize, content.length());
-            String chunk = content.substring(i, end);
-            chunks.add(sseMessageBuilder.buildContentMessage(chunk));
-        }
-
-        log.info("开始流式发送内容，总长度: {}, 分块数: {}", content.length(), chunks.size());
-
-        // 使用 Flux.fromIterable 并添加短延迟模拟流式输出
-        return Flux.fromIterable(chunks)
-                .delayElements(Duration.ofMillis(10));
     }
 
     /**

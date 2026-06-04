@@ -303,29 +303,13 @@ public class AgentDomainService {
     }
     
     public AgentInfoDto createAgent(String name, AgentConfigDto config) {
-        // 1. 读取配置
-        ModelConfig modelCfg = buildModelConfig(config);
+        // 1. 创建模型提供商（直接构造，不再经过 ModelConfig + ModelProviderFactory）
+        ChatModelProvider modelProvider = createProvider(config.getProvider(), config.getApiKey(), config.getModelName());
         
-        // 2. 创建模型
-        ChatModelProvider modelProvider = modelFactory.createProvider(modelCfg);
+        // 2. 注册 prototype Bean（每次 getBean 返回新实例）
+        registerPrototypeAgentBean(name, modelProvider, prompt, workspacePath);
         
-        // 3. 构建 ReActAgent delegate
-        ReActAgent delegate = ReActAgent.builder()
-            .name(name)
-            .sysPrompt(prompt)
-            .model(modelProvider)
-            .build();
-        
-        // 4. 用 HarnessAgent 包装（薄包装器）
-        Agent agent = HarnessAgent.from(delegate)
-            .disableSubagents()
-            .disableMemoryHooks()   // 非必需可禁用
-            .disableFilesystemTools()
-            .disableShellTool()
-            .build();
-        
-        // 5. 放入缓存
-        agentInstanceCache.put(name, agent);
+        // 3. 返回摘要信息（Agent 实例由 BeanFactory 按需创建）
         return new AgentInfoDto(name, prompt, modelName, Instant.now());
     }
 }
@@ -361,25 +345,20 @@ public class AgentDomainService {
 
 **在本框架中的应用**：
 
+工具定义不再需要 `ToolAdapter` 桥接层。直接在方法上标注 `@Tool` 注解即可：
+
+```java
+@Component
+public class WeatherTools {
+    @Tool(name = "get_weather", description = "查询城市天气")
+    public String getWeather(
+            @ToolParam(description = "城市名称") String city) {
+        return weatherService.query(city);
+    }
+}
 ```
-┌─────────────────────────────────────────┐
-│  AgentScope AgentTool (Target)          │
-│  - call(ToolUseBlock)                   │
-└─────────────┬───────────────────────────┘
-              │ 调用
-              ▼
-┌─────────────────────────────────────────┐
-│  ToolAdapter (Adapter)                  │
-│  - 将 AgentTool 接口                    │
-│    适配为 ToolHandler 接口               │
-└─────────────┬───────────────────────────┘
-              │ 调用
-              ▼
-┌─────────────────────────────────────────┐
-│  ToolHandler (Adaptee)                  │
-│  - execute(Map<String, Object>)         │
-└─────────────────────────────────────────┘
-```
+
+`@Tool` 注解的方法会被 `Toolkit.registerTool(Object bean)` 自动扫描注册，无需手动维护注册表。框架自动从方法签名生成 JSON Schema。
 
 **McpToolRegistry 核心功能**：
 

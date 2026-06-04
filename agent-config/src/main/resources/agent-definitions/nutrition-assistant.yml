@@ -147,7 +147,7 @@ agent:
   # 模型配置
   model:
     provider: dashscope
-    name: qwen-plus
+    modelName: qwen-plus
     temperature: 0.5
     maxTokens: 8000
 
@@ -217,17 +217,14 @@ agent:
             pattern: WORKFLOW
 
   # 工具配置
-  tools:
-    enabled: true
-    groups:
-      - search
-      - database
+  toolsGroup:
+    systemToolsGroup:
+      - agent          # 系统内置组：子Agent调用
+      - search         # @Tool 注解派生组：search_dishes 等工具
+    mcpServersToolsGroup:
       - formfill
-      - agent
-    mcpServers:
-      - "formfill"
-      - "database"
-      - "milvus"
+      - database
+      - milvus
 
   # Profile 配置
   profiles:

@@ -56,11 +56,12 @@ public class BaiduModelProvider implements ChatModelProvider {
     /**
      * 构造百度模型提供商
      *
-     * @param config 模型配置，apiKey 字段填 API Key，modelName 字段填 Secret Key
+     * @param apiKey    API Key
+     * @param secretKey Secret Key
      */
-    public BaiduModelProvider(ModelConfig config) {
-        this.apiKey = config.getApiKey(); // API Key
-        this.secretKey = config.getModelName(); // Secret Key (从modelName字段获取)
+    public BaiduModelProvider(String apiKey, String secretKey) {
+        this.apiKey = apiKey; // API Key
+        this.secretKey = secretKey; // Secret Key
         this.modelName = "ernie-bot-turbo"; // 百度默认模型
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))

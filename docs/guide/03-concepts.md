@@ -439,7 +439,36 @@ HarnessAgent 通过内置 Hook 自动管理 Agent 执行过程中的记忆持久
 | `CompactionHook` | 10 | 上下文溢出时通过 LLM 摘要压缩，然后重试调用 |
 | `ToolResultEvictionHook` | — | 将过大的工具调用结果卸载到文件系统 |
 
-当前集成阶段，这些 Hook 默认**禁用**（通过 `disableMemoryHooks()`），后续可按需启用。
+当前集成阶段，这些 Hook 默认**启用**（`disableMemoryHooks` 默认 `false`，参见 `HarnessAgent.Builder` 源码），无需额外配置。如有特殊需求可通过 Builder 的 `disableMemoryHooks()` 方法关闭。
+
+#### 记忆管理的两层架构
+
+记忆系统由**底层框架层**和**应用框架层**共同完成：
+
+| 层 | 所属项目 | 职责 | 可控性 |
+|---|---|---|---|
+| **底层框架** | `agentscope-harness`（外部依赖） | `MemoryFlushHook` → 写 `memory/YYYY-MM-DD.md`（每日流水）<br>`MemoryMaintenanceHook` → `MemoryConsolidator`（LLM 合并 → MEMORY.md） | 不可直接修改，提示词写死在 `MemoryConsolidator.java` 的 `private static final` 常量中 |
+| **应用框架** | `yunxi-agent-platform`（本项目） | Agent 系统提示词中的回答风格约束<br>Agent 定义 YAML 中的行为规范<br>工作区文件的维护和清理 | 完全可控，通过修改 `agent-definitions/*.yml` 的 `prompt` 字段实现 |
+
+**典型问题处理链路（以 Agent 回复 verbose 为例）：**
+
+```
+底层框架 MemoryConsolidator (LLM)
+  ↓ 生成 verbose 风格的 MEMORY.md（含 emoji、营销话术）
+  ↓
+Agent 读取 MEMORY.md 作为参考上下文
+  ↓
+系统提示词约束（优先级更高）
+  └─ food-chat.yml 中已添加：
+     "不要使用 emoji"、"不要营销话术"、"不要提及服务器路径"
+  ↓
+Agent 最终回复 → 遵循系统提示词，过滤掉 verbose 风格
+```
+
+**要点：**
+- 系统提示词的约束优先级高于 MEMORY.md 的参考上下文，即使底层框架生成的 MEMORY.md 带有 emoji 或营销话术，Agent 仍会按提示词的要求输出干净回复。
+- 如果 MEMORY.md 积累过多冗余内容，可以直接删除，框架会自动从每日流水中重新合并生成。
+- 如需从根本上控制 MEMORY.md 的内容风格，需要在 `agentscope-harness` 中修改 `MemoryConsolidator.java` 的 `CONSOLIDATION_PROMPT`，本文成稿时该提示词不支持从外部配置。
 
 ### MemoryScene / MemorySceneRegistry（场景化管理）
 

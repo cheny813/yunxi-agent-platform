@@ -15,11 +15,11 @@ import org.springframework.stereotype.Service;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.plan.PlanNotebook;
-import io.agentscope.core.studio.StudioMessageHook;
 import io.agentscope.core.rag.Knowledge;
 import io.agentscope.core.rag.RAGMode;
 import io.agentscope.core.rag.model.RetrieveConfig;
 import io.agentscope.core.skill.SkillBox;
+import io.agentscope.core.studio.StudioMessageHook;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
@@ -27,7 +27,6 @@ import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.yunxi.platform.framework.embedding.ChatModelProvider;
 import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.skill.SkillRegistryService;
-import io.yunxi.platform.framework.tool.ToolGroupManager;
 import io.yunxi.platform.infra.config.AgentscopeExtensionProperties;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
@@ -65,9 +64,6 @@ public class AdvancedAgentFactory {
     /** Skill 注册中心（可选，用于按需创建过滤 SkillBox） */
     private final ObjectProvider<SkillRegistryService> skillRegistryProvider;
 
-    /** 工具分组管理器（可选，用于创建/激活工具组） */
-    private final ObjectProvider<ToolGroupManager> toolGroupManagerProvider;
-
     /** Studio 消息 Hook 提供者（可选） */
     private final ObjectProvider<StudioMessageHook> studioMessageHookProvider;
 
@@ -78,13 +74,11 @@ public class AdvancedAgentFactory {
             AgentscopeExtensionProperties extensionProperties,
             AgentscopeCoreProperties coreProperties,
             ObjectProvider<SkillRegistryService> skillRegistryProvider,
-            ObjectProvider<ToolGroupManager> toolGroupManagerProvider,
             ObjectProvider<StudioMessageHook> studioMessageHookProvider) {
         this.agentDomainService = agentDomainService;
         this.extensionProperties = extensionProperties;
         this.coreProperties = coreProperties;
         this.skillRegistryProvider = skillRegistryProvider;
-        this.toolGroupManagerProvider = toolGroupManagerProvider;
         this.studioMessageHookProvider = studioMessageHookProvider;
         this.knowledgeBeans = new HashMap<>();
         this.memoryBeans = new HashMap<>();
@@ -375,10 +369,6 @@ public class AdvancedAgentFactory {
      * </p>
      */
     private void applyToolConfig(UnifiedChatRequest request, Toolkit toolkit) {
-        if (toolGroupManagerProvider.getIfAvailable() != null) {
-            toolGroupManagerProvider.getIfAvailable().createLocalToolGroups(toolkit);
-        }
-
         if (request.getEnabledTools() == null || request.getEnabledTools().isEmpty()) {
             return;
         }
@@ -402,14 +392,6 @@ public class AdvancedAgentFactory {
                     log.error("工具类未找到: {}", toolClassName);
                 } catch (Exception e) {
                     log.error("工具注册失败: {}, 原因: {}", toolClassName, e.getMessage());
-                }
-            }
-
-            List<String> requestedGroups = request.getEnabledToolGroups();
-            if (requestedGroups != null && !requestedGroups.isEmpty()) {
-                log.info("请求激活工具组: {}", requestedGroups);
-                if (toolGroupManagerProvider.getIfAvailable() != null) {
-                    toolGroupManagerProvider.getIfAvailable().activateGroups(toolkit, requestedGroups);
                 }
             }
 

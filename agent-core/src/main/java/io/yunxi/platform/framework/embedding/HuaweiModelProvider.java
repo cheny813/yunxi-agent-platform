@@ -1,28 +1,34 @@
 package io.yunxi.platform.framework.embedding;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.ToolSchema;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.*;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
-
-import java.time.Duration;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 
 /**
  * 华为盘古大模型提供商实现
@@ -52,12 +58,13 @@ public class HuaweiModelProvider implements ChatModelProvider {
     /**
      * 构造华为盘古模型提供商
      *
-     * @param config 模型配置，apiKey 字段填 Access Key，modelName 字段填 Secret Key
+     * @param accessKey Access Key
+     * @param secretKey Secret Key
      */
-    public HuaweiModelProvider(ModelConfig config) {
+    public HuaweiModelProvider(String accessKey, String secretKey) {
         // 从config中获取AK/SK
-        this.accessKey = config.getApiKey(); // Access Key
-        this.secretKey = config.getModelName(); // Secret Key (从modelName字段获取)
+        this.accessKey = accessKey; // Access Key
+        this.secretKey = secretKey; // Secret Key
         this.modelName = "pangu-chat"; // 华为默认模型
 
         this.httpClient = new OkHttpClient.Builder()

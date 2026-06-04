@@ -1,15 +1,5 @@
 package io.yunxi.platform.infra.config;
 
-import io.agentscope.core.rag.Knowledge;
-import io.yunxi.platform.framework.knowledge.KnowledgeCreator;
-import io.yunxi.platform.infra.config.AgentscopeExtensionProperties.KnowledgeBaseConfig;
-import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.BeanCreationException;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Configuration;
-
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -17,22 +7,34 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Configuration;
+
+import io.agentscope.core.rag.Knowledge;
+import io.yunxi.platform.framework.knowledge.KnowledgeCreator;
+import io.yunxi.platform.infra.config.AgentscopeExtensionProperties.KnowledgeBaseConfig;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * 知识库自动配置类
  *
  * <p>
- * 根据 {@code agentscope.yml} 中的 {@code agentscope.extensions.knowledge-bases} 配置，
+ * 根据 {@code agentscope.yml} 中的 {@code agentscope.extensions.knowledge-bases}
+ * 配置，
  * 自动创建并注册 Knowledge Bean 到 Spring 容器。
  * 每种知识库类型通过 {@link KnowledgeCreator} SPI 接口扩展。
  * </p>
  *
  * <h3>工作原理</h3>
  * <ol>
- *   <li>收集所有 {@link KnowledgeCreator} Bean（通过 Spring 组件扫描）</li>
- *   <li>构建 type → creator 映射</li>
- *   <li>遍历 {@code knowledge-bases} 配置，对每个 {@code enabled=true} 的配置项：</li>
- *   <li>调用对应 creator 创建 Knowledge 实例</li>
- *   <li>通过 {@link DefaultListableBeanFactory#registerSingleton} 注册为 Spring Bean</li>
+ * <li>收集所有 {@link KnowledgeCreator} Bean（通过 Spring 组件扫描）</li>
+ * <li>构建 type → creator 映射</li>
+ * <li>遍历 {@code knowledge-bases} 配置，对每个 {@code enabled=true} 的配置项：</li>
+ * <li>调用对应 creator 创建 Knowledge 实例</li>
+ * <li>通过 {@link DefaultListableBeanFactory#registerSingleton} 注册为 Spring
+ * Bean</li>
  * </ol>
  *
  * <h3>扩展方式</h3>
@@ -40,9 +42,9 @@ import java.util.stream.Collectors;
  * 新增知识库类型只需：
  * </p>
  * <ol>
- *   <li>在 {@code agentscope.yml} 中添加配置模板</li>
- *   <li>在 {@link KnowledgeBaseConfig} 中添加专有字段（若需要）</li>
- *   <li>新建 {@code @Component implements KnowledgeCreator}</li>
+ * <li>在 {@code agentscope.yml} 中添加配置模板</li>
+ * <li>在 {@link KnowledgeBaseConfig} 中添加专有字段（若需要）</li>
+ * <li>新建 {@code @Component implements KnowledgeCreator}</li>
  * </ol>
  *
  * @author yunxi-agent-platform
@@ -52,11 +54,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Configuration
-@ConditionalOnProperty(
-        prefix = "agentscope.extensions",
-        name = "autoConfigEnabled",
-        havingValue = "true"
-)
+@ConditionalOnProperty(prefix = "agentscope.extensions", name = "autoConfigEnabled", havingValue = "true")
 public class KnowledgeAutoConfiguration {
 
     /** 扩展功能配置属性 */
@@ -85,8 +83,7 @@ public class KnowledgeAutoConfiguration {
                             log.warn("知识库类型 '{}' 存在多个 Creator，保留: {}，忽略: {}",
                                     a.getType(), a.getClass().getName(), b.getClass().getName());
                             return a;
-                        }
-                ));
+                        }));
         log.info("知识库创建器已加载: types={}", creatorMap.keySet());
     }
 
@@ -159,7 +156,8 @@ public class KnowledgeAutoConfiguration {
     /**
      * 将 kebab-case 转换为 camelCase
      * <p>
-     * 例如：{@code tech-docs} → {@code techDocs}，{@code product-manual} → {@code productManual}
+     * 例如：{@code tech-docs} → {@code techDocs}，{@code product-manual} →
+     * {@code productManual}
      * </p>
      *
      * @param kebabCase kebab-case 格式的字符串

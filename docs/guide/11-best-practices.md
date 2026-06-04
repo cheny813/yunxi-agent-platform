@@ -412,5 +412,160 @@ log.info("操作耗时: {}ms", duration);
 
 ---
 
+## 底层框架适配
+
+本平台基于 **AgentScope-Java**（阿里巴巴开源，RC2 版本），在实际使用中遇到了一些底层框架的设计限制，通过 **反射 + 后处理** 的方式适配解决。
+
+### 1. 工具组分配（un groupèd 问题）
+
+#### 问题
+
+`HarnessAgent` 和 `ReActAgent` 在 `build()` 时，通过 `Toolkit.registerTool(Object)` 注册内置工具（memory/session/filesystem/shell/subagent/task/meta），该方法不接收组名参数，工具被框架内部标记为 `"ungrouped"`：
+
+```log
+io.agentscope.core.tool.Toolkit - Registered tool 'memory_search' in group 'ungrouped'
+io.agentscope.core.tool.Toolkit - Registered tool 'list_files' in group 'ungrouped'
+io.agentscope.core.tool.Toolkit - Registered tool 'execute' in group 'ungrouped'
+io.agentscope.core.tool.Toolkit - Registered tool 'agent_spawn' in group 'ungrouped'
+```
+
+每个 Agent 约 18 个工具，5 个 Agent 共约 90 条日志。更重要的是，未分组工具不受 `updateToolGroups()` 控制——它们永远处于可见状态，无法通过工具组开关选择性启用/禁用。
+
+#### 根因
+
+框架中 `Toolkit.registerTool(Object)` → `registerAgentTool(agentTool, null, ...)`，内部调用链：
+
+```java
+// Toolkit.java (框架源码, 不可修改)
+private void registerAgentTool(AgentTool tool, String groupName, ...) {
+    // groupName = null, 跳过 groupManager.addToolToGroup()
+    if (groupName != null) {
+        groupManager.addToolToGroup(groupName, toolName);
+    }
+    logger.info("Registered tool '{}' in group '{}'", toolName,
+        groupName != null ? groupName : "ungrouped");  // ← 打印 ungrouped
+}
+```
+
+`ToolGroupManager.isActiveTool()` 对未分组工具返回 `true`，导致它们脱离组管控：
+
+```java
+public boolean isActiveTool(String toolName) {
+    Set<String> groups = tools.get(toolName);
+    if (groups == null || groups.isEmpty()) {
+        return true;  // 未分组工具永远可见！
+    }
+    ...
+}
+```
+
+#### 解决方案
+
+在 `AgentConfigurer` 中增加后处理步骤（`AgentConfigurer.java:618-676`）：
+
+```java
+private void assignUngroupedTools(Toolkit toolkit, String targetGroup) {
+    // 反射访问 package-private 的 ToolGroupManager
+    Field groupManagerField = Toolkit.class.getDeclaredField("groupManager");
+    groupManagerField.setAccessible(true);
+    Object groupManager = groupManagerField.get(toolkit);
+
+    Method isGroupedTool = groupManager.getClass()
+            .getDeclaredMethod("isGroupedTool", String.class);
+    Method addToolToGroup = groupManager.getClass()
+            .getDeclaredMethod("addToolToGroup", String.class, String.class);
+
+    for (String toolName : toolkit.getToolNames()) {
+        if (!(boolean) isGroupedTool.invoke(groupManager, toolName)) {
+            addToolToGroup.invoke(groupManager, targetGroup, toolName);
+        }
+    }
+}
+```
+
+并在 Agent 构建后调用：
+
+```java
+// 获取 Agent 内部 Toolkit（build 内部会深拷贝，外部引用不包含所有工具）
+Toolkit agentToolkit = resolveAgentToolkit(agent);
+assignUngroupedTools(agentToolkit, "general");
+applyToolGroupActivation(agentToolkit, def);  // 在正确的 Toolkit 上激活
+```
+
+关键点：
+- 通过 `HarnessAgent.getDelegate().getToolkit()` 获取 Agent 实际使用的 Toolkit 拷贝
+- `applyToolGroupActivation()` 之前操作的是外部原始 Toolkit，修复后操作 Agent 内部拷贝
+- 反射通过 try-catch 保护，框架升级若字段名/方法签名变化则自动回退
+
+#### 涉及的文件
+
+| 文件 | 说明 |
+|------|------|
+| `agent-core/.../framework/agent/AgentConfigurer.java` | 新增 `resolveAgentToolkit()` 和 `assignUngroupedTools()` 方法，修改 `initializeSingleAgent()` 和 `createSupervisorAgent()` |
+
+---
+
+### 2. MCP 工具组隔离
+
+#### 问题
+
+框架的 `Toolkit` 是单例模式，所有 MCP 服务器的工具都注册在同一个 `Toolkit` 实例上。当不同 Agent 需要访问不同的 MCP 工具集合时（例如 nutrition-assistant 应只能看到 nutrition 相关工具，不应看到 database 工具），缺乏天然隔离机制。
+
+#### 解决方案
+
+通过 `McpToolRegistry` 在每个 Agent 的 `Toolkit` 中独立注册：
+
+```java
+// McpToolRegistry.java
+toolkit.registration()
+    .agentTool(agentTool)
+    .group(serverName)  // 按 MCP 服务器名分组
+    .apply();
+```
+
+然后在 Agent YAML 配置中按需启用：
+
+```yaml
+tools:
+  groups:
+    - mcp-nutrition    # 只启用营养相关工具
+    - database
+```
+
+通过 `applyToolGroupActivation()` 控制哪些组在推理时可见。
+
+---
+
+### 3. Toolkit 深拷贝后的组激活失效
+
+#### 问题
+
+`ReActAgent.Builder.build()` 内部会对 `Toolkit` 做深拷贝（`this.toolkit.copy()`），但 `AgentConfigurer` 的 `applyToolGroupActivation()` 之前操作的是原始 `Toolkit`，对 Agent 实际使用的拷贝没有效果。
+
+```java
+// ReActAgent.Builder.build() (框架源码)
+Toolkit agentToolkit = this.toolkit.copy();  // 深拷贝
+// 工具注册在拷贝上
+agentToolkit.registerTool(...);
+return new ReActAgent(agentToolkit);  // Agent 使用拷贝
+```
+
+#### 解决方案
+
+通过 `HarnessAgent.getDelegate().getToolkit()` 获取 Agent 实际使用的 Toolkit：
+
+```java
+private Toolkit resolveAgentToolkit(Agent agent) {
+    if (agent instanceof HarnessAgent harnessAgent) {
+        return harnessAgent.getDelegate().getToolkit();
+    }
+    return null;
+}
+```
+
+之后所有组激活操作都在此 Toolkit 上执行，确保生效。
+
+---
+
 **上一页**: [10. 技能系统](./10-skills.md)  
 **下一页**: [12. 常见问题 →](./12-faq.md)

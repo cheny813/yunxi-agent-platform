@@ -1,32 +1,34 @@
 package io.yunxi.platform.infra.repository;
 
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Repository;
-
-import io.yunxi.platform.shared.entity.ConversationEntity;
-
+import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import org.springframework.stereotype.Repository;
+
+import io.yunxi.platform.shared.entity.ConversationEntity;
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * 内存存储实现
- * 
+ *
  * <p>
  * 使用 ConcurrentHashMap 存储会话，适合：
  * <ul>
- *   <li>开发测试环境</li>
- *   <li>单机部署场景</li>
- *   <li>临时会话存储</li>
+ * <li>开发测试环境</li>
+ * <li>单机部署场景</li>
+ * <li>临时会话存储</li>
  * </ul>
  * </p>
- * 
+ *
  * <p>
  * <b>注意</b>：服务重启后会话将丢失
  * </p>
- * 
+ *
  * @author yunxi-agent-platform
  * @version 1.0.0
  */
@@ -50,8 +52,8 @@ public class InMemoryConversationRepository implements ConversationRepository {
             return false;
         }
         storage.put(conversation.getId(), conversation);
-        log.debug("内存存储保存会话: id={}, messageCount={}", 
-                conversation.getId(), 
+        log.debug("内存存储保存会话: id={}, messageCount={}",
+                conversation.getId(),
                 conversation.getMessages() != null ? conversation.getMessages().size() : 0);
         return true;
     }
@@ -86,8 +88,10 @@ public class InMemoryConversationRepository implements ConversationRepository {
         List<ConversationEntity> results = storage.values().stream()
                 .filter(conv -> userId.equals(conv.getUserId()))
                 .sorted((a, b) -> {
-                    if (a.getLastUpdatedAt() == null) return 1;
-                    if (b.getLastUpdatedAt() == null) return -1;
+                    if (a.getLastUpdatedAt() == null)
+                        return 1;
+                    if (b.getLastUpdatedAt() == null)
+                        return -1;
                     return b.getLastUpdatedAt().compareTo(a.getLastUpdatedAt());
                 })
                 .collect(Collectors.toList());
@@ -109,11 +113,32 @@ public class InMemoryConversationRepository implements ConversationRepository {
         return storage.values().stream()
                 .filter(conv -> agentName.equals(conv.getAgentName()))
                 .sorted((a, b) -> {
-                    if (a.getLastUpdatedAt() == null) return 1;
-                    if (b.getLastUpdatedAt() == null) return -1;
+                    if (a.getLastUpdatedAt() == null)
+                        return 1;
+                    if (b.getLastUpdatedAt() == null)
+                        return -1;
                     return b.getLastUpdatedAt().compareTo(a.getLastUpdatedAt());
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 根据用户 ID 和 Agent 名称查找最近一条活跃会话
+     *
+     * @param userId    用户 ID
+     * @param agentName Agent 名称
+     * @return 最近一条活跃会话
+     */
+    @Override
+    public Optional<ConversationEntity> findByUserIdAndAgentName(String userId, String agentName) {
+        if (userId == null || agentName == null) {
+            return Optional.empty();
+        }
+        return storage.values().stream()
+                .filter(conv -> userId.equals(conv.getUserId()) && agentName.equals(conv.getAgentName()))
+                .filter(conv -> conv.getExpiresAt() == null || conv.getExpiresAt().isAfter(LocalDateTime.now()))
+                .max(Comparator.comparing(ConversationEntity::getLastUpdatedAt,
+                        Comparator.nullsFirst(Comparator.naturalOrder())));
     }
 
     /**

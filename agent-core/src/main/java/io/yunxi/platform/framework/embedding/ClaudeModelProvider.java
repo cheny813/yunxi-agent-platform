@@ -1,22 +1,27 @@
 package io.yunxi.platform.framework.embedding;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.ToolSchema;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.*;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
-
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Claude 模型提供商实现
@@ -46,12 +51,13 @@ public class ClaudeModelProvider implements ChatModelProvider {
     /**
      * 构造 Claude 模型提供商
      *
-     * @param config 模型配置
+     * @param apiKey    API Key
+     * @param modelName 模型名称
      */
-    public ClaudeModelProvider(ModelConfig config) {
-        this.apiKey = config.getApiKey();
-        this.modelName = config.getModelName() != null ? config.getModelName() : "claude-3-5-sonnet-20241022";
-        this.baseUrl = config.getBaseUrl() != null ? config.getBaseUrl() : DEFAULT_API_URL;
+    public ClaudeModelProvider(String apiKey, String modelName) {
+        this.apiKey = apiKey;
+        this.modelName = modelName != null ? modelName : "claude-3-5-sonnet-20241022";
+        this.baseUrl = DEFAULT_API_URL;
 
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))

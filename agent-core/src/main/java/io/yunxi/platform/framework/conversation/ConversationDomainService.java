@@ -1,18 +1,5 @@
 package io.yunxi.platform.framework.conversation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.yunxi.platform.infra.cache.CacheNamespaces;
-import io.yunxi.platform.spi.cache.CacheProvider;
-import io.yunxi.platform.infra.repository.ConversationRepository;
-import io.yunxi.platform.shared.dto.ConversationInfoDto;
-import io.yunxi.platform.shared.dto.CreateConversationRequest;
-import io.yunxi.platform.shared.entity.ConversationEntity;
-import io.yunxi.platform.shared.exception.NotFoundException;
-import io.yunxi.platform.shared.mapper.ConversationMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
-
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -23,6 +10,21 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.yunxi.platform.infra.cache.CacheNamespaces;
+import io.yunxi.platform.infra.repository.ConversationRepository;
+import io.yunxi.platform.shared.dto.ConversationInfoDto;
+import io.yunxi.platform.shared.dto.CreateConversationRequest;
+import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.shared.exception.NotFoundException;
+import io.yunxi.platform.shared.mapper.ConversationMapper;
+import io.yunxi.platform.spi.cache.CacheProvider;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 会话领域服务
@@ -123,8 +125,43 @@ public class ConversationDomainService {
     }
 
     /**
+     * 查找或创建会话：优先查找用户与 Agent 的最近活跃会话，不存在则创建新会话
+     *
+     * <p>
+     * 核心逻辑：同一用户使用同一 Agent 时，复用已有的未过期会话，
+     * 避免在会话列表中产生多条重复条目。
+     * </p>
+     *
+     * @param request 创建会话请求
+     * @return 会话信息（可能是已有的，也可能是新建的）
+     */
+    public ConversationInfoDto findOrCreateConversation(CreateConversationRequest request) {
+        String userId = request.getUserId();
+        String agentName = request.getAgentName();
+
+        // 只有 userId 和 agentName 都不为空时才能查找已有会话
+        if (userId != null && !userId.isBlank() && agentName != null && !agentName.isBlank()) {
+            Optional<ConversationEntity> existing = conversationRepository.findByUserIdAndAgentName(userId, agentName);
+            if (existing.isPresent()) {
+                ConversationEntity entity = existing.get();
+                log.info("复用已有会话: id={}, userId={}, agentName={}", entity.getId(), userId, agentName);
+                ConversationInfoDto info = new ConversationInfoDto();
+                info.setId(entity.getId());
+                info.setAgentName(entity.getAgentName());
+                info.setUserId(entity.getUserId());
+                info.setTitle(entity.getTitle());
+                info.setCreatedAt(entity.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant());
+                return info;
+            }
+        }
+
+        // 没有找到活跃会话，创建新会话
+        return createConversation(request);
+    }
+
+    /**
      * 获取会话实体
-     * 
+     *
      * <p>
      * 查找顺序：本地缓存 -> Redis -> 数据库
      * </p>
@@ -220,12 +257,33 @@ public class ConversationDomainService {
                             content = msgString;
                         }
 
-                        // 判断消息角色：偶数索引是用户消息，奇数索引是助手消息
-                        // 保存顺序是：userMsg, responseMsg, userMsg, responseMsg, ...
-                        String role = (i % 2 == 0) ? "user" : "assistant";
+                        // 判断消息角色：优先使用 Msg 的实际角色，降级用索引奇偶判断
+                        String role;
+                        try {
+                            io.agentscope.core.message.MsgRole msgRole = msg.getRole();
+                            if (msgRole != null) {
+                                role = msgRole.name().toLowerCase();
+                            } else {
+                                role = (i % 2 == 0) ? "user" : "assistant";
+                            }
+                        } catch (Exception e) {
+                            role = (i % 2 == 0) ? "user" : "assistant";
+                        }
 
                         messageMap.put("role", role);
                         messageMap.put("content", content);
+
+                        // 提取推理内容（存储在 Msg.metadata 的 "thinking" 字段中）
+                        String thinking = "";
+                        try {
+                            Map<String, Object> metadata = msg.getMetadata();
+                            if (metadata != null && metadata.get("thinking") instanceof String) {
+                                thinking = (String) metadata.get("thinking");
+                            }
+                        } catch (Exception e) {
+                            log.debug("提取推理内容失败: {}", e.getMessage());
+                        }
+                        messageMap.put("thinking", thinking);
 
                         messages.add(messageMap);
                         log.debug("处理消息: index={}, role={}, contentLength={}",
@@ -388,12 +446,28 @@ public class ConversationDomainService {
         try {
             cacheProvider.put(CacheNamespaces.CONVERSATION, entity.getId(), entity,
                     Duration.ofHours(CacheNamespaces.DEFAULT_TTL_HOURS));
-            // 使用户会话列表缓存失效（仅删除，下次查询时自动重建）
-            // 优化：不再主动删除，让 5 分钟 TTL 自然过期。
-            // 原因：前端高频轮询（~1次/秒），每次对话后删缓存导致后续全部穿透到数据库。
-            // 5 分钟 TTL 足以保证最终一致性，同时避免数据库压力。
         } catch (Exception e) {
             log.warn("Redis 缓存更新失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 保存会话到数据库（含消息内容）
+     *
+     * @param entity 会话实体
+     */
+    public void saveConversation(ConversationEntity entity) {
+        if (entity == null || entity.getId() == null) {
+            return;
+        }
+        try {
+            conversationRepository.save(entity);
+            // 同步更新缓存
+            updateCache(entity);
+            log.debug("会话已保存到数据库: id={}, messages={}", entity.getId(),
+                    entity.getMessages() != null ? entity.getMessages().size() : 0);
+        } catch (Exception e) {
+            log.error("保存会话到数据库失败: id={}", entity.getId(), e);
         }
     }
 }

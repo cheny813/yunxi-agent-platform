@@ -1,18 +1,18 @@
 package io.yunxi.platform.infra.persistence;
 
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import io.yunxi.platform.infra.config.DatabaseProperties;
 import io.yunxi.platform.shared.entity.AgentEntity;
 import io.yunxi.platform.shared.entity.ToolConfigEntity;
 import io.yunxi.platform.shared.mapper.AgentMapper;
 import io.yunxi.platform.shared.mapper.ConversationMapper;
 import io.yunxi.platform.shared.mapper.ToolConfigMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 数据持久化服务
@@ -53,9 +53,13 @@ public class PersistenceService {
     private ConversationMapper conversationMapper;
 
     /**
-     * 应用启动后初始化数据库
+     * Bean 初始化后自动创建数据库表
+     * <p>
+     * 使用 {@code @PostConstruct} 而非 {@code @EventListener(ApplicationReadyEvent)}，
+     * 确保在 Web 服务器接受请求之前表结构已就绪，避免请求先于表创建到达时报错。
+     * </p>
      */
-    @EventListener(ApplicationReadyEvent.class)
+    @PostConstruct
     public void initializeDatabase() {
         // 先创建表（如果不存在），确保数据库表结构就绪
         // 使用 CREATE TABLE IF NOT EXISTS，无论 database.enabled 为何值都安全执行

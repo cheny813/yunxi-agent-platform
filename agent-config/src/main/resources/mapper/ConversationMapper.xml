@@ -80,6 +80,16 @@
     </select>
 
     <!--
+        查找指定用户和 Agent 的会话
+    -->
+    <select id="findByUserIdAndAgentName" parameterType="map" resultMap="ConversationResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM agent_conversations
+        WHERE user_id = #{userId} AND agent_name = #{agentName}
+        ORDER BY last_updated_at DESC
+    </select>
+
+    <!--
         查找 Agent 的所有会话
         按最后更新时间倒序排列
     -->

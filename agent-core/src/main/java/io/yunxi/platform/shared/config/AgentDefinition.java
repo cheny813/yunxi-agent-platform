@@ -1,10 +1,11 @@
 package io.yunxi.platform.shared.config;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import io.yunxi.platform.framework.embedding.ModelConfig;
-import io.yunxi.platform.shared.dto.StructuredOutputConfigDto;
-
+import java.util.List;
 import java.util.Map;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import io.yunxi.platform.shared.dto.StructuredOutputConfigDto;
 
 /**
  * Agent 定义配置 — 从 YAML 配置文件加载的顶层 Agent 定义
@@ -62,12 +63,27 @@ public class AgentDefinition {
     // ========== 模型配置 ==========
 
     /** 模型配置 */
-    private ModelConfig model;
+    private AgentModelConfig model;
 
     // ========== 工具配置 ==========
 
     /** 工具配置 */
     private ToolConfig tools;
+
+    /**
+     * 工具组配置（系统内置组 + MCP 服务器组）
+     *
+     * <p>结构：
+     * <pre>{@code
+     * toolsGroup:
+     *   systemToolsGroup: [memory, filesystem]     # 系统内置组
+     *   mcpServersToolsGroup: [database]            # MCP 服务器组（也隐含加载同名 MCP 服务器）
+     * }</pre>
+     *
+     * <p>不配置时默认仅 memory 组可见。
+     * {@code ToolsGroupConfig} 的 JavaDoc 列出了所有系统内置组的可选值。
+     */
+    private ToolsGroupConfig toolsGroup;
 
     // ========== 记忆配置 ==========
 
@@ -160,11 +176,11 @@ public class AgentDefinition {
         this.orchestration = orchestration;
     }
 
-    public ModelConfig getModel() {
+    public AgentModelConfig getModel() {
         return model;
     }
 
-    public void setModel(ModelConfig model) {
+    public void setModel(AgentModelConfig model) {
         this.model = model;
     }
 
@@ -174,6 +190,14 @@ public class AgentDefinition {
 
     public void setTools(ToolConfig tools) {
         this.tools = tools;
+    }
+
+    public ToolsGroupConfig getToolsGroup() {
+        return toolsGroup;
+    }
+
+    public void setToolsGroup(ToolsGroupConfig toolsGroup) {
+        this.toolsGroup = toolsGroup;
     }
 
     public MemoryConfig getMemory() {

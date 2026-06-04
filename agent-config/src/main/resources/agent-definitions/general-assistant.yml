@@ -43,10 +43,25 @@ agent:
     - simple-knowledge
 
   # ============================================================
-  # MCP 工具注册
+  # 工具组配置
+  #
+  # 系统内置组（可选值）：
+  #   agent      → 子Agent调用工具：call_agent, call_xxx
+  #   memory     → 记忆查询工具（默认）：memory_search, memory_get
+  #                session_history, session_search, session_list
+  #   filesystem → 文件读写工具：read_file, write_file, edit_file
+  #                glob_files, list_files, grep_files
+  #   execute    → 命令执行工具（高危）：execute
+  #   page       → 页面生成工具：pagegen_xxx
+  #   general    → 兜底组：未归类的其他本地工具
+  #
+  # MCP 服务器组名 = tools.mcpServers 中配置的服务器名
   # ============================================================
-  tools:
-    mcpServers:
+  toolsGroup:
+    systemToolsGroup:
+      - memory
+      - general
+    mcpServersToolsGroup:
       - mcp-nutrition
 
   # ============================================================

@@ -7,15 +7,22 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.support.BeanDefinitionBuilder;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.stereotype.Service;
 
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.yunxi.platform.framework.embedding.BaiduModelProvider;
 import io.yunxi.platform.framework.embedding.ChatModelProvider;
-import io.yunxi.platform.framework.embedding.ModelConfig;
-import io.yunxi.platform.framework.embedding.ModelProviderFactory;
+import io.yunxi.platform.framework.embedding.ClaudeModelProvider;
+import io.yunxi.platform.framework.embedding.DashScopeModelProvider;
+import io.yunxi.platform.framework.embedding.HuaweiModelProvider;
+import io.yunxi.platform.framework.embedding.OpenAIModelProvider;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.AgentConfigDto;
 import io.yunxi.platform.shared.dto.AgentInfoDto;
@@ -26,20 +33,25 @@ import io.yunxi.platform.shared.exception.NotFoundException;
  * Agent 领域服务
  *
  * <p>
- * 【框架层】负责 Agent 的生命周期管理（单一职责）
+ * 【框架层】负责 Agent 的生命周期管理。
  * </p>
  * <p>
  * <b>职责范围</b>：
  * <ul>
- * <li>创建 Agent 实例（通过 HarnessAgent 包装 ReActAgent）</li>
+ * <li>注册 Agent 原型 Bean（prototype 作用域，每次获取新实例）</li>
  * <li>查询 Agent 信息</li>
- * <li>删除 Agent 实例</li>
- * <li>管理 Agent 缓存</li>
+ * <li>删除 Agent 定义</li>
+ * <li>管理 Agent 元数据缓存</li>
  * </ul>
+ * </p>
+ * <p>
+ * Agent 实例不再缓存到 ConcurrentHashMap，改为通过 DefaultListableBeanFactory
+ * 注册 prototype Bean。每次调用 getAgentInstance() 都返回新实例，保证线程安全。
+ * 多请求不再共享同一个 Agent 上下文。
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 3.1.0
+ * @version 3.3.0
  */
 @Service
 public class AgentDomainService {
@@ -51,30 +63,13 @@ public class AgentDomainService {
      */
     private final AgentscopeCoreProperties properties;
 
-    /**
-     * 模型工厂
-     */
-    private final ModelProviderFactory modelFactory;
+    /** Spring BeanFactory — 用于注册/获取 prototype Agent Bean */
+    private final DefaultListableBeanFactory beanFactory;
 
     /**
      * Agent 信息缓存（key 为 Agent 名称）
      */
     private final Map<String, AgentInfoDto> agentCache = new ConcurrentHashMap<>();
-
-    /**
-     * Agent 实例缓存（key 为 Agent 名称），统一使用 Agent 接口
-     */
-    private final Map<String, Agent> agentInstanceCache = new ConcurrentHashMap<>();
-
-    /**
-     * Agent schema 缓存（用于结构化输出）
-     */
-    private final Map<String, String> agentSchemaCache = new ConcurrentHashMap<>();
-
-    /**
-     * Agent 默认 RAG 模式缓存（name → ragMode）
-     */
-    private final Map<String, String> agentRagModeCache = new ConcurrentHashMap<>();
 
     /**
      * Agent 模型提供商缓存（name → ChatModelProvider），供 AdvancedAgentFactory 使用
@@ -87,14 +82,24 @@ public class AgentDomainService {
     private final Map<String, String> sysPromptCache = new ConcurrentHashMap<>();
 
     /**
+     * Agent 结构化输出 schema 缓存
+     */
+    private final Map<String, String> agentSchemaCache = new ConcurrentHashMap<>();
+
+    /**
+     * Agent 默认 RAG 模式缓存（name → ragMode）
+     */
+    private final Map<String, String> agentRagModeCache = new ConcurrentHashMap<>();
+
+    /**
      * 构造 Agent 领域服务
      *
      * @param properties   Agent 配置属性
      * @param modelFactory 模型工厂
      */
-    public AgentDomainService(AgentscopeCoreProperties properties, ModelProviderFactory modelFactory) {
+    public AgentDomainService(AgentscopeCoreProperties properties, BeanFactory beanFactory) {
         this.properties = properties;
-        this.modelFactory = modelFactory;
+        this.beanFactory = (DefaultListableBeanFactory) beanFactory;
     }
 
     /**
@@ -155,38 +160,48 @@ public class AgentDomainService {
                 ? config.getProvider()
                 : "dashscope";
 
-        ModelConfig modelConfig = new ModelConfig(provider, apiKey, modelName);
-        if (config != null && config.getTemperature() != null) {
-            modelConfig.setTemperature(config.getTemperature());
-        }
-        if (config != null && config.getMaxTokens() != null) {
-            modelConfig.setMaxTokens(config.getMaxTokens());
-        }
-
         // 创建模型提供商
-        ChatModelProvider modelProvider = modelFactory.createProvider(modelConfig);
+        ChatModelProvider modelProvider = createProvider(provider, apiKey, modelName);
 
-        // 先清除旧的 Agent 实例（如果存在），确保使用新配置
-        agentInstanceCache.remove(name);
-
-        // 创建 ReActAgent 后通过 HarnessAgent 包装
-        ReActAgent delegate = ReActAgent.builder()
-                .name(name)
-                .sysPrompt(prompt)
-                .model(modelProvider)
-                .build();
-
-        Agent agent = HarnessAgent.from(delegate)
-                .workspace(properties.getWorkspaceBasePath() + "/" + name)
-                .compaction(buildCompactionConfig())
-                .build();
+        // 注册 prototype Agent Bean（每次获取新实例）
+        registerPrototypeAgentBean(name, modelProvider, prompt, properties.getWorkspaceBasePath() + "/" + name);
 
         AgentInfoDto info = new AgentInfoDto(name, prompt, modelName, Instant.now());
         agentCache.put(name, info);
-        agentInstanceCache.put(name, agent);
         modelProviderCache.put(name, modelProvider);
         sysPromptCache.put(name, prompt);
         return info;
+    }
+
+    /**
+     * 注册 prototype 作用域的 Agent Bean
+     * <p>
+     * 每次从 BeanFactory 获取时创建新实例，避免多请求共享同一 Agent。
+     * </p>
+     */
+    private void registerPrototypeAgentBean(String name, ChatModelProvider modelProvider,
+            String prompt, String workspacePath) {
+        if (beanFactory.containsBean(name + "-agent")) {
+            beanFactory.destroySingleton(name + "-agent");
+            beanFactory.removeBeanDefinition(name + "-agent");
+        }
+
+        BeanDefinitionBuilder builder = BeanDefinitionBuilder
+                .genericBeanDefinition(Agent.class, () -> {
+                    ReActAgent delegate = ReActAgent.builder()
+                            .name(name)
+                            .sysPrompt(prompt)
+                            .model(modelProvider)
+                            .build();
+                    return HarnessAgent.from(delegate)
+                            .workspace(workspacePath)
+                            .compaction(buildCompactionConfig())
+                            .build();
+                })
+                .setScope(BeanDefinition.SCOPE_PROTOTYPE);
+
+        beanFactory.registerBeanDefinition(name + "-agent", builder.getBeanDefinition());
+        log.info("注册 prototype Agent Bean: {}", name);
     }
 
     /**
@@ -223,33 +238,12 @@ public class AgentDomainService {
                 ? config.getProvider()
                 : "dashscope";
 
-        ModelConfig modelConfig = new ModelConfig(provider, apiKey, modelName);
-        if (config != null && config.getTemperature() != null) {
-            modelConfig.setTemperature(config.getTemperature());
-        }
-        if (config != null && config.getMaxTokens() != null) {
-            modelConfig.setMaxTokens(config.getMaxTokens());
-        }
+        ChatModelProvider modelProvider = createProvider(provider, apiKey, modelName);
 
-        ChatModelProvider modelProvider = modelFactory.createProvider(modelConfig);
-
-        // 清除旧的同名实例（如果存在）
-        agentInstanceCache.remove(name);
-
-        ReActAgent delegate = ReActAgent.builder()
-                .name(name)
-                .sysPrompt(prompt)
-                .model(modelProvider)
-                .build();
-
-        Agent agent = HarnessAgent.from(delegate)
-                .workspace(workspacePath)
-                .compaction(buildCompactionConfig())
-                .build();
+        registerPrototypeAgentBean(name, modelProvider, prompt, workspacePath);
 
         AgentInfoDto info = new AgentInfoDto(name, prompt, modelName, Instant.now());
         agentCache.put(name, info);
-        agentInstanceCache.put(name, agent);
         modelProviderCache.put(name, modelProvider);
         sysPromptCache.put(name, prompt);
         log.info("创建用户 Agent: {} (workspace={})", name, workspacePath);
@@ -265,7 +259,10 @@ public class AgentDomainService {
         if (agentCache.remove(name) == null) {
             throw new NotFoundException("Agent not found: " + name);
         }
-        agentInstanceCache.remove(name);
+        String beanName = name + "-agent";
+        if (beanFactory.containsBean(beanName)) {
+            beanFactory.destroySingleton(beanName);
+        }
         log.info("删除 Agent: {}", name);
     }
 
@@ -276,18 +273,29 @@ public class AgentDomainService {
      * @return Agent 实例，如果不存在返回 null
      */
     public Agent findAgent(String name) {
-        return agentInstanceCache.get(name);
+        try {
+            return getAgentInstance(name);
+        } catch (NotFoundException e) {
+            return null;
+        }
     }
 
     /**
      * 获取 Agent 实例（抛出异常如果不存在）
+     * <p>
+     * 每次调用返回 prototype 作用域的新实例，保证线程安全。
+     * </p>
      *
      * @param name Agent 名称
      * @return Agent 实例
      * @throws NotFoundException 如果 Agent 不存在
      */
     public Agent getAgentInstance(String name) {
-        Agent agent = agentInstanceCache.get(name);
+        String beanName = name + "-agent";
+        if (!beanFactory.containsBean(beanName)) {
+            throw new NotFoundException("Agent not found: " + name);
+        }
+        Agent agent = beanFactory.getBean(beanName, Agent.class);
         if (agent == null) {
             throw new NotFoundException("Agent not found: " + name);
         }
@@ -312,7 +320,7 @@ public class AgentDomainService {
      * 获取当前 Agent 数量
      */
     public int countAgents() {
-        return agentInstanceCache.size();
+        return agentCache.size();
     }
 
     /**
@@ -324,12 +332,23 @@ public class AgentDomainService {
     }
 
     /**
-     * 注册 Agent 实例
+     * 注册 Agent 实例（通过 prototype Bean 定义）
      */
     public void registerAgentInstance(String name, Agent agent) {
-        if (name != null && !name.isBlank() && agent != null) {
-            agentInstanceCache.put(name, agent);
+        if (name == null || name.isBlank() || agent == null) {
+            return;
         }
+        // 注册为 prototype Bean，但使用预先创建的实例作为 factory-method
+        BeanDefinitionBuilder builder = BeanDefinitionBuilder
+                .genericBeanDefinition(Agent.class, () -> agent)
+                .setScope(BeanDefinition.SCOPE_PROTOTYPE);
+
+        String beanName = name + "-agent";
+        if (beanFactory.containsBean(beanName)) {
+            beanFactory.removeBeanDefinition(beanName);
+        }
+        beanFactory.registerBeanDefinition(beanName, builder.getBeanDefinition());
+        log.debug("注册 prototype Agent Bean: {}", name);
     }
 
     /**
@@ -385,5 +404,19 @@ public class AgentDomainService {
                 .flushBeforeCompact(c.isFlushBeforeCompact())
                 .offloadBeforeCompact(c.isOffloadBeforeCompact())
                 .build();
+    }
+
+    /**
+     * 根据提供商标识创建模型提供商
+     */
+    private ChatModelProvider createProvider(String provider, String apiKey, String modelName) {
+        return switch (provider.toLowerCase()) {
+            case "dashscope" -> new DashScopeModelProvider(apiKey, modelName);
+            case "openai" -> new OpenAIModelProvider(apiKey, modelName);
+            case "claude" -> new ClaudeModelProvider(apiKey, modelName);
+            case "baidu" -> new BaiduModelProvider(apiKey, modelName);
+            case "huawei" -> new HuaweiModelProvider(apiKey, modelName);
+            default -> throw new IllegalArgumentException("不支持的模型提供商: " + provider);
+        };
     }
 }
