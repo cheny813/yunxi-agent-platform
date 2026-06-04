@@ -1,17 +1,17 @@
 package io.yunxi.platform.framework.tool.impl;
 
-import lombok.extern.slf4j.Slf4j;
-import okhttp3.*;
+import java.time.Duration;
+
 import org.springframework.stereotype.Component;
 
-import io.yunxi.platform.framework.tool.Tool;
-import io.yunxi.platform.framework.tool.ToolExecutionException;
-import io.yunxi.platform.framework.tool.ToolInput;
-import io.yunxi.platform.framework.tool.ToolResult;
-
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
+import io.agentscope.core.tool.Tool;
+import io.agentscope.core.tool.ToolParam;
+import lombok.extern.slf4j.Slf4j;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 /**
  * HTTP 请求工具
@@ -23,14 +23,10 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-public class HttpTool implements Tool {
+public class HttpTool {
 
-    /** OkHttp 客户端 */
     private final OkHttpClient httpClient;
 
-    /**
-     * 构造 HTTP 请求工具
-     */
     public HttpTool() {
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -39,80 +35,18 @@ public class HttpTool implements Tool {
                 .build();
     }
 
-    @Override
-    public String getName() {
-        return "http_request";
-    }
-
-    @Override
-    public String getDescription() {
-        return "发送 HTTP 请求，获取网页内容或调用 API";
-    }
-
-    @Override
-    public String getParameterSchema() {
-        return """
-                {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "description": "请求 URL"
-                        },
-                        "method": {
-                            "type": "string",
-                            "enum": ["GET", "POST", "PUT", "DELETE"],
-                            "default": "GET",
-                            "description": "HTTP 方法"
-                        },
-                        "headers": {
-                            "type": "object",
-                            "description": "请求头",
-                            "additionalProperties": {"type": "string"}
-                        },
-                        "body": {
-                            "type": "string",
-                            "description": "请求体（POST/PUT 时使用）"
-                        },
-                        "timeout": {
-                            "type": "integer",
-                            "default": 30,
-                            "description": "超时时间（秒）"
-                        }
-                    },
-                    "required": ["url"]
-                }
-                """;
-    }
-
-    @Override
-    public ToolResult execute(ToolInput input) throws ToolExecutionException {
+    @Tool(name = "http_request", description = "发送 HTTP 请求，获取网页内容或调用 API")
+    public String request(
+            @ToolParam(name = "url", description = "请求 URL") String url,
+            @ToolParam(name = "method", description = "HTTP 方法: GET/POST/PUT/DELETE，默认 GET") String method,
+            @ToolParam(name = "body", description = "请求体（POST/PUT 时使用）") String body) {
         long startTime = System.currentTimeMillis();
-
         try {
-            // 获取参数
-            String url = input.getString("url");
-            String method = input.getString("method", "GET");
+            if (method == null || method.isBlank())
+                method = "GET";
 
-            // 获取 headers 参数
-            @SuppressWarnings("unchecked")
-            Map<String, String> headers = input.hasParameter("headers")
-                    ? (Map<String, String>) input.getParameters().get("headers")
-                    : new HashMap<>();
-
-            String body = input.getString("body");
-
-            log.info("HTTP 请求: {} {}", method, url);
-
-            // 构建请求
             Request.Builder builder = new Request.Builder().url(url);
 
-            // 添加请求头
-            if (!headers.isEmpty()) {
-                headers.forEach(builder::addHeader);
-            }
-
-            // 设置方法
             switch (method.toUpperCase()) {
                 case "POST" -> builder.post(body != null ? RequestBody.create(body, MediaType.parse("application/json"))
                         : RequestBody.create("", null));
@@ -122,35 +56,17 @@ public class HttpTool implements Tool {
                 default -> builder.get();
             }
 
-            // 发送请求
             try (Response response = httpClient.newCall(builder.build()).execute()) {
                 String responseBody = response.body() != null ? response.body().string() : "";
-
                 if (!response.isSuccessful()) {
-                    log.warn("HTTP 请求失败: {} - {}", response.code(), response.message());
-                    return ToolResult.error(String.format("HTTP 请求失败: %d - %s, 响应: %s",
-                            response.code(), response.message(), responseBody));
+                    return String.format("HTTP 请求失败: %d - %s", response.code(), response.message());
                 }
-
-                log.info("HTTP 请求成功: {} {} ({} ms)", method, url,
-                        System.currentTimeMillis() - startTime);
-
-                // 构建结果
-                Map<String, Object> result = new HashMap<>();
-                result.put("statusCode", response.code());
-                result.put("statusMessage", response.message());
-                result.put("headers", response.headers().toMultimap());
-                result.put("body", responseBody);
-                result.put("size", responseBody.length());
-
-                ToolResult toolResult = ToolResult.success(result);
-                toolResult.setDurationMs(System.currentTimeMillis() - startTime);
-                return toolResult;
+                log.info("HTTP 请求成功: {} {} ({} ms)", method, url, System.currentTimeMillis() - startTime);
+                return responseBody;
             }
-
         } catch (Exception e) {
             log.error("HTTP 请求异常", e);
-            throw new ToolExecutionException(getName(), "执行 HTTP 请求失败", e);
+            return "执行 HTTP 请求失败: " + e.getMessage();
         }
     }
 }

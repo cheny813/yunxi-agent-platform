@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,7 +17,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,22 +49,15 @@ class OpenAIModelProviderTest {
     private Call httpCall;
 
     private OpenAIModelProvider openAIModelProvider;
-    private ModelConfig config;
 
     @BeforeEach
     void setUp() {
-        config = new ModelConfig();
-        config.setApiKey("test-api-key");
-        config.setModelName("gpt-3.5-turbo");
-        config.setBaseUrl("https://api.openai.com/v1/chat/completions");
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
     }
 
     @Test
     void testConstructorWithValidConfig() {
-        openAIModelProvider = new OpenAIModelProvider(config);
-
         assertNotNull(openAIModelProvider);
-        assertEquals("test-api-key", config.getApiKey());
         assertEquals("gpt-3.5-turbo", openAIModelProvider.getModelName());
         assertEquals("openai", openAIModelProvider.getProvider());
         assertTrue(openAIModelProvider.isValid());
@@ -74,59 +65,42 @@ class OpenAIModelProviderTest {
 
     @Test
     void testConstructorWithNullModelName() {
-        config.setModelName(null);
-
-        openAIModelProvider = new OpenAIModelProvider(config);
-
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", null);
         assertEquals("gpt-3.5-turbo", openAIModelProvider.getModelName()); // 默认值
     }
 
     @Test
     void testConstructorWithEmptyModelName() {
-        config.setModelName("");
-
-        openAIModelProvider = new OpenAIModelProvider(config);
-
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "");
         assertEquals("gpt-3.5-turbo", openAIModelProvider.getModelName()); // 默认值
     }
 
     @Test
     void testConstructorWithCustomBaseUrl() {
-        config.setBaseUrl("https://custom.api.example.com/");
-
-        openAIModelProvider = new OpenAIModelProvider(config);
-
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
         assertNotNull(openAIModelProvider);
     }
 
     @Test
     void testIsValidWithValidApiKey() {
-        openAIModelProvider = new OpenAIModelProvider(config);
-
         assertTrue(openAIModelProvider.isValid());
     }
 
     @Test
     void testIsValidWithEmptyApiKey() {
-        config.setApiKey("");
-
-        openAIModelProvider = new OpenAIModelProvider(config);
-
+        openAIModelProvider = new OpenAIModelProvider("", "gpt-3.5-turbo");
         assertFalse(openAIModelProvider.isValid());
     }
 
     @Test
     void testIsValidWithNullApiKey() {
-        config.setApiKey(null);
-
-        openAIModelProvider = new OpenAIModelProvider(config);
-
+        openAIModelProvider = new OpenAIModelProvider(null, "gpt-3.5-turbo");
         assertFalse(openAIModelProvider.isValid());
     }
 
     @Test
     void testGetApiKey() {
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
 
         // 使用反射获取apiKey字段值进行验证
         try {
@@ -141,7 +115,7 @@ class OpenAIModelProviderTest {
 
     @Test
     void testBuildRequestBodyWithMessages() throws Exception {
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
 
         // 创建测试消息
         Msg message1 = Msg.builder().textContent("Hello").build();
@@ -175,7 +149,7 @@ class OpenAIModelProviderTest {
 
     @Test
     void testBuildRequestBodyWithNullOptions() throws Exception {
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
 
         Msg message = Msg.builder().textContent("Test").build();
         List<Msg> messages = List.of(message);
@@ -216,7 +190,7 @@ class OpenAIModelProviderTest {
 
         // 正确方案：在OpenAIModelProvider中注入mock的HttpClient进行测试
         // 而不是尝试mock static方法（newBuilder是实例方法）
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
         // 通过反射设置mock的HttpClient
         try {
             var field = OpenAIModelProvider.class.getDeclaredField("httpClient");
@@ -258,7 +232,7 @@ class OpenAIModelProviderTest {
         when(httpCall.execute()).thenReturn(mockResponse);
 
         // 使用反射注入mock的HttpClient
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
         try {
             var field = OpenAIModelProvider.class.getDeclaredField("httpClient");
             field.setAccessible(true);
@@ -290,7 +264,7 @@ class OpenAIModelProviderTest {
         when(httpCall.execute()).thenReturn(mockResponse);
 
         // 使用反射注入mock的HttpClient
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
         try {
             var field = OpenAIModelProvider.class.getDeclaredField("httpClient");
             field.setAccessible(true);
@@ -326,7 +300,7 @@ class OpenAIModelProviderTest {
         when(httpCall.execute()).thenReturn(mockResponse);
 
         // 使用反射注入mock的HttpClient
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
         try {
             var field = OpenAIModelProvider.class.getDeclaredField("httpClient");
             field.setAccessible(true);
@@ -356,7 +330,7 @@ class OpenAIModelProviderTest {
         when(httpCall.execute()).thenReturn(mockResponse);
 
         // 使用反射注入mock的HttpClient
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
         try {
             var field = OpenAIModelProvider.class.getDeclaredField("httpClient");
             field.setAccessible(true);
@@ -377,7 +351,7 @@ class OpenAIModelProviderTest {
 
     @Test
     void testObjectMapperSerialization() {
-        openAIModelProvider = new OpenAIModelProvider(config);
+        openAIModelProvider = new OpenAIModelProvider("test-api-key", "gpt-3.5-turbo");
 
         // 测试对象映射器是否正常工作
         try {

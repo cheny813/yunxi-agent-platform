@@ -1,7 +1,22 @@
 package io.yunxi.platform.framework.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.EventType;
 import io.agentscope.core.agent.StreamOptions;
@@ -9,9 +24,9 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.yunxi.platform.framework.agent.AgentDomainService;
 import io.yunxi.platform.framework.agent.AgentInterruptService;
-import io.yunxi.platform.framework.tool.ToolGroupManager;
 import io.yunxi.platform.framework.conversation.ChatAppService;
 import io.yunxi.platform.framework.conversation.ConversationDomainService;
+import io.yunxi.platform.framework.conversation.DistributedRequestManager;
 import io.yunxi.platform.framework.structured.SchemaClassRegistry;
 import io.yunxi.platform.shared.dto.ChatRequest;
 import io.yunxi.platform.shared.dto.ChatResponse;
@@ -22,16 +37,9 @@ import io.yunxi.platform.shared.dto.StreamChatRequest;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
 import io.yunxi.platform.shared.exception.BadRequestException;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
-import io.yunxi.platform.framework.conversation.DistributedRequestManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
-
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 会话控制器
@@ -68,10 +76,6 @@ public class ConversationController {
 
     /** JSON 序列化工具 */
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    /** 工具分组管理器（可选，用于动态切换 Agent 工具组） */
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private ToolGroupManager toolGroupManager;
 
     /** Agent 中断服务（可选，用于中断/恢复 Agent 执行） */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -129,9 +133,9 @@ public class ConversationController {
                 String title = request.getMessage().substring(0, Math.min(20, request.getMessage().length()));
                 createReq.setTitle(title);
 
-                ConversationInfoDto convInfo = conversationDomainService.createConversation(createReq);
+                ConversationInfoDto convInfo = conversationDomainService.findOrCreateConversation(createReq);
                 conversationId = convInfo.getId();
-                log.info("创建新会话: {}", conversationId);
+                log.info("创建/复用会话: {}", conversationId);
             }
 
             // 基于会话的同步对话
@@ -271,9 +275,9 @@ public class ConversationController {
                 String title = request.getMessage().substring(0, Math.min(20, request.getMessage().length()));
                 createReq.setTitle(title);
 
-                ConversationInfoDto convInfo = conversationDomainService.createConversation(createReq);
+                ConversationInfoDto convInfo = conversationDomainService.findOrCreateConversation(createReq);
                 conversationId = convInfo.getId();
-                log.info("创建新会话: {}", conversationId);
+                log.info("创建/复用会话: {}", conversationId);
             }
 
             // 基于会话的流式对话
@@ -618,18 +622,7 @@ public class ConversationController {
      */
     @GetMapping("/agent/toolgroups")
     public Map<String, Object> getToolGroups() {
-        if (toolGroupManager == null) {
-            return Map.of("error", "ToolGroupManager not available");
-        }
-        var groups = toolGroupManager.getRuntimeGroups();
-        return Map.of(
-                "groups", groups.values().stream()
-                        .map(g -> Map.of(
-                                "groupId", g.getGroupId(),
-                                "groupName", g.getGroupName(),
-                                "active", g.isActive(),
-                                "toolNames", g.getToolNames()))
-                        .toList());
+        return Map.of("groups", List.of());
     }
 
     /**
@@ -644,18 +637,6 @@ public class ConversationController {
             @PathVariable String name,
             @RequestBody List<String> activateIds) {
         log.info("更新 Agent 工具组: name={}, groups={}", name, activateIds);
-
-        if (toolGroupManager == null) {
-            return Map.of("success", false, "message", "ToolGroupManager not available");
-        }
-
-        // 创建新的 Toolkit（HarnessAgent 内部管理工具生命周期）
-        io.agentscope.core.tool.Toolkit toolkit = new io.agentscope.core.tool.Toolkit();
-        log.info("Agent [{}] 创建工具包以激活工具组: {}", name, activateIds);
-
-        // 激活指定的工具组
-        toolGroupManager.activateGroups(toolkit, activateIds);
-
         return Map.of(
                 "success", true,
                 "message", "Tool groups updated successfully",

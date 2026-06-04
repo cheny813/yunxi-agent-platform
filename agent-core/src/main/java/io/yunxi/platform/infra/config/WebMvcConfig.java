@@ -2,13 +2,18 @@ package io.yunxi.platform.infra.config;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -19,7 +24,7 @@ import io.yunxi.platform.shared.security.AuthInterceptor;
 
 /**
  * Web MVC 统一配置
- * 
+ *
  * <p>
  * 整合以下功能：
  * <ul>
@@ -29,14 +34,14 @@ import io.yunxi.platform.shared.security.AuthInterceptor;
  * <li>视图控制器映射</li>
  * <li>静态资源处理</li>
  * </ul>
- * 
+ *
  * @author yunxi-agent-platform
  * @version 1.0.0
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
-/** 认证拦截器 */
+    /** 认证拦截器 */
     @Autowired
     private ObjectProvider<AuthInterceptor> authInterceptorProvider;
 
@@ -46,10 +51,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     /**
      * 配置认证拦截器
-     * 
+     *
      * <p>
      * 拦截所有 API 请求进行身份验证，排除健康检查和监控端点
-     * 
+     *
      * @param registry 拦截器注册表
      */
     @Override
@@ -142,5 +147,45 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addResourceHandler("/**")
                 .addResourceLocations("classpath:/static/")
                 .setCachePeriod(0); // 禁用缓存，便于开发调试
+    }
+
+    /**
+     * 配置 MVC 异步请求执行器
+     * <p>
+     * 替换默认的 {@code SimpleAsyncTaskExecutor}（每个请求创建新线程，不适合生产），
+     * 使用线程池来管理异步请求（如 SSE 流式响应），避免高负载下资源耗尽。
+     * </p>
+     *
+     * @param configurer 异步支持配置器
+     */
+    @Override
+    public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+        configurer.setTaskExecutor(mvcAsyncExecutor());
+        // MVC 异步超时由应用层 ChatAppService 的 chat-timeout-seconds 控制（默认 480s），
+        // 此处不设超时避免提前切断 SSE 连接
+        configurer.setDefaultTimeout(0);
+    }
+
+    /**
+     * MVC 异步请求线程池
+     * <p>
+     * 专用于 Spring MVC 异步请求处理（如 SSE、DeferredResult 等），
+     * 与 {@code @Async} 注解使用的线程池分离，避免相互影响。
+     * </p>
+     *
+     * @return AsyncTaskExecutor 线程池
+     */
+    @Bean
+    public AsyncTaskExecutor mvcAsyncExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(5);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("MvcAsync-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(60);
+        executor.initialize();
+        return executor;
     }
 }

@@ -1,7 +1,18 @@
 package io.yunxi.platform.framework.embedding;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
@@ -9,19 +20,14 @@ import io.agentscope.core.model.DashScopeChatModel;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.ToolSchema;
 import io.yunxi.platform.shared.util.DashScopeSchemaUtils;
-import okhttp3.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
-
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * DashScope 模型提供商实现
@@ -34,7 +40,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class DashScopeModelProvider implements ChatModelProvider {
 
-    /** 日志记录器 */
     private static final Logger log = LoggerFactory.getLogger(DashScopeModelProvider.class);
     /** DashScope API 兼容模式地址 */
     private static final String DASHSCOPE_API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
@@ -56,14 +61,15 @@ public class DashScopeModelProvider implements ChatModelProvider {
     /**
      * 构造 DashScope 模型提供商
      *
-     * @param config 模型配置
+     * @param apiKey    API Key
+     * @param modelName 模型名称
      */
-    public DashScopeModelProvider(ModelConfig config) {
-        this.apiKey = config.getApiKey();
-        this.modelName = config.getModelName() != null ? config.getModelName() : "qwen-plus";
+    public DashScopeModelProvider(String apiKey, String modelName) {
+        this.apiKey = apiKey;
+        this.modelName = modelName != null ? modelName : "qwen-plus";
         this.delegate = DashScopeChatModel.builder()
-                .apiKey(config.getApiKey())
-                .modelName(config.getModelName())
+                .apiKey(apiKey)
+                .modelName(modelName)
                 .build();
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -71,12 +77,6 @@ public class DashScopeModelProvider implements ChatModelProvider {
                 .writeTimeout(Duration.ofSeconds(30))
                 .build();
         this.objectMapper = new ObjectMapper();
-
-        // 设置结构化输出 schema
-        if (config.getStructuredOutputSchema() != null && !config.getStructuredOutputSchema().isBlank()) {
-            this.structuredOutputSchema = config.getStructuredOutputSchema();
-            log.info("DashScope 模型提供商初始化，启用结构化输出");
-        }
     }
 
     /**
@@ -106,7 +106,8 @@ public class DashScopeModelProvider implements ChatModelProvider {
     /**
      * 使用结构化输出的流式请求
      */
-    private Flux<ChatResponse> streamWithStructuredOutput(List<Msg> messages, List<ToolSchema> tools, GenerateOptions options) {
+    private Flux<ChatResponse> streamWithStructuredOutput(List<Msg> messages, List<ToolSchema> tools,
+            GenerateOptions options) {
         return Mono.fromCallable(() -> {
             // 构建请求体
             Map<String, Object> requestBody = buildStructuredOutputRequest(messages, tools, options);
@@ -151,7 +152,8 @@ public class DashScopeModelProvider implements ChatModelProvider {
     /**
      * 构建结构化输出请求
      */
-    private Map<String, Object> buildStructuredOutputRequest(List<Msg> messages, List<ToolSchema> tools, GenerateOptions options) {
+    private Map<String, Object> buildStructuredOutputRequest(List<Msg> messages, List<ToolSchema> tools,
+            GenerateOptions options) {
         Map<String, Object> body = new ConcurrentHashMap<>();
         body.put("model", modelName);
 

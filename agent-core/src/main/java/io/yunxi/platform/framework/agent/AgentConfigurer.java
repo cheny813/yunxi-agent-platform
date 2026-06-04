@@ -1,6 +1,8 @@
 package io.yunxi.platform.framework.agent;
 
-import java.util.Collection;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,8 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 import io.agentscope.core.agent.Agent;
@@ -26,19 +27,18 @@ import io.agentscope.core.tool.subagent.SubAgentConfig;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.yunxi.platform.framework.agent.extension.AgentCustomizer;
+import io.yunxi.platform.framework.embedding.BaiduModelProvider;
 import io.yunxi.platform.framework.embedding.ChatModelProvider;
-import io.yunxi.platform.framework.embedding.ModelConfig;
-import io.yunxi.platform.framework.embedding.ModelProviderFactory;
+import io.yunxi.platform.framework.embedding.ClaudeModelProvider;
+import io.yunxi.platform.framework.embedding.DashScopeModelProvider;
+import io.yunxi.platform.framework.embedding.HuaweiModelProvider;
+import io.yunxi.platform.framework.embedding.OpenAIModelProvider;
 import io.yunxi.platform.framework.hitl.HumanToolRegistrar;
 import io.yunxi.platform.framework.hitl.ReasoningReviewHook;
 import io.yunxi.platform.framework.hitl.ToolGateHook;
 import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.mcp.McpToolRegistry;
 import io.yunxi.platform.framework.observability.ReActSpanHook;
-import io.yunxi.platform.framework.tool.Tool;
-import io.yunxi.platform.framework.tool.ToolAdapter;
-import io.yunxi.platform.framework.tool.ToolCircuitBreaker;
-import io.yunxi.platform.framework.tool.ToolRegistry;
 import io.yunxi.platform.framework.workspace.WorkspaceAutoDiscoveryEngine;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
@@ -46,6 +46,7 @@ import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.config.ExpertConfig;
 import io.yunxi.platform.shared.config.ExtensionConfig;
 import io.yunxi.platform.shared.config.StageConfig;
+import io.yunxi.platform.shared.config.ToolsGroupConfig;
 
 /**
  * Agent 自动装配引擎 — 配置驱动的 Agent 初始化
@@ -55,15 +56,21 @@ import io.yunxi.platform.shared.config.StageConfig;
  * <li>第一轮：初始化所有独立 Agent，包含 MCP 工具注册/本地工具/SkillBox 等</li>
  * <li>第二轮：根据 orchestration 配置创建编排 Agent（Supervisor 等）</li>
  * </ol>
- * 所有 Agent 通过 {@link HarnessAgent.Builder} 构建。
+ * 实现了 SmartLifecycle（phase=5），在基础设施（Model/Toolkit/Memory/Session phase=0~4）
+ * 就绪后才开始初始化 Agent。以前用 @EventListener(ApplicationReadyEvent) 没有顺序控制。
+ * </p>
+ * <p>
+ * 工具注册不再经过 ToolRegistry + ToolAdapter 两层桥接，改为直接使用框架 Toolkit API。
  * </p>
  *
  * @author yunxi-agent-platform
  */
 @Component
-public class AgentConfigurer {
+public class AgentConfigurer implements SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(AgentConfigurer.class);
+
+    private volatile boolean running = false;
 
     /** Agent 定义加载器 — 读取 agent-definitions/ 目录下的 YAML 配置 */
     private final AgentDefinitionLoader definitionLoader;
@@ -74,17 +81,8 @@ public class AgentConfigurer {
     /** AgentScope 核心配置属性（API Key、模型名称、默认提示词等） */
     private final AgentscopeCoreProperties coreProperties;
 
-    /** 模型提供商工厂 — 根据 ModelConfig 创建 ChatModelProvider */
-    private final ModelProviderFactory modelProviderFactory;
-
     /** MCP 工具注册表 — 加载和注册 MCP 服务器工具 */
     private final McpToolRegistry mcpToolRegistry;
-
-    /** 本地工具注册表 — 获取启用状态的本地工具 */
-    private final ToolRegistry toolRegistry;
-
-    /** 工具熔断器 — 工具调用异常保护 */
-    private final ToolCircuitBreaker circuitBreaker;
 
     /** Agent 工作区初始化器 — 创建 AGENTS.md、knowledge/ 等目录结构 */
     private final AgentWorkspaceInitializer workspaceInitializer;
@@ -107,10 +105,7 @@ public class AgentConfigurer {
     public AgentConfigurer(AgentDefinitionLoader definitionLoader,
             AgentDomainService agentDomainService,
             AgentscopeCoreProperties coreProperties,
-            ModelProviderFactory modelProviderFactory,
             McpToolRegistry mcpToolRegistry,
-            ToolRegistry toolRegistry,
-            ToolCircuitBreaker circuitBreaker,
             AgentWorkspaceInitializer workspaceInitializer,
             ObjectProvider<StudioMessageHook> studioMessageHookProvider,
             ObjectProvider<AgentCustomizer> customizerProvider,
@@ -119,10 +114,7 @@ public class AgentConfigurer {
         this.definitionLoader = definitionLoader;
         this.agentDomainService = agentDomainService;
         this.coreProperties = coreProperties;
-        this.modelProviderFactory = modelProviderFactory;
         this.mcpToolRegistry = mcpToolRegistry;
-        this.toolRegistry = toolRegistry;
-        this.circuitBreaker = circuitBreaker;
         this.workspaceInitializer = workspaceInitializer;
         this.studioMessageHookProvider = studioMessageHookProvider;
         this.customizerProvider = customizerProvider;
@@ -135,17 +127,20 @@ public class AgentConfigurer {
         this.session = session;
     }
 
-    @EventListener(ApplicationReadyEvent.class)
-    public void configureAgents() {
-        log.info("AgentConfigurer: 开始自动装配 Agent...");
+    @Override
+    public void start() {
+        if (running) {
+            return;
+        }
+        log.info("AgentConfigurer: 开始自动装配 Agent... (SmartLifecycle phase=5)");
         List<AgentDefinition> definitions = definitionLoader.getAgentDefinitions();
         if (definitions.isEmpty()) {
             log.warn("没有找到 Agent 配置（agent-definitions/ 目录为空）");
+            running = true;
             return;
         }
 
         // 第 0 步：初始化所有 Agent 工作区目录结构
-        // （WorkspaceAutoDiscoveryEngine 随后会扫描读取这些目录）
         initializeWorkspaces(definitions);
 
         // 第一轮：初始化所有独立 Agent
@@ -161,6 +156,37 @@ public class AgentConfigurer {
         }
 
         log.info("AgentConfigurer: Agent 自动装配完成，共 {} 个 Agent", agentDomainService.countAgents());
+        running = true;
+    }
+
+    @Override
+    public void stop() {
+        if (!running) {
+            return;
+        }
+        log.info("AgentConfigurer: 停止...");
+        running = false;
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    @Override
+    public int getPhase() {
+        return 5; // 在 Model(0)/Toolkit(1)/Memory(2)/Session(3)/Agent(4) 之后启动
+    }
+
+    @Override
+    public boolean isAutoStartup() {
+        return true;
+    }
+
+    @Override
+    public void stop(Runnable callback) {
+        stop();
+        callback.run();
     }
 
     /**
@@ -188,10 +214,7 @@ public class AgentConfigurer {
     private void initializeSingleAgent(AgentDefinition def) {
         try {
             log.info("初始化 Agent: {}", def.getName());
-            ModelConfig modelCfg = buildModelConfig(def);
-            // 配置结构化输出 schema
-            configureStructuredOutput(modelCfg, def);
-            ChatModelProvider modelProvider = modelProviderFactory.createProvider(modelCfg);
+            ChatModelProvider modelProvider = createModelProvider(def);
             String prompt = def.getPrompt();
 
             HarnessAgent.Builder builder = HarnessAgent.builder()
@@ -210,12 +233,17 @@ public class AgentConfigurer {
             AgentCustomizer customizer = findCustomizer(def);
             Agent agent = customizer != null ? customizer.customize(def, builder.build()) : builder.build();
 
-            // 工具组激活策略
-            applyToolGroupActivation(toolkit, def);
+            // 修正未分组工具 → 分配到 "general" 组
+            Toolkit agentToolkit = resolveAgentToolkit(agent);
+            assignUngroupedTools(agentToolkit, "general");
+
+            // 工具组激活策略（在 Agent 内部 Toolkit 上执行）
+            applyToolGroupActivation(agentToolkit != null ? agentToolkit : toolkit, def);
 
             // 注册
             agentDomainService.registerAgentInstance(def.getName(), agent);
-            agentDomainService.registerAgentInfoDto(def.getName(), description(def), prompt, modelCfg.getModelName());
+            agentDomainService.registerAgentInfoDto(def.getName(), description(def), prompt,
+                    def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName());
             agentDomainService.registerAgentRagMode(def.getName(), def.getRagMode());
 
             // 记录工作区自动发现结果
@@ -259,8 +287,7 @@ public class AgentConfigurer {
             return;
         }
 
-        ModelConfig modelCfg = buildModelConfig(def);
-        ChatModelProvider modelProvider = modelProviderFactory.createProvider(modelCfg);
+        ChatModelProvider modelProvider = createModelProvider(def);
 
         Toolkit toolkit = new Toolkit();
         toolkit.createToolGroup("agent", "子Agent调用工具", true);
@@ -280,10 +307,15 @@ public class AgentConfigurer {
         AgentCustomizer customizer = findCustomizer(def);
         Agent supervisor = customizer != null ? customizer.customize(def, builder.build()) : builder.build();
 
-        applyToolGroupActivation(toolkit, def);
+        // 修正未分组工具 → 分配到 "general" 组
+        Toolkit agentToolkit = resolveAgentToolkit(supervisor);
+        assignUngroupedTools(agentToolkit, "general");
+
+        // 工具组激活策略（在 Agent 内部 Toolkit 上执行）
+        applyToolGroupActivation(agentToolkit != null ? agentToolkit : toolkit, def);
         agentDomainService.registerAgentInstance(def.getName(), supervisor);
         agentDomainService.registerAgentInfoDto(def.getName(), description(def), def.getPrompt(),
-                modelCfg.getModelName());
+                def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName());
         agentDomainService.registerAgentRagMode(def.getName(), def.getRagMode());
         log.info("Supervisor Agent 创建成功: {}, 专家数量: {}", def.getName(), expertAgents.size());
     }
@@ -313,33 +345,87 @@ public class AgentConfigurer {
 
     // ========== 工具注册 ==========
 
+    /**
+     * 注册标记了 @Tool 注解的工具到 Toolkit
+     * <p>
+     * 工具通过框架 @Tool 注解自动声明，此处注入到每个 Agent 的 Toolkit 实例中。
+     * 由 Starter 自动扫描 @Tool 标记的 Spring Bean。
+     * </p>
+     */
     private void registerLocalTools(Toolkit toolkit) {
-        if (toolRegistry == null)
-            return;
-        Collection<Tool> tools = toolRegistry.getEnabledTools();
-        if (tools == null || tools.isEmpty())
-            return;
+        // @Tool 注解的工具由框架 Toolkit.registerTool(Object) 自动注册
+        // 此处作为扩展点，如需手动注册 AgentTool 实现可在此添加
         createLocalToolGroups(toolkit);
-        for (Tool tool : tools) {
-            try {
-                toolkit.registration().agentTool(new ToolAdapter(tool, circuitBreaker))
-                        .group(resolveLocalToolGroup(tool.getName())).apply();
-            } catch (Exception e) {
-                log.warn("注册本地工具失败: {}", tool.getName(), e);
-            }
-        }
     }
 
     private void registerMcpTools(Toolkit toolkit, AgentDefinition def) {
-        if (def.getTools() == null || def.getTools().getMcpServers() == null)
+        ToolsGroupConfig tgc = def.getToolsGroup();
+        if (tgc == null || tgc.getMcpServersToolsGroup() == null)
             return;
-        List<String> servers = def.getTools().getMcpServers();
+        List<String> servers = tgc.getMcpServersToolsGroup();
         mcpToolRegistry.registerAgentToolkit(def.getName(), toolkit);
         mcpToolRegistry.loadAndRegisterMcpTools(def.getName(), servers);
     }
 
+    /**
+     * 创建本地工具组。
+     *
+     * <p>工具组按职责隔离，每个 Agent 通过 YAML 的 {@code toolsGroup} 指定可见的组。
+     * 未配置 {@code tools} 时默认仅激活 {@code memory} 组。
+     *
+     * <p>工具组分为两大类：
+     *
+     * <h3>一、系统内置组（代码定义，所有 Agent 都可配置）</h3>
+     * <pre>
+     * memory     → 记忆查询工具
+     *              memory_search, memory_get
+     *              session_history, session_search, session_list
+     *
+     * filesystem → 文件读写工具
+     *              read_file, write_file, edit_file
+     *              glob_files, list_files, grep_files
+     *
+     * execute    → 命令执行工具（高危）
+     *              execute
+     *
+     * agent      → 子Agent调用工具
+     *              call_agent, agent_send, agent_spawn
+     *              task_list, task_cancel, task_output
+     *
+     * page       → 页面生成工具
+     *              pagegen_xxx（以 "pagegen_" 开头的工具）
+     *
+     * general    → 其他未归类的兜底组
+     * </pre>
+     *
+     * <h3>二、MCP 服务器组（由 MCP 服务器注册时动态创建，组名 = 服务器名）</h3>
+     * <pre>
+     * 例如 toolsGroup.mcpServersToolsGroup 配置了 database 和 redis：
+     *   database  → database_query, database_execute（由 database MCP 服务器注册）
+     *   redis     → redis_get, redis_set（由 redis MCP 服务器注册）
+     *   formfill  → formfill_recipe（由 formfill MCP 服务器注册）
+     * </pre>
+     *
+     * 配置示例：
+     * <pre>{@code
+     * # 只用系统内置组
+     * tools:
+     *   groups: [memory, filesystem]
+     *
+     * # 用 MCP 工具 + 内置组
+     * tools:
+     *   groups: [memory, database, redis]
+     *   mcpServers: [database, redis]
+     * }</pre>
+     */
     private void createLocalToolGroups(Toolkit toolkit) {
-        for (String[] g : new String[][] { { "agent", "子Agent调用工具" }, { "page", "页面生成工具" }, { "general", "通用本地工具" } }) {
+        for (String[] g : new String[][] {
+                { "agent", "子Agent调用工具" },
+                { "memory", "记忆查询工具" },
+                { "filesystem", "文件读写工具" },
+                { "execute", "命令执行工具" },
+                { "page", "页面生成工具" },
+                { "general", "通用本地工具" } }) {
             try {
                 toolkit.createToolGroup(g[0], g[1], true);
             } catch (Exception ignored) {
@@ -352,6 +438,15 @@ public class AgentConfigurer {
             return "agent";
         if (toolName.startsWith("pagegen_"))
             return "page";
+        if (toolName.startsWith("memory_") || toolName.startsWith("session_"))
+            return "memory";
+        if (toolName.startsWith("execute"))
+            return "execute";
+        // 文件系统工具
+        if (toolName.equals("read_file") || toolName.equals("write_file")
+                || toolName.equals("edit_file") || toolName.equals("glob_files")
+                || toolName.equals("list_files") || toolName.equals("grep_files"))
+            return "filesystem";
         return "general";
     }
 
@@ -409,18 +504,6 @@ public class AgentConfigurer {
                 pb.maxSubtasks(def.getPlan().getMaxSubtasks());
             }
             builder.planNotebook(pb.build());
-        }
-    }
-
-    /**
-     * 配置结构化输出 schema 到模型配置
-     */
-    private void configureStructuredOutput(ModelConfig modelConfig, AgentDefinition definition) {
-        if (definition.getStructuredOutput() != null && definition.getStructuredOutput().isEnabled()) {
-            String schema = definition.getStructuredOutput().getSchema();
-            if (schema != null && !schema.isBlank()) {
-                modelConfig.setStructuredOutputSchema(schema);
-            }
         }
     }
 
@@ -486,16 +569,28 @@ public class AgentConfigurer {
             });
             return;
         }
-        List<String> toolGroups = def.getTools() != null ? def.getTools().getGroups() : null;
-        if (toolGroups == null || toolGroups.isEmpty())
-            return;
+        // 确定要激活的组：toolsGroup.systemToolsGroup + toolsGroup.mcpServersToolsGroup
+        List<String> activeGroups = new ArrayList<>();
+        ToolsGroupConfig tgc = def.getToolsGroup();
+        if (tgc != null) {
+            if (tgc.getSystemToolsGroup() != null) {
+                activeGroups.addAll(tgc.getSystemToolsGroup());
+            }
+            if (tgc.getMcpServersToolsGroup() != null) {
+                activeGroups.addAll(tgc.getMcpServersToolsGroup());
+            }
+        }
+        // 如果都没配，默认仅 memory
+        if (activeGroups.isEmpty()) {
+            activeGroups.add("memory");
+        }
         allGroups.forEach(g -> {
             try {
                 toolkit.updateToolGroups(List.of(g), false);
             } catch (Exception ignored) {
             }
         });
-        toolGroups.forEach(g -> {
+        activeGroups.forEach(g -> {
             try {
                 toolkit.updateToolGroups(List.of(g), true);
             } catch (Exception ignored) {
@@ -521,24 +616,33 @@ public class AgentConfigurer {
 
     // ========== 工具方法 ==========
 
-    private ModelConfig buildModelConfig(AgentDefinition def) {
-        ModelConfig cfg = def.getModel();
-        if (cfg == null) {
-            cfg = new ModelConfig(coreProperties.getProvider(), coreProperties.getApiKey(),
-                    coreProperties.getModelName());
-        } else {
-            if (cfg.getApiKey() == null || cfg.getApiKey().isBlank())
-                cfg.setApiKey(coreProperties.getApiKey());
-            if (cfg.getModelName() == null || cfg.getModelName().isBlank())
-                cfg.setModelName(coreProperties.getModelName());
-            if (cfg.getProvider() == null || cfg.getProvider().isBlank())
-                cfg.setProvider(coreProperties.getProvider());
-        }
-        if (cfg.getTemperature() == null)
-            cfg.setTemperature(0.7);
-        if (cfg.getMaxTokens() == null)
-            cfg.setMaxTokens(4096);
-        return cfg;
+    private ChatModelProvider createModelProvider(AgentDefinition def) {
+        String provider = def.getModel() != null && def.getModel().getProvider() != null
+                ? def.getModel().getProvider()
+                : coreProperties.getProvider();
+        String apiKey = def.getModel() != null && def.getModel().getApiKey() != null
+                ? def.getModel().getApiKey()
+                : coreProperties.getApiKey();
+        String modelName = def.getModel() != null && def.getModel().getModelName() != null
+                ? def.getModel().getModelName()
+                : coreProperties.getModelName();
+
+        ChatModelProvider modelProvider = switch (provider.toLowerCase()) {
+            case "dashscope" -> {
+                DashScopeModelProvider p = new DashScopeModelProvider(apiKey, modelName);
+                if (def.getStructuredOutput() != null && def.getStructuredOutput().isEnabled()) {
+                    p.setStructuredOutputSchema(def.getStructuredOutput().getSchema());
+                }
+                yield p;
+            }
+            case "openai" -> new OpenAIModelProvider(apiKey, modelName);
+            case "claude" -> new ClaudeModelProvider(apiKey, modelName);
+            case "baidu" -> new BaiduModelProvider(apiKey, modelName);
+            case "huawei" -> new HuaweiModelProvider(apiKey, modelName);
+            default -> throw new IllegalArgumentException("不支持的模型提供商: " + provider);
+        };
+        log.info("创建模型提供商: provider={}, model={}", provider, modelName);
+        return modelProvider;
     }
 
     private AgentCustomizer findCustomizer(AgentDefinition def) {
@@ -577,5 +681,79 @@ public class AgentConfigurer {
                 log.info("  [Workspace] 子智能体: {}", config.getSubAgentIds());
             }
         });
+    }
+
+    // ========== Toolkit 工具组修正 ==========
+
+    /**
+     * 获取 Agent 内部的 Toolkit 实例。
+     * <p>
+     * HarnessAgent.Builder.build() 内部会将 Toolkit 深拷贝传给 ReActAgent，
+     * 内置工具注册在拷贝上。外部持有的原始 Toolkit 不包含这些工具，
+     * 需要通过 {@link HarnessAgent#getDelegate()}.{@code getToolkit()} 获取。
+     * </p>
+     *
+     * @param agent 构建完成的 Agent 实例
+     * @return Agent 内部 Toolkit，如果无法获取则返回 null
+     */
+    private Toolkit resolveAgentToolkit(Agent agent) {
+        if (agent instanceof HarnessAgent harnessAgent) {
+            return harnessAgent.getDelegate().getToolkit();
+        }
+        return null;
+    }
+
+    /**
+     * 将未分组工具分配到指定组。
+     * <p>
+     * HarnessAgent/ReActAgent 的内置工具通过 {@code Toolkit.registerTool(Object)}
+     * 注册时不指定组名，导致它们成为 "ungrouped"。未分组工具不受组激活控制，
+     * 且日志中产生大量噪音。
+     * </p>
+     * <p>
+     * 通过反射调用 package-private 的 ToolGroupManager 方法来实现分配，
+     * 避免修改框架源码。框架升级时若字段名/方法签名变化，try-catch 保障容错。
+     * </p>
+     *
+     * @param toolkit     目标 Toolkit
+     * @param targetGroup 目标组名称
+     */
+    private void assignUngroupedTools(Toolkit toolkit, String fallbackGroup) {
+        if (toolkit == null)
+            return;
+        try {
+            Field groupManagerField = Toolkit.class.getDeclaredField("groupManager");
+            groupManagerField.setAccessible(true);
+            Object groupManager = groupManagerField.get(toolkit);
+
+            Method isGroupedTool = groupManager.getClass()
+                    .getDeclaredMethod("isGroupedTool", String.class);
+            isGroupedTool.setAccessible(true);
+
+            Method addToolToGroup = groupManager.getClass()
+                    .getDeclaredMethod("addToolToGroup", String.class, String.class);
+            addToolToGroup.setAccessible(true);
+
+            int count = 0;
+            for (String toolName : toolkit.getToolNames()) {
+                if (!(boolean) isGroupedTool.invoke(groupManager, toolName)) {
+                    String group = resolveLocalToolGroup(toolName);
+                    if (group.equals(fallbackGroup)) {
+                        // 确保回退组存在
+                        try {
+                            toolkit.createToolGroup(fallbackGroup, "默认本地工具组", true);
+                        } catch (IllegalArgumentException ignored) {
+                        }
+                    }
+                    addToolToGroup.invoke(groupManager, group, toolName);
+                    count++;
+                }
+            }
+            if (count > 0) {
+                log.info("已分配 {} 个未分组工具到对应组", count);
+            }
+        } catch (Exception e) {
+            log.warn("分配未分组工具失败，回退到默认行为", e);
+        }
     }
 }

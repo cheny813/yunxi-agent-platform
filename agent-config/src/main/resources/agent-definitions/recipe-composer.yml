@@ -45,3 +45,8 @@ agent:
     modelName: qwen-plus
     temperature: 0.1
     maxTokens: 8000
+
+  toolsGroup:
+    systemToolsGroup:
+      - memory
+      - general

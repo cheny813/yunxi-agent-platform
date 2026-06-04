@@ -119,14 +119,11 @@ agent:
       回答要专业、严谨、注重安全，以保障师生饮食安全为首要原则。
   model:
     provider: dashscope
-    name: qwen-plus
+    modelName: qwen-plus
     temperature: 0.5
     maxTokens: 2000
 
-  tools:
-    mcpServers:
-      - "redis"
-      - "database"
-    groups:
+  toolsGroup:
+    mcpServersToolsGroup:
       - redis
       - database

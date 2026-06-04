@@ -1,25 +1,26 @@
 package io.yunxi.platform.framework.intelligent.llm;
 
-import io.agentscope.core.message.Msg;
-import io.agentscope.core.message.MsgRole;
-import io.agentscope.core.message.TextBlock;
-import io.agentscope.core.model.ChatResponse;
-import io.yunxi.platform.framework.embedding.ChatModelProvider;
-import io.yunxi.platform.framework.embedding.ModelConfig;
-import io.yunxi.platform.framework.embedding.ModelProviderFactory;
-import io.yunxi.platform.framework.intelligent.config.IntelligentProperties;
-import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.MsgRole;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.model.ChatResponse;
+import io.yunxi.platform.framework.embedding.ChatModelProvider;
+import io.yunxi.platform.framework.embedding.ClaudeModelProvider;
+import io.yunxi.platform.framework.embedding.DashScopeModelProvider;
+import io.yunxi.platform.framework.embedding.OpenAIModelProvider;
+import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import reactor.core.publisher.Flux;
 
 /**
  * 智能模块 LLM 调用服务
@@ -43,7 +44,7 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * <h3>调用链路</h3>
- * 
+ *
  * <pre>
  *   IntelligentLlmService.generate()
  *     → ModelProviderFactory.createProvider()  // 创建 ChatModelProvider
@@ -59,17 +60,9 @@ public class IntelligentLlmService {
 
     private static final Logger log = LoggerFactory.getLogger(IntelligentLlmService.class);
 
-    /** 模型提供商工厂 */
-    @Autowired
-    private ModelProviderFactory modelFactory;
-
     /** AgentScope 配置属性 */
     @Autowired
     private AgentscopeCoreProperties agentscopeProperties;
-
-    /** 智能化配置属性 */
-    @Autowired
-    private IntelligentProperties intelligentProperties;
 
     /**
      * 使用默认系统提示词生成文本
@@ -156,32 +149,23 @@ public class IntelligentLlmService {
 
     /**
      * 创建模型提供者
-     *
      * <p>
-     * 优先使用 IntelligentProperties.LearningLoopConfig 中配置的 reviewModel，
-     * 如果未配置或为 "default"，则使用 AgentscopeCoreProperties 的默认配置。
+     * 使用 AgentscopeCoreProperties 中配置的默认模型。
      * </p>
      */
     private ChatModelProvider createModel() {
-        String reviewModel = intelligentProperties.getLearningLoop().getReviewModel();
+        String provider = agentscopeProperties.getProvider();
+        String apiKey = agentscopeProperties.getApiKey();
+        String modelName = agentscopeProperties.getModelName();
+        return createProvider(provider, apiKey, modelName);
+    }
 
-        String provider;
-        String apiKey;
-        String modelName;
-
-        if (reviewModel != null && !"default".equals(reviewModel) && !reviewModel.isBlank()) {
-            // 使用 IntelligentProperties 中配置的专用审查模型
-            provider = agentscopeProperties.getProvider();
-            apiKey = agentscopeProperties.getApiKey();
-            modelName = reviewModel;
-        } else {
-            // 使用 AgentscopeProperties 默认配置
-            provider = agentscopeProperties.getProvider();
-            apiKey = agentscopeProperties.getApiKey();
-            modelName = agentscopeProperties.getModelName();
-        }
-
-        ModelConfig config = new ModelConfig(provider, apiKey, modelName);
-        return modelFactory.createProvider(config);
+    private ChatModelProvider createProvider(String provider, String apiKey, String modelName) {
+        return switch (provider.toLowerCase()) {
+            case "dashscope" -> new DashScopeModelProvider(apiKey, modelName);
+            case "openai" -> new OpenAIModelProvider(apiKey, modelName);
+            case "claude" -> new ClaudeModelProvider(apiKey, modelName);
+            default -> throw new IllegalArgumentException("不支持的模型提供商: " + provider);
+        };
     }
 }

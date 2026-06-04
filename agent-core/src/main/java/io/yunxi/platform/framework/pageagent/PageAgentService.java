@@ -1,23 +1,31 @@
 package io.yunxi.platform.framework.pageagent;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.stereotype.Service;
+
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
 import io.yunxi.platform.framework.embedding.ChatModelProvider;
-import io.yunxi.platform.framework.embedding.ModelConfig;
-import io.yunxi.platform.framework.embedding.ModelProviderFactory;
+import io.yunxi.platform.framework.embedding.ClaudeModelProvider;
+import io.yunxi.platform.framework.embedding.DashScopeModelProvider;
+import io.yunxi.platform.framework.embedding.OpenAIModelProvider;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Page Agent 服务（框架层通用服务）
@@ -42,7 +50,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  *
  * <h3>使用方式</h3>
- * 
+ *
  * <pre>
  * // 业务层注入
  * {@code @Autowired}
@@ -109,20 +117,25 @@ public class PageAgentService {
      * @param modelProviderFactory 模型提供商工厂
      */
     public PageAgentService(
-            AgentscopeCoreProperties properties,
-            ModelProviderFactory modelProviderFactory) {
+            AgentscopeCoreProperties properties) {
         // 根据配置创建模型提供商
         if (properties != null && properties.getApiKey() != null && !properties.getApiKey().isBlank()) {
-            ModelConfig config = new ModelConfig();
-            config.setApiKey(properties.getApiKey());
-            config.setProvider(properties.getProvider());
-            config.setModelName(properties.getModelName());
-            this.chatModelProvider = modelProviderFactory.createProvider(config);
+            this.chatModelProvider = createProvider(properties.getProvider(), properties.getApiKey(),
+                    properties.getModelName());
             log.info("PageAgentService 已初始化 ChatModelProvider: {}", properties.getProvider());
         } else {
             this.chatModelProvider = null;
             log.warn("PageAgentService 未配置 ChatModelProvider，请检查 agentscope.api-key 配置");
         }
+    }
+
+    private ChatModelProvider createProvider(String provider, String apiKey, String modelName) {
+        return switch (provider.toLowerCase()) {
+            case "dashscope" -> new DashScopeModelProvider(apiKey, modelName);
+            case "openai" -> new OpenAIModelProvider(apiKey, modelName);
+            case "claude" -> new ClaudeModelProvider(apiKey, modelName);
+            default -> throw new IllegalArgumentException("不支持的模型提供商: " + provider);
+        };
     }
 
     /**

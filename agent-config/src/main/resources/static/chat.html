@@ -463,6 +463,51 @@
             white-space: pre-wrap;
         }
 
+        /* 推理过程区域 — 可折叠、可滚动，IDE 风格 */
+        .thinking-block {
+            margin-bottom: 10px;
+            border-radius: 10px;
+            background: #f3f4f6;
+            border-left: 3px solid #d1d5db;
+            overflow: hidden;
+        }
+        .thinking-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 11px;
+            font-weight: 600;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .thinking-header:hover {
+            background: #e5e7eb;
+        }
+        .thinking-toggle {
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+        .thinking-block.collapsed .thinking-toggle {
+            transform: rotate(-90deg);
+        }
+        .thinking-body {
+            padding: 0 14px 10px 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #6b7280;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .thinking-block.collapsed .thinking-body {
+            display: none;
+        }
+
         .message.user .message-bubble {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -821,6 +866,33 @@
             box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
         }
 
+        /* 停止按钮 — 流式推理进行中显示，替代发送按钮 */
+        .stop-btn {
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            border-radius: 50%;
+            border: none;
+            background: #ef4444;
+            color: white;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+        }
+        .stop-btn:hover {
+            background: #dc2626;
+        }
+        .stop-btn.show {
+            display: flex;
+        }
+        .send-btn.hide {
+            display: none;
+        }
+
         .send-btn:hover:not(:disabled) {
             background: #4338ca;
             transform: scale(1.05);
@@ -1080,6 +1152,7 @@
                         <i class="bi bi-mic"></i>
                     </button>
                 </div>
+                <button class="stop-btn" id="stopBtn" onclick="stopStreaming()" title="停止生成">■</button>
                 <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="发送">
                     <i class="bi bi-send"></i>
                 </button>
@@ -1112,6 +1185,7 @@
         let currentConversationId = null;
         let currentAgent = 'nutrition-assistant';
         let isStreaming = false;
+        let abortController = null;
 
         // 页面加载
         document.addEventListener('DOMContentLoaded', function () {
@@ -1182,7 +1256,14 @@
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
-            if (!message || isStreaming) return;
+            if (!message) return;
+
+            // 如果正在流式推理中，先中止当前推理
+            if (isStreaming) {
+                stopStreaming();
+                // 等一帧让 UI 更新
+                await new Promise(r => setTimeout(r, 50));
+            }
 
             // 添加用户消息
             addMessage('user', message);
@@ -1200,10 +1281,12 @@
                 // 获取 A2A 模式配置（默认关闭，响应更快）
                 const enableA2A = document.getElementById('a2aModeSelect').value === 'true';
 
-                const requestBody = {
+const requestBody = {
                     message: message,
                     userId: userId,
                     agentName: agentName,
+                    // 复用已有的会话 ID，避免每次发消息都创建新会话
+                    ...(currentConversationId ? { conversationId: currentConversationId } : {}),
                     profile: document.getElementById('profileSelect').value || undefined,
                     enableThinking: true,
                     mode: mode,
@@ -1240,10 +1323,12 @@
 
                 let response;
                 if (mode === 'stream') {
+                    abortController = new AbortController();
                     response = await fetch(API_BASE + '/api/conversations/chat/stream', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestBody)
+                        body: JSON.stringify(requestBody),
+                        signal: abortController.signal
                     });
                     handleStreamResponse(response);
                 } else {
@@ -1263,6 +1348,72 @@
             }
         }
 
+        /**
+         * 滚动聊天区域到底部
+         * 实际滚动容器是 .messages-wrapper（有 overflow-y: auto），
+         * 不是 #messagesContainer（内部 flex 容器）
+         *
+         * @param {boolean} force - true 表示强制滚动到底部
+         *                          false/undefined 时只在用户未手动上翻时滚动
+         */
+        function scrollToBottom(force) {
+            const wrapper = document.querySelector('.messages-wrapper');
+            if (!wrapper) return;
+            const threshold = 80;
+            const isNearBottom = wrapper.scrollHeight - wrapper.scrollTop - wrapper.clientHeight < threshold;
+            if (force || isNearBottom) {
+                wrapper.scrollTop = wrapper.scrollHeight;
+            }
+        }
+
+        /**
+         * 更新推理过程区域（可折叠、可滚动）
+         * 在 assistant 消息气泡上方创建/更新可折叠推理块
+         */
+        function updateThinkingBlock(text) {
+            const container = document.getElementById('messagesContainer');
+            let assistantMsg = container.querySelector('.message.assistant:last-child');
+            if (!assistantMsg) {
+                addMessage('assistant', '');
+                assistantMsg = container.querySelector('.message.assistant:last-child');
+            }
+            const msgContent = assistantMsg.querySelector('.message-content');
+            let thinkingBlock = assistantMsg.querySelector('.thinking-block');
+            if (!thinkingBlock) {
+                thinkingBlock = document.createElement('div');
+                thinkingBlock.className = 'thinking-block';
+
+                // 头部：label + 折叠切换
+                const header = document.createElement('div');
+                header.className = 'thinking-header';
+                header.innerHTML = '<span class="thinking-toggle">▼</span> 推理';
+                header.onclick = function(e) {
+                    e.stopPropagation();
+                    thinkingBlock.classList.toggle('collapsed');
+                };
+                thinkingBlock.appendChild(header);
+
+                // 体部：可滚动内容
+                const body = document.createElement('div');
+                body.className = 'thinking-body';
+                thinkingBlock.appendChild(body);
+
+                // 在 message-bubble 之前插入
+                const bubble = msgContent.querySelector('.message-bubble');
+                if (bubble) {
+                    msgContent.insertBefore(thinkingBlock, bubble);
+                } else {
+                    msgContent.appendChild(thinkingBlock);
+                }
+            }
+            // 更新内容并自动展开
+            const body = thinkingBlock.querySelector('.thinking-body');
+            if (body) {
+                body.textContent = text;
+            }
+            thinkingBlock.classList.remove('collapsed');
+        }
+
         // 处理流式响应
         function handleStreamResponse(response) {
             console.log('Stream response status:', response.status);
@@ -1276,7 +1427,7 @@
             }
 
             // 先创建一条空消息，后续逐步更新
-            addMessage('正在生成回复...');
+            let placeholderMsg = addMessage('正在生成回复...');
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
@@ -1362,8 +1513,10 @@
                                 assistantMessage += data.content;
                             } else if (data.type === 'thinking' && data.content) {
                                 console.log('Thinking:', data.content);
-                                // 收到 thinking 事件时，显示 thinking 内容，替代默认的"正在思考..."
-                                currentThinking = data.content;
+                                // 收到 thinking 事件时，追加到 thinking 内容
+                                currentThinking += data.content;
+                                // 更新或创建 thinking 区域
+                                updateThinkingBlock(currentThinking);
                             } else if (data.type === 'error') {
                                 assistantMessage += '\n[错误: ' + data.content + ']';
                             } else if (data.type === 'start') {
@@ -1407,29 +1560,29 @@
                         }
                     }
 
-                    // 更新消息内容
-                    const lastMessage = container.querySelector('.message.assistant:last-child .message-bubble');
-                    console.log('Updating message, lastMessage element:', lastMessage ? 'found' : 'not found');
-                    console.log('Current assistantMessage:', assistantMessage.substring(0, 100));
-
-                    // 显示优先级：content > thinking > 默认
-                    const displayText = assistantMessage || currentThinking || '';
-                    if (lastMessage) {
-                        lastMessage.textContent = displayText || '正在等待响应...';
-                        console.log('Message bubble updated to:', lastMessage.textContent.substring(0, 100));
-                    } else {
-                        console.warn('No message bubble found to update!');
-                        // 如果没有现有消息，添加一条
-                        addMessage('assistant', displayText || '正在等待响应...');
+                    // 更新消息内容 — 直接更新占位消息元素，不依赖 selector
+                    const bubble = placeholderMsg.querySelector('.message-bubble');
+                    if (assistantMessage && bubble) {
+                        bubble.textContent = assistantMessage;
+                    } else if (assistantMessage && !bubble) {
+                        addMessage('assistant', assistantMessage);
                     }
-                    container.scrollTop = container.scrollHeight;
+                    scrollToBottom();
 
                     // 继续读取
                     read();
                 }).catch(err => {
+                    if (err.name === 'AbortError') {
+                        console.log('Stream aborted by user');
+                        return;
+                    }
                     console.error('Stream read error:', err);
                     hideThinking();
                     addMessage('assistant', '读取响应失败: ' + err.message);
+                    isStreaming = false;
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('stopBtn').classList.remove('show');
+                    document.getElementById('sendBtn').classList.remove('hide');
                 });
             }
 
@@ -1470,7 +1623,8 @@
             `;
 
             container.appendChild(messageDiv);
-            container.scrollTop = container.scrollHeight;
+            scrollToBottom(true);
+            return messageDiv;
         }
 
         // 格式化内容（处理代码块等）
@@ -1489,6 +1643,8 @@
         function showThinking() {
             isStreaming = true;
             document.getElementById('sendBtn').disabled = true;
+            document.getElementById('stopBtn').classList.add('show');
+            document.getElementById('sendBtn').classList.add('hide');
 
             const container = document.getElementById('messagesContainer');
             const thinkingDiv = document.createElement('div');
@@ -1506,7 +1662,7 @@
                 </div>
             `;
             container.appendChild(thinkingDiv);
-            container.scrollTop = container.scrollHeight;
+            scrollToBottom(true);
         }
 
         // 隐藏思考中
@@ -1515,6 +1671,21 @@
             if (thinkingEl) {
                 thinkingEl.remove();
             }
+            document.getElementById('stopBtn').classList.remove('show');
+            document.getElementById('sendBtn').classList.remove('hide');
+        }
+
+        /** 停止当前流式推理 */
+        function stopStreaming() {
+            if (abortController) {
+                abortController.abort();
+                abortController = null;
+            }
+            isStreaming = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('stopBtn').classList.remove('show');
+            document.getElementById('sendBtn').classList.remove('hide');
+            hideThinking();
         }
 
         // 快捷提示
@@ -1695,7 +1866,7 @@
             `;
 
             container.appendChild(messageDiv);
-            container.scrollTop = container.scrollHeight;
+            scrollToBottom(true);
         }
 
         // 格式化文件大小
@@ -2071,6 +2242,16 @@
                 if (data && data.length > 0) {
                     data.forEach(msg => {
                         addMessage(msg.role === 'user' ? 'user' : 'assistant', msg.content);
+                        // 助手消息如果有推理内容，重建 thinking block
+                        if (msg.role === 'assistant' && msg.thinking) {
+                            // 先清空默认 thinking（addMessage 创建的 thinking 不会有内容）
+                            const lastAssistant = container.querySelector('.message.assistant:last-child');
+                            const existingBlock = lastAssistant ? lastAssistant.querySelector('.thinking-block') : null;
+                            if (!existingBlock && msg.thinking) {
+                                // 用 setTimeout 确保 DOM 渲染完成后再创建 thinking block
+                                setTimeout(() => updateThinkingBlock(msg.thinking), 0);
+                            }
+                        }
                     });
                 } else {
                     container.innerHTML = `
@@ -2220,7 +2401,7 @@
                 </div>
             `;
             container.insertAdjacentHTML('beforeend', cardHtml);
-            scrollToBottom();
+            scrollToBottom(true);
             hideThinking();
             isStreaming = false;
             document.getElementById('sendBtn').disabled = false;
@@ -2325,7 +2506,7 @@
             list.innerHTML = subtasks.map((st, i) => `
                 <div class="modal-step" data-index="${i}">
                     <span style="font-size:12px;color:#888;min-width:20px;">${i + 1}.</span>
-                    <input type="text" value="${escapeHtml(st.description || st.name || '')}" 
+                    <input type="text" value="${escapeHtml(st.description || st.name || '')}"
                            placeholder="步骤描述" class="step-input">
                     <button class="remove-btn" onclick="removeModalStep(this)">✕</button>
                 </div>

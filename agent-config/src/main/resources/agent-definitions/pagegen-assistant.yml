@@ -81,14 +81,11 @@ agent:
       页面质量标准：视觉专业、数据准确、交互流畅、打印美观。
   model:
     provider: dashscope
-    name: qwen-plus
+    modelName: qwen-plus
     temperature: 0.3
     maxTokens: 8000
 
-  tools:
-    mcpServers:
-      - "pagegen"
-      - "playwright"
-    groups:
+  toolsGroup:
+    mcpServersToolsGroup:
       - pagegen
       - playwright

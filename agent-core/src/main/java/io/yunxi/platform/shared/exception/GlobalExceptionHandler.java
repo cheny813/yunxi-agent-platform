@@ -7,6 +7,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
@@ -77,6 +78,16 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(createError("VALIDATION_ERROR", "参数校验失败", createDetailsMap(errors)));
+    }
+
+    /**
+     * 处理客户端断开连接异常（SSE 流被中止时）
+     * <p>
+     * 用户停止流式推理或关闭页面时触发，属于正常行为，不记录 ERROR。
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleClientAbort(AsyncRequestNotUsableException ex) {
+        log.debug("客户端断开连接（SSE 流中止）: {}", ex.getMessage());
     }
 
     /**

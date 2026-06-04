@@ -389,4 +389,4 @@ a2a_call_errors_total{agent="nutrition-agent", error="timeout"}
 
 ---
 
-**上一页**: [14. 智能子系统](./14-intelligent-system.md)
+**上一页**: [13. 智能子系统](./13-intelligent-system.md)

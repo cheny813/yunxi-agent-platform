@@ -1,26 +1,26 @@
 package io.yunxi.platform.infra.repository;
 
-import lombok.extern.slf4j.Slf4j;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.stereotype.Repository;
 
 import io.yunxi.platform.shared.entity.ConversationEntity;
 import io.yunxi.platform.shared.mapper.ConversationMapper;
-
-import java.util.List;
-import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 数据库存储实现
- * 
+ *
  * <p>
  * 使用 MyBatis 存储会话到 MySQL 数据库，适合：
  * <ul>
- *   <li>生产环境</li>
- *   <li>需要持久化的场景</li>
- *   <li>集群部署场景</li>
+ * <li>生产环境</li>
+ * <li>需要持久化的场景</li>
+ * <li>集群部署场景</li>
  * </ul>
  * </p>
- * 
+ *
  * @author yunxi-agent-platform
  * @version 1.0.0
  */
@@ -54,8 +54,8 @@ public class DatabaseConversationRepository implements ConversationRepository {
         }
         try {
             int rows = conversationMapper.save(conversation);
-            log.debug("数据库存储保存会话: id={}, rows={}, messageCount={}", 
-                    conversation.getId(), 
+            log.debug("数据库存储保存会话: id={}, rows={}, messageCount={}",
+                    conversation.getId(),
                     rows,
                     conversation.getMessages() != null ? conversation.getMessages().size() : 0);
             return rows > 0;
@@ -125,6 +125,29 @@ public class DatabaseConversationRepository implements ConversationRepository {
             log.error("数据库存储查询Agent会话失败: agentName={}, error={}", agentName, e.getMessage(), e);
             return List.of();
         }
+    }
+
+    /**
+     * 根据用户 ID 和 Agent 名称查找最近一条活跃会话
+     *
+     * @param userId    用户 ID
+     * @param agentName Agent 名称
+     * @return 最近一条活跃会话
+     */
+    @Override
+    public Optional<ConversationEntity> findByUserIdAndAgentName(String userId, String agentName) {
+        if (userId == null || agentName == null) {
+            return Optional.empty();
+        }
+        try {
+            List<ConversationEntity> results = conversationMapper.findByUserIdAndAgentName(userId, agentName);
+            if (results != null && !results.isEmpty()) {
+                return Optional.of(results.get(0));
+            }
+        } catch (Exception e) {
+            log.error("数据库存储查询用户+Agent会话失败: userId={}, agentName={}, error={}", userId, agentName, e.getMessage(), e);
+        }
+        return Optional.empty();
     }
 
     /**

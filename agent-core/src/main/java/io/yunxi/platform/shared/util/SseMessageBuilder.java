@@ -35,8 +35,9 @@ public class SseMessageBuilder {
         try {
             SseMessage message = new SseMessage(type, Instant.now(), content);
             String sseMessage = "data: " + objectMapper.writeValueAsString(message) + "\n\n";
-            log.info("构建 SSE 消息 - type: {}, content length: {}",
-                    type, content != null ? content.length() : 0);
+            // 日志打印太频繁，如果查看细节，可以打开
+            // log.info("构建 SSE 消息 - type: {}, content length: {}", type, content != null ?
+            // content.length() : 0);
             return sseMessage;
         } catch (Exception e) {
             log.error("构建 SSE 消息失败", e);
