@@ -16,10 +16,8 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
-import io.yunxi.platform.framework.embedding.ChatModelProvider;
-import io.yunxi.platform.framework.embedding.ClaudeModelProvider;
-import io.yunxi.platform.framework.embedding.DashScopeModelProvider;
-import io.yunxi.platform.framework.embedding.OpenAIModelProvider;
+import io.agentscope.core.model.Model;
+import io.yunxi.platform.framework.model.ModelFactory;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -106,36 +104,27 @@ public class PageAgentService {
             """;
 
     /**
-     * 大模型提供商（通过配置自动创建）
+     * 大模型实例（通过 ModelFactory 创建，框架原生 Model）
      */
-    private final ChatModelProvider chatModelProvider;
+    private final Model chatModel;
 
     /**
      * Page Agent 服务
      *
-     * @param properties           AgentScope 配置
-     * @param modelProviderFactory 模型提供商工厂
+     * @param properties      AgentScope 配置
+     * @param modelFactory    模型工厂
      */
     public PageAgentService(
-            AgentscopeCoreProperties properties) {
-        // 根据配置创建模型提供商
+            AgentscopeCoreProperties properties,
+            ModelFactory modelFactory) {
+        // 根据配置创建模型
         if (properties != null && properties.getApiKey() != null && !properties.getApiKey().isBlank()) {
-            this.chatModelProvider = createProvider(properties.getProvider(), properties.getApiKey(),
-                    properties.getModelName());
-            log.info("PageAgentService 已初始化 ChatModelProvider: {}", properties.getProvider());
+            this.chatModel = modelFactory.create(null);
+            log.info("PageAgentService 已初始化 Model: {}", properties.getProvider());
         } else {
-            this.chatModelProvider = null;
-            log.warn("PageAgentService 未配置 ChatModelProvider，请检查 agentscope.api-key 配置");
+            this.chatModel = null;
+            log.warn("PageAgentService 未配置 Model，请检查 agentscope.core.api-key 配置");
         }
-    }
-
-    private ChatModelProvider createProvider(String provider, String apiKey, String modelName) {
-        return switch (provider.toLowerCase()) {
-            case "dashscope" -> new DashScopeModelProvider(apiKey, modelName);
-            case "openai" -> new OpenAIModelProvider(apiKey, modelName);
-            case "claude" -> new ClaudeModelProvider(apiKey, modelName);
-            default -> throw new IllegalArgumentException("不支持的模型提供商: " + provider);
-        };
     }
 
     /**
@@ -233,14 +222,14 @@ public class PageAgentService {
         }
 
         // 如果没有大模型，直接返回任务描述
-        if (chatModelProvider == null) {
-            log.warn("PageAgentService 未配置 ChatModelProvider，无法智能解析页面");
+        if (chatModel == null) {
+            log.warn("PageAgentService 未配置 Model，无法智能解析页面");
             StringBuilder sb = new StringBuilder();
             sb.append("收到任务: ").append(task).append("\n");
             if (targetUrl != null && !targetUrl.isBlank()) {
                 sb.append("目标页面: ").append(targetUrl).append("\n");
             }
-            sb.append("\n注意: 请在应用中集成 ChatModelProvider 以启用智能页面分析功能");
+            sb.append("\n注意: 请在应用中配置 Model 以启用智能页面分析功能");
             return sb.toString();
         }
 
@@ -258,7 +247,7 @@ public class PageAgentService {
             messages.add(userMsg);
 
             // 调用大模型
-            Flux<ChatResponse> responseFlux = chatModelProvider.stream(messages, null, null);
+            Flux<ChatResponse> responseFlux = chatModel.stream(messages, null, null);
 
             // 收集所有响应（有些模型会分块返回）
             List<ChatResponse> responses = responseFlux.collectList().block();
@@ -503,7 +492,7 @@ public class PageAgentService {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> proxyChatCompletion(Map<String, Object> request) {
-        if (chatModelProvider == null) {
+        if (chatModel == null) {
             return Map.of(
                     "error", Map.of("message", "LLM 服务未配置", "type", "server_error"),
                     "status", 500);
@@ -534,7 +523,7 @@ public class PageAgentService {
             }
 
             // 2. 调用 LLM
-            Flux<ChatResponse> responseFlux = chatModelProvider.stream(messages, null, null);
+            Flux<ChatResponse> responseFlux = chatModel.stream(messages, null, null);
             List<ChatResponse> responses = responseFlux.collectList()
                     .block(Duration.ofSeconds(120));
 

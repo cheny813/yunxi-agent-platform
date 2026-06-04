@@ -12,6 +12,7 @@ import java.util.Map;
  *
  * <p>
  * 记录所有通过 NodeTool 执行的命令，包括操作人、目标、命令内容、安全级别和执行状态。
+ * 安全级别使用字符串（"safe"/"warning"/"blocked"），替代已移除的 {@code CommandSafety} 枚举。
  * </p>
  *
  * @author yunxi-agent-platform
@@ -37,7 +38,7 @@ public class NodeAuditService {
      */
     public void record(String requestId, String operatorId, String targetClientId,
             String targetNodeType, String commandType, String commandText,
-            CommandSafety safetyLevel, String status, boolean confirmed,
+            String safetyLevel, String status, boolean confirmed,
             String resultSummary) {
         try {
             Map<String, Object> audit = new HashMap<>();
@@ -47,7 +48,7 @@ public class NodeAuditService {
             audit.put("targetNodeType", targetNodeType);
             audit.put("commandType", commandType);
             audit.put("commandText", commandText);
-            audit.put("safetyLevel", safetyLevel.getCode());
+            audit.put("safetyLevel", safetyLevel);
             audit.put("status", status);
             audit.put("confirmed", confirmed ? 1 : 0);
             audit.put("resultSummary", resultSummary);
@@ -62,7 +63,7 @@ public class NodeAuditService {
      * 记录简单审计（自动填充默认值）
      */
     public void record(String operatorId, String targetClientId, String commandText,
-            CommandSafety safetyLevel, String status) {
+            String safetyLevel, String status) {
         record(null, operatorId, targetClientId, null, "execute",
                 commandText, safetyLevel, status, false, null);
     }

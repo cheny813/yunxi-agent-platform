@@ -303,11 +303,11 @@ public class AgentDomainService {
     }
     
     public AgentInfoDto createAgent(String name, AgentConfigDto config) {
-        // 1. 创建模型提供商（直接构造，不再经过 ModelConfig + ModelProviderFactory）
-        ChatModelProvider modelProvider = createProvider(config.getProvider(), config.getApiKey(), config.getModelName());
+        // 1. 通过 ModelFactory 创建框架 Model 实例（复用 agentscope 内置 Provider)
+        Model model = modelFactory.create(toModelConfig(config));
         
         // 2. 注册 prototype Bean（每次 getBean 返回新实例）
-        registerPrototypeAgentBean(name, modelProvider, prompt, workspacePath);
+        registerPrototypeAgentBean(name, model, prompt, workspacePath);
         
         // 3. 返回摘要信息（Agent 实例由 BeanFactory 按需创建）
         return new AgentInfoDto(name, prompt, modelName, Instant.now());
@@ -508,7 +508,7 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 | **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl` 8 步拦截链 | 否 |
 | **3. 多通道网关层** | 钉钉/飞书/企微/Web API 多渠道接入 | `agent-gateway` 模块、`MessageChannel` | 否 |
 | **4. 生产特性层** | 熔断器、HITL 人工审核、会话管理、分布式缓存、多租户 | `ToolCircuitBreaker`、`ToolGateHook`、`ConversationDomainService` | 否 |
-| **5. 国产化 LLM 适配层** | DashScope/百度/华为/Claude 统一接入 | `ModelProviderFactory`、`ChatModelProvider` | 部分 |
+| **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
 | **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
 | **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Pipeline/Routing | `AgentConfigurer`（~555行） | 否 |
 
@@ -596,21 +596,41 @@ public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
 
 业务工具只需实现简单的 `Tool` 接口，不需要直接依赖 agentscope 的 `AgentTool`——这是**解耦**，不是重复。
 
-#### 4. ModelProviderFactory — 模型提供商的统一工厂
+#### 4. ModelFactory — 统一模型工厂
 
 ```java
-public ChatModelProvider createProvider(ModelConfig config) {
-    return switch (config.getProvider().toLowerCase()) {
-        case "dashscope" -> new DashScopeModelProvider(config);
-        case "baidu"     -> new BaiduModelProvider(config);
-        case "huawei"    -> new HuaweiModelProvider(config);
-        case "openai"    -> new OpenAIModelProvider(config);
-        case "claude"    -> new ClaudeModelProvider(config);
-    };
+// ModelFactory 直接使用框架的 Model 接口和内置 Provider
+@Component
+public class ModelFactory {
+
+    public Model create(AgentModelConfig config) {
+        GenerateOptions options = buildGenerateOptions(config);
+        
+        return switch (provider.toLowerCase()) {
+            case "openai" -> OpenAIChatModel.builder()
+                    .apiKey(apiKey).modelName(modelName)
+                    .baseUrl(baseUrl).stream(true)
+                    .generateOptions(options).build();
+            case "claude" -> AnthropicChatModel.builder()
+                    .apiKey(apiKey).modelName(modelName)
+                    .stream(true).defaultOptions(options).build();
+            case "dashscope" -> DashScopeChatModel.builder()
+                    .apiKey(apiKey).modelName(modelName)
+                    .stream(true).defaultOptions(options).build();
+            case "deepseek" -> OpenAIChatModel.builder()
+                    .apiKey(apiKey).modelName(modelName)
+                    .formatter(new DeepSeekFormatter(true))
+                    .generateOptions(options).build();
+            case "baidu" -> new BaiduModelProvider(apiKey, modelName, options);
+            case "huawei" -> new HuaweiModelProvider(apiKey, modelName, options);
+        };
+    }
 }
 ```
 
-agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `ChatModelProvider` 在此基础上增加了：配置管理、多厂商统一抽象、与 `ReActAgent.builder().model(provider)` 的无缝集成。
+框架的 `Model` 接口负责"发请求、拿响应"，内置了正确的角色映射（`SYSTEM`/`USER`/`ASSISTANT`/`TOOL`）和 Prompt Caching 支持（`cache-control: true` 自动添加 `cache_control: {"type": "ephemeral"}`）。平台层保留百度/华为的自建实现（因认证协议不兼容标准 OpenAI），但已修复角色映射 Bug。
+
+**拆除自建 Provider**：原 `ChatModelProvider` 接口 + `OpenAIModelProvider`/`ClaudeModelProvider`/`DashScopeModelProvider` 已删除（约 500 行），全部委托给框架内置实现。详见 [模型层改造说明](#)。
 
 ### 完整架构对比
 
@@ -624,8 +644,8 @@ agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `Ch
 │  第 6 层: 持久化与记忆 (PersistenceManager, ConversationService)  │
 │    5种持久化策略 | Harness 内置记忆 | 分布式会话                            │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 5 层: 国产化LLM适配 (ModelProviderFactory)                    │
-│    DashScope | 百度 | 华为 | Claude | OpenAI                     │
+│  第 5 层: 模型层 (ModelFactory + 框架 Model 内置 Provider)          │
+│    框架: OpenAI/Claude/DashScope/DeepSeek | 自建: 百度/华为      │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 4 层: 生产特性 (CircuitBreaker, HITL, Audit, Metrics)        │
 │    熔断器 | 人工审核 | 审计 | 监控 | 多租户 Profile                │
@@ -654,7 +674,7 @@ agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `Ch
 |------|---------------|-----------|:---------:|
 | Agent 创建 | ReActAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 | ~15 |
 | 工具系统 | Tool + AgentTool 接口 | ToolAdapter 桥接 + 熔断器 + 本地/远程/MCP 统一注册 | ~12 |
-| LLM 集成 | ModelRegistry + SPI | 模型工厂 + 国产化适配 (百度/华为) + 配置绑定 | ~10 |
+| LLM 集成 | Model (框架接口) + Factory | 复用框架内置 Provider + 百度/华为适配 + 缓存/角色映射支持 | ~3 |
 | 记忆 | InMemoryMemory | Harness 内置文件系统记忆 + 5 种持久化策略 + 场景管理 | ~15 |
 | MCP | 基础客户端 | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
 | 多 Agent | A2A 协议 | Supervisor/Pipeline/Routing 编排 + Profile 路由 | ~10 |
@@ -665,8 +685,9 @@ agentscope 的 `Model` 接口只负责"发请求、拿响应"。平台层的 `Ch
 ### 诚实的评估：哪些代码可以优化？
 
 1. **YAML 配置 → DTO 的转换链**：`AgentDefinition` → `AgentConfigDto` → `AgentInfoDto` 有多层映射，部分可以合并
-2. **WorkspaceAutoDiscoveryEngine + SceneDetectionService**：场景检测逻辑可能和 agentscope 现有能力有重叠
-3. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
+2. ~~**自建 LLM Provider**~~：✅ **已修复** — 拆除 `ChatModelProvider` 接口及 3 个自建 Provider，复用框架 `OpenAIChatModel`/`AnthropicChatModel`/`DashScopeChatModel`
+3. ~~**自建 Shell 命令安全**~~：✅ **已修复** — 拆除 `CommandSafetyClassifier`，使用框架 `ShellCommandTool` 白名单/验证器
+4. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
 
 但**绝大多数代码是合理的**——它们解决的是不同层次的问题。业务工具只需实现简单的 `Tool` 接口就能被 Agent 调用，这才是平台的价值所在。
 

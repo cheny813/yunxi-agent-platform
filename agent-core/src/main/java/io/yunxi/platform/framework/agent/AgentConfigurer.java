@@ -17,6 +17,7 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.plan.PlanNotebook;
 import io.agentscope.core.session.Session;
 import io.agentscope.core.shutdown.GracefulShutdownHook;
@@ -27,15 +28,11 @@ import io.agentscope.core.tool.subagent.SubAgentConfig;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.yunxi.platform.framework.agent.extension.AgentCustomizer;
-import io.yunxi.platform.framework.embedding.BaiduModelProvider;
-import io.yunxi.platform.framework.embedding.ChatModelProvider;
-import io.yunxi.platform.framework.embedding.ClaudeModelProvider;
-import io.yunxi.platform.framework.embedding.DashScopeModelProvider;
-import io.yunxi.platform.framework.embedding.HuaweiModelProvider;
-import io.yunxi.platform.framework.embedding.OpenAIModelProvider;
+import io.yunxi.platform.framework.model.ModelFactory;
 import io.yunxi.platform.framework.hitl.HumanToolRegistrar;
 import io.yunxi.platform.framework.hitl.ReasoningReviewHook;
 import io.yunxi.platform.framework.hitl.ToolGateHook;
+import io.yunxi.platform.framework.hook.ContentFilterHook;
 import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.mcp.McpToolRegistry;
 import io.yunxi.platform.framework.observability.ReActSpanHook;
@@ -99,6 +96,9 @@ public class AgentConfigurer implements SmartLifecycle {
     /** ReAct 追踪 Hook（可选） */
     private final ObjectProvider<ReActSpanHook> reActSpanHookProvider;
 
+    /** 模型工厂 — 创建框架 Model 实例，替代原自建 Provider */
+    private final ModelFactory modelFactory;
+
     /** 跨实例 Session（可选），由 AgentSessionConfig 按配置创建 */
     private Session session;
 
@@ -110,7 +110,8 @@ public class AgentConfigurer implements SmartLifecycle {
             ObjectProvider<StudioMessageHook> studioMessageHookProvider,
             ObjectProvider<AgentCustomizer> customizerProvider,
             WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine,
-            ObjectProvider<ReActSpanHook> reActSpanHookProvider) {
+            ObjectProvider<ReActSpanHook> reActSpanHookProvider,
+            ModelFactory modelFactory) {
         this.definitionLoader = definitionLoader;
         this.agentDomainService = agentDomainService;
         this.coreProperties = coreProperties;
@@ -120,6 +121,7 @@ public class AgentConfigurer implements SmartLifecycle {
         this.customizerProvider = customizerProvider;
         this.workspaceDiscoveryEngine = workspaceDiscoveryEngine;
         this.reActSpanHookProvider = reActSpanHookProvider;
+        this.modelFactory = modelFactory;
     }
 
     @Autowired(required = false)
@@ -214,11 +216,11 @@ public class AgentConfigurer implements SmartLifecycle {
     private void initializeSingleAgent(AgentDefinition def) {
         try {
             log.info("初始化 Agent: {}", def.getName());
-            ChatModelProvider modelProvider = createModelProvider(def);
+            Model model = modelFactory.create(def.getModel());
             String prompt = def.getPrompt();
 
             HarnessAgent.Builder builder = HarnessAgent.builder()
-                    .name(def.getName()).sysPrompt(prompt).model(modelProvider);
+                    .name(def.getName()).sysPrompt(prompt).model(model);
 
             // 创建 Toolkit 并注册所有工具
             Toolkit toolkit = new Toolkit();
@@ -287,7 +289,7 @@ public class AgentConfigurer implements SmartLifecycle {
             return;
         }
 
-        ChatModelProvider modelProvider = createModelProvider(def);
+        Model model = modelFactory.create(def.getModel());
 
         Toolkit toolkit = new Toolkit();
         toolkit.createToolGroup("agent", "子Agent调用工具", true);
@@ -299,7 +301,7 @@ public class AgentConfigurer implements SmartLifecycle {
         registerMcpTools(toolkit, def);
 
         HarnessAgent.Builder builder = HarnessAgent.builder()
-                .name(def.getName()).sysPrompt(def.getPrompt()).model(modelProvider).toolkit(toolkit);
+                .name(def.getName()).sysPrompt(def.getPrompt()).model(model).toolkit(toolkit);
 
         // 配置通用 Builder 参数（workspace、compaction、hooks、runtime、plan）
         configureBuilder(builder, def, toolkit);
@@ -522,6 +524,8 @@ public class AgentConfigurer implements SmartLifecycle {
         builder.hook(new GracefulShutdownHook(GracefulShutdownManager.getInstance()));
         TextToolCallParserHook textToolCallParserHook = new TextToolCallParserHook(toolkit);
         builder.hook(textToolCallParserHook);
+        // 提示注入防护 Hook（阻断模式，检测到注入模式时拦截）
+        builder.hook(new ContentFilterHook());
         // ReAct 追踪 Hook（可选，OTel 未启用时自动跳过）
         if (reActSpanHookProvider.getIfAvailable() != null) {
             builder.hook(reActSpanHookProvider.getIfAvailable());
@@ -615,35 +619,6 @@ public class AgentConfigurer implements SmartLifecycle {
     }
 
     // ========== 工具方法 ==========
-
-    private ChatModelProvider createModelProvider(AgentDefinition def) {
-        String provider = def.getModel() != null && def.getModel().getProvider() != null
-                ? def.getModel().getProvider()
-                : coreProperties.getProvider();
-        String apiKey = def.getModel() != null && def.getModel().getApiKey() != null
-                ? def.getModel().getApiKey()
-                : coreProperties.getApiKey();
-        String modelName = def.getModel() != null && def.getModel().getModelName() != null
-                ? def.getModel().getModelName()
-                : coreProperties.getModelName();
-
-        ChatModelProvider modelProvider = switch (provider.toLowerCase()) {
-            case "dashscope" -> {
-                DashScopeModelProvider p = new DashScopeModelProvider(apiKey, modelName);
-                if (def.getStructuredOutput() != null && def.getStructuredOutput().isEnabled()) {
-                    p.setStructuredOutputSchema(def.getStructuredOutput().getSchema());
-                }
-                yield p;
-            }
-            case "openai" -> new OpenAIModelProvider(apiKey, modelName);
-            case "claude" -> new ClaudeModelProvider(apiKey, modelName);
-            case "baidu" -> new BaiduModelProvider(apiKey, modelName);
-            case "huawei" -> new HuaweiModelProvider(apiKey, modelName);
-            default -> throw new IllegalArgumentException("不支持的模型提供商: " + provider);
-        };
-        log.info("创建模型提供商: provider={}, model={}", provider, modelName);
-        return modelProvider;
-    }
 
     private AgentCustomizer findCustomizer(AgentDefinition def) {
         if (def.getExtensions() == null || customizerProvider == null)

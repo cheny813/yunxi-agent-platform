@@ -102,6 +102,12 @@ public class AgentscopeCoreProperties {
     /** Session 持久化配置 */
     private SessionProperties session = new SessionProperties();
 
+    /** 全局默认生成参数 */
+    private GenerationConfig generation = new GenerationConfig();
+
+    /** Shell 命令安全配置 */
+    private ShellConfig shell = new ShellConfig();
+
     /**
      * 各 Provider 配置
      */
@@ -271,5 +277,74 @@ public class AgentscopeCoreProperties {
     public static class SessionProperties {
         /** Session 后端类型：workspace（默认）/ redis */
         private String type = "workspace";
+    }
+
+    /**
+     * 全局默认生成参数
+     * <p>
+     * 对应框架 {@link io.agentscope.core.model.GenerateOptions}，
+     * 在 Agent 定义 YAML 中未指定时使用此默认值。
+     * 配置前缀：agentscope.core.generation
+     * </p>
+     *
+     * <pre>
+     * agentscope.core.generation:
+     *   temperature: 0.7
+     *   max-tokens: 4096
+     *   top-p: 0.9
+     *   cache-control: false
+     * </pre>
+     */
+    @Data
+    public static class GenerationConfig {
+        /** 生成温度（默认 0.7） */
+        private Double temperature = 0.7;
+
+        /** 最大输出 token 数（默认 4096） */
+        private Integer maxTokens = 4096;
+
+        /** top_p 采样参数（默认 0.9） */
+        private Double topP = 0.9;
+
+        /**
+         * 是否启用 Prompt Caching（默认 false）
+         * <p>
+         * 开启后，框架自动给 system message 和最后一条消息
+         * 添加 cache_control: {"type": "ephemeral"}。
+         * 各提供商支持：
+         * <ul>
+         *   <li>OpenAI：自动前缀匹配（>1024 token）</li>
+         *   <li>Anthropic：显式 cache_control 标记</li>
+         *   <li>DashScope（Qwen）：自动前缀缓存</li>
+         * </ul>
+         * </p>
+         */
+        private Boolean cacheControl = false;
+    }
+
+    /**
+     * Shell 命令安全配置
+     * <p>
+     * 对应框架 {@link io.agentscope.core.tool.coding.ShellCommandTool} 的安全控制参数。
+     * 配置前缀：agentscope.core.shell
+     * </p>
+     *
+     * <pre>
+     * agentscope.core.shell:
+     *   allowed-commands: [ls, cat, grep, python, node]
+     *   approval-enabled: false
+     *   base-dir: /data/workspace
+     * </pre>
+     */
+    @Data
+    public static class ShellConfig {
+        /** 允许自动执行的命令列表（空集合或 null 表示所有命令需审批） */
+        private java.util.Set<String> allowedCommands = java.util.Set.of("ls", "cat", "grep", "wc", "echo");
+
+        /** 是否启用人工审批回调（false 时白名单外命令直接拒绝） */
+        private boolean approvalEnabled = false;
+
+        /** 工作目录限制（null 表示不限制） */
+        private String baseDir;
     }
 }

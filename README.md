@@ -16,13 +16,16 @@
 | 特性 | 说明 |
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
-| **AgentScope 深度集成** | 基于 agentscope-javaRC2，复用 `@Tool` 注解、`ModelProviderType`、`GracefulShutdownManager` |
+| **AgentScope 深度集成** | 基于 agentscope-javaRC2，复用 `Model`/`Toolkit`/`Hook` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **规则引擎** | 内置轻量级规则引擎，支持 SpEL 表达式、动态规则加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
 | **技能系统** | 可插拔 SkillBox 架构，支持 classpath 和文件系统加载 |
 | **工具分组** | 按职责隔离工具（memory/filesystem/execute），默认最小权限，YAML 按需开放 |
+| **提示注入防护** | ContentFilterHook 基于框架 Hook 接口，`PostReasoningEvent.stopAgent()` 拦截中英文注入模式 |
+| **Shell 安全** | 复用框架 ShellCommandTool 白名单+平台验证器+审批回调，替代自建分级系统 |
+| **Prompt Caching** | 配置 `cache-control: true` 即可启用，支持 OpenAI/Anthropic/DashScope |
 | **SPI 扩展** | 基于 Java SPI 的插件化扩展机制 |
 | **多通道** | WebSocket、SSE、飞书、钉钉、企业微信 |
 | **Text2SQL** | 自然语言查询数据库 |
@@ -71,7 +74,7 @@ curl -X POST http://localhost:8080/api/chat \
 
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
-| **agent-core** | 核心框架：Agent 编排、会话管理、记忆、技能 | Spring Boot, agentscope-harness |
+| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全 | Spring Boot, agentscope-harness |
 | **agent-gateway** | 网关：通道管理、流控、认证 | WebSocket, SSE |
 | **agent-rule-engine** | 规则引擎：动态规则、SpEL 评估 | Spring SpEL |
 | **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
@@ -153,6 +156,8 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 | **工具组分配（ungrouped）** | HarnessAgent 内置工具注册时不指定组名 | 反射调用 `ToolGroupManager.addToolToGroup()` 在构建后修正 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
 | **Toolkit 深拷贝后组激活失效** | `applyToolGroupActivation()` 操作原始 Toolkit，非 Agent 内部拷贝 | 通过 `HarnessAgent.getDelegate().getToolkit()` 获取内部 Toolkit | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
 | **MCP 工具组隔离** | 框架 Toolkit 单例模式，所有工具注册在同一实例 | 按 MCP 服务器名分组 + YAML 配置组激活 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
+| ~~**自建 LLM Provider**~~ | ✅ **已修复** — 拆除 `ChatModelProvider` 接口，复用框架 `OpenAIChatModel`/`AnthropicChatModel`/`DashScopeChatModel`  | 删除约 500 行自建代码，所有 Provider 由 `ModelFactory` 创建 | [配置 → 生成参数](docs/guide/06-configuration.md#生成参数配置) |
+| ~~**自建 Shell 安全**~~ | ✅ **已修复** — 拆除 `CommandSafetyClassifier`（~200 行），使用框架 `ShellCommandTool` | 白名单+平台验证器+审批回调，含多命令分隔符/路径穿越检测 | [配置 → Shell 安全](docs/guide/06-configuration.md#shell-命令安全配置) |
 
 所有适配代码位于项目中，不修改框架源码，框架升级时通过 try-catch 保证容错回退。
 

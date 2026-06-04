@@ -14,6 +14,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.plan.PlanNotebook;
 import io.agentscope.core.rag.Knowledge;
 import io.agentscope.core.rag.RAGMode;
@@ -24,7 +25,6 @@ import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
-import io.yunxi.platform.framework.embedding.ChatModelProvider;
 import io.yunxi.platform.framework.hook.TextToolCallParserHook;
 import io.yunxi.platform.framework.skill.SkillRegistryService;
 import io.yunxi.platform.infra.config.AgentscopeExtensionProperties;
@@ -161,10 +161,10 @@ public class AdvancedAgentFactory {
             log.info("开始创建临时高级Agent: baseAgent={}, features={}", baseAgentName, features);
 
             // 获取基础 Agent 配置（从缓存中，而非 Agent 实例）
-            ChatModelProvider modelProvider = agentDomainService.getAgentModelProvider(baseAgentName);
+            Model model = agentDomainService.getAgentModel(baseAgentName);
             String sysPrompt = agentDomainService.getAgentSysPrompt(baseAgentName);
-            if (modelProvider == null) {
-                log.error("基础 Agent [{}] 的模型提供商未找到", baseAgentName);
+            if (model == null) {
+                log.error("基础 Agent [{}] 的模型未找到", baseAgentName);
                 return null;
             }
 
@@ -172,7 +172,7 @@ public class AdvancedAgentFactory {
             HarnessAgent.Builder builder = HarnessAgent.builder()
                     .name(baseAgentName + "-temp-" + System.currentTimeMillis())
                     .sysPrompt(sysPrompt != null ? sysPrompt : "")
-                    .model(modelProvider)
+                    .model(model)
                     .workspace(coreProperties.getWorkspaceBasePath() + "/" + baseAgentName)
                     .compaction(buildCompactionConfig());
 

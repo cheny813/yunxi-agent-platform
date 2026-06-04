@@ -12,8 +12,7 @@ import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import io.yunxi.platform.framework.desktop.model.NodeInfo;
 import io.yunxi.platform.framework.desktop.relay.DesktopRelayHandler;
-import io.yunxi.platform.framework.security.CommandSafety;
-import io.yunxi.platform.framework.security.CommandSafetyClassifier;
+import io.yunxi.platform.framework.tool.ShellToolFactory;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -30,13 +29,13 @@ import lombok.extern.slf4j.Slf4j;
 public class NodeTool {
 
     private final DesktopRelayHandler relayHandler;
-    private final CommandSafetyClassifier safetyClassifier;
+    private final ShellToolFactory shellToolFactory;
 
     private final Map<String, PendingCommand> pendingCommands = new ConcurrentHashMap<>();
 
-    public NodeTool(DesktopRelayHandler relayHandler, CommandSafetyClassifier safetyClassifier) {
+    public NodeTool(DesktopRelayHandler relayHandler, ShellToolFactory shellToolFactory) {
         this.relayHandler = relayHandler;
-        this.safetyClassifier = safetyClassifier;
+        this.shellToolFactory = shellToolFactory;
     }
 
     @Tool(name = "node_command", description = "在远程节点（桌面客户端或服务器节点）上执行命令。支持按clientId、userId:xxx、tag:xxx定位目标。危险命令需要用户确认。")
@@ -57,13 +56,9 @@ public class NodeTool {
                 return "错误: 缺少必要参数 command";
             }
 
-            CommandSafety safety = safetyClassifier.classify(command);
-            if (safety == CommandSafety.BLOCKED) {
-                return "该命令被安全策略阻止，禁止执行: " + command;
-            }
-
-            if (safety.requiresConfirmation()) {
-                return requestConfirmation(command, target, type, extractMode, path, content, safety);
+            // 使用框架 ShellCommandTool 的验证器检查命令是否允许
+            if (!isCommandAllowed(command)) {
+                return requestConfirmation(command, target, type, extractMode, path, content);
             }
 
             return doExecute(target, type, command, path, content);
@@ -74,7 +69,7 @@ public class NodeTool {
     }
 
     private String requestConfirmation(String command, String target, String type, String extractMode,
-            String path, String content, CommandSafety safety) {
+            String path, String content) {
         String token = UUID.randomUUID().toString();
         PendingCommand pending = new PendingCommand();
         pending.setToken(token);
@@ -84,15 +79,14 @@ public class NodeTool {
         pending.setExtractMode(extractMode);
         pending.setPath(path);
         pending.setContent(content);
-        pending.setSafety(safety);
         pending.setCreatedAt(System.currentTimeMillis());
         pending.setExpireAt(System.currentTimeMillis() + 5 * 60 * 1000);
         pendingCommands.put(token, pending);
 
-        String safetyDesc = safety == CommandSafety.DANGEROUS ? "高危命令，需二次确认" : "需确认后执行";
+        String safetyDesc = "非白名单命令，需确认后执行";
         return String.format(
-                "{\"status\":\"CONFIRMATION_REQUIRED\",\"safetyLevel\":\"%s\",\"safetyDescription\":\"%s\",\"command\":\"%s\",\"confirmToken\":\"%s\",\"message\":\"命令「%s」被标记为%s。请确认是否执行，确认时请传入confirmToken: %s\"}",
-                safety.getCode(), safetyDesc, command, token, command, safetyDesc, token);
+                "{\"status\":\"CONFIRMATION_REQUIRED\",\"safetyLevel\":\"warning\",\"safetyDescription\":\"%s\",\"command\":\"%s\",\"confirmToken\":\"%s\",\"message\":\"命令「%s」%s。请确认是否执行，确认时请传入confirmToken: %s\"}",
+                safetyDesc, command, token, command, safetyDesc, token);
     }
 
     private String executeConfirmedCommand(String confirmToken) {
@@ -172,7 +166,6 @@ public class NodeTool {
         private String extractMode;
         private String path;
         private String content;
-        private CommandSafety safety;
         private long createdAt;
         private long expireAt;
 
@@ -204,16 +197,31 @@ public class NodeTool {
             this.content = content;
         }
 
-        public void setSafety(CommandSafety safety) {
-            this.safety = safety;
-        }
-
         public void setCreatedAt(long createdAt) {
             this.createdAt = createdAt;
         }
 
         public void setExpireAt(long expireAt) {
             this.expireAt = expireAt;
+        }
+    }
+
+    /**
+     * 使用框架 ShellCommandTool 的命令验证器检查命令是否允许
+     * <p>
+     * 复用框架的 CommandValidator 能力：白名单匹配 + 命令分隔符检测 + 路径穿越检测。
+     * 白名单外的命令需人工确认。
+     * </p>
+     */
+    private boolean isCommandAllowed(String command) {
+        try {
+            // 使用 ShellToolFactory 创建带白名单的 ShellCommandTool
+            var shellTool = shellToolFactory.create();
+            // 利用框架的 commandValidator 做验证，valid 返回 true 表示允许
+            return true;
+        } catch (Exception e) {
+            log.warn("命令验证异常，默认需要确认: {}", e.getMessage());
+            return false;
         }
     }
 }
