@@ -149,7 +149,7 @@ agent-core/src/main/java/io/yunxi/platform/
 | `hitl/` | Human-in-the-Loop（工具门控、推理审查） |
 | `security/` | 命令安全分类、节点审计 |
 | `embedding/` | 嵌入模型（DashScopeProvider/OpenAIProvider/BaiduProvider/HuaweiProvider/ClaudeProvider） |
-| `knowledge/` | 知识库创建器（Bailian/Dify/HayStack/RAGFlow/Simple）⚠️ V2.0 弃用，待迁移 |
+| `knowledge/` | 知识库创建器（Bailian/Dify/HayStack/RAGFlow/Simple）。通过 Middleware 注入 Agent 调用链 |
 | `controller/` | REST 控制器（Agent/Conversation/Tool/MCP/Plan/Config） |
 
 ### 已迁移的功能包（原 shared/infra 层）
