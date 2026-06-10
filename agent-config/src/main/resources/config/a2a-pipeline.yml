@@ -165,7 +165,7 @@ management:
 # 日志配置
 logging:
   level:
-    '[io.yunxi.platform.framework.a2a]': INFO
-    '[io.yunxi.platform.framework.a2a.pipeline]': DEBUG
+    '[io.yunxi.platform.a2a]': INFO
+    '[io.yunxi.platform.a2a.pipeline]': DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{pipelineId}] [%X{taskId}] %-5level %logger{36} - %msg%n"

@@ -1,4 +1,4 @@
-package io.yunxi.platform.framework.hitl;
+package io.yunxi.platform.security.hitl;
 
 import io.agentscope.core.hook.PostReasoningEvent;
 import io.agentscope.core.message.Msg;

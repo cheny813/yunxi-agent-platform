@@ -501,7 +501,7 @@ applyToolGroupActivation(agentToolkit, def);  // 在正确的 Toolkit 上激活
 
 | 文件 | 说明 |
 |------|------|
-| `agent-core/.../framework/agent/AgentConfigurer.java` | 新增 `resolveAgentToolkit()` 和 `assignUngroupedTools()` 方法，修改 `initializeSingleAgent()` 和 `createSupervisorAgent()` |
+| `agent-core/.../agent/AgentConfigurer.java` | 新增 `resolveAgentToolkit()` 和 `assignUngroupedTools()` 方法，修改 `initializeSingleAgent()` 和 `createSupervisorAgent()` |
 
 ---
 

@@ -69,25 +69,24 @@ agent-core/src/main/java/io/yunxi/platform/
 ├── embedding/    ← Embedding 提供商
 ├── file/         ← 文件处理
 ├── gateway/      ← SSE 消息通道
-├── knowledge/    ← 知识库（⚠️ V2.0 弃用，待迁移）
+├── knowledge/    ← 知识库（通过 Middleware 注入）
 ├── lifecycle/    ← 生命周期
 ├── mcp/          ← MCP 协议层
 ├── persistence/  ← 持久化（Milvus + Repository）
 ├── security/     ← 安全（HITL、审计、认证）
 ├── session/      ← 会话管理
 ├── tracing/      ← 可观测性（OpenTelemetry）
-└── 以下目录仍保留在 framework/ 下（待迁移，参见 tasks.md）:
-    ├── a2a/          ← 跨服务 Agent 协作
-    ├── conversation/ ← 对话编排
-    ├── sync/         ← 数据同步
-    ├── tool/         ← 自定义工具
-    ├── memory/       ← 记忆系统
-    ├── prompt/       ← 场景检测
-    ├── intelligent/  ← 智能自动配置
-    ├── pageagent/    ← 页面 Agent
-    ├── desktop/      ← 桌面客户端中继
-    ├── structured/   ← Schema 注册
-    └── async/        ← 异步执行器配置
+├── a2a/          ← 跨服务 Agent 协作
+├── conversation/ ← 对话编排
+├── sync/         ← 数据同步
+├── tool/         ← 自定义工具
+├── memory/       ← 记忆系统
+├── prompt/       ← 场景检测
+├── intelligent/  ← 智能自动配置
+├── pageagent/    ← 页面 Agent
+├── desktop/      ← 桌面客户端中继
+├── structured/   ← Schema 注册
+└── async/        ← 异步执行器配置
 ```
 
 ### agent/ Agent 核心包
@@ -112,7 +111,7 @@ agent-core/src/main/java/io/yunxi/platform/
 - `ReActSpanMiddleware` — OpenTelemetry 链路追踪（替换原 ReActSpanHook）
 - `GracefulShutdownMiddleware` — 优雅关闭（替换原 GracefulShutdownHook）
 
-#### 工具体系（framework/tool/）
+#### 工具体系（tool/）
 
 | 组件 | 说明 |
 |------|------|
