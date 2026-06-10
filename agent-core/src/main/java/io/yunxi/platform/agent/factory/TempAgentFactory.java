@@ -17,6 +17,7 @@ import io.agentscope.core.rag.Knowledge;
 import io.agentscope.core.rag.model.RetrieveConfig;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.yunxi.platform.agent.middleware.KnowledgeRetrievalMiddleware;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
@@ -144,11 +145,16 @@ public class TempAgentFactory {
      * 应用 RAG（检索增强生成）配置。
      *
      * <p>
-     * 根据请求中的 ragMode 参数配置 Agent 的 RAG 功能：
+     * 根据请求中的 ragMode 参数，通过 Middleware 注入 RAG 功能：
      * - NONE：不启用 RAG
      * - GENERIC：通用 RAG 模式，检索结果直接注入上下文
      * - AGENTIC：Agent RAG 模式，Agent 自主决定何时检索
-     * 同时关联请求中指定的知识库。
+     * </p>
+     *
+     * <p>
+     * V2.0 架构：{@code HarnessAgent.Builder.knowledge()} 已移除，
+     * 改为通过 {@code builder.middleware(new KnowledgeRetrievalMiddleware(...))}
+     * 注册。Middleware 内部复用框架的 {@code Knowledge.retrieve()} 完成检索。
      * </p>
      *
      * @param request 统一聊天请求
@@ -159,9 +165,17 @@ public class TempAgentFactory {
         if (ragMode == null || "NONE".equals(ragMode))
             return;
 
-        // V2.0: knowledge(), ragMode(), retrieveConfig() removed from HarnessAgent.Builder
-        // RAG configuration must be provided via middleware instead
-        log.warn("V2.0: RAG配置 (ragMode={}) 需要通过 Middleware 注入，Builder API 已移除", ragMode);
+        // 获取请求指定的知识库实例
+        Set<Knowledge> kbs = getKnowledgeBases(request.getKnowledgeBases());
+        if (kbs.isEmpty()) {
+            log.warn("RAG({}): 未找到任何已注册的知识库实例", ragMode);
+            return;
+        }
+
+        // 通过 Middleware 注入 RAG（V2.0 标准方式）
+        builder.middleware(new KnowledgeRetrievalMiddleware(
+                kbs, defaultRetrieveConfig, ragMode));
+        log.info("RAG({}): 已注册 KnowledgeRetrievalMiddleware, 知识库数={}", ragMode, kbs.size());
     }
 
     /**
