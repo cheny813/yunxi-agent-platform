@@ -9,8 +9,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- *
- * 智能体平台启动入口
+ * 平台主入口
  * <p>
  * AgentScope Agent 管理平台
  * </p>
@@ -27,13 +26,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @EnableConfigurationProperties
 @ConfigurationPropertiesScan
-@MapperScan({ "io.yunxi.platform.shared.mapper", "io.yunxi.platform.framework.session.mapper",
-                "io.yunxi.platform.framework.profile", "io.yunxi.platform.framework.security",
+@MapperScan({ "io.yunxi.platform.shared.mapper", "io.yunxi.platform.session.mapper",
+                "io.yunxi.platform.agent.profile", "io.yunxi.platform.security.audit",
                 "io.yunxi.platform.business.rule" })
 public class AgentPlatformApplication {
 
         /**
-         * 应用主入口
+         * 应用入口
          *
          * @param args 启动参数
          */

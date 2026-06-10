@@ -1,8 +1,8 @@
 package io.yunxi.platform.shared.util.database;
 
-import lombok.Data;
-import java.util.ArrayList;
 import java.util.List;
+
+import lombok.Data;
 
 /**
  * 表索引信息

@@ -29,6 +29,7 @@ import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.tool.Toolkit;
+import io.yunxi.platform.security.hitl.HumanToolRegistrar;
 import io.yunxi.platform.shared.config.ExtensionConfig;
 import io.yunxi.platform.shared.config.HITLConfig;
 import io.yunxi.platform.shared.config.HumanToolConfig;
@@ -109,7 +110,7 @@ class HITLTest {
                         config.setStrategy("keyword-match");
                         config.setKeywords(List.of("删除", "支付"));
                         assertEquals("keyword-match", config.getStrategy());
-                        assertEquals(1, config.getKeywords().size()); // "删除" 是一个中文词
+                        assertEquals(2, config.getKeywords().size());
                 }
 
                 @Test

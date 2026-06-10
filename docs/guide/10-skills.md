@@ -1,6 +1,12 @@
 # 10. 技能系统
 
-技能（Skill）是 yunxi Agent Platform 的核心概念，用于封装特定领域的能力。
+> **⚠️ V2.0 重大变更**：本平台的 Skill 系统已在 V2.0 升级中整体删除（包括 `SkillManager`、`SkillRegistryService`、`SkillAutoCreator`、`SkillVersionManager`、`SkillTemplateFiller`、`SkillBoxAutoConfiguration` 及 `framework/skill/model/` 整个包），替换为 AgentScope V2.0 内置的 **SkillCurator** 治理流水线。
+>
+> V2.0 SkillCurator 提供完整的技能管理生命周期：`SkillCatalog` + `WorkspaceSkillRepository` + `SkillCurator` + `SkillPromoter` + `SkillPromotionGate`。
+>
+> 以下为旧版技能系统的参考文档，保留作为历史记录。新项目请直接使用 AgentScope V2.0 内置技能治理。
+
+---
 
 ## 技能系统理论
 

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="io.yunxi.platform.framework.profile.NodeProfileMapper">
+<mapper namespace="io.yunxi.platform.agent.profile.NodeProfileMapper">
 
-    <insert id="insertOrUpdate" parameterType="io.yunxi.platform.framework.profile.NodeProfile">
+    <insert id="insertOrUpdate" parameterType="io.yunxi.platform.agent.profile.NodeProfile">
         INSERT INTO node_profile
         (client_id, user_id, node_type, tags, os_info, hardware, network,
          services, software, common_paths, cloud_info, cloud_managed_services,
@@ -28,19 +28,19 @@
         is_online = VALUES(is_online)
     </insert>
 
-    <select id="selectByClientId" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+    <select id="selectByClientId" resultType="io.yunxi.platform.agent.profile.NodeProfile">
         SELECT * FROM node_profile WHERE client_id = #{clientId}
     </select>
 
-    <select id="selectByUserId" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+    <select id="selectByUserId" resultType="io.yunxi.platform.agent.profile.NodeProfile">
         SELECT * FROM node_profile WHERE user_id = #{userId}
     </select>
 
-    <select id="selectByTag" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+    <select id="selectByTag" resultType="io.yunxi.platform.agent.profile.NodeProfile">
         SELECT * FROM node_profile WHERE JSON_CONTAINS(tags, JSON_QUOTE(#{tag}))
     </select>
 
-    <select id="selectOnlineNodes" resultType="io.yunxi.platform.framework.profile.NodeProfile">
+    <select id="selectOnlineNodes" resultType="io.yunxi.platform.agent.profile.NodeProfile">
         SELECT * FROM node_profile WHERE is_online = true
     </select>
 

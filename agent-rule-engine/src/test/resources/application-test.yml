@@ -13,12 +13,6 @@ spring:
       mode: always
       schema-locations: classpath:sql/schema.sql
       data-locations: classpath:sql/data.sql
-  datasource:
-    # 数据库连接配置
-    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: 
       
   # JPA/Hibernate 配置 - 禁用DDL自动创建，使用SQL初始化脚本
   jpa:

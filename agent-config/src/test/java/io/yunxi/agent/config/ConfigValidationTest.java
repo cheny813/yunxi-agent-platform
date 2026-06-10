@@ -1,66 +1,87 @@
 package io.yunxi.agent.config;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
+import org.yaml.snakeyaml.Yaml;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 配置文件加载和验证测试
- * 验证Spring配置文件是否正确加载和生效
+ * 验证Spring配置文件格式正确性和关键配置项存在性
+ *
+ * 注意：本模块（agent-config）是纯配置模块，不包含 @SpringBootApplication。
+ * Spring 容器启动测试位于 agent-core 模块的 io.yunxi.platform.config.ConfigValidationTest。
  */
-@SpringBootTest
-@ActiveProfiles({
-    "server", "datasource", "cache", "async", "redis", "llm", 
-    "milvus", "embedding", "persistence", "mcp-core", "mcp-business", 
-    "skill", "resilience", "file-upload", "a2a-pipeline", "gateway", 
-    "business", "text2sql", "rule-engine"
-})
 class ConfigValidationTest {
 
+    private final Yaml yaml = new Yaml();
+
     @Test
-    void testApplicationContextLoads() {
-        // 如果应用上下文能够正常加载，说明配置有效
-        assertTrue(true, "Application context should load successfully with all profiles");
+    void testAllConfigFilesLoadable() {
+        // 验证所有关键配置文件可解析
+        String[] configFiles = {
+            "config/server.yml", "config/datasource.yml", "config/cache.yml",
+            "config/async.yml", "config/redis.yml", "config/llm.yml",
+            "config/milvus.yml", "config/embedding.yml", "config/persistence.yml",
+            "config/mcp-core.yml", "config/mcp-business.yml", "config/mcp-external.yml",
+            "config/skill.yml", "config/resilience.yml", "config/file-upload.yml",
+            "config/a2a-pipeline.yml", "config/gateway.yml", "config/business.yml",
+            "config/text2sql.yml", "config/rule-engine.yml"
+        };
+
+        for (String filePath : configFiles) {
+            Path path = Paths.get("src/main/resources", filePath);
+            if (Files.exists(path)) {
+                try (InputStream input = Files.newInputStream(path)) {
+                    Object data = yaml.load(input);
+                    assertNotNull(data, filePath + " should parse correctly");
+                    if (data instanceof Map) {
+                        assertFalse(((Map<?, ?>) data).isEmpty(), filePath + " should not be empty");
+                    }
+                } catch (Exception e) {
+                    fail("Failed to parse " + filePath + ": " + e.getMessage());
+                }
+            } else {
+                System.out.println("Skipping non-existent config: " + filePath);
+            }
+        }
     }
 
     @Test
-    void testConfigPropertiesAvailable() {
-        // 验证关键配置属性是否可访问
-        // 这些测试依赖于Spring的配置管理
-        
-        // 检查关键配置项是否存在（通过环境变量验证）
-        String serverPort = System.getProperty("server.port");
-        assertTrue(serverPort != null || "8080".equals(serverPort), 
-            "Server port should be configured or default to 8080");
-        
-        String profiles = System.getProperty("spring.profiles.active");
-        assertTrue(profiles != null, "Spring profiles should be active");
+    void testApplicationYmlStructure() {
+        try {
+            Path appConfigPath = Paths.get("src/main/resources/application.yml");
+            String content = Files.readString(appConfigPath);
+
+            assertTrue(content.contains("spring:"), "Should contain spring configuration");
+            assertTrue(content.contains("config:"), "Should contain config section");
+            assertTrue(content.contains("import:"), "Should contain import directive");
+            assertTrue(content.contains("management:"), "Should contain management configuration");
+        } catch (Exception e) {
+            fail("Failed to validate application.yml structure: " + e.getMessage());
+        }
     }
 
     @Test
-    void testAsyncConfiguration() {
-        // 验证异步配置相关属性
-        String asyncPoolSize = System.getProperty("spring.task.execution.pool.core-size");
-        assertTrue(true, "Async configuration should be valid");
-    }
-
-    @Test
-    void testCacheConfiguration() {
-        // 验证缓存配置相关属性
-        assertTrue(true, "Cache configuration should be valid");
-    }
-
-    @Test
-    void testPerformanceOptimizationConfig() {
-        // 验证性能优化相关的配置（JVM参数、连接池等）
-        
-        // 检查JVM内存配置
-        String xms = System.getProperty("Xms");
-        String xmx = System.getProperty("Xmx");
-        
-        // 验证服务器配置
-        assertTrue(true, "Performance optimization configurations should be properly set");
+    void testConfigImportOrder() {
+        try {
+            Path importsPath = Paths.get("src/main/resources/config/imports.yml");
+            if (Files.exists(importsPath)) {
+                String content = Files.readString(importsPath);
+                assertTrue(content.contains("import:"), "imports.yml should contain import directive");
+                assertTrue(content.contains("server.yml"), "Should import server.yml");
+                assertTrue(content.contains("datasource.yml"), "Should import datasource.yml");
+                assertTrue(content.contains("cache.yml"), "Should import cache.yml");
+                assertTrue(content.contains("async.yml"), "Should import async.yml");
+            }
+        } catch (Exception e) {
+            fail("Failed to validate config import order: " + e.getMessage());
+        }
     }
 }

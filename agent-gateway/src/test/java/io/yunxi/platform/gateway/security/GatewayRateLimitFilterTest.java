@@ -64,7 +64,6 @@ class GatewayRateLimitFilterTest {
         @DisplayName("webapi/chat端点应进行限流")
         void webapiChat_shouldApplyRateLimit() throws ServletException, IOException {
             when(request.getRequestURI()).thenReturn("/api/gateway/webapi/chat");
-            setupErrorResponse();
 
             filter.doFilter(request, response, filterChain);
 
@@ -133,24 +132,23 @@ class GatewayRateLimitFilterTest {
 
         @Test
         @DisplayName("并发数达到上限时应返回429")
-        void overLimit_shouldReturn429() throws ServletException, IOException, InterruptedException {
+        void overLimit_shouldReturn429() throws Exception {
             GatewayProperties props = new GatewayProperties();
             props.getConcurrency().setMaxConcurrentRequests(1);
             GatewayRateLimitFilter limitedFilter = new GatewayRateLimitFilter(props);
 
-            CountDownLatch latch = new CountDownLatch(1);
             CountDownLatch blockLatch = new CountDownLatch(1);
+            CountDownLatch acquiredLatch = new CountDownLatch(1);
 
             // 第一个请求，阻塞以占用许可
             when(request.getRequestURI()).thenReturn("/api/gateway/webapi/chat");
-            setupErrorResponse();
 
             ExecutorService executor = Executors.newSingleThreadExecutor();
             executor.submit(() -> {
                 try {
                     limitedFilter.doFilter(request, response, (req, res) -> {
+                        acquiredLatch.countDown();
                         try {
-                            latch.countDown();
                             blockLatch.await(5, TimeUnit.SECONDS);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
@@ -162,9 +160,10 @@ class GatewayRateLimitFilterTest {
             });
 
             // 等待第一个请求获取许可
-            assertTrue(latch.await(1, TimeUnit.SECONDS));
+            assertTrue(acquiredLatch.await(1, TimeUnit.SECONDS));
 
-            // 第二个请求应该被限流
+            // 第二个请求：tryAcquire(30, SECONDS) 会阻塞等待许可
+            // 对该线程中断以触发 InterruptedException → 429 响应
             HttpServletRequest request2 = mock(HttpServletRequest.class);
             HttpServletResponse response2 = mock(HttpServletResponse.class);
             StringWriter stringWriter = new StringWriter();
@@ -172,7 +171,19 @@ class GatewayRateLimitFilterTest {
             when(request2.getRequestURI()).thenReturn("/api/gateway/webapi/chat");
             when(response2.getWriter()).thenReturn(printWriter);
 
-            limitedFilter.doFilter(request2, response2, filterChain);
+            Thread secondThread = new Thread(() -> {
+                try {
+                    limitedFilter.doFilter(request2, response2, filterChain);
+                } catch (Exception e) {
+                    // expected
+                }
+            });
+            secondThread.start();
+
+            // 给线程一点时间进入 tryAcquire 阻塞
+            Thread.sleep(200);
+            secondThread.interrupt();
+            secondThread.join(2000);
 
             verify(response2).setStatus(429);
 
@@ -210,9 +221,7 @@ class GatewayRateLimitFilterTest {
         @Test
         @DisplayName("等待被中断时应返回429")
         void interruptedWait_shouldReturn429() throws ServletException, IOException {
-            GatewayRateLimitFilter filterSpy = spy(filter);
             when(request.getRequestURI()).thenReturn("/api/gateway/webapi/chat");
-            setupErrorResponse();
 
             // 直接测试中断场景比较困难，这里验证过滤器能正常处理
             assertDoesNotThrow(() -> filter.doFilter(request, response, filterChain));

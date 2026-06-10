@@ -5,9 +5,11 @@
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Maven](https://img.shields.io/badge/Maven-3.8%2B-red)](https://maven.apache.org/)
 
-**yunxi Agent Platform** 是一个企业级多 Agent 协作框架，基于 AgentScope-Java 核心运行时，提供开箱即用的 Agent 编排、规则引擎、MCP 协议集成、记忆系统等能力。
+**yunxi Agent Platform** 是一个企业级多 Agent 协作框架，基于 **AgentScope V2.0**（2.0.0-RC1）核心运行时，提供开箱即用的 Agent 编排、规则引擎、MCP 协议集成、记忆系统等能力。
 
 > **yunxi**（云曦），寓意 AI 平台像晨曦之光赋能万物。
+>
+> **V2.0 升级说明**：本平台已完成从 AgentScope V1.1-RC2 到 V2.0.0-RC1 的大版本升级，核心变更包括：Hook → Middleware 迁移、包结构扁平化重构、Skill 系统/MCP 管理替换为框架内置实现。详见 [V2.0 升级方案](https://gitcode.com/chenyao813/yunxi-agent-platform)。
 
 ---
 
@@ -16,14 +18,14 @@
 | 特性 | 说明 |
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
-| **AgentScope 深度集成** | 基于 agentscope-javaRC2，复用 `Model`/`Toolkit`/`Hook` 体系 |
+| **AgentScope 深度集成** | 基于 AgentScope V2.0，复用 `Model`/`Toolkit`/`Middleware` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **规则引擎** | 内置轻量级规则引擎，支持 SpEL 表达式、动态规则加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
-| **技能系统** | 可插拔 SkillBox 架构，支持 classpath 和文件系统加载 |
+| **技能系统** | V2.0 内置 `SkillCurator` 治理流水线（原 SkillBox 已移除） |
 | **工具分组** | 按职责隔离工具（memory/filesystem/execute），默认最小权限，YAML 按需开放 |
-| **提示注入防护** | ContentFilterHook 基于框架 Hook 接口，`PostReasoningEvent.stopAgent()` 拦截中英文注入模式 |
+| **提示注入防护** | ContentFilterMiddleware 基于框架 Middleware 接口，`onAgent` 拦截点拦截中英文注入模式 |
 | **Shell 安全** | 复用框架 ShellCommandTool 白名单+平台验证器+审批回调，替代自建分级系统 |
 | **Prompt Caching** | 配置 `cache-control: true` 即可启用，支持 OpenAI/Anthropic/DashScope |
 | **SPI 扩展** | 基于 Java SPI 的插件化扩展机制 |
@@ -94,14 +96,14 @@ curl -X POST http://localhost:8080/api/chat \
                         │
 ┌───────────────────────▼─────────────────────────────────┐
 │               编排层 (Core + agentscope-harness)          │
-│   Agent 编排 · 会话管理 · 路由 · Pipeline · 技能 · 工作空间  │
+│   Agent 编排 · 会话管理 · 路由 · 技能治理 · 工作空间        │
 │   SmartLifecycle 启停 · prototype 作用域 · @Tool 注解     │
 └───────┬──────────────┬──────────────┬───────────────────┘
         │              │              │
 ┌───────▼───────┐ ┌────▼──────┐ ┌────▼─────────────────┐
-│   规则引擎     │ │ MCP 协议  │ │  agentscope-javaRC2   │
-│   SpEL 规则   │ │ 30+ 工具  │ │  Model/Toolkit/Memory │
-│   动态加载     │ │ SPI 扩展  │ │  GracefulShutdown     │
+│   规则引擎     │ │ MCP 协议  │ │  AgentScope V2.0       │
+│   SpEL 规则   │ │ 30+ 工具  │ │  Model/Toolkit/Memory  │
+│   动态加载     │ │ SPI 扩展  │ │  Middleware/State      │
 └───────┬───────┘ └────┬──────┘ └────┬─────────────────┘
         │              │              │
 ┌───────▼──────────────▼──────────────▼─────────────────┐
@@ -149,7 +151,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 
 ## 框架适配
 
-本平台基于 **AgentScope-Java**（阿里巴巴开源，RC2 版本）构建。在实际使用中，我们对底层框架的一些设计限制做了适配：
+本平台基于 **AgentScope-Java**（阿里巴巴开源，V2.0.0-RC1 版本）构建。在实际使用中，我们对底层框架的一些设计限制做了适配：
 
 | 问题 | 根因 | 解决方案 | 文档 |
 |------|------|---------|------|
@@ -158,6 +160,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 | **MCP 工具组隔离** | 框架 Toolkit 单例模式，所有工具注册在同一实例 | 按 MCP 服务器名分组 + YAML 配置组激活 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
 | ~~**自建 LLM Provider**~~ | ✅ **已修复** — 拆除 `ChatModelProvider` 接口，复用框架 `OpenAIChatModel`/`AnthropicChatModel`/`DashScopeChatModel`  | 删除约 500 行自建代码，所有 Provider 由 `ModelFactory` 创建 | [配置 → 生成参数](docs/guide/06-configuration.md#生成参数配置) |
 | ~~**自建 Shell 安全**~~ | ✅ **已修复** — 拆除 `CommandSafetyClassifier`（~200 行），使用框架 `ShellCommandTool` | 白名单+平台验证器+审批回调，含多命令分隔符/路径穿越检测 | [配置 → Shell 安全](docs/guide/06-configuration.md#shell-命令安全配置) |
+| **RAG 知识库 API 弃用** | AgentScope 2.0.0-RC1 中 `Knowledge`/`LongTermMemory`/`RetrieveConfig` 标记 `@Deprecated(forRemoval=true)`，新 RAG 模块延后到后续 minor 版本 | 8 个文件添加 `@SuppressWarnings("removal")` + `TODO: AgentScope 2.0` 迁移标记，保持现有功能正常运行 | [配置 → 知识库](docs/guide/06-configuration.md#知识库rag配置) |
 
 所有适配代码位于项目中，不修改框架源码，框架升级时通过 try-catch 保证容错回退。
 

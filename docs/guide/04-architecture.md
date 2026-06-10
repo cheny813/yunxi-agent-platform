@@ -1,5 +1,7 @@
 # 04. 架构设计
 
+> **⚠️ V2.0 架构说明**：yunxi-agent-platform 已升级至 AgentScope V2.0.0-RC1。包结构已从 `framework/` / `infra/` / `shared/` 三层重构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等 13 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为 Middleware 体系（5 个 Hook → 6 个 Middleware），Pipeline 已移除，Skill 系统已替换为 V2.0 内置 SkillCurator。
+
 ## 软件架构理论基础
 
 ### 什么是软件架构
@@ -61,135 +63,76 @@
    高层依赖抽象，低层实现抽象
 ```
 
-**本框架的实践**：
-- `framework` 层定义 SPI 接口
-- `infra` 层实现 SPI 接口
-- `framework` 通过接口使用 `infra` 服务
+**本框架的实践**（V2.0 简化后）：
+- 顶层功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等）定义 SPI 接口
+- `agent-spi` 模块定义共享 SPI 扩展点
+- Spring `@Autowired` 依赖注入实现依赖倒置
 
 ---
 
 ## 本框架的分层架构
 
-### 四层架构详解
+### 四层架构详解（V2.0 简化后）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Layer 4: Business 业务层                                    │
-│  - 业务逻辑实现                                              │
+│  Layer 3: Business 业务层                                    │
+│  - 业务逻辑实现（YAML 配置 + 工作区文件）                      │
 │  - SPI 扩展实现                                              │
 │  - 领域模型                                                  │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 3: Framework 框架层                                   │
-│  - 核心能力封装                                              │
+│  Layer 2: Platform 平台层                                    │
+│  - Agent 编排、MCP、记忆、规则引擎（13 个功能包）               │
 │  - SPI 接口定义                                              │
-│  - 业务流程编排                                              │
+│  - 配置驱动自动装配                                            │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 2: Infra 基础设施层                                   │
-│  - 技术实现                                                  │
-│  - SPI 接口实现                                              │
-│  - 外部服务集成                                              │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 1: Shared 共享层                                      │
-│  - 通用组件                                                  │
-│  - SPI 接口定义                                              │
-│  - 基础工具                                                  │
+│  Layer 1: AgentScope 核心运行时                                │
+│  - Agent/Model/Toolkit/Middleware/State                     │
+│  - ReActAgent / HarnessAgent                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### 各层职责与关系
 
-#### Shared 共享层（最底层）
+#### AgentScope 核心运行时（底层）
 
-**定位**：被所有其他层引用，不依赖任何业务层
+**定位**：第三方 SDK 依赖（AgentScope V2.0.0-RC1），不可修改
 
 **职责**：
-- 定义技术无关的 SPI 接口
-- 提供通用工具类
-- 定义共享的 DTO 和实体
+- 提供 Agent/Model/Toolkit/Middleware/State 核心抽象
+- ReActAgent / HarnessAgent 运行时
+- Middleware 洋葱模型、SkillCurator 技能治理
 
-**设计原则**：
-- 零业务依赖
-- 纯技术抽象
-- 向后兼容
+#### Platform 平台层
 
-**示例**：
-```java
-// SPI 接口定义
-public interface CacheProvider {
-    void set(String key, Object value, Duration ttl);
-    <T> T get(String key, Class<T> type);
-}
+**定位**：核心能力层，提供生产级 Agent 平台服务
 
-// 通用工具
-public class JsonUtils {
-    public static String toJson(Object obj) { ... }
-}
+**职责**：
+- 实现 AgentScope 扩展点
+- Agent 编排自动装配（`AgentConfigurer`）
+- MCP 协议集成、规则引擎、记忆系统
+- 配置管理、持久化、会话管理
+
+**核心包**（`io.yunxi.platform`）：
+```
+agent/       ← Agent 核心（工厂、网关、Middleware、工作区）
+config/      ← 配置类
+gateway/     ← SSE 消息通道
+knowledge/   ← 知识库（⚠️ V2.0 弃用，待迁移）
+mcp/         ← MCP 协议层
+persistence/ ← 持久化（Milvus、Repository）
+security/    ← 安全（HITL、审计、认证）
+session/     ← 会话管理
+tracing/     ← 可观测性（OpenTelemetry）
+lifecycle/   ← 生命周期管理
+file/        ← 文件处理
+embedding/   ← Embedding 提供商
+cache/       ← Redis 缓存
 ```
 
-#### Infra 基础设施层
+#### Business 业务层
 
-**定位**：技术实现层，通过 SPI 向上层提供服务
-
-**职责**：
-- 实现 Shared 层的 SPI 接口
-- 集成外部技术（Redis、MySQL、Milvus）
-- 处理技术细节
-
-**设计原则**：
-- 实现接口，不定义接口
-- 被上层通过接口调用
-- 不依赖 Framework 或 Business 层
-
-**示例**：
-```java
-@Service
-public class RedisCacheService implements CacheProvider {
-    // 实现 CacheProvider 接口
-    // 使用 Redis 技术
-}
-```
-
-#### Framework 框架核心层
-
-**定位**：通用能力层，提供框架级服务
-
-**职责**：
-- 定义领域 SPI 接口
-- 实现核心业务逻辑（Agent 管理、对话编排）
-- 通过 SPI 使用 Infra 服务
-
-**设计原则**：
-- 依赖 Shared 层
-- 通过 SPI 接口使用 Infra 层
-- 不直接依赖 Infra 实现类
-- 不依赖 Business 层
-
-**示例**：
-```java
-@Service
-public class MemoryCoordinatorService {
-    // 依赖接口，不依赖实现
-    private final CacheProvider cacheProvider;
-    
-    public MemoryCoordinatorService(CacheProvider cacheProvider) {
-        this.cacheProvider = cacheProvider;
-    }
-}
-```
-
-#### Business 业务层（最上层）
-
-**定位**：业务逻辑层，实现具体业务场景
-
-**职责**：
-- 实现 Framework 层的 SPI 接口
-- 编写业务逻辑
-- 使用下层所有服务
-
-**设计原则**：
-- 实现 SPI 接口扩展框架
-- 编写纯业务代码
-- 不处理技术细节
+**定位**：业务逻辑层，通过 YAML 配置 + 工作区文件声明
 
 **示例**：
 ```yaml
@@ -220,29 +163,21 @@ tools:
 ```
 ┌─────────────────────────────────────────┐
 │           Business 业务层                │
-│  实现 Framework SPI                      │
-│  使用所有下层服务                         │
+│  YAML 配置 + 工作区文件声明域逻辑          │
+│  使用平台层所有服务                        │
 └─────────────┬───────────────────────────┘
-              │ 实现
+              │ 
               ▼
 ┌─────────────────────────────────────────┐
-│          Framework 框架层                │
-│  定义领域 SPI                            │
-│  使用 Shared SPI                         │
+│          Platform 平台层                 │
+│  13 个功能包：agent/config/gateway/       │
+│  knowledge/mcp/persistence/security/...  │
 └─────────────┬───────────────────────────┘
-              │ 使用（通过接口）
+              │ 依赖
               ▼
 ┌─────────────────────────────────────────┐
-│           Infra 基础设施层               │
-│  实现 Shared SPI                         │
-│  被上层通过接口使用                       │
-└─────────────┬───────────────────────────┘
-              │ 实现
-              ▼
-┌─────────────────────────────────────────┐
-│           Shared 共享层                  │
-│  定义技术 SPI                            │
-│  被所有层引用                             │
+│       AgentScope V2.0 核心运行时          │
+│  Agent/Model/Toolkit/Middleware/State    │
 └─────────────────────────────────────────┘
 ```
 
@@ -289,7 +224,7 @@ Agent 的生命周期可以看作一个状态机：
 
 ```java
 @Service
-public class AgentDomainService {
+public class AgentService {
     // Agent 缓存（统一使用 Agent 接口）
     private final Map<String, Agent> agentInstanceCache = new ConcurrentHashMap<>();
     
@@ -360,28 +295,21 @@ public class WeatherTools {
 
 `@Tool` 注解的方法会被 `Toolkit.registerTool(Object bean)` 自动扫描注册，无需手动维护注册表。框架自动从方法签名生成 JSON Schema。
 
-**McpToolRegistry 核心功能**：
+**McpServerRegistrar 核心功能**（V2.0 内置）：
 
 ```java
 @Service
-public class McpToolRegistry {
-    // 工具分组管理
-    private final Map<String, List<ToolHandler>> toolGroups = new ConcurrentHashMap<>();
+public class McpServerRegistrar {
+    // V2.0 内置 MCP 服务器注册器
+    // 替代原自定义 McpToolRegistry + McpBatchService + ToolCacheService + McpToolFactory
     
-    // 动态刷新（每30秒）
-    @Scheduled(fixedRate = 30000)
-    public void refreshTools() {
-        // 检查未连接的 MCP 服务器
-        // 自动重连
-    }
+    private final Map<String, List<AgentTool>> serverTools = new ConcurrentHashMap<>();
+    
+    // 注册 MCP 服务器工具
+    public void register(String serverName, List<AgentTool> tools) { ... }
     
     // 工具查找
-    public ToolHandler findTool(String serverName, String toolName) {
-        return toolGroups.get(serverName).stream()
-            .filter(t -> t.getName().equals(toolName))
-            .findFirst()
-            .orElseThrow();
-    }
+    public AgentTool findTool(String serverName, String toolName) { ... }
 }
 ```
 
@@ -463,10 +391,10 @@ public class ProfileRouter {
     
     public ChatAppService resolve(String agentName, String profile) {
         if (profile == null || profile.isBlank()) {
-            return agentDomainService.getAgentInstance(agentName);
+            return agentService.getAgentInstance(agentName);
         }
         String compositeKey = buildCompositeKey(agentName, profile);
-        return agentDomainService.getAgentInstance(compositeKey);
+        return agentService.getAgentInstance(compositeKey);
     }
     
     public List<ProfileInfo> getAvailableProfiles(String agentName) {
@@ -485,18 +413,18 @@ public class ProfileRouter {
 ```
 
 ---
-## 与 AgentScope-Java 的集成
+## 与 AgentScope V2.0 的集成
 
 ### 核心关系：引擎 vs 平台
 
-理解 yunxi-agent-platform 与 agentscope-javaRC2 的关系，可以用一个比喻：
+理解 yunxi-agent-platform 与 AgentScope V2.0 的关系：
 
 ```
-agentscope-javaRC2 = 发动机 + 变速箱 + 底盘（汽车核心组件）
+AgentScope V2.0 = 发动机 + 变速箱 + 底盘（汽车核心组件）
 yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘、安全气囊、中控系统、导航）
 ```
 
-**agentscope-javaRC2** 是通用 Agent SDK，提供 Agent 抽象、LLM 集成、消息系统、工具系统、Hook 机制——但它是**被嵌入的组件**，不是一个可部署的生产系统。
+**AgentScope V2.0** 是通用 Agent SDK，提供 Agent 抽象、LLM 集成、消息系统、工具系统、Middleware 机制——但它是**被嵌入的组件**，不是一个可部署的生产系统。
 
 **yunxi-agent-platform** 在此基础上构建了完整的**生产平台**，增加了以下 **7 层能力**：
 
@@ -507,10 +435,10 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 | **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
 | **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl` 8 步拦截链 | 否 |
 | **3. 多通道网关层** | 钉钉/飞书/企微/Web API 多渠道接入 | `agent-gateway` 模块、`MessageChannel` | 否 |
-| **4. 生产特性层** | 熔断器、HITL 人工审核、会话管理、分布式缓存、多租户 | `ToolCircuitBreaker`、`ToolGateHook`、`ConversationDomainService` | 否 |
+| **4. 生产特性层** | 熔断器、HITL 人工审核、会话管理、分布式缓存、多租户 | `ToolCircuitBreaker`、`ToolGateMiddleware`、`ConversationService` | 否 |
 | **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
 | **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
-| **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Pipeline/Routing | `AgentConfigurer`（~555行） | 否 |
+| **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Routing | `AgentConfigurer`（~555行） | 否 |
 
 ### 关键接线：具体桥接代码解读
 
@@ -563,7 +491,7 @@ public void configureAgents() {
 }
 ```
 
-这本质上是一个 **Agent 容器**——读取 YAML、创建 ModelProvider、构建 HarnessAgent、注册工具、注入 Hook。agentscope 只提供了 `ReActAgent.builder()`，但"怎么把几十个 YAML 配置变成可运行的 Agent 实例"这件事，完全是平台层的。
+这本质上是一个 **Agent 容器**——读取 YAML、创建 ModelProvider、构建 HarnessAgent、注册工具、注入 Middleware。AgentScope 只提供了 `HarnessAgent.builder()`，但"怎么把几十个 YAML 配置变成可运行的 Agent 实例"这件事，完全是平台层的。
 
 #### 3. ToolAdapter — 平台工具到 agentscope 的桥梁
 
@@ -659,9 +587,9 @@ public class ModelFactory {
 │  第 1 层: Spring Boot 集成 (AutoConfiguration)                    │
 │    @ConditionalOnProperty | Bean注册 | YAML加载                   │
 ├──────────────────────────────────────────────────────────────────┤
-│  agentscope-javaRC2 (嵌入式 SDK)                                  │
+│  AgentScope V2.0 (嵌入式 SDK)                                  │
 │                                                                  │
-│  ReActAgent | Agent接口 | Msg | Toolkit | Hook系统 | Pipeline     │
+│  HarnessAgent | Agent接口 | Msg | Toolkit | Middleware | State   │
 │  这是被嵌入的引擎，不是平台                                             │
 ├──────────────────────────────────────────────────────────────────┤
 │  基础设施: Spring Boot / LLM API / MySQL / Redis / Milvus        │
@@ -672,12 +600,12 @@ public class ModelFactory {
 
 | 功能 | AgentScope 提供 | yunxi 增强 | 增加的文件数 |
 |------|---------------|-----------|:---------:|
-| Agent 创建 | ReActAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 | ~15 |
+| Agent 创建 | HarnessAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 | ~15 |
 | 工具系统 | Tool + AgentTool 接口 | ToolAdapter 桥接 + 熔断器 + 本地/远程/MCP 统一注册 | ~12 |
 | LLM 集成 | Model (框架接口) + Factory | 复用框架内置 Provider + 百度/华为适配 + 缓存/角色映射支持 | ~3 |
 | 记忆 | InMemoryMemory | Harness 内置文件系统记忆 + 5 种持久化策略 + 场景管理 | ~15 |
-| MCP | 基础客户端 | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
-| 多 Agent | A2A 协议 | Supervisor/Pipeline/Routing 编排 + Profile 路由 | ~10 |
+| MCP | 基础客户端 → V2.0 McpServerRegistrar | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
+| 多 Agent | A2A 协议 | Supervisor/Routing 编排 + Profile 路由 | ~10 |
 | 网关 | 无 | 4 通道 + 会话 + 限流 + 认证 | ~20 |
 | 规则管控 | 无 | 三阶段规则引擎 + SpEL | ~15 |
 | 生产治理 | 无 | 熔断/审计/监控/HITL/优雅关闭 | ~12 |
@@ -708,14 +636,14 @@ Agent 运行时状态（Memory、PlanNotebook、消息历史等）由底层框�
     (每轮 ReAct)      (每轮推理后)           (每轮工具后)
             │                 │                  │
             ▼                 ▼                  ▼
-    GracefulShutdown    CompactionHook     GracefulShutdown
+    GracefulShutdown    CompactionMiddleware     GracefulShutdown
     (去重检测)           (消息压缩)          (checkpoint)
             │
             ▼
       PostCallEvent / ErrorEvent
             │
             ▼
-    SessionPersistenceHook (优先级 900)
+    SessionPersistenceMiddleware (优先级 900)
     → saveTo(session, sessionKey)
     → 递归收集所有 StateModule 的状态
     → 写入 Session 后端
@@ -760,10 +688,10 @@ agentscope:
 | 数据 | 存储后端 | 职责 | 查询方式 |
 |------|---------|------|---------|
 | Agent 运行时状态 | Session（workspace/redis） | 崩溃恢复、弹性迁移 | `agent.loadIfExists()` |
-| 会话元数据 | MySQL + Redis（ConversationDomainService） | 前端列表展示、标题搜索 | REST API |
-| 长期记忆 | workspace/MEMORY.md + memory/ 文件 | 跨会话知识积累 | HarnessAgent 内部 Hook |
+| 会话元数据 | MySQL + Redis（ConversationService） | 前端列表展示、标题搜索 | REST API |
+| 长期记忆 | workspace/MEMORY.md + memory/ 文件 | 跨会话知识积累 | HarnessAgent 内部 Middleware |
 
-三个存储层各司其职，不重复。Session 负责运行时恢复，ConversationDomainService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
+三个存储层各司其职，不重复。Session 负责运行时恢复，ConversationService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
 
 ---
 
@@ -835,7 +763,7 @@ private final CacheProvider cacheProvider;
 
 **实践方式**：
 ```java
-// AgentDomainService：只负责 Agent 生命周期
+// AgentService：只负责 Agent 生命周期
 // ChatAppService：只负责对话编排
 // RuleEngine：只负责规则执行
 ```

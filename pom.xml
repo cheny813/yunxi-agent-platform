@@ -33,7 +33,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <agentscope.version>1.1.0-RC2</agentscope.version>
+        <agentscope.version>2.0.0-RC1</agentscope.version>
         <agentscope-runtime.version>0.1.0</agentscope-runtime.version>
         <jacoco.version>0.8.12</jacoco.version>
         <!-- 第三方依赖版本 -->

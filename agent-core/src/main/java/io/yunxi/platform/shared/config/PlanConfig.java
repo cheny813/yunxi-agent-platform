@@ -1,6 +1,6 @@
 package io.yunxi.platform.shared.config;
 
-import io.yunxi.platform.framework.plan.model.PlanTemplate;
+import io.yunxi.platform.agent.plan.model.PlanTemplate;
 import java.util.List;
 
 /**
@@ -28,7 +28,7 @@ public class PlanConfig {
     /** 是否启用 Plan 可视化监控 */
     private boolean enableMonitor = false;
 
-    /** 规划模板列表 — 声明式定义常见任务的规划步骤结构 */
+    /** 规划模板列表 - 声明式定义常见任务的规划步骤结构 */
     private List<PlanTemplate> templates;
 
     public PlanConfig() {

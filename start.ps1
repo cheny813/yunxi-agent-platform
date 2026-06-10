@@ -74,11 +74,11 @@ $OTEL_SERVICE_NAME = "yunxi-agent-platform"
 # 【智能体框架 数据库】
 $MYSQL_HOST     = "127.0.0.1"
 $MYSQL_PORT     = "3306"
-$MYSQL_DATABASE = "agent_platform"
+$MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32xxxxxxxxxx08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b521ea86xxxxx60d8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"

@@ -6,7 +6,7 @@
 
 ## 架构
 
-通过实现 AgentScope SDK 的 `Tracer` 和 `Hook` 接口，在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
+通过实现 AgentScope V2.0 SDK 的 `Tracer` 和 `MiddlewareBase` 接口，在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
 
 ### 组件关系
 
@@ -22,7 +22,7 @@
                        │ 注册
              ┌─────────┴──────────┐
              │ OpenTelemetryTracer │  实现 Tracer 接口
-             │ ReActSpanHook      │  实现 Hook 接口
+             │ ReActSpanMiddleware   │  实现 MiddlewareBase 接口
              └─────────┬──────────┘
                        │
              ┌─────────▼──────────┐
@@ -33,13 +33,13 @@
              └─────────────────────┘
 ```
 
-### 与 SDK 内置 AgentTraceHook 的分工
+### 与 SDK 内置 AgentTraceMiddleware 的分工
 
 | 组件 | 机制 | 优先级 | 产出 |
 |------|------|--------|------|
-| `AgentTraceHook` | SLF4J 日志 | 0 | 文本日志 |
+| `AgentTraceMiddleware` | SLF4J 日志 | 0 | 文本日志 |
 | `OpenTelemetryTracer` | Tracer 接口 | SDK 内部 | llm.invoke / tool.execute Span |
-| `ReActSpanHook` | Hook 事件 | 30 | agent.call / react.iteration Span |
+| `ReActSpanMiddleware` | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
 
 ---
 
@@ -63,14 +63,11 @@ agent.call (agent.name="nutrition-assistant")
 
 | Span 名称 | 属性 | 说明 | 来源 |
 |-----------|------|------|------|
-| `agent.call` | `agent.name` | Agent 名称 | ReActSpanHook |
+| `agent.call` | `agent.name` | Agent 名称 | ReActSpanMiddleware |
 | | `agent.response_length` | 响应文本长度 | OpenTelemetryTracer |
-| `llm.invoke` | `llm.model` | 模型名称 | OpenTelemetryTracer |
-| | `llm.message_count` | 输入消息数量 | OpenTelemetryTracer |
-| `tool.execute` | `tool.name` | 工具名称 | OpenTelemetryTracer |
-| | `tool.result_size` | 执行结果大小 | OpenTelemetryTracer |
-| `react.iteration` | `react.iteration` | 当前迭代次数 | ReActSpanHook |
-| | `react.stop_requested` | 是否请求停止 | ReActSpanHook |
+|...|...|...|...|
+| `react.iteration` | `react.iteration` | 当前迭代次数 | ReActSpanMiddleware |
+| | `react.stop_requested` | 是否请求停止 | ReActSpanMiddleware |
 
 ---
 
@@ -168,9 +165,9 @@ docker run -d --name jaeger \
 ## 代码结构
 
 ```
-agent-core/.../framework/observability/
+agent-core/.../tracing/
 ├── OpenTelemetryTracer.java           # Tracer 接口实现（Model/Tool 层）
-├── ReActSpanHook.java                 # Hook 接口实现（Agent/迭代层）
+├── ReActSpanMiddleware.java           # MiddlewareBase 接口实现（Agent/迭代层）
 ├── LlmMetrics.java                    # LLM 指标收集
 └── ObservabilityAutoConfiguration.java # Spring Boot 自动配置
 ```

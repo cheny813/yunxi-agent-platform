@@ -2,7 +2,7 @@ package io.yunxi.platform.integration;
 
 import io.yunxi.platform.business.nutrition.service.SmartConversationService;
 import io.yunxi.platform.config.yunxiAgentPlatformApplication;
-import io.yunxi.platform.framework.profile.ConceptRegistry;
+import io.yunxi.platform.agent.profile.ConceptRegistry;
 import io.yunxi.platform.framework.notification.SseNotificationProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;

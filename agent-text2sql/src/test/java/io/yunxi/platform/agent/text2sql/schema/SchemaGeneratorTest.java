@@ -29,6 +29,7 @@ class SchemaGeneratorTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        when(databaseClient.isAvailable()).thenReturn(true);
     }
 
     @Nested

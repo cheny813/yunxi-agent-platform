@@ -264,7 +264,7 @@ ReAct 循环：
 | **限界上下文** | 领域的边界 | 通过 DomainContributor 定义 |
 | **实体 (Entity)** | 有唯一标识的对象 | Agent、Scene、Rule |
 | **值对象** | 无标识的属性集合 | AgentConfigDto、ChatRequest |
-| **领域服务** | 跨实体的业务逻辑 | ConversationDomainService、AgentDomainService |
+| **领域服务** | 跨实体的业务逻辑 | ConversationService、AgentService |
 
 **为什么使用 DDD**：
 - 业务逻辑与技术实现分离

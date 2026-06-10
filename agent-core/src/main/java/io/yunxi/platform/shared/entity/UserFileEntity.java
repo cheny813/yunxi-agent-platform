@@ -1,6 +1,6 @@
 package io.yunxi.platform.shared.entity;
 
-import io.yunxi.platform.infra.file.FileType;
+import io.yunxi.platform.file.FileType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
