@@ -9,8 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.ActiveProfiles;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -21,9 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 数据库初始化调试测试类
  * 用于诊断为什么data.sql文件没有自动执行
  */
-@SpringBootTest
-@TestPropertySource(locations = "classpath:application-test.yml")
-@Transactional
+@SpringBootTest(classes = io.yunxi.agent.rule.RuleEngineApplication.class)
+@ActiveProfiles("test")
 public class DatabaseInitializerTest {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseInitializerTest.class);
@@ -70,6 +68,10 @@ public class DatabaseInitializerTest {
 
     @Test
     public void testDataSqlCanBeExecuted() throws Exception {
+        // 先清空数据（避免与 Spring Boot 自动初始化冲突）
+        jdbcTemplate.execute("DELETE FROM rule_execution_log");
+        jdbcTemplate.execute("DELETE FROM rule");
+
         // 尝试手动执行data.sql文件
         try (Connection connection = dataSource.getConnection()) {
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("sql/data.sql"));

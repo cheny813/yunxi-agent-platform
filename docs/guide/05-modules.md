@@ -1,5 +1,7 @@
 # 05. 模块说明
 
+> **⚠️ V2.0 包结构变更**：agent-core 内部包结构已从 `framework/`/`shared/`/`infra/` 三层重构为扁平化的 13 个功能包。以下为更新后的结构。
+
 了解 yunxi Agent Platform 各模块的功能和职责。
 
 ## 模块概览
@@ -56,34 +58,59 @@ agent-spi → agent-config → agent-core → agent-gateway
 
 ## agent-core（核心框架）
 
-### 内部三层架构
+### agent-core 内部包结构（V2.0 扁平化后）
 
 ```
 agent-core/src/main/java/io/yunxi/platform/
-├── framework/     # 框架层：核心抽象与编排（最关键的包）
-├── shared/        # 共享层：DTO、实体、配置模型、Mapper、异常
-└── infra/         # 基础设施层：技术实现（Redis、Milvus、持久化）
+├── agent/        ← Agent 核心（工厂、网关、Middleware、工作区）
+├── cache/        ← Redis 缓存
+├── config/       ← 配置类（含 @ComponentScan 扫描）
+├── controller/   ← REST 控制器
+├── embedding/    ← Embedding 提供商
+├── file/         ← 文件处理
+├── gateway/      ← SSE 消息通道
+├── knowledge/    ← 知识库（⚠️ V2.0 弃用，待迁移）
+├── lifecycle/    ← 生命周期
+├── mcp/          ← MCP 协议层
+├── persistence/  ← 持久化（Milvus + Repository）
+├── security/     ← 安全（HITL、审计、认证）
+├── session/      ← 会话管理
+├── tracing/      ← 可观测性（OpenTelemetry）
+└── 以下目录仍保留在 framework/ 下（待迁移，参见 tasks.md）:
+    ├── a2a/          ← 跨服务 Agent 协作
+    ├── conversation/ ← 对话编排
+    ├── sync/         ← 数据同步
+    ├── tool/         ← 自定义工具
+    ├── memory/       ← 记忆系统
+    ├── prompt/       ← 场景检测
+    ├── intelligent/  ← 智能自动配置
+    ├── pageagent/    ← 页面 Agent
+    ├── desktop/      ← 桌面客户端中继
+    ├── structured/   ← Schema 注册
+    └── async/        ← 异步执行器配置
 ```
 
-### framework/ 框架层组件
-
-#### Agent 体系（framework/agent/）
+### agent/ Agent 核心包
 
 | 组件 | 说明 | 代码量 |
 |------|------|:-----:|
 | `AgentGateway` | 业务层唯一需要的接口，定义 call/callStream 方法 | 接口 |
 | `AgentGatewayImpl` | **核心实现** — 8 步拦截链：审计→限流→优雅关闭→超时→Pre→Agent.call→Post→监控 | ~430行 |
-| `AgentDomainService` | Agent 生命周期管理（创建、缓存、获取），通过 HarnessAgent 包装 ReActAgent | ~320行 |
+| `AgentService` | Agent 生命周期管理（创建、缓存、获取），通过 HarnessAgent 包装 | ~320行 |
 | `AgentConfigurer` | **Agent 自动装配引擎** — 启动时两轮初始化：独立 Agent → 编排 Agent | ~555行 |
 | `AgentInterruptService` | Agent 执行中断服务，封装 agentscope interrupt() API | ~240行 |
 | `AgentWorkspaceInitializer` | 工作区目录结构初始化（AGENTS.md、knowledge/ 等） | - |
-| `AdvancedAgentFactory` | 高级 Agent 创建工厂 | - |
+| `TempAgentFactory` | 临时 Agent 创建工厂（原名 AdvancedAgentFactory） | - |
 | `ProfileRouter` | Profile 路由：agentName + profile → Agent 实例 | - |
+| `ModelFactory` | 统一模型工厂，复用框架内置 Provider | - |
 
-扩展点（framework/agent/extension/）：
-- `AgentPreProcessor` — 调用前预处理
-- `AgentPostProcessor` — 调用后后处理
-- `AgentCustomizer` — 构建后自定义（5% 复杂场景）
+扩展点（agent/middleware/）：
+- `ContentFilterMiddleware` — 提示注入防护（替换原 ContentFilterHook）
+- `TextToolCallParserMiddleware` — 文本工具调用解析（替换原 TextToolCallParserHook）
+- `ToolGateMiddleware` — HITL 工具门控（替换原 ToolGateHook）
+- `ReasoningReviewMiddleware` — 推理审查（替换原 ReasoningReviewHook）
+- `ReActSpanMiddleware` — OpenTelemetry 链路追踪（替换原 ReActSpanHook）
+- `GracefulShutdownMiddleware` — 优雅关闭（替换原 GracefulShutdownHook）
 
 #### 工具体系（framework/tool/）
 
@@ -96,15 +123,14 @@ agent-core/src/main/java/io/yunxi/platform/
 | `ToolCircuitBreaker` | 工具级熔断器（Resilience4j） |
 | 实现类 | DatabaseTool、HttpTool、CalculatorTool、NodeTool 等 |
 
-#### MCP 协议（framework/mcp/）
+#### MCP 协议（mcp/）
 
 | 组件 | 说明 |
 |------|------|
-| `McpToolRegistry` | MCP 工具注册表，管理动态加载/刷新（每30秒自动重连） |
+| `McpServerRegistrar` | ✅ V2.0 内置 MCP 服务器注册器（替代 McpToolRegistry） |
 | `McpClientService` | MCP 客户端，JSON-RPC 2.0 协议调用 |
-| `McpToolFactory` | MCP 工具工厂 |
-| `CacheableTool` | 支持缓存的 MCP 工具 |
 | `McpClient` / `McpClientConfig` | MCP 客户端配置 |
+| `CacheableTool` | 支持缓存的 MCP 工具 |
 
 #### 其他框架组件
 
@@ -112,8 +138,8 @@ agent-core/src/main/java/io/yunxi/platform/
 |------|------|
 | `a2a/` | 跨服务 Agent 协作协议（A2AServer/A2AClient/A2ARegistry） |
 | `memory/` | 记忆系统（MemoryRecord/MemoryScene/MemorySceneRegistry + Harness 内置记忆） |
-| `skill/` | 技能系统（SkillManager/SkillRegistryService/SkillAdapter/SkillAutoCreator） |
-| `conversation/` | 对话编排（ChatAppService/ConversationDomainService） |
+| `skill/` | ❌ 已删除 — 替换为 V2.0 SkillCurator 治理流水线 |
+| `conversation/` | 对话编排（ChatAppService/ConversationService） |
 | `workspace/` | 工作区自动发现引擎 |
 | `session/` | 会话管理 |
 | `sync/` | 数据同步引擎（MySQL → Milvus） |
@@ -123,32 +149,21 @@ agent-core/src/main/java/io/yunxi/platform/
 | `hitl/` | Human-in-the-Loop（工具门控、推理审查） |
 | `security/` | 命令安全分类、节点审计 |
 | `embedding/` | 嵌入模型（DashScopeProvider/OpenAIProvider/BaiduProvider/HuaweiProvider/ClaudeProvider） |
-| `knowledge/` | 知识库创建器（Bailian/Dify/HayStack/RAGFlow/Simple） |
+| `knowledge/` | 知识库创建器（Bailian/Dify/HayStack/RAGFlow/Simple）⚠️ V2.0 弃用，待迁移 |
 | `controller/` | REST 控制器（Agent/Conversation/Tool/MCP/Plan/Config） |
 
-### shared/ 共享层组件
+### 已迁移的功能包（原 shared/infra 层）
 
-| 组件 | 说明 |
-|------|------|
-| `config/AgentDefinition` | 核心配置模型，从 YAML 加载 |
-| `config/AgentDefinitionLoader` | YAML 加载器（classpath:agent-definitions/*.yml） |
-| `config/AgentscopeCoreProperties` | Spring @ConfigurationProperties |
-| `dto/` | ChatRequest/ChatResponse/AgentInfoDto/AgentConfigDto 等 |
-| `entity/` | AgentEntity/ConversationEntity/SyncCursorEntity 等 |
-| `mapper/` | MyBatis Mapper 接口 |
-| `exception/` | AgentNotFoundException/BadRequestException 等 |
-| `util/` | 数据库工具、MCP 工具、文本解析等 |
-
-### infra/ 基础设施组件
-
-| 组件 | 说明 |
-|------|------|
-| `milvus/MilvusOperations` | Milvus 向量数据库操作 |
-| `persistence/` | 5 种持久化策略（Database/Milvus/Hybrid/Qdrant） |
-| `repository/` | ConversationRepository（Database/InMemory/Composite） |
-| `file/` | 文件上传、内容提取、向量处理 |
-| `monitoring/` | Pipeline 监控 |
-| `sse/` | SSE 推送支持 |
+| 原路径 | 目标路径 | 说明 |
+|--------|---------|------|
+| `shared/config/` | `config/` | 核心配置模型 + YAML 加载器 + @ConfigurationProperties |
+| `shared/dto/entity/mapper/exception/` | `persistence/` + 保留在 shared/ | DTO、实体、Mapper、异常 |
+| `infra/persistence/` + `infra/milvus/` | `persistence/` | 持久化策略 + Milvus 向量数据库 |
+| `infra/sse/` | `gateway/` | SSE 推送支持 |
+| `infra/file/` | `file/` | 文件处理 |
+| `infra/lifecycle/` | `lifecycle/` | 生命周期管理 |
+| `infra/monitoring/` + `framework/observability/` | `tracing/` | 可观测性 |
+| `infra/cache/` | `cache/` | Redis 缓存 |
 
 ---
 

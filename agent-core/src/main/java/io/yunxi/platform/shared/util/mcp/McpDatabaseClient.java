@@ -222,7 +222,7 @@ public class McpDatabaseClient {
         }
     }
 
-    // Getter 方法
+    // Getter 方法（待重构为 Lombok @Getter）
     public String getHost() {
         return host;
     }

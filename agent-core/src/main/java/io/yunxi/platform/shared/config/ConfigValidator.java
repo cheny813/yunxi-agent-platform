@@ -1,5 +1,7 @@
 package io.yunxi.platform.shared.config;
 
+import io.yunxi.platform.config.MilvusConfig;
+import io.yunxi.platform.config.AgentscopeExtensionProperties;
 import io.yunxi.platform.shared.constants.ConfigDefaults;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,8 +32,8 @@ import java.util.List;
 public class ConfigValidator {
 
     private final AgentscopeCoreProperties agentscopeProperties;
-    private final io.yunxi.platform.infra.config.MilvusConfig milvusConfig;
-    private final io.yunxi.platform.infra.config.AgentscopeExtensionProperties extensionProperties;
+    private final MilvusConfig milvusConfig;
+    private final AgentscopeExtensionProperties extensionProperties;
 
     /**
      * 应用启动后执行配置验证
@@ -156,7 +158,7 @@ public class ConfigValidator {
      * @param warnings 警告信息列表
      */
     private void validateA2AConfig(List<String> errors, List<String> warnings) {
-        io.yunxi.platform.infra.config.AgentscopeExtensionProperties.A2AConfig a2a = 
+        AgentscopeExtensionProperties.A2AConfig a2a = 
             extensionProperties.getA2a();
         
         if (a2a == null || !a2a.isEnabled()) {

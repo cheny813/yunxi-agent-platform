@@ -24,11 +24,11 @@
 ```
 第 4 层: 你的业务代码
   - 实现 yunxi 的 SPI 接口 (DomainContributor, SceneContributor)
-  - 调用 yunxi 的服务接口 (AgentDomainService, AgentGateway)
+  - 调用 yunxi 的服务接口 (AgentService, AgentGateway)
   - 编写业务逻辑
 
 第 3 层: yunxi Agent Platform
-  - AgentDomainService (Agent 生命周期管理，HarnessAgent 包装)
+  - AgentService (Agent 生命周期管理，HarnessAgent 包装)
   - AgentGateway (统一调用入口，含拦截链)
   - ChatAppService (对话编排，精简版)
   - SupervisorService (多 Agent 编排)
@@ -382,6 +382,8 @@ public class MyContextEnricher implements ContextEnricher {
 ---
 
 ## 创建自定义知识库类型
+
+> **⚠️ V2.0 兼容性说明**：`Knowledge`/`LongTermMemory`/`RetrieveConfig` 在 AgentScope 2.0.0-RC1 中标记为 `@Deprecated(forRemoval=true)`。新增知识库类型时请添加 `@SuppressWarnings("removal")` 并标注 `TODO: AgentScope 2.0 新 RAG 模块上线后迁移`。新 RAG 模块上线后本接口将更新签名以对接新的 SDK API。
 
 ### 扩展点：KnowledgeCreator
 

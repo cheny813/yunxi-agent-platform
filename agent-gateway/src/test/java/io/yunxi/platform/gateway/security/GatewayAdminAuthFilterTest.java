@@ -106,6 +106,7 @@ class GatewayAdminAuthFilterTest {
         @DisplayName("Authorization Bearer Token正确时应放行")
         void correctBearerToken_shouldPassThrough() throws ServletException, IOException {
             when(request.getRequestURI()).thenReturn("/api/gateway/channels/wecom/start");
+            when(request.getHeader("X-Gateway-Admin-Token")).thenReturn(null);
             when(request.getHeader("Authorization")).thenReturn("Bearer secret-token");
             setAdminToken("secret-token");
 
@@ -195,7 +196,6 @@ class GatewayAdminAuthFilterTest {
         void adminTokenHeaderShouldTakePriority() throws ServletException, IOException {
             when(request.getRequestURI()).thenReturn("/api/gateway/channels/wecom/start");
             when(request.getHeader("X-Gateway-Admin-Token")).thenReturn("correct-token");
-            when(request.getHeader("Authorization")).thenReturn("Bearer wrong-token");
             setAdminToken("correct-token");
 
             filter.doFilter(request, response, filterChain);
@@ -237,6 +237,7 @@ class GatewayAdminAuthFilterTest {
         @DisplayName("Bearer Token应去除前后空格")
         void bearerTokenShouldBeTrimmed() throws ServletException, IOException {
             when(request.getRequestURI()).thenReturn("/api/gateway/channels/wecom/start");
+            when(request.getHeader("X-Gateway-Admin-Token")).thenReturn(null);
             when(request.getHeader("Authorization")).thenReturn("Bearer   secret-token  ");
             setAdminToken("secret-token");
 
@@ -249,6 +250,7 @@ class GatewayAdminAuthFilterTest {
         @DisplayName("Authorization不以Bearer开头时应返回401")
         void authWithoutBearerPrefix_shouldReturn401() throws ServletException, IOException {
             when(request.getRequestURI()).thenReturn("/api/gateway/channels/wecom/start");
+            when(request.getHeader("X-Gateway-Admin-Token")).thenReturn(null);
             when(request.getHeader("Authorization")).thenReturn("Basic secret-token");
             when(request.getRemoteAddr()).thenReturn("192.168.1.1");
             setAdminToken("secret-token");

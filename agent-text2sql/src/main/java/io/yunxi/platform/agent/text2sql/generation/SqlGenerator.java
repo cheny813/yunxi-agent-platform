@@ -227,7 +227,7 @@ public class SqlGenerator {
         // 移除 Markdown 代码块标记
         sql = sql.replaceAll("```sql", "");
         sql = sql.replaceAll("```", "");
-        sql = sql.replaceAll("~~.*~~", "");
+        sql = sql.replace("~~", "");
 
         // 移除多余空格和换行
         sql = sql.trim();

@@ -1,16 +1,16 @@
 package io.yunxi.platform.shared.exception;
 
 /**
- * MCP 瀹㈡埛绔紓甯?
+ * MCP 客户端异常
  * <p>
- * 用于灏佽 MCP 瀹㈡埛绔皟鐢ㄨ繃绋嬩腑鐨勫紓甯告儏鍐?
+ * 用于封装 MCP 客户端调用过程中的异常情况
  * </p>
  *
  */
 public class McpClientException extends RuntimeException {
 
     /**
-     * 构€?MCP 瀹㈡埛绔紓甯?
+     * 构造 MCP 客户端异常
      *
      * @param message 错误信息
      */
@@ -19,10 +19,10 @@ public class McpClientException extends RuntimeException {
     }
 
     /**
-     * 构€?MCP 瀹㈡埛绔紓甯?
+     * 构造 MCP 客户端异常
      *
      * @param message 错误信息
-     * @param cause   鍘熷异常
+     * @param cause   原始异常
      */
     public McpClientException(String message, Throwable cause) {
         super(message, cause);

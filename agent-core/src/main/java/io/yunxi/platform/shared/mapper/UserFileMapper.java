@@ -3,7 +3,7 @@ package io.yunxi.platform.shared.mapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import io.yunxi.platform.infra.file.FileType;
+import io.yunxi.platform.file.FileType;
 import io.yunxi.platform.shared.entity.UserFileEntity;
 
 import java.util.List;

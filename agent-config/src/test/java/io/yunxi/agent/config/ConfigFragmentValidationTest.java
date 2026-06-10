@@ -181,14 +181,16 @@ class ConfigFragmentValidationTest {
         assertTrue(Files.exists(Paths.get("src/main/resources/application.yml")),
             "Main application.yml should exist");
         
-        assertTrue(Files.exists(Paths.get("src/main/resources/async.yml")),
-            "Async config should exist");
+        // config/*.yml 已按功能拆分到 config/ 子目录，通过 application.yml 的
+        // spring.config.import 机制加载（参见 config/imports.yml）
+        assertTrue(Files.exists(Paths.get("src/main/resources/config/async.yml")),
+            "Async config should exist under config/");
         
-        assertTrue(Files.exists(Paths.get("src/main/resources/cache.yml")),
-            "Cache config should exist");
+        assertTrue(Files.exists(Paths.get("src/main/resources/config/cache.yml")),
+            "Cache config should exist under config/");
         
-        assertTrue(Files.exists(Paths.get("src/main/resources/server.yml")),
-            "Server config should exist");
+        assertTrue(Files.exists(Paths.get("src/main/resources/config/server.yml")),
+            "Server config should exist under config/");
     }
 
     @Test
@@ -240,9 +242,9 @@ class ConfigFragmentValidationTest {
     void testYamlSyntaxValidity() {
         // 验证所有YAML文件语法正确性
         validateYamlFile("application.yml");
-        validateYamlFile("async.yml");
-        validateYamlFile("cache.yml");
-        validateYamlFile("server.yml");
+        validateYamlFile("config/async.yml");
+        validateYamlFile("config/cache.yml");
+        validateYamlFile("config/server.yml");
         
         // 验证配置目录中的所有文件
         try {

@@ -6,9 +6,9 @@ import org.springframework.lang.Nullable;
 import java.util.function.Supplier;
 
 /**
- * 异常处理宸ュ叿绫?
+ * 异常工具类
  * <p>
- * 提供统一鐨勫紓甯稿鐞嗘ā寮忥紝閬垮厤閲嶅鐨?try-catch 浠ｇ爜
+ * 提供统一的异常处理方式，避免重复的 try-catch 代码
  * </p>
  *
  */
@@ -16,18 +16,18 @@ import java.util.function.Supplier;
 public final class ExceptionUtils {
 
     private ExceptionUtils() {
-        // 宸ュ叿绫讳笉鍏佽实例鍖?
+        // 工具类不允许实例化
     }
 
     /**
-     * 执行操作锛屾崟鑾峰紓甯稿苟转换涓鸿繍琛屾椂异常
+     * 执行操作，捕获异常并转为运行时异常
      *
-     * @param operation    瑕佹墽琛岀殑操作
-     * @param errorMessage 错误信息模板
-     * @param args         错误信息参数
-     * @param <T>          返回鍊肩被鍨?
+     * @param operation    要执行的操作
+     * @param errorMessage 错误消息模板
+     * @param args         消息参数
+     * @param <T>          值类型
      * @return 操作结果
-     * @throws RuntimeException 褰撴搷浣滄姏鍑哄紓甯告椂
+     * @throws RuntimeException 当操作抛出异常时
      */
     public static <T> T executeOrThrow(Supplier<T> operation, String errorMessage, Object... args) {
         try {
@@ -40,32 +40,33 @@ public final class ExceptionUtils {
     }
 
     /**
-     * 执行操作锛屾崟鑾峰紓甯稿苟返回默认鍊?
+     * 执行操作，捕获异常并返回默认值
      *
-     * @param operation    瑕佹墽琛岀殑操作
-     * @param defaultValue 默认鍊?
+     * @param operation    要执行的操作
+     * @param defaultValue 默认值
      * @param logError     是否记录错误日志
-     * @param <T>          返回鍊肩被鍨?
-     * @return 操作结果鎴栭粯璁ゅ€?
+     * @param <T>          值类型
+     * @return 操作结果或默认值
      */
     public static <T> T executeOrDefault(Supplier<T> operation, T defaultValue, boolean logError) {
         try {
             return operation.get();
         } catch (Exception e) {
             if (logError) {
-                log.warn("操作执行失败锛屼娇鐢ㄩ粯璁ゅ€? {}", e.getMessage());
+                log.warn("执行失败，使用默认值: {}", e.getMessage());
             }
+
             return defaultValue;
         }
     }
 
     /**
-     * 执行操作锛屾崟鑾峰紓甯稿苟返回 null
+     * 执行操作，捕获异常并返回 null
      *
-     * @param operation 瑕佹墽琛岀殑操作
+     * @param operation 要执行的操作
      * @param logError  是否记录错误日志
-     * @param <T>       返回鍊肩被鍨?
-     * @return 操作结果鎴?null
+     * @param <T>       值类型
+     * @return 操作结果或 null
      */
     @Nullable
     public static <T> T executeOrNull(Supplier<T> operation, boolean logError) {
@@ -73,9 +74,9 @@ public final class ExceptionUtils {
     }
 
     /**
-     * 执行操作锛屽拷鐣ュ紓甯?
+     * 执行操作，静默忽略异常
      *
-     * @param operation 瑕佹墽琛岀殑操作
+     * @param operation 要执行的操作
      * @param logError  是否记录错误日志
      */
     public static void executeQuietly(Runnable operation, boolean logError) {
@@ -83,27 +84,27 @@ public final class ExceptionUtils {
             operation.run();
         } catch (Exception e) {
             if (logError) {
-                log.warn("闈欓粯执行操作失败: {}", e.getMessage());
+                log.warn("静默执行失败: {}", e.getMessage());
             }
         }
     }
 
     /**
-     * 包装鍙楁异常涓鸿繍琛屾椂异常
+     * 包装受检异常为运行时异常
      *
-     * @param e 鍙楁异常
-     * @return 运行鏃跺紓甯?
+     * @param e 受检异常
+     * @return 运行时异常
      */
     public static RuntimeException wrap(Exception e) {
         return e instanceof RuntimeException ? (RuntimeException) e : new RuntimeException(e);
     }
 
     /**
-     * 包装鍙楁异常涓鸿繍琛屾椂异常锛堝甫消息锛?
+     * 包装受检异常为运行时异常（带消息）
      *
-     * @param e       鍙楁异常
+     * @param e       受检异常
      * @param message 错误消息
-     * @return 运行鏃跺紓甯?
+     * @return 运行时异常
      */
     public static RuntimeException wrap(Exception e, String message) {
         return e instanceof RuntimeException ? (RuntimeException) e : new RuntimeException(message, e);

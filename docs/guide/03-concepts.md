@@ -1,5 +1,7 @@
 # 03. 核心概念
 
+> **⚠️ V2.0 更新**：AgentScope V2.0 将 Hook 体系替换为 Middleware 体系（5 个拦截点），包结构已扁平化（移除 framework/infra 分层），Pipeline 已删除，Skill 系统替换为 SkillCurator。
+
 ## 理论基础
 
 ### 什么是 Agent 的核心能力
@@ -428,18 +430,18 @@ public enum BuiltinMode {
 └─────────────────────────────────────────┘
 ```
 
-### HarnessAgent 记忆管理（运行时）
+### HarnessAgent 记忆管理（运行时，V2.0 Middleware 模式）
 
-HarnessAgent 通过内置 Hook 自动管理 Agent 执行过程中的记忆持久化：
+HarnessAgent 通过内置 Middleware 自动管理 Agent 执行过程中的记忆持久化：
 
-| Hook | 优先级 | 职责 |
-|------|--------|------|
-| `MemoryFlushHook` | 5 | 每次 Agent 调用完成后将记忆刷新到持久化存储 |
-| `MemoryMaintenanceHook` | 6 | 定期归档和压缩记忆文件，防止无限增长 |
-| `CompactionHook` | 10 | 上下文溢出时通过 LLM 摘要压缩，然后重试调用 |
-| `ToolResultEvictionHook` | — | 将过大的工具调用结果卸载到文件系统 |
+| Middleware | 职责 |
+|------|------|
+| `MemoryFlushMiddleware` | 每次 Agent 调用完成后将记忆刷新到持久化存储 |
+| `MemoryMaintenanceMiddleware` | 定期归档和压缩记忆文件，防止无限增长 |
+| `CompactionMiddleware` | 上下文溢出时通过 LLM 摘要压缩，然后重试调用 |
+| `ToolResultEvictionMiddleware` | 将过大的工具调用结果卸载到文件系统 |
 
-当前集成阶段，这些 Hook 默认**启用**（`disableMemoryHooks` 默认 `false`，参见 `HarnessAgent.Builder` 源码），无需额外配置。如有特殊需求可通过 Builder 的 `disableMemoryHooks()` 方法关闭。
+当前集成阶段，这些 Middleware 默认**启用**，无需额外配置。如有特殊需求可通过 HarnessAgent.Builder 的 `disableMemoryMiddleware()` 方法关闭。
 
 #### 记忆管理的两层架构
 
@@ -447,7 +449,7 @@ HarnessAgent 通过内置 Hook 自动管理 Agent 执行过程中的记忆持久
 
 | 层 | 所属项目 | 职责 | 可控性 |
 |---|---|---|---|
-| **底层框架** | `agentscope-harness`（外部依赖） | `MemoryFlushHook` → 写 `memory/YYYY-MM-DD.md`（每日流水）<br>`MemoryMaintenanceHook` → `MemoryConsolidator`（LLM 合并 → MEMORY.md） | 不可直接修改，提示词写死在 `MemoryConsolidator.java` 的 `private static final` 常量中 |
+| **底层框架** | `agentscope-harness`（外部依赖） | MemoryFlushMiddleware → 写 `memory/YYYY-MM-DD.md`（每日流水）<br>MemoryMaintenanceMiddleware → `MemoryConsolidator`（LLM 合并 → MEMORY.md） | 不可直接修改，提示词写死在 `MemoryConsolidator.java` 的 `private static final` 常量中 |
 | **应用框架** | `yunxi-agent-platform`（本项目） | Agent 系统提示词中的回答风格约束<br>Agent 定义 YAML 中的行为规范<br>工作区文件的维护和清理 | 完全可控，通过修改 `agent-definitions/*.yml` 的 `prompt` 字段实现 |
 
 **典型问题处理链路（以 Agent 回复 verbose 为例）：**
@@ -883,25 +885,19 @@ public class MyTool implements ToolHandler {
 ```
 ┌─────────────────────────────────────────┐
 │           Business 业务层                │
-│  - 实现 Framework SPI 接口               │
+│  - 实现 SPI 接口 (agent-spi)             │
 │  - 编写业务逻辑                          │
 ├─────────────────────────────────────────┤
 │  SPI 接口 ←── 实现                       │
 ├─────────────────────────────────────────┤
-│          Framework 框架层                │
-│  - 定义领域 SPI 接口                      │
+│          Platform 平台层                 │
+│  - 13 个功能包定义业务 SPI                │
 │  - 调用 SPI 实现                         │
 │  - 编排业务流程                          │
 ├─────────────────────────────────────────┤
 │  SPI 接口 ←── 实现                       │
 ├─────────────────────────────────────────┤
-│           Infra 基础设施层               │
-│  - 实现 Shared SPI 接口                   │
-│  - 提供技术实现                          │
-├─────────────────────────────────────────┤
-│  SPI 接口 ←── 定义                       │
-├─────────────────────────────────────────┤
-│           Shared 共享层                  │
+│           agent-spi 模块                 │
 │  - 定义技术无关的 SPI 接口                │
 └─────────────────────────────────────────┘
 ```

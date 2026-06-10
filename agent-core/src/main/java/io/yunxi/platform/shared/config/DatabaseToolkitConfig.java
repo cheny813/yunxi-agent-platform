@@ -1,10 +1,10 @@
 package io.yunxi.platform.shared.config;
 
-import io.yunxi.platform.shared.util.database.DatabaseToolkit;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
+
+import io.yunxi.platform.shared.util.database.DatabaseToolkit;
 
 /**
  * Database Toolkit 配置类
