@@ -1,5 +1,50 @@
 # 更新日志
 
+## [3.5.0] - 2026-06-26
+
+### 🏗️ 升级 AgentScope 框架至 2.0.0-RC3（破坏性升级）
+
+此次升级是一次全面采用新框架 API 的破坏性升级，删除了所有已被框架替代的旧代码和废弃 API。
+
+#### 框架 API 变更适配
+
+- **`Session` → `DistributedStore`**：RC3 完全删除 `io.agentscope.core.session` 包。原 `Session session` 注入改为 `DistributedStore distributedBackend`，现有 `RedisDistributedStore.fromJedis(jedis)` 替代 `SessionFactory.createRedisSession()`。新增 `RedisDistributedBackendConfig.java` 按 `@ConditionalOnClass` 自动装配。Redis 扩展依赖从 `agentscope-extensions-session-redis:1.0.12` 升级到 `agentscope-extensions-redis:2.0.0-RC3`。
+- **`Tracer`/`TracerRegistry` 废弃 → OpenTelemetry 直连**：删除 `OpenTelemetryTracer.java`，改用 OpenTelemetry 全局实例 `GlobalOpenTelemetry.get()`。
+- **`stream()` → `streamEvents()`**：`StreamableAgent.stream()` 在 RC3 废弃。所有调用方（`AgentGatewayImpl`、`ChatAppService`、`ConversationController`）改为 `harnessAgent.streamEvents(List.of(msgs))`，按 `AgentEventType` 过滤事件。
+- **`Model` 创建 → `ModelRegistry` 工厂机制**：`ModelFactory.init()` 使用 `ModelRegistry.registerFactory()` 注册各 Provider 工厂（`openai:.+`、`dashscope:.+` 等），API Key 解析优先级为 provider 级配置 → 全局配置 → 环境变量。
+- **`MiddlewareBase` 签名变更**：RC3 给所有 Middleware 方法添加 `RuntimeContext ctx` 参数。6 个 Middleware 文件（`ContentFilterMiddleware`、`ToolGateMiddleware`、`ReasoningReviewMiddleware`、`TextToolCallParserMiddleware`、`KnowledgeRetrievalMiddleware`、`ReActSpanMiddleware`）全部更新签名。
+- **A2A 模块包名变更**：`spring-boot-starter-runtime-a2a:0.1.0` → `agentscope-a2a-spring-boot-starter:${agentscope.version}`，`@SpringBootApplication(exclude=...)` 包名同步更新。
+- **`Event`/`EventType` → `AgentEvent`/`AgentEventType`**：所有事件处理和转换代码适配新的事件类体系。
+
+#### 新增
+
+- **RedisDistributedBackendConfig**：按 `@ConditionalOnClass` 自动装配 `RedisDistributedStore`。
+- **ModelFactory.registerFactory()**：利用 RC3 `ModelRegistry` 机制集中注册 Provider 工厂。
+- **Plan.java / SubTask.java**：本地模型类替代框架已删除的 `io.agentscope.core.plan.model` 包。
+
+### 🔥 移除
+
+- **OpenTelemetryTracer.java**：因框架 `TracerRegistry` 废弃，改用全局 OpenTelemetry API。
+- **RedisSessionConfig.java**：被 `RedisDistributedBackendConfig` 替代。
+- **ToolGateHook.java**：被 `ToolGateMiddleware` 替代（Hook → Middleware 迁移）。
+- **ReasoningReviewHook.java**：被 `ReasoningReviewMiddleware` 替代。
+- **所有对 `stream()`、`Tracer`、`TracerRegistry` 的废弃 API 引用**：zero warnings。
+
+### 🔧 变更
+
+- **start.ps1**：添加 `-Djava.net.preferIPv4Stack=true` 解决 `UnresolvedAddressException`（IPv6 优先导致 DashScope DNS 解析失败）。
+- **GlobalExceptionHandler**：添加 SSE 流感知错误处理——检测 `Content-Type: text/event-stream` 时直接写入 SSE error 事件，避免 `HttpMessageNotWritableException`。
+- **ChatAppService.buildStreamResponse()**：添加 `.onErrorResume()` 将 `streamEvents()` 中的异常转为 SSE error 事件，防止异常传播到 WebFlux 响应层。
+- **agent-integration-test**：打包方式改为 `pom` + `maven-jar-plugin` skip，消除空 JAR 警告。
+- **milvus.yml**：默认 `enabled: false`，消除 Milvus 未启动时的连接超时报错。
+
+### 📝 文档更新
+
+- README.md：版本号更新为 RC3；框架适配表新增 Session → DistributedStore、Tracer 废弃 2 项 ✅ 已修复。
+- CHANGELOG.md：新增 3.5.0 版本记录。
+
+---
+
 ## [3.4.0] - 2026-06-04
 
 ### 🏗️ 复用底层框架能力（避免重复造轮子）

@@ -1,4 +1,6 @@
-# 16. 可观测性
+# 15. 可观测性
+
+> **⚠️ V2.0-RC3 更新**：AgentScope V2.0.0-RC3 废弃了 `Tracer`/`TracerRegistry` 接口，改用 OpenTelemetry 直连 API。平台已删除 `OpenTelemetryTracer.java`，通过 `ReActSpanMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
 
 了解 yunxi Agent Platform 的可观测性设计。
 
@@ -6,7 +8,7 @@
 
 ## 架构
 
-通过实现 AgentScope V2.0 SDK 的 `Tracer` 和 `MiddlewareBase` 接口，在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
+通过实现 AgentScope V2.0 SDK 的 `MiddlewareBase` 接口（V2.0-RC3 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
 
 ### 组件关系
 
@@ -14,14 +16,13 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    AgentScope SDK                           │
 │                                                             │
-│  AgentBase.call() → TracerRegistry → OpenTelemetryTracer  │
-│  ReActAgent 内部  → callModel() / callTool()              │
-│  迭代循环         → Hook.onEvent() (12种事件)             │
-│  Reactor Context  → Hooks.onEachOperator 自动传播         │
+│  AgentBase.call() → Middleware 洋葱模型                      │
+│  ReActAgent 内部  → callModel() / callTool()               │
+│  迭代循环         → Middleware.onReasoning/onActing         │
+│  Reactor Context  → Hooks.onEachOperator 自动传播           │
 └──────────────────────┬──────────────────────────────────────┘
                        │ 注册
              ┌─────────┴──────────┐
-             │ OpenTelemetryTracer │  实现 Tracer 接口
              │ ReActSpanMiddleware   │  实现 MiddlewareBase 接口
              └─────────┬──────────┘
                        │
@@ -33,13 +34,15 @@
              └─────────────────────┘
 ```
 
-### 与 SDK 内置 AgentTraceMiddleware 的分工
+### 与 SDK 组件分工
 
 | 组件 | 机制 | 优先级 | 产出 |
 |------|------|--------|------|
-| `AgentTraceMiddleware` | SLF4J 日志 | 0 | 文本日志 |
-| `OpenTelemetryTracer` | Tracer 接口 | SDK 内部 | llm.invoke / tool.execute Span |
-| `ReActSpanMiddleware` | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
+| `AgentTraceMiddleware`（框架内置） | SLF4J 日志 | 0 | 文本日志 |
+| `ReActSpanMiddleware`（平台自建） | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
+| OpenTelemetry 全局实例 | 直连 API | SDK 内部 | llm.invoke / tool.execute Span |
+
+> V2.0-RC3 之前：框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。RC3 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
 
 ---
 
@@ -64,7 +67,7 @@ agent.call (agent.name="nutrition-assistant")
 | Span 名称 | 属性 | 说明 | 来源 |
 |-----------|------|------|------|
 | `agent.call` | `agent.name` | Agent 名称 | ReActSpanMiddleware |
-| | `agent.response_length` | 响应文本长度 | OpenTelemetryTracer |
+| | `agent.response_length` | 响应文本长度 | 框架内部 Span |
 |...|...|...|...|
 | `react.iteration` | `react.iteration` | 当前迭代次数 | ReActSpanMiddleware |
 | | `react.stop_requested` | 是否请求停止 | ReActSpanMiddleware |
@@ -166,13 +169,14 @@ docker run -d --name jaeger \
 
 ```
 agent-core/.../tracing/
-├── OpenTelemetryTracer.java           # Tracer 接口实现（Model/Tool 层）
 ├── ReActSpanMiddleware.java           # MiddlewareBase 接口实现（Agent/迭代层）
 ├── LlmMetrics.java                    # LLM 指标收集
 └── ObservabilityAutoConfiguration.java # Spring Boot 自动配置
 ```
 
-核心代码约 650 行，零侵入现有业务代码。
+核心代码约 530 行，零侵入现有业务代码。
+
+> **注**：`OpenTelemetryTracer.java`（约 120 行）已在 V2.0-RC3 升级中删除。框架不再需要平台实现 `Tracer` 接口，改为内部直接使用 `GlobalOpenTelemetry`。
 
 ---
 
