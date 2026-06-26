@@ -1,6 +1,6 @@
 # 03. 核心概念
 
-> **⚠️ V2.0 更新**：AgentScope V2.0 将 Hook 体系替换为 Middleware 体系（5 个拦截点），包结构已扁平化（移除 framework/infra 分层），Pipeline 已删除，Skill 系统替换为 SkillCurator。
+> **⚠️ V2.0-RC3 更新**：AgentScope V2.0 将 Hook 体系替换为 Middleware 体系（6 个拦截点），`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），Pipeline 已删除，Skill 系统替换为 SkillCurator。
 
 ## 理论基础
 

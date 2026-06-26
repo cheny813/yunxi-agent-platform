@@ -1,6 +1,6 @@
 # 04. 架构设计
 
-> **⚠️ V2.0 架构说明**：yunxi-agent-platform 已升级至 AgentScope V2.0.0-RC1。包结构已从 `framework/` / `infra/` / `shared/` 三层重构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等 13 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为 Middleware 体系（5 个 Hook → 6 个 Middleware），Pipeline 已移除，Skill 系统已替换为 V2.0 内置 SkillCurator。
+> **⚠️ V2.0-RC3 架构说明**：yunxi-agent-platform 已升级至 AgentScope V2.0.0-RC3。包结构已从 `framework/` / `infra/` / `shared/` 三层重构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等 13 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为 Middleware 体系（6 个 Middleware），Pipeline 已移除，Skill 系统已替换为 V2.0 内置 SkillCurator。`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`）。
 
 ## 软件架构理论基础
 
@@ -96,11 +96,11 @@
 
 #### AgentScope 核心运行时（底层）
 
-**定位**：第三方 SDK 依赖（AgentScope V2.0.0-RC1），不可修改
+**定位**：第三方 SDK 依赖（AgentScope V2.0.0-RC3），不可修改
 
 **职责**：
 - 提供 Agent/Model/Toolkit/Middleware/State 核心抽象
-- ReActAgent / HarnessAgent 运行时
+- ReActAgent / HarnessAgent 运行时（注：RC3 中 HarnessAgent 不再继承 ReActAgent，两者各自实现 Agent 接口）
 - Middleware 洋葱模型、SkillCurator 技能治理
 
 #### Platform 平台层
@@ -600,7 +600,7 @@ public class ModelFactory {
 
 | 功能 | AgentScope 提供 | yunxi 增强 | 增加的文件数 |
 |------|---------------|-----------|:---------:|
-| Agent 创建 | HarnessAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 | ~15 |
+| Agent 创建 | HarnessAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 + DistributedStore | ~15 |
 | 工具系统 | Tool + AgentTool 接口 | ToolAdapter 桥接 + 熔断器 + 本地/远程/MCP 统一注册 | ~12 |
 | LLM 集成 | Model (框架接口) + Factory | 复用框架内置 Provider + 百度/华为适配 + 缓存/角色映射支持 | ~3 |
 | 记忆 | InMemoryMemory | Harness 内置文件系统记忆 + 5 种持久化策略 + 场景管理 | ~15 |
@@ -613,9 +613,11 @@ public class ModelFactory {
 ### 诚实的评估：哪些代码可以优化？
 
 1. **YAML 配置 → DTO 的转换链**：`AgentDefinition` → `AgentConfigDto` → `AgentInfoDto` 有多层映射，部分可以合并
-2. ~~**自建 LLM Provider**~~：✅ **已修复** — 拆除 `ChatModelProvider` 接口及 3 个自建 Provider，复用框架 `OpenAIChatModel`/`AnthropicChatModel`/`DashScopeChatModel`
+2. ~~**自建 LLM Provider**~~：✅ **已修复** — 拆除 `ChatModelProvider` 接口及 3 个自建 Provider，复用框架 `ModelRegistry` 工厂机制
 3. ~~**自建 Shell 命令安全**~~：✅ **已修复** — 拆除 `CommandSafetyClassifier`，使用框架 `ShellCommandTool` 白名单/验证器
-4. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
+4. ~~**Session 包删除适配**~~：✅ **已适配** — RC3 删除 `Session` 包，改用 `DistributedStore` + `RedisDistributedStore.fromJedis()`
+5. ~~**Tracer 废弃适配**~~：✅ **已适配** — 删除 `OpenTelemetryTracer.java`，改用全局 `OpenTelemetry` API
+6. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
 
 但**绝大多数代码是合理的**——它们解决的是不同层次的问题。业务工具只需实现简单的 `Tool` 接口就能被 Agent 调用，这才是平台的价值所在。
 
