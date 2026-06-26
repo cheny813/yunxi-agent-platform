@@ -2,12 +2,13 @@ package io.yunxi.platform.agent;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.model.Model;
-import io.agentscope.core.session.Session;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.shutdown.GracefulShutdownManager;
 import io.agentscope.core.shutdown.GracefulShutdownMiddleware;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.tool.subagent.SubAgentConfig;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.DistributedStore;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
 import io.yunxi.platform.agent.middleware.ReasoningReviewMiddleware;
@@ -90,8 +91,8 @@ public class AgentConfigurer implements SmartLifecycle {
     /** ReAct 链路追踪 Middleware 提供者（可选），用于 OpenTelemetry 分布式追踪 */
     private final ObjectProvider<ReActSpanMiddleware> reactSpanMiddlewareProvider;
 
-    /** Agent 会话实例（可选），用于支持 Agent 间的会话共享 */
-    private Session session;
+    /** Agent 分布式后端（可选），提供 AgentStateStore + BaseStore + SandboxSnapshot 一站式配置 */
+    private DistributedStore distributedBackend;
 
     /**
      * 构造 Agent 配置器，通过 Spring 依赖注入获取所有必要组件。
@@ -124,12 +125,22 @@ public class AgentConfigurer implements SmartLifecycle {
     }
 
     /**
-     * 设置 Agent 会话实例。
+     * 设置分布式后端实例。
      *
-     * @param session Agent 会话实例
+     * <p>
+     * V2.0-RC3: 使用 {@link DistributedStore} 统一接口替代旧 {@code Session}，
+     * 一次性配置 AgentStateStore + BaseStore + SandboxSnapshotSpec。
+     * </p>
+     *
+     * @param backends DistributedStore 实例（可选，多个时取第一个非空值）
      */
-    public void setSession(Session session) {
-        this.session = session;
+    public void setDistributedBackend(DistributedStore... backends) {
+        for (DistributedStore ds : backends) {
+            if (ds != null) {
+                this.distributedBackend = ds;
+                return;
+            }
+        }
     }
 
     /**
@@ -298,9 +309,9 @@ public class AgentConfigurer implements SmartLifecycle {
             configureRuntime(builder, def);
             configurePlan(builder, def);
 
-            // 设置会话实例（可选）
-            if (session != null)
-                builder.session(session);
+            // 配置分布式后端（可选）：stateStore + baseStore + snapshotSpec 一站式配置
+            if (distributedBackend != null)
+                builder.distributedStore(distributedBackend);
 
             // 应用 AgentCustomizer SPI 扩展（如有）
             AgentCustomizer customizer = findCustomizer(def);
@@ -402,8 +413,9 @@ public class AgentConfigurer implements SmartLifecycle {
         configureRuntime(builder, def);
         configurePlan(builder, def);
 
-        if (session != null)
-            builder.session(session);
+        // 配置分布式后端（可选）
+        if (distributedBackend != null)
+            builder.distributedStore(distributedBackend);
 
         // 应用 AgentCustomizer SPI 扩展
         AgentCustomizer customizer = findCustomizer(def);

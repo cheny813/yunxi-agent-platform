@@ -12,11 +12,11 @@
 # ============================================================
 milvus:
   enabled: true                                   # 是否启用 Milvus
-  host: ${MILVUS_HOST:192.168.11.48}                   # Milvus 服务地址
+  host: ${MILVUS_HOST:192.168.11.48}              # Milvus 服务地址
   port: ${MILVUS_PORT:19530}                      # Milvus 服务端口
   database: ${MILVUS_DATABASE:default}            # 数据库名称
-  username: ${MILVUS_USERNAME:root}                    # 用户名（认证模式时需要）
-  password: ${MILVUS_PASSWORD:root}                    # 密码（认证模式时需要）
+  username: ${MILVUS_USERNAME:root}               # 用户名（认证模式时需要）
+  password: ${MILVUS_PASSWORD:root}               # 密码（认证模式时需要）
   token: ${MILVUS_TOKEN:}                         # Token（替代用户名密码，优先级更高）
   connect-timeout: 5                              # 连接超时（秒）
   query-timeout: 30                               # 查询超时（秒）

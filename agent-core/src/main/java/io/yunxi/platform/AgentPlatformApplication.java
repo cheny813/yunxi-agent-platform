@@ -15,12 +15,14 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * </p>
  */
 
+import io.agentscope.spring.boot.a2a.AgentscopeA2aAutoConfiguration;
+
 @SpringBootApplication(scanBasePackages = {
                 "io.yunxi.platform",
                 "io.yunxi.platform.config",
                 "io.yunxi.platform.controller"
 }, exclude = {
-                io.agentscope.runtime.autoconfigure.A2aAutoConfiguration.class
+                AgentscopeA2aAutoConfiguration.class
 })
 @EnableAsync
 @EnableScheduling

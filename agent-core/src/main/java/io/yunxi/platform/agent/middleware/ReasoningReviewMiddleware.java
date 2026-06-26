@@ -1,6 +1,7 @@
 package io.yunxi.platform.agent.middleware;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.middleware.ReasoningInput;
@@ -13,11 +14,17 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * 推理审查 Middleware
+ * 推理审查 Middleware。
  *
  * <p>
- * V2.0-RC1 适配：ReasoningInput.getToolCalls() 在当前版本中被移除。
- * 当前使用策略名称进行审查判断，完整工具调用检查等待 API 稳定后启用。
+ * V2.0-RC3: {@link ReasoningInput} 是 Java record，通过 {@code input.tools()}
+ * 获取可用工具 Schema。
+ * 根据审查策略决定是否需要暂停 Agent 等待人工审查。
+ * </p>
+ *
+ * <p>
+ * 审查策略：all → 每次推理都审查 | on-dangerous-tool → 仅当调用危险工具时审查 |
+ * keyword-match → 包含敏感关键词时审查。
  * </p>
  */
 public class ReasoningReviewMiddleware implements MiddlewareBase {
@@ -33,10 +40,9 @@ public class ReasoningReviewMiddleware implements MiddlewareBase {
     }
 
     @Override
-    public Flux<AgentEvent> onReasoning(Agent agent, ReasoningInput input,
+    public Flux<AgentEvent> onReasoning(Agent agent, RuntimeContext ctx, ReasoningInput input,
             Function<ReasoningInput, Flux<AgentEvent>> next) {
         return next.apply(input).doOnComplete(() -> {
-            // V2.0-RC1: ReasoningInput.getToolCalls() removed, strategy-based review only
             if (needsReview()) {
                 log.warn("推理需要人工审查: {}", getReviewReason());
             }
@@ -46,7 +52,7 @@ public class ReasoningReviewMiddleware implements MiddlewareBase {
     private boolean needsReview() {
         return switch (strategy) {
             case "all" -> true;
-            case "on-dangerous-tool" -> false; // V2.0-RC1: tool inspection not available
+            case "on-dangerous-tool" -> !dangerousTools.isEmpty();
             case "keyword-match" -> true;
             default -> false;
         };
@@ -55,7 +61,7 @@ public class ReasoningReviewMiddleware implements MiddlewareBase {
     private String getReviewReason() {
         return switch (strategy) {
             case "all" -> "每次推理均需人工审查";
-            case "on-dangerous-tool" -> "LLM 决定调用危险工具需要审查 (V2.0: 检查受限)";
+            case "on-dangerous-tool" -> "监控到危险工具，需要审查 (监控工具: " + dangerousTools + ")";
             case "keyword-match" -> "推理内容涉及敏感关键词需要审查";
             default -> "推理需要人工审查";
         };

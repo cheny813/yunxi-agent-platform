@@ -18,16 +18,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.agentscope.core.agent.Agent;
-import io.agentscope.core.agent.EventType;
-import io.agentscope.core.agent.StreamOptions;
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.AgentEventType;
+import io.agentscope.core.event.AgentResultEvent;
+import io.agentscope.core.event.TextBlockDeltaEvent;
+import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
-import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.agent.AgentInterruptService;
+import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.conversation.ChatAppService;
 import io.yunxi.platform.conversation.ConversationDomainService;
 import io.yunxi.platform.conversation.DistributedRequestManager;
-import io.yunxi.platform.structured.SchemaClassRegistry;
 import io.yunxi.platform.shared.dto.ChatRequest;
 import io.yunxi.platform.shared.dto.ChatResponse;
 import io.yunxi.platform.shared.dto.ConversationChatRequest;
@@ -37,6 +39,7 @@ import io.yunxi.platform.shared.dto.StreamChatRequest;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
 import io.yunxi.platform.shared.exception.BadRequestException;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
+import io.yunxi.platform.structured.SchemaClassRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
@@ -299,23 +302,13 @@ public class ConversationController {
                 // 开始事件（包含 requestId）
                 Flux<String> startFlux = Flux.just(sseMessageBuilder.buildMessageWithRequestId(
                         "start", null, requestId));
-                // 调用 Agent 的流式差异化输出
-                Flux<String> streamFlux = agent.stream(userMsg,
-                        StreamOptions.defaults(),
-                        schemaClass)
-                        .takeWhile(event -> !requestManager.isRequestCancelled(requestId)) // 检查请求是否被取消
+                // 调用 Agent 的流式差异化输出（streamEvents 替代已废弃的 stream）
+                // V2.0-RC3: HarnessAgent 自身提供 streamEvents()，不再继承 ReActAgent
+                Flux<String> streamFlux = ((io.agentscope.harness.agent.HarnessAgent) agent).streamEvents(List.of(userMsg))
+                        .takeWhile(event -> !requestManager.isRequestCancelled(requestId))
                         .flatMap(event -> {
-                            EventType eventType = event.getType();
-                            Msg message = event.getMessage();
-                            // 事件过滤：如果指定了 eventFilter，只发送在列表中的事件类型
-                            if (eventFilter != null && !eventFilter.isEmpty()) {
-                                String sseEventType = convertEventTypeToSSE(eventType);
-                                if (!eventFilter.contains(sseEventType)) {
-                                    return Flux.empty();
-                                }
-                            }
-                            // 将 AgentScope Event 转换为 SSE 消息
-                            return processEvent(eventType, message, schemaClass);
+                            // 将 AgentEvent 转换为 SSE 消息
+                            return processAgentEvent(event, schemaClass);
                         })
                         .doOnComplete(() -> {
                             log.info("流式差异化输出完成: Agent={}, requestId={}", agentName, requestId);
@@ -363,50 +356,33 @@ public class ConversationController {
         return schemaClassRegistry.get(agentName);
     }
 
-    /** 处理事件，将 AgentScope 事件转换为 SSE 消息 */
-    private Flux<String> processEvent(EventType eventType, Msg message, Class<?> schemaClass) {
-        String content = message.getTextContent();
-        if (content == null || content.isEmpty())
+    /** 处理 AgentEvent，将其转换为 SSE 消息 */
+    private Flux<String> processAgentEvent(AgentEvent event, Class<?> schemaClass) {
+        var type = event.getType();
+        if (type == AgentEventType.THINKING_BLOCK_DELTA && event instanceof ThinkingBlockDeltaEvent tde) {
+            String text = tde.getDelta();
+            if (text != null && !text.isEmpty())
+                return Flux.just(sseMessageBuilder.buildThinkingMessage(text));
             return Flux.empty();
-        switch (eventType) {
-            case REASONING:
-                return Flux.just(sseMessageBuilder.buildThinkingMessage(content));
-            case TOOL_RESULT:
-                return Flux.just(sseMessageBuilder.buildContentMessage(content));
-            case HINT:
-                return Flux.just(sseMessageBuilder.buildMessage("hint", content));
-            case SUMMARY:
-                return Flux.just(sseMessageBuilder.buildMessage("summary", content));
-            case AGENT_RESULT:
-                try {
-                    Object data = message.getStructuredData(schemaClass);
-                    return Flux
-                            .just(sseMessageBuilder.buildMessage("structured", sseMessageBuilder.toJsonString(data)));
-                } catch (Exception e) {
-                    log.error("结构化数据解析失败", e);
-                    return Flux.just(sseMessageBuilder.buildErrorMessage("结构化数据解析失败: " + e.getMessage()));
-                }
-            default:
-                return Flux.empty();
         }
-    }
-
-    /** 将 AgentScope EventType 转换为 SSE 事件类型 */
-    private String convertEventTypeToSSE(EventType eventType) {
-        switch (eventType) {
-            case REASONING:
-                return "thinking";
-            case TOOL_RESULT:
-                return "content";
-            case HINT:
-                return "hint";
-            case SUMMARY:
-                return "summary";
-            case AGENT_RESULT:
-                return "structured";
-            default:
-                return "unknown";
+        if (type == AgentEventType.AGENT_RESULT && event instanceof AgentResultEvent are) {
+            Msg message = are.getResult();
+            try {
+                Object data = message.getStructuredData(schemaClass);
+                return Flux.just(sseMessageBuilder.buildMessage("structured",
+                        sseMessageBuilder.toJsonString(data)));
+            } catch (Exception e) {
+                log.error("结构化数据解析失败", e);
+                return Flux.just(sseMessageBuilder.buildErrorMessage("结构化数据解析失败: " + e.getMessage()));
+            }
         }
+        if (type == AgentEventType.TEXT_BLOCK_DELTA && event instanceof TextBlockDeltaEvent tde) {
+            String text = tde.getDelta();
+            if (text != null && !text.isEmpty())
+                return Flux.just(sseMessageBuilder.buildContentMessage(text));
+            return Flux.empty();
+        }
+        return Flux.empty();
     }
 
     /** 构造错误消息 */

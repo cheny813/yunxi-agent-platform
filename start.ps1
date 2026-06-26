@@ -78,7 +78,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32b521ea86xxxxx60d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b521ea86480d8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -112,7 +112,8 @@ $javaArgs = @(
     "-Dfile.encoding=UTF-8",
     "-Dsun.stdout.encoding=UTF-8",
     "-Dsun.stderr.encoding=UTF-8",
-    "-Dconsole.encoding=UTF-8"
+    "-Dconsole.encoding=UTF-8",
+    "-Djava.net.preferIPv4Stack=true"
 )
 
 # 配置 JVM 参数（用于 normal / clean 模式）

@@ -1,5 +1,6 @@
 package io.yunxi.platform.shared.exception;
 
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -92,13 +94,34 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理通用异常
+     * <p>
+     * 如果响应已设置为 {@code text/event-stream}（SSE 流），则直接写入 SSE 格式的错误事件，
+     * 避免 Spring 因无法序列化 {@code ResponseEntity} 而抛出
+     * {@code HttpMessageNotWritableException}。
+     * </p>
      *
-     * @param ex Exception 异常对象
-     * @return 500 INTERNAL_SERVER_ERROR 响应
+     * @param ex       Exception 异常对象
+     * @param response HTTP 响应（用于检测 SSE Content-Type）
+     * @return 内部错误响应，SSE 流时返回 null（已手动写入响应）
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
+    public Object handleGeneral(Exception ex, HttpServletResponse response) {
         log.error("服务器内部错误", ex);
+
+        // SSE 流感知：当响应已设置为 text/event-stream 时，直接写入 SSE 格式错误事件
+        if (response.getContentType() != null
+                && response.getContentType().contains("text/event-stream")) {
+            try {
+                String errorJson = "{\"type\":\"error\",\"message\":\""
+                        + escapeJson(ex.getMessage()) + "\"}";
+                response.getWriter().write("data: " + errorJson + "\n\n");
+                response.getWriter().flush();
+                log.warn("SSE 流异常已写为 SSE error 事件");
+                return null;
+            } catch (IOException ioEx) {
+                log.error("SSE 错误写入失败", ioEx);
+            }
+        }
 
         // 对 Path 文件系统类型不匹配异常做友好提示
         String message = ex.getMessage();
@@ -113,6 +136,22 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(createError("INTERNAL_ERROR", ex.getMessage()));
+    }
+
+    /**
+     * 转义 JSON 字符串中的特殊字符，用于 SSE 错误消息的 JSON 体。
+     *
+     * @param str 原始字符串
+     * @return 转义后的字符串
+     */
+    private String escapeJson(String str) {
+        if (str == null)
+            return "";
+        return str.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 
     /**
