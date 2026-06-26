@@ -13,9 +13,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import io.agentscope.core.agent.Agent;
-import io.agentscope.core.agent.Event;
-import io.agentscope.core.agent.EventType;
-import io.agentscope.core.agent.StreamOptions;
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.ThinkingBlockDeltaEvent;
+import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.Msg;
 import io.yunxi.agent.rule.core.RuleContext;
 import io.yunxi.agent.rule.core.RuleEngine;
@@ -805,37 +805,28 @@ public class ChatAppService {
                         .take(20) // 最多 20 条心跳（160 秒）
                 : Flux.empty();
 
-        // 5. 使用 agent.stream() 获取流式事件
-        // REASONING → SSE thinking（推理过程），AGENT_RESULT → SSE content（最终回答）
-        // 推理内容同时积累在 thinkingAccumulator 中，最终保存到 Msg.metadata
-        StreamOptions streamOptions = StreamOptions.builder()
-                .eventTypes(EventType.REASONING, EventType.AGENT_RESULT)
-                .incremental(true)
-                .includeReasoningChunk(true)
-                .includeReasoningResult(false)
-                .build();
-
-        Flux<Event> eventFlux;
+        // 5. 使用 agent.streamEvents() 获取流式事件（替代已废弃的 stream()）
+        // V2.0-RC3: HarnessAgent 自身提供 streamEvents()，不再继承 ReActAgent
+        io.agentscope.harness.agent.HarnessAgent harnessAgent = (io.agentscope.harness.agent.HarnessAgent) agent;
+        Flux<io.agentscope.core.event.AgentEvent> eventFlux;
         if (inputMsg instanceof List) {
             @SuppressWarnings("unchecked")
             List<Msg> messages = (List<Msg>) inputMsg;
-            eventFlux = agent.stream(messages, streamOptions);
+            eventFlux = harnessAgent.streamEvents(messages);
         } else {
-            eventFlux = agent.stream((Msg) inputMsg, streamOptions);
+            eventFlux = harnessAgent.streamEvents((Msg) inputMsg);
         }
 
         // 积累推理文本，最终存入 Msg metadata
         StringBuilder thinkingAccumulator = new StringBuilder();
 
-        // 6. 将 Event 流转换为 SSE 事件流
-        // REASONING → thinking（推理过程，灰色独立块 + 积累）
-        // AGENT_RESULT → content（最终回答，切块平滑显示，附带 thinking）
+        // 6. 将 AgentEvent 流转换为 SSE 事件流
         Flux<String> contentFlux = eventFlux
                 .timeout(timeout)
                 .flatMapSequential(event -> {
-                    if (event.getType() == EventType.REASONING) {
-                        String text = event.getMessage() != null
-                                ? event.getMessage().getTextContent()
+                    if (event.getType() == io.agentscope.core.event.AgentEventType.THINKING_BLOCK_DELTA) {
+                        String text = event instanceof io.agentscope.core.event.ThinkingBlockDeltaEvent
+                                ? ((io.agentscope.core.event.ThinkingBlockDeltaEvent) event).getDelta()
                                 : null;
                         if (text != null && !text.isEmpty()) {
                             thinkingAccumulator.append(text);
@@ -843,50 +834,48 @@ public class ChatAppService {
                         }
                         return Flux.empty();
                     }
-                    if (event.getType() == EventType.AGENT_RESULT && event.isLast()) {
-                        // 保存完整响应到会话（附带推理内容）
-                        Msg resultMsg = event.getMessage();
-                        String reasoningText = thinkingAccumulator.toString();
-                        if (!reasoningText.isEmpty()) {
-                            Map<String, Object> metadata = new HashMap<>();
-                            if (resultMsg.getMetadata() != null) {
-                                metadata.putAll(resultMsg.getMetadata());
+                    if (event.getType() == io.agentscope.core.event.AgentEventType.AGENT_RESULT) {
+                        if (event instanceof io.agentscope.core.event.AgentResultEvent resultEvent) {
+                            // 保存完整响应到会话（附带推理内容）
+                            Msg resultMsg = resultEvent.getResult();
+                            String reasoningText = thinkingAccumulator.toString();
+                            if (!reasoningText.isEmpty()) {
+                                Map<String, Object> metadata = new HashMap<>();
+                                if (resultMsg.getMetadata() != null) {
+                                    metadata.putAll(resultMsg.getMetadata());
+                                }
+                                metadata.put("thinking", reasoningText);
+                                resultMsg = Msg.builder()
+                                        .role(resultMsg.getRole())
+                                        .textContent(resultMsg.getTextContent())
+                                        .metadata(metadata)
+                                        .build();
                             }
-                            metadata.put("thinking", reasoningText);
-                            resultMsg = Msg.builder()
-                                    .role(resultMsg.getRole())
-                                    .textContent(resultMsg.getTextContent())
-                                    .metadata(metadata)
-                                    .build();
+                            String text = resultMsg != null ? resultMsg.getTextContent() : null;
+                            if (text != null && !text.isEmpty()) {
+                                // 切块发送（前端分块显示）
+                                int chunkSize = 200;
+                                return Flux.fromStream(
+                                        splitTextIntoChunks(text, chunkSize).stream())
+                                        .map(chunk -> sseMessageBuilder.buildContentMessage(chunk));
+                            }
                         }
-                        if (conversation != null) {
-                            conversation.addMessage(resultMsg);
-                            conversationDomainService.saveConversation(conversation);
+                        return Flux.empty();
+                    }
+                    if (event.getType() == io.agentscope.core.event.AgentEventType.TEXT_BLOCK_DELTA) {
+                        String delta = event instanceof io.agentscope.core.event.TextBlockDeltaEvent
+                                ? ((io.agentscope.core.event.TextBlockDeltaEvent) event).getDelta()
+                                : null;
+                        if (delta != null && !delta.isEmpty()) {
+                            return Flux.just(sseMessageBuilder.buildContentMessage(delta));
                         }
-                        String content = resultMsg.getTextContent();
-                        if (content == null || content.isEmpty()) {
-                            return Flux.just(
-                                    sseMessageBuilder.buildContentMessage("（模型未返回内容）"),
-                                    sseMessageBuilder.buildDoneMessage());
-                        }
-                        log.info("流式对话完成，内容长度: {}, 推理长度: {}",
-                                content.length(), reasoningText.length());
-                        // 最终回答切块为 content 事件
-                        List<String> chunks = new ArrayList<>();
-                        int chunkSize = 500;
-                        for (int i = 0; i < content.length(); i += chunkSize) {
-                            int end = Math.min(i + chunkSize, content.length());
-                            chunks.add(sseMessageBuilder.buildContentMessage(content.substring(i, end)));
-                        }
-                        return Flux.concat(
-                                Flux.fromIterable(chunks),
-                                Flux.just(sseMessageBuilder.buildDoneMessage()));
+                        return Flux.empty();
                     }
                     return Flux.empty();
                 })
                 .onErrorResume(e -> {
-                    log.error("Agent 流式调用失败", e);
-                    return Flux.just(sseMessageBuilder.buildErrorMessage(e.getMessage()));
+                    log.error("Agent 推理异常: {}", e.getMessage(), e);
+                    return Flux.just(sseMessageBuilder.buildErrorMessage(formatAgentError(e)));
                 });
 
         // 组合所有事件流（A2A 模式下心跳流和内容流并发，内容返回后心跳自动停止）
@@ -897,6 +886,15 @@ public class ChatAppService {
         } else {
             return Flux.concat(startFlux, thinkingFlux, contentFlux);
         }
+    }
+
+    /** 将文本按指定大小切块 */
+    private static List<String> splitTextIntoChunks(String text, int chunkSize) {
+        List<String> chunks = new ArrayList<>();
+        for (int i = 0; i < text.length(); i += chunkSize) {
+            chunks.add(text.substring(i, Math.min(i + chunkSize, text.length())));
+        }
+        return chunks;
     }
 
     /**

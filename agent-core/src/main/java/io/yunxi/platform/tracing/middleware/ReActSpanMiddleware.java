@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.middleware.MiddlewareBase;
@@ -70,7 +71,7 @@ public class ReActSpanMiddleware implements MiddlewareBase {
      * @return AgentEvent 事件流
      */
     @Override
-    public Flux<AgentEvent> onAgent(Agent agent, AgentInput input,
+    public Flux<AgentEvent> onAgent(Agent agent, RuntimeContext ctx, AgentInput input,
             Function<AgentInput, Flux<AgentEvent>> next) {
         // 创建最外层 agent.call Span，标记为 SERVER 类型（表示被调用方）
         Span span = otelTracer.spanBuilder("agent.call")
@@ -104,7 +105,7 @@ public class ReActSpanMiddleware implements MiddlewareBase {
      * @return AgentEvent 事件流
      */
     @Override
-    public Flux<AgentEvent> onReasoning(Agent agent, ReasoningInput input,
+    public Flux<AgentEvent> onReasoning(Agent agent, RuntimeContext ctx, ReasoningInput input,
             Function<ReasoningInput, Flux<AgentEvent>> next) {
         // 创建中间层 react.iteration Span，记录本轮推理的输入消息数量
         Span span = otelTracer.spanBuilder("react.iteration")
@@ -136,7 +137,7 @@ public class ReActSpanMiddleware implements MiddlewareBase {
      * @return AgentEvent 事件流
      */
     @Override
-    public Flux<AgentEvent> onModelCall(Agent agent, ModelCallInput input,
+    public Flux<AgentEvent> onModelCall(Agent agent, RuntimeContext ctx, ModelCallInput input,
             Function<ModelCallInput, Flux<AgentEvent>> next) {
         // 创建最内层 llm.invoke Span，记录调用的模型名称
         Span span = otelTracer.spanBuilder("llm.invoke")

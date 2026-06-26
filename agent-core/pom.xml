@@ -190,14 +190,13 @@
         <!-- A2A Protocol -->
         <dependency>
             <groupId>io.agentscope</groupId>
-            <artifactId>spring-boot-starter-runtime-a2a</artifactId>
+            <artifactId>agentscope-a2a-spring-boot-starter</artifactId>
         </dependency>
 
-        <!-- Redis Session（跨实例状态共享，可选） -->
+        <!-- Redis 分布式后端（AgentStateStore + BaseStore + SandboxSnapshot，可选） -->
         <dependency>
             <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-session-redis</artifactId>
-            <version>1.0.12</version>
+            <artifactId>agentscope-extensions-redis</artifactId>
             <optional>true</optional>
         </dependency>
 

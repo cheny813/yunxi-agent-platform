@@ -33,9 +33,10 @@
 
     <properties>
         <java.version>17</java.version>
-        <agentscope.version>2.0.0-RC1</agentscope.version>
-        <agentscope-runtime.version>0.1.0</agentscope-runtime.version>
+        <agentscope.version>2.0.0-RC3</agentscope.version>
         <jacoco.version>0.8.12</jacoco.version>
+        <!-- 修复 jackson-databind 安全漏洞 (GHSA-j3rv-43j4-c7qm 等)，覆盖 Spring Boot 3.5.13 管理的版本 -->
+        <jackson-bom.version>2.21.4</jackson-bom.version>
         <!-- 第三方依赖版本 -->
         <okhttp.version>4.12.0</okhttp.version>
         <okio.version>3.6.0</okio.version>
@@ -168,11 +169,11 @@
                 <version>${agentscope.version}</version>
             </dependency>
 
-            <!-- A2A 协议（已发布） -->
+            <!-- A2A Protocol -->
             <dependency>
                 <groupId>io.agentscope</groupId>
-                <artifactId>spring-boot-starter-runtime-a2a</artifactId>
-                <version>${agentscope-runtime.version}</version>
+                <artifactId>agentscope-a2a-spring-boot-starter</artifactId>
+                <version>${agentscope.version}</version>
             </dependency>
 
             <!-- Lombok -->
@@ -183,9 +184,12 @@
                 <scope>provided</scope>
             </dependency>
 
-            <!-- ============================================================
-                 智能化服务依赖
-                 ============================================================ -->
+            <!-- Redis 分布式后端（AgentStateStore + BaseStore + SandboxSnapshot 一站式配置） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-redis</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
 
             <!-- Resilience4j 熔断器（用于智能降级容错） -->
             <dependency>

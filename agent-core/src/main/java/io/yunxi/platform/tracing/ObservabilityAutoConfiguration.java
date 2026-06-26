@@ -1,6 +1,5 @@
 package io.yunxi.platform.tracing;
 
-import io.agentscope.core.tracing.TracerRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.metrics.Meter;
@@ -88,15 +87,6 @@ public class ObservabilityAutoConfiguration {
         value = System.getenv(envName);
         if (value != null && !value.isEmpty()) return value;
         return defaultValue;
-    }
-
-    @Bean
-    public OpenTelemetryTracer openTelemetryTracer(OpenTelemetry openTelemetry) {
-        Tracer otelTracer = openTelemetry.getTracer("io.yunxi.platform", "1.0.0");
-        OpenTelemetryTracer tracer = new OpenTelemetryTracer(otelTracer);
-        TracerRegistry.register(tracer);
-        log.info("[Observability] OpenTelemetryTracer 已注册到 AgentScope TracerRegistry");
-        return tracer;
     }
 
     @Bean

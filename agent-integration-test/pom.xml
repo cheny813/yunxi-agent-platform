@@ -12,7 +12,7 @@
     <artifactId>agent-integration-test</artifactId>
     <name>Agent Integration Test</name>
     <description>跨模块集成测试模块</description>
-    <packaging>jar</packaging>
+    <packaging>pom</packaging>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -70,6 +70,14 @@
 
     <build>
         <plugins>
+            <!-- 该模块仅用于集成测试，无主源码，跳过 jar 和 spring-boot 打包 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

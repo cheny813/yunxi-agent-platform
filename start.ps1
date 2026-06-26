@@ -112,7 +112,8 @@ $javaArgs = @(
     "-Dfile.encoding=UTF-8",
     "-Dsun.stdout.encoding=UTF-8",
     "-Dsun.stderr.encoding=UTF-8",
-    "-Dconsole.encoding=UTF-8"
+    "-Dconsole.encoding=UTF-8",
+    "-Djava.net.preferIPv4Stack=true"
 )
 
 # 配置 JVM 参数（用于 normal / clean 模式）
