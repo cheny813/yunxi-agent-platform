@@ -156,7 +156,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 
 | 问题 | 根因 | 解决方案 | 文档 |
 |------|------|---------|------|
-| **工具组分配（ungrouped）** | HarnessAgent 内置工具注册时不指定组名 | 反射调用 `ToolGroupManager.addToolToGroup()` 在构建后修正 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
+| **工具组管理** | HarnessAgent 内置工具通过 `registerTool(Object)` 注册时不指定组名，已确认这是框架有意设计——内置工具属于 Agent 基础设施，不参与分组 | 应用层工具（Supervisor 子 Agent、MCP 工具）通过 `registration().group("name").apply()` 正确归组，受 YAML 配置管控 | [最佳实践 → 工具组管理](docs/guide/11-best-practices.md#工具组管理理解框架内置工具与应用层工具的分组边界) |
 | **Toolkit 深拷贝后组激活失效** | `applyToolGroupActivation()` 操作原始 Toolkit，非 Agent 内部拷贝 | 通过 `HarnessAgent.getDelegate().getToolkit()` 获取内部 Toolkit | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
 | **MCP 工具组隔离** | 框架 Toolkit 单例模式，所有工具注册在同一实例 | 按 MCP 服务器名分组 + YAML 配置组激活 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
 | ~~**自建 LLM Provider**~~ | ✅ **已修复** — 拆除 `ChatModelProvider` 接口，复用框架 `ModelRegistry` 工厂机制 | 通过 `ModelRegistry.registerFactory()` 注册自定义工厂 | [配置 → 生成参数](docs/guide/06-configuration.md#生成参数配置) |
