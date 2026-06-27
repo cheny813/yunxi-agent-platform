@@ -414,13 +414,13 @@ log.info("操作耗时: {}ms", duration);
 
 ## 底层框架适配
 
-本平台基于 **AgentScope-Java**（阿里巴巴开源，RC2 版本），在实际使用中遇到了一些底层框架的设计限制，通过 **反射 + 后处理** 的方式适配解决。
+本平台基于 **AgentScope-Java**（阿里巴巴开源，V2.0.0-RC3 版本），在实际使用中遇到了一些底层框架的设计限制。
 
-### 1. 工具组分配（un groupèd 问题）
+### 1. 工具组管理（理解框架内置工具与应用层工具的分组边界）
 
-#### 问题
+#### 框架内置工具不参与分组
 
-`HarnessAgent` 和 `ReActAgent` 在 `build()` 时，通过 `Toolkit.registerTool(Object)` 注册内置工具（memory/session/filesystem/shell/subagent/task/meta），该方法不接收组名参数，工具被框架内部标记为 `"ungrouped"`：
+`HarnessAgent` 在 `build()` 时通过 `Toolkit.registerTool(Object)` 注册内置工具（memory_search、list_files、execute、agent_spawn、agent_send 等），该方法不接收 group 参数，所以这些工具在 `ToolGroupManager` 中处于**未分组**状态：
 
 ```log
 io.agentscope.core.tool.Toolkit - Registered tool 'memory_search' in group 'ungrouped'
@@ -429,79 +429,68 @@ io.agentscope.core.tool.Toolkit - Registered tool 'execute' in group 'ungrouped'
 io.agentscope.core.tool.Toolkit - Registered tool 'agent_spawn' in group 'ungrouped'
 ```
 
-每个 Agent 约 18 个工具，5 个 Agent 共约 90 条日志。更重要的是，未分组工具不受 `updateToolGroups()` 控制——它们永远处于可见状态，无法通过工具组开关选择性启用/禁用。
+这是框架的有意设计——内置工具是 Agent 的"基础设施"，始终可用，不参与工具组的开关管控。
 
-#### 根因
-
-框架中 `Toolkit.registerTool(Object)` → `registerAgentTool(agentTool, null, ...)`，内部调用链：
-
-```java
-// Toolkit.java (框架源码, 不可修改)
-private void registerAgentTool(AgentTool tool, String groupName, ...) {
-    // groupName = null, 跳过 groupManager.addToolToGroup()
-    if (groupName != null) {
-        groupManager.addToolToGroup(groupName, toolName);
-    }
-    logger.info("Registered tool '{}' in group '{}'", toolName,
-        groupName != null ? groupName : "ungrouped");  // ← 打印 ungrouped
-}
-```
-
-`ToolGroupManager.isActiveTool()` 对未分组工具返回 `true`，导致它们脱离组管控：
+`ToolGroupManager.isActiveTool()` 对未分组工具返回 `true`：
 
 ```java
 public boolean isActiveTool(String toolName) {
     Set<String> groups = tools.get(toolName);
     if (groups == null || groups.isEmpty()) {
-        return true;  // 未分组工具永远可见！
+        return true;  // 未分组工具永远可见
     }
     ...
 }
 ```
 
-#### 解决方案
+#### 我们的决策：不干预框架内置工具
 
-在 `AgentConfigurer` 中增加后处理步骤（`AgentConfigurer.java:618-676`）：
+V2.0-RC1 阶段曾通过 `assignUngroupedTools()` 反射 hack 将未分组工具强行分配到 "general" 组。**这个方案已在 V2.0-RC3 升级中移除**，原因：
 
-```java
-private void assignUngroupedTools(Toolkit toolkit, String targetGroup) {
-    // 反射访问 package-private 的 ToolGroupManager
-    Field groupManagerField = Toolkit.class.getDeclaredField("groupManager");
-    groupManagerField.setAccessible(true);
-    Object groupManager = groupManagerField.get(toolkit);
+- 底层框架的内置工具属于 Agent 基础设施能力，不参与分组是框架的设计意图
+- 应用框架的职责是管好自己的工具，不应通过反射 hack 干预框架内部状态
+- 依赖反射访问 `package-private` 的 `ToolGroupManager`，框架升级时极易断裂
 
-    Method isGroupedTool = groupManager.getClass()
-            .getDeclaredMethod("isGroupedTool", String.class);
-    Method addToolToGroup = groupManager.getClass()
-            .getDeclaredMethod("addToolToGroup", String.class, String.class);
+#### 应用层工具的正确分组做法
 
-    for (String toolName : toolkit.getToolNames()) {
-        if (!(boolean) isGroupedTool.invoke(groupManager, toolName)) {
-            addToolToGroup.invoke(groupManager, targetGroup, toolName);
-        }
-    }
-}
-```
-
-并在 Agent 构建后调用：
+应用框架创建的**自己的工具**（如 Supervisor 的子 Agent 工具），通过底层框架的 fluent API 正确归组：
 
 ```java
-// 获取 Agent 内部 Toolkit（build 内部会深拷贝，外部引用不包含所有工具）
-Toolkit agentToolkit = resolveAgentToolkit(agent);
-assignUngroupedTools(agentToolkit, "general");
-applyToolGroupActivation(agentToolkit, def);  // 在正确的 Toolkit 上激活
+// AgentConfigurer.createSupervisorAgent()
+toolkit.registration()
+    .subAgent(provider, SubAgentConfig.builder().forwardEvents(false).build())
+    .group("agent")        // 明确指定组名
+    .apply();
 ```
 
-关键点：
-- 通过 `HarnessAgent.getDelegate().getToolkit()` 获取 Agent 实际使用的 Toolkit 拷贝
-- `applyToolGroupActivation()` 之前操作的是外部原始 Toolkit，修复后操作 Agent 内部拷贝
-- 反射通过 try-catch 保护，框架升级若字段名/方法签名变化则自动回退
+组激活通过 YAML 配置管控，只操作已知的应用层工具组：
+
+```java
+// applyToolGroupActivation() 只操作这些已知组
+List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "page", "general");
+```
+
+| 组名 | 用途 | 创建方式 |
+|------|------|----------|
+| `agent` | 子 Agent 工具（Supervisor 用） | `createToolGroup()` + `registration().group("agent")` |
+| `memory` | 记忆检索工具（预留） | 仅 `createToolGroup()` |
+| `filesystem` | 文件系统工具（预留） | 仅 `createToolGroup()` |
+| `execute` | 命令执行工具（预留） | 仅 `createToolGroup()` |
+| `page` | 页面操作工具（预留） | 仅 `createToolGroup()` |
+| `general` | 通用工具（预留） | 仅 `createToolGroup()` |
+
+#### 关键理解
+
+| 层面 | 分组状态 | 管控方式 |
+|------|---------|----------|
+| 框架内置工具（memory_search、agent_spawn 等） | 未分组，始终活跃 | 不受 `updateToolGroups()` 影响 |
+| 应用层工具（Supervisor 的子 Agent、MCP 工具等） | 通过 `registration().group()` 归组 | 受 `updateToolGroups()` 管控 |
 
 #### 涉及的文件
 
 | 文件 | 说明 |
 |------|------|
-| `agent-core/.../agent/AgentConfigurer.java` | 新增 `resolveAgentToolkit()` 和 `assignUngroupedTools()` 方法，修改 `initializeSingleAgent()` 和 `createSupervisorAgent()` |
+| `agent-core/.../agent/AgentConfigurer.java` | `applyToolGroupActivation()` 只操作已知的 6 个应用层工具组 |
 
 ---
 

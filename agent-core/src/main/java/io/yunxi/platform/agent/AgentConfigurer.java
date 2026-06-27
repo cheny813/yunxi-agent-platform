@@ -672,9 +672,14 @@ public class AgentConfigurer implements SmartLifecycle {
      * 应用工具组激活策略。
      *
      * <p>
-     * 如果 Agent 启用了 MetaTool，则禁用所有工具组（Agent 会自行管理）。
-     * 否则，先禁用所有工具组，再启用 YAML 配置中指定的活跃工具组。
-     * 如果没有配置任何活跃工具组，默认启用 memory 工具组。
+     * 只操作通过 {@code createToolGroup()} 创建的已知应用层工具组，
+     * 不影响底层框架内置的未分组工具（如 {@code memory_search}、{@code agent_spawn} 等）。
+     * 底层框架内置工具始终可用，不受工具组开关管控。
+     * </p>
+     *
+     * <p>
+     * 如果 Agent 启用了 MetaTool，则跳过工具组激活（Agent 会自主管理工具）。
+     * 否则，按 YAML 配置激活指定的工具组。未配置时默认启用 memory 组。
      * </p>
      *
      * @param toolkit 工具集
@@ -683,54 +688,40 @@ public class AgentConfigurer implements SmartLifecycle {
     private void applyToolGroupActivation(Toolkit toolkit, AgentDefinition def) {
         boolean metaTool = def.getRuntime() != null && def.getRuntime().isEnableMetaTool();
 
-        // 收集所有工具组名称（从工具名称中提取前缀作为组名）
-        Set<String> allGroups = toolkit.getToolNames().stream()
-                .map(n -> {
-                    int i = n.indexOf('_');
-                    return i > 0 ? n.substring(0, i) : "general";
-                })
-                .collect(java.util.stream.Collectors.toSet());
-        allGroups.addAll(List.of("agent", "page", "general"));
-
-        // MetaTool 模式：禁用所有工具组，Agent 会自行管理
+        // MetaTool 模式：Agent 自主管理工具，框架不干预
         if (metaTool) {
-            allGroups.forEach(g -> {
-                try {
-                    toolkit.updateToolGroups(List.of(g), false);
-                } catch (Exception ignored) {
-                }
-            });
+            log.debug("MetaTool 模式: 跳过工具组激活，Agent 自行管理");
             return;
         }
 
-        // 普通模式：收集需要激活的工具组
+        // 收集 YAML 配置中指定的活跃工具组
         List<String> activeGroups = new ArrayList<>();
         ToolsGroupConfig tgc = def.getToolsGroup();
         if (tgc != null) {
-            // 系统工具组
             if (tgc.getSystemToolsGroup() != null)
                 activeGroups.addAll(tgc.getSystemToolsGroup());
-            // MCP 服务器工具组
             if (tgc.getMcpServersToolsGroup() != null)
                 activeGroups.addAll(tgc.getMcpServersToolsGroup());
         }
-        // 无配置时默认启用 memory 工具组
+        // 未配置时默认启用 memory 组
         if (activeGroups.isEmpty())
             activeGroups.add("memory");
 
-        // 先禁用所有工具组，再激活指定的工具组
-        allGroups.forEach(g -> {
-            try {
-                toolkit.updateToolGroups(List.of(g), false);
-            } catch (Exception ignored) {
+        // 先禁用所有已知组，再激活配置中指定的组
+        // 只操作通过 createToolGroup() 创建的应用层组，不影响框架内置的未分组工具
+        List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "page", "general");
+        for (String group : knownGroups) {
+            if (toolkit.getToolGroup(group) != null) {
+                toolkit.updateToolGroups(List.of(group), false);
             }
-        });
-        activeGroups.forEach(g -> {
-            try {
-                toolkit.updateToolGroups(List.of(g), true);
-            } catch (Exception ignored) {
+        }
+        for (String group : activeGroups) {
+            if (toolkit.getToolGroup(group) != null) {
+                toolkit.updateToolGroups(List.of(group), true);
+            } else {
+                log.debug("工具组 '{}' 不存在，跳过激活", group);
             }
-        });
+        }
     }
 
     // ========== 辅助方法 ==========
