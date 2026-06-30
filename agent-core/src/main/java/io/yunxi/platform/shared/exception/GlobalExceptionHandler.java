@@ -129,7 +129,7 @@ public class GlobalExceptionHandler {
                 && message != null
                 && message.contains("different type of Path")) {
             log.warn("检测到 Path 文件系统类型不匹配。"
-                    + "可尝试设置 agentscope.skill-box.enabled=false", ex);
+                    + "可尝试设置 agentscope.extensions.skills.enabled=false", ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createError("INTERNAL_ERROR", "服务内部错误，请联系管理员"));
         }

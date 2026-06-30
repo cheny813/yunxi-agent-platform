@@ -113,11 +113,12 @@ agentscope:
         dimension: ${SIMPLE_KB_DIMENSION:1024}
 
     # ============================================================
-    # 长期记忆存储配置（Harness 内置记忆，无需额外配置）
+    # 技能系统（V2.0）
+    # 启用后自动注册 skill_manage 和 skill_propose 工具
+    # skill_propose：Agent 可提案新技能，写入 workspace/skills/
     # ============================================================
-    # 技能系统
     skills:
-      enabled: ${SKILLS_ENABLED:false}
+      enabled: ${SKILLS_ENABLED:true}
 
     # A2A 协议
     a2a:

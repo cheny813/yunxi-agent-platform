@@ -189,7 +189,7 @@ public class ChatAppService {
             String msg = e.getMessage();
             if (msg != null && msg.contains("different type of Path")) {
                 log.warn("Path 文件系统类型不匹配，这通常发生在从 JAR 加载 classpath 资源时。"
-                        + "可尝试设置 agentscope.skill-box.enabled=false", e);
+                        + "可尝试设置 agentscope.extensions.skills.enabled=false", e);
                 return "服务内部错误，请联系管理员";
             }
         }
