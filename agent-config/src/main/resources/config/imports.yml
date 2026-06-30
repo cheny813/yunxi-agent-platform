@@ -27,7 +27,6 @@ spring:
       optional:classpath:config/persistence.yml,
       optional:classpath:config/mcp-core.yml,
       optional:classpath:config/mcp-external.yml,
-      optional:classpath:config/skill.yml,
       optional:classpath:config/resilience.yml,
       optional:classpath:config/file-upload.yml,
       optional:classpath:config/a2a-pipeline.yml,

@@ -8,7 +8,7 @@ agent-config/src/main/resources/
 ├── logback-spring.xml                 # 日志配置 (Logback)
 │
 ├── config/                            # 【系统配置】通过 spring.config.import 加载
-│   ├── agentscope.yml                 #   API密钥、默认模型、A2A、记忆存储
+│   ├── agentscope.yml                 #   API密钥、默认模型、A2A、技能系统、记忆存储
 │   ├── server.yml                     #   Tomcat 端口、线程池、连接数
 │   ├── datasource.yml                 #   数据库连接池 (HikariCP)
 │   ├── redis.yml                      #   Redis 缓存
@@ -20,7 +20,6 @@ agent-config/src/main/resources/
 │   ├── persistence.yml                #   持久化配置
 │   ├── mcp-core.yml                   #   MCP 核心服务器
 │   ├── mcp-external.yml               #   MCP 外部服务器
-│   ├── skill.yml                      #   技能系统 (SkillBox)
 │   ├── resilience.yml                 #   熔断/限流/重试
 │   ├── gateway.yml                    #   API 网关路由
 │   ├── business.yml                   #   业务服务配置
@@ -49,7 +48,7 @@ agent-config/src/main/resources/
 │   ├── recipe-scoring-rules.md
 │   └── superdesign-guidelines.md
 │
-├── skills/                            # 【技能包】SkillBox 本地技能目录
+├── skills/                            # 【技能包】V2.0 技能定义（classpath）
 │   ├── machine-controller/
 │   ├── nutrition-knowledge/
 │   ├── nutrition-recipe/
@@ -177,5 +176,5 @@ Agent 级 model:（如果省略，则继承全局）
 | 指定专家列表 | Agent 定义中 | `skillConfig.experts` (旧) / `orchestration.experts` (新) |
 | 开启/关闭 PlanNotebook | Agent 定义中 | `enablePlanNotebook` (旧) / `plan.enabled` (新) |
 | 配置数据库 | `config/datasource.yml` | 连接池参数 |
-| 关闭技能系统 | `config/skill.yml` | `agentscope.skill-box.enabled: false` |
+| 关闭技能系统 | `config/agentscope.yml` | `agentscope.extensions.skills.enabled: false` |
 | 关闭记忆系统 | `config/agentscope.yml` | `extensions.memory-stores.*.enabled: false` |

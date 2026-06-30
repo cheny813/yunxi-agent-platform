@@ -1,222 +1,123 @@
 # 10. 技能系统
 
-> **⚠️ V2.0 重大变更**：本平台的 Skill 系统已在 V2.0 升级中整体删除（包括 `SkillManager`、`SkillRegistryService`、`SkillAutoCreator`、`SkillVersionManager`、`SkillTemplateFiller`、`SkillBoxAutoConfiguration` 及 `framework/skill/model/` 整个包），替换为 AgentScope V2.0 内置的 **SkillCurator** 治理流水线。
->
-> V2.0 SkillCurator 提供完整的技能管理生命周期：`SkillCatalog` + `WorkspaceSkillRepository` + `SkillCurator` + `SkillPromoter` + `SkillPromotionGate`。
->
-> 以下为旧版技能系统的参考文档，保留作为历史记录。新项目请直接使用 AgentScope V2.0 内置技能治理。
+> **V2.0 技能系统**：本平台使用 AgentScope V2.0 内置的 **SkillCurator** 治理流水线，提供完整的技能管理生命周期。
 
 ---
 
-## 技能系统理论
+## 概述
 
-### 什么是技能（Skill）
+AgentScope V2.0 提供了内置的技能系统，Agent 可以：
 
-**技能**是可复用的能力单元，类似于编程中的函数或微服务：
-- **输入**：参数（Map<String, Object>）
-- **处理**：业务逻辑
-- **输出**：结果（SkillResult）
+- **skill_manage** — 列出、启用、禁用技能
+- **skill_propose** — 提案新技能（写入 `workspace/skills/`）
 
-**技能 vs 工具 vs MCP**：
-| 概念 | 说明 | 使用场景 |
-|------|------|----------|
-| **Skill** | 框架内部的能力单元 | 业务逻辑封装 |
-| **Tool** | Agent 可调用的功能 | 外部能力集成 |
-| **MCP** | 标准化的工具协议 | 跨服务工具调用 |
+### 技能加载来源
 
-### 技能的优势
-
-| 优势 | 说明 |
-|------|------|
-| **复用性** | 一次开发，多处使用 |
-| **可维护** | 独立开发、测试、部署 |
-| **可扩展** | 动态加载新技能 |
-| **可组合** | 技能可以互相调用 |
-
----
-
-## 技能概述
-
-### 什么是技能
-
-技能是可复用的能力单元，可以被 Agent 调用以完成特定任务。
-
-### 技能类型
-
-| 类型 | 说明 | 示例 |
+| 来源 | 路径 | 说明 |
 |------|------|------|
-| 内置技能 | 框架预置的技能 | 文件操作、数据库查询 |
-| 自定义技能 | 用户开发的技能 | 营养分析、报表生成 |
-| 第三方技能 | 从 Git 仓库加载 | 社区贡献的技能 |
+| Classpath | `src/main/resources/skills/` | 打包进 JAR，预置技能 |
+| Filesystem | `./skills/` | 用户扩展技能 |
+| Workspace | `.agentscope/workspace/<agent>/skills/` | Agent 提案的技能 |
 
 ---
 
-## 技能加载
+## 启用技能系统
 
-### 加载来源
-
-技能从两个目录加载：
-- **classpath**: `src/main/resources/skills/` - 预置技能
-- **filesystem**: `./skills/` - 用户扩展技能
-
-### 技能加载原理
-
-```
-┌─────────────────────────────────────────┐
-│  技能加载流程                            │
-├─────────────────────────────────────────┤
-│                                         │
-│  1. 扫描技能目录                          │
-│     - classpath:skills/                  │
-│     - filesystem:./skills/               │
-│                                         │
-│  2. 解析 SKILL.md                        │
-│     - 读取元数据                          │
-│     - 验证格式                           │
-│                                         │
-│  3. 注册到 SkillBox                      │
-│     - 建立名称映射                        │
-│     - 初始化技能实例                       │
-│                                         │
-│  4. 技能就绪                             │
-│     - 可被 Agent 调用                     │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-### 启用配置
+在 `config/agentscope.yml` 中配置：
 
 ```yaml
-skill-box:
-  enabled: true
-  classpath-enabled: true
-  classpath-path: skills
-  filesystem-path: ./skills
+agentscope:
+  extensions:
+    skills:
+      enabled: true
 ```
 
 ---
 
-## 使用技能
+## 技能目录结构
 
-### 在 Agent 中调用
-
-```java
-@Component
-public class NutritionAgent {
-    
-    @Autowired
-    private SkillBox skillBox;
-    
-    public AgentResponse handleRequest(AgentRequest request) {
-        // 调用技能
-        SkillResult result = skillBox.execute("nutrition-analysis", 
-            Map.of("recipe", request.getMessage()));
-        
-        return AgentResponse.builder()
-            .message(result.getOutput())
-            .build();
-    }
-}
 ```
-
-**调用原理**：
-```
-Agent.handleRequest()
-    ↓
-SkillBox.execute(skillName, params)
-    ↓
-SkillRegistry.find(skillName)
-    ↓
-Skill.execute(params)
-    ↓
-返回 SkillResult
+skills/
+├── java-developer/           # Java 开发技能
+│   └── SKILL.md
+├── git-operator/             # Git 操作技能
+│   └── SKILL.md
+├── deployer/                 # 部署技能
+│   └── SKILL.md
+└── ...
 ```
 
 ---
 
-## 开发技能
+## SKILL.md 格式
 
-### 技能定义
+```markdown
+# 技能名称
+description: 当需要...时使用此技能
+triggers:
+  - 触发词1
+  - 触发词2
 
-```yaml
-# SKILL.md
-name: nutrition-analysis
-description: 分析食谱营养成分
-category: nutrition
-version: 1.0.0
-author: yunxi
-```
+# 技能详细说明
+## 能力范围
+...
 
-**元数据字段说明**：
-| 字段 | 说明 | 必需 |
-|------|------|------|
-| name | 技能唯一标识 | 是 |
-| description | 技能描述 | 是 |
-| category | 分类 | 否 |
-| version | 版本号 | 是 |
-| author | 作者 | 否 |
-
-### 技能实现
-
-```java
-@Component
-public class NutritionAnalysisSkill implements Skill {
-    
-    @Override
-    public String getName() {
-        return "nutrition-analysis";
-    }
-    
-    @Override
-    public SkillResult execute(Map<String, Object> input) {
-        String recipe = (String) input.get("recipe");
-        
-        // 分析逻辑
-        NutritionReport report = analyze(recipe);
-        
-        return SkillResult.builder()
-            .output(formatReport(report))
-            .build();
-    }
-}
-```
-
-**Skill 接口规范**：
-```java
-public interface Skill {
-    // 技能唯一名称
-    String getName();
-    
-    // 执行技能
-    SkillResult execute(Map<String, Object> input);
-    
-    // 可选：获取输入参数定义
-    default List<ParameterDef> getParameters() { return List.of(); }
-    
-    // 可选：获取输出定义
-    default OutputDef getOutput() { return new OutputDef(); }
-}
+## 使用示例
+...
 ```
 
 ---
 
-## 技能目录
+## Agent 提案新技能
 
-### 内置技能
+Agent 在对话中发现重复的工作模式时，可以调用 `skill_propose` 提案创建新技能：
 
-| 技能名称 | 说明 |
-|----------|------|
-| file-manager | 文件操作 |
-| database-query | 数据库查询 |
-| calculator | 计算器 |
+```
+skill_propose(name="新技能名", description="技能描述", triggers=["触发词"])
+```
 
-### 业务技能
+提案会被写入 `.agentscope/workspace/<agent>/skills/` 目录，由 SkillCurator 治理流水线处理。
 
-| 技能名称 | 说明 | 领域 |
-|----------|------|------|
-| nutrition-recipe | 食谱分析 | 营养 |
-| nutrition-scoring | 营养评分 | 营养 |
-| report-generator | 报表生成 | 通用 |
+---
+
+## 开发者创建技能
+
+除了 Agent 提案，**开发者也可以直接创建技能**：
+
+```bash
+# 技能存放位置
+.agentscope/workspace/<agent>/skills/
+├── java-developer/           # 开发者直接创建
+│   └── SKILL.md
+├── git-operator/             # 开发者直接创建
+│   └── SKILL.md
+└── agent-proposed-skill/     # Agent 提案创建的
+    └── SKILL.md
+```
+
+### 两种方式对比
+
+| 创建方式 | 谁创建 | 场景 |
+|----------|--------|------|
+| **开发者直接创建** | 人 | 预置技能、团队共享技能 |
+| **Agent 提案** | Agent | 运行时发现的工作模式，自动生成 |
+
+两种方式创建的技能都会被 SkillCurator 治理流水线处理，效果完全一样。
+
+---
+
+## 业务技能
+
+| 技能名称 | 说明 | 触发词 |
+|----------|------|--------|
+| nutrition-recipe | 食谱规划 | 食谱, 营养配餐 |
+| nutrition-knowledge | 营养知识 | 营养成分, 卡路里 |
+| page-design | 页面设计 | 设计页面, 生成 UI |
+| skill-creator | 技能创建 | 创建技能, 编写 SKILL.md |
+| java-developer | Java 开发 | Java, Maven, Spring |
+| git-operator | Git 操作 | git, commit, push |
+| deployer | 应用部署 | 部署, kubectl, k8s |
+| docker-builder | Docker 构建 | docker, 镜像, 容器 |
 
 ---
 
