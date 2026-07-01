@@ -16,7 +16,6 @@ import io.yunxi.platform.shared.entity.UserFileEntity;
 import io.yunxi.platform.shared.mapper.UserFileMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -40,24 +39,44 @@ import java.util.*;
 @ConditionalOnProperty(name = "milvus.enabled", havingValue = "true")
 public class FileVectorService {
 
-    /** Milvus 客户端 */
-    @Autowired
-    private ObjectProvider<io.milvus.v2.client.MilvusClientV2> milvusClientProvider;
+    /** Milvus 客户端提供者（支持可选注入） */
+    private final ObjectProvider<io.milvus.v2.client.MilvusClientV2> milvusClientProvider;
 
-    /** Milvus 配置 */
-    @Autowired
-    private ObjectProvider<MilvusConfig> milvusConfigProvider;
+    /** Milvus 配置提供者 */
+    private final ObjectProvider<MilvusConfig> milvusConfigProvider;
 
-    /** 嵌入服务 */
-    @Autowired
-    private ObjectProvider<EmbeddingService> embeddingServiceProvider;
+    /** 嵌入服务提供者（支持可选注入） */
+    private final ObjectProvider<EmbeddingService> embeddingServiceProvider;
 
     /** 用户文件 Mapper */
-    @Autowired
-    private UserFileMapper userFileMapper;
+    private final UserFileMapper userFileMapper;
 
     /** JSON 序列化工具 */
-    private final Gson gson = new Gson();
+    private final Gson gson;
+
+    /** 默认图像特征维度 */
+    @Value("${file-upload.image-feature.dimension:512}")
+    private int defaultFeatureDimension;
+
+    /**
+     * 构造函数，通过依赖注入获取所需依赖
+     *
+     * @param milvusClientProvider   Milvus 客户端提供者
+     * @param milvusConfigProvider   Milvus 配置提供者
+     * @param embeddingServiceProvider 嵌入服务提供者
+     * @param userFileMapper         用户文件 Mapper
+     */
+    public FileVectorService(
+            ObjectProvider<io.milvus.v2.client.MilvusClientV2> milvusClientProvider,
+            ObjectProvider<MilvusConfig> milvusConfigProvider,
+            ObjectProvider<EmbeddingService> embeddingServiceProvider,
+            UserFileMapper userFileMapper) {
+        this.milvusClientProvider = milvusClientProvider;
+        this.milvusConfigProvider = milvusConfigProvider;
+        this.embeddingServiceProvider = embeddingServiceProvider;
+        this.userFileMapper = userFileMapper;
+        this.gson = new Gson();
+    }
 
     // 集合名称常量
     /** 文件内容向量集合名称 */
@@ -80,10 +99,6 @@ public class FileVectorService {
     private static final String FIELD_IMAGE_TYPE = "imageType";
     private static final String FIELD_FEATURE_DIMENSION = "featureDimension";
     private static final String FIELD_FEATURE_MODEL = "featureModel";
-
-    /** 默认图像特征维度 */
-    @Value("${file-upload.image-feature.dimension:512}")
-    private int defaultFeatureDimension;
 
     /**
      * 保存文件内容向量
@@ -119,8 +134,7 @@ public class FileVectorService {
                 try {
                     Map<String, Object> originalMetadata = gson.fromJson(
                             file.getMetadata(),
-                            new TypeToken<Map<String, Object>>() {
-                            }.getType());
+                            new TypeToken<Map<String, Object>>() {}.getType());
                     metadata.putAll(originalMetadata);
                 } catch (Exception e) {
                     log.warn("解析文件元数据失败: fileId={}", file.getId(), e);

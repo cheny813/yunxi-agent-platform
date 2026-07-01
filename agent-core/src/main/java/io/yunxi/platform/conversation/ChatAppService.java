@@ -524,7 +524,8 @@ public class ChatAppService {
                 log.warn("上下文数据格式化失败，使用原始消息", e);
             }
         } else {
-            log.warn("上下文数据为空，使用原始消息");
+            // contextData 为空是正常行为，只有传入 contextData 时才需要注入上下文
+            log.debug("快速模式: 跳过 RAG/记忆/场景检测，contextData为空，直接使用原始消息");
         }
 
         return Msg.builder().textContent(finalMessage).build();

@@ -313,6 +313,12 @@ public class AgentConfigurer implements SmartLifecycle {
             if (distributedBackend != null)
                 builder.distributedStore(distributedBackend);
 
+            // 配置技能系统（可选）：透传 AgentScope V2.0 技能系统所有能力
+            // 包括 workspace/userDir/classpath/git 技能来源、自学习闭环、可见性过滤等
+            // TODO: 待框架 RC4 版本提供 harness-skill 模块后启用
+            // if (skillSystemConfigBuilder != null)
+            //     builder.skillSystem(skillSystemConfigBuilder.build());
+
             // 应用 AgentCustomizer SPI 扩展（如有）
             AgentCustomizer customizer = findCustomizer(def);
             Agent agent = customizer != null ? customizer.customize(def, builder.build()) : builder.build();

@@ -189,17 +189,21 @@ public class PageAgentController {
 
                 // 尝试解析 JSON
                 try {
-                    Object parsed = new com.fasterxml.jackson.databind.ObjectMapper()
-                            .readValue(parsedActions, Object.class);
-                    if (parsed instanceof Map) {
-                        Map<String, Object> parsedMap = (Map<String, Object>) parsed;
-                        Object actionsObj = parsedMap.get("actions");
-                        if (actionsObj instanceof List) {
+                @SuppressWarnings("unchecked")
+                Object parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(parsedActions, Object.class);
+                if (parsed instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> parsedMap = (Map<String, Object>) parsed;
+                    Object actionsObj = parsedMap.get("actions");
+                    if (actionsObj instanceof List) {
 
-                            actions = (List<Map<String, Object>>) actionsObj;
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> actionsList = (List<Map<String, Object>>) actionsObj;
+                        actions = actionsList;
 
-                        }
                     }
+                }
                 } catch (Exception e) {
 
                     log.debug("解析 actions 失败: {}", e.getMessage());
