@@ -38,10 +38,10 @@ class ColumnRetrieverTest {
         retrievalProps.setTopK(10);
         when(text2SqlProperties.getRetrieval()).thenReturn(retrievalProps);
 
-        columnRetriever = new ColumnRetriever();
-        columnRetriever.setText2SqlProperties(text2SqlProperties);
-        columnRetriever.setMilvusClient(milvusClient);
-        columnRetriever.setEmbeddingService(embeddingService);
+        columnRetriever = new ColumnRetriever(
+                text2SqlProperties,
+                () -> embeddingService,
+                () -> milvusClient);
     }
 
     @Nested
@@ -130,19 +130,25 @@ class ColumnRetrieverTest {
         @Test
         @DisplayName("milvusClient is null - skips indexing")
         void milvusNull() {
-            columnRetriever.setMilvusClient(null);
+            ColumnRetriever retrieverWithNullMilvus = new ColumnRetriever(
+                    text2SqlProperties,
+                    () -> embeddingService,
+                    () -> null);
 
             // 测试预期：当MilvusClient为null时，索引操作不应抛出异常，应跳过索引过程
-            columnRetriever.indexColumns("db1", Collections.emptyList());
+            retrieverWithNullMilvus.indexColumns("db1", Collections.emptyList());
         }
 
         @Test
         @DisplayName("embeddingService is null - skips indexing")
         void embeddingServiceNull() {
-            columnRetriever.setEmbeddingService(null);
+            ColumnRetriever retrieverWithNullEmbedding = new ColumnRetriever(
+                    text2SqlProperties,
+                    () -> null,
+                    () -> milvusClient);
 
             // 测试预期：当EmbeddingService为null时，索引操作不应抛出异常，应跳过索引过程
-            columnRetriever.indexColumns("db1", Collections.emptyList());
+            retrieverWithNullEmbedding.indexColumns("db1", Collections.emptyList());
         }
     }
 

@@ -91,13 +91,17 @@ public class WorkspaceAutoDiscoveryEngine {
      */
     private void discoverOrRecurse(Path dir) {
         String name = dir.getFileName().toString();
-        if ("users".equals(name)) {
-            // users/{userId}/{agentName}/ 是多级结构，需要递归扫描子目录
-            try (Stream<Path> userDirs = Files.list(dir)) {
-                userDirs.filter(Files::isDirectory)
-                        .forEach(this::recurseUserWorkspaces);
-            } catch (IOException e) {
-                log.warn("扫描用户工作空间目录异常: {}", dir, e);
+        // 跳过非 Agent 目录
+        if ("users".equals(name) || "skills".equals(name)) {
+            // users: 多级结构，需要递归扫描子目录
+            // skills: 技能目录，不是 Agent 工作空间，跳过
+            if ("users".equals(name)) {
+                try (Stream<Path> userDirs = Files.list(dir)) {
+                    userDirs.filter(Files::isDirectory)
+                            .forEach(this::recurseUserWorkspaces);
+                } catch (IOException e) {
+                    log.warn("扫描用户工作空间目录异常: {}", dir, e);
+                }
             }
         } else {
             discoverSingleWorkspace(dir);

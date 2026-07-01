@@ -19,7 +19,7 @@
 # │ 文件上传限制         │ config/file-upload.yml           │
 # │ A2A 协议            │ config/a2a-pipeline.yml          │
 # │ MCP 服务端          │ config/mcp-core/external/business │
-# │ 技能/工具注册        │ config/skill.yml                 │
+# │ 技能/工具注册        │ config/agentscope.yml + .agentscope/workspace/skills/ │
 # │ 健康检查/监控        │ 本文件（management 段）            │
 # │ 各 Agent 定义       │ agent-definitions/*.yml          │
 # │ 日志级别/格式        │ logback-spring.xml               │
@@ -44,7 +44,7 @@
 # │   ├── mcp-core.yml         ← MCP 核心服务端
 # │   ├── mcp-external.yml     ← 外部 MCP 服务
 # │   ├── mcp-business.yml     ← 业务 MCP 服务
-# │   ├── skill.yml            ← 技能系统
+# │   ├── skill.yml            ← 技能系统（已废弃，统一在 agentscope.yml）
 # │   ├── file-upload.yml      ← 文件上传
 # │   ├── a2a-pipeline.yml     ← Agent-to-Agent 协议
 # │   ├── agentscope.yml       ← AgentScope 框架
@@ -55,7 +55,7 @@
 # │   └── sync-pipelines.yml   ← 同步管道
 # ├── agent-definitions/       ← 各 Agent 定义（名称/提示词/工具）
 # ├── prompts/                 ← 提示词模板
-# ├── skills/                  ← 内置技能定义
+# ├── .agentscope/workspace/skills/  ← 技能目录（框架唯一识别）
 # ├── mapper/                  ← MyBatis SQL 映射
 # └── static/                  ← 前端静态资源
 #
@@ -74,7 +74,14 @@ spring:
 # 此列表仅用于激活 @Profile 注解的 Spring Bean，目前没有 Bean 使用这些 profile 名。
 # 如有自定义配置需要按 profile 隔离时再启用对应值。
 # spring.profiles:
-#   active: server,datasource,cache,async,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql,rule-engine
+#   active: server,datasource,cache,async,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,resilience,file-upload,a2a-pipeline,gateway,business,text2sql,rule-engine
+
+# ============================================================
+# 日志配置
+# ============================================================
+logging:
+  file:
+    path: ${LOG_DIR:logs}
 
 # ============================================================
 # 运维端点和健康检查

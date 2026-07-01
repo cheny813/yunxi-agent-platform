@@ -95,6 +95,7 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         String payload = message.getPayload();
         log.debug("收到客户端消息: {}", payload);

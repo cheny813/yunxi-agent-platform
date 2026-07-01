@@ -54,7 +54,6 @@ public class McpClientService {
      * @param config     MCP 客户端配置
      * @param properties 核心配置属性
      */
-    @Autowired
     public McpClientService(McpClientConfig config, AgentscopeCoreProperties properties) {
         this.config = config;
         this.properties = properties;
@@ -80,6 +79,7 @@ public class McpClientService {
      * @return 工具调用结果，MCP 未启用或服务器未找到时返回 null
      * @throws RuntimeException 调用失败时抛出
      */
+    @SuppressWarnings("unchecked")
     public Object callTool(String serverName, String toolName, Map<String, Object> arguments) {
         // 检查 MCP 功能是否启用
         if (!config.isEnabled()) {
@@ -164,6 +164,7 @@ public class McpClientService {
      * @return 工具列表，服务器未找到时返回 null
      * @throws RuntimeException 获取失败时抛出
      */
+    @SuppressWarnings("unchecked")
     public List<Map<String, Object>> listTools(String serverName) {
         // 查找 MCP 服务器配置
         Map<String, AgentscopeCoreProperties.McpServerConfig> servers = properties.getMcpServers();

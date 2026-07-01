@@ -1,7 +1,7 @@
 package io.yunxi.platform.security.auth;
 
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
+import javax.crypto.SecretKey;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -448,13 +448,13 @@ public class SecurityContext {
     private String parseJwtToken(String token) {
         try {
             // 使用密钥解析 Token
-            Key key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
 
             Claims claims = Jwts.parser()
-                    .setSigningKey(key)
+                    .verifyWith(key)
                     .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+                    .parseSignedClaims(token)
+                    .getPayload();
 
             // 获取用户ID（优先使用 sub 声明，其次 userId 声明）
             String userId = claims.getSubject();
@@ -492,8 +492,8 @@ public class SecurityContext {
         }
 
         try {
-            Key key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-            Jwts.parser().setSigningKey(key).build().parseClaimsJws(token);
+            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+            Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
             return true;
         } catch (Exception e) {
             log.debug("JWT Token 验证失败: {}", e.getMessage());
@@ -513,12 +513,12 @@ public class SecurityContext {
         }
 
         try {
-            Key key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
             return Jwts.parser()
-                    .setSigningKey(key)
+                    .verifyWith(key)
                     .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+                    .parseSignedClaims(token)
+                    .getPayload();
         } catch (Exception e) {
             log.debug("获取 JWT Claims 失败: {}", e.getMessage());
             return null;

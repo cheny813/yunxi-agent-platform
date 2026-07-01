@@ -12,10 +12,10 @@ import io.yunxi.platform.agent.text2sql.config.Text2SqlProperties;
 import io.yunxi.platform.spi.text2sql.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.function.Supplier;
 
 /**
  * 列检索器
@@ -31,28 +31,33 @@ public class ColumnRetriever {
 
     private static final Logger log = LoggerFactory.getLogger(ColumnRetriever.class);
 
-    @Autowired
-    private Text2SqlProperties text2SqlProperties;
+    /** Text2SQL 配置属性 */
+    private final Text2SqlProperties text2SqlProperties;
 
-    @Autowired(required = false)
-    private EmbeddingService embeddingService;
+    /** 嵌入服务提供者（支持可选注入） */
+    private final Supplier<EmbeddingService> embeddingServiceProvider;
 
-    @Autowired(required = false)
-    private MilvusClientV2 milvusClient;
+    /** Milvus 客户端提供者（支持可选注入） */
+    private final Supplier<MilvusClientV2> milvusClientProvider;
 
-    private final Gson gson = new Gson();
+    /** JSON 序列化工具 */
+    private final Gson gson;
 
-    // Setter methods for testing
-    public void setText2SqlProperties(Text2SqlProperties text2SqlProperties) {
+    /**
+     * 构造函数，通过依赖注入获取所需依赖
+     *
+     * @param text2SqlProperties      Text2SQL 配置属性
+     * @param embeddingServiceProvider 嵌入服务提供者（可选）
+     * @param milvusClientProvider   Milvus 客户端提供者（可选）
+     */
+    public ColumnRetriever(
+            Text2SqlProperties text2SqlProperties,
+            Supplier<EmbeddingService> embeddingServiceProvider,
+            Supplier<MilvusClientV2> milvusClientProvider) {
         this.text2SqlProperties = text2SqlProperties;
-    }
-
-    public void setMilvusClient(MilvusClientV2 milvusClient) {
-        this.milvusClient = milvusClient;
-    }
-
-    public void setEmbeddingService(EmbeddingService embeddingService) {
-        this.embeddingService = embeddingService;
+        this.embeddingServiceProvider = embeddingServiceProvider;
+        this.milvusClientProvider = milvusClientProvider;
+        this.gson = new Gson();
     }
 
     /**
@@ -67,16 +72,16 @@ public class ColumnRetriever {
         List<ColumnInfo> results = new ArrayList<>();
 
         try {
-            log.debug("Retrieving columns: query={}, table={}, topK={}", query, tableName, topK);
+            log.debug("检索列: query={}, table={}, topK={}", query, tableName, topK);
 
-            // 1. Generate query embedding
+            // 1. 生成查询向量
             List<Float> queryEmbedding = generateEmbedding(query);
             if (queryEmbedding == null || queryEmbedding.isEmpty()) {
-                log.warn("Failed to generate query embedding: query={}", query);
+                log.warn("生成查询向量失败: query={}", query);
                 return results;
             }
 
-            // 2. Search in Milvus
+            // 2. 在 Milvus 中搜索
             FloatVec queryFloatVec = new FloatVec(queryEmbedding);
             SearchReq searchReq = SearchReq.builder()
                     .collectionName(text2SqlProperties.getRetrieval().getCollectionName())
@@ -86,9 +91,9 @@ public class ColumnRetriever {
                     .outputFields(Arrays.asList("column_name", "table_name", "data_type", "description"))
                     .build();
 
-            SearchResp searchResp = milvusClient.search(searchReq);
+            SearchResp searchResp = milvusClientProvider.get().search(searchReq);
 
-            // 3. Parse results
+            // 3. 解析结果
             if (searchResp != null && searchResp.getSearchResults() != null
                     && !searchResp.getSearchResults().isEmpty()) {
                 for (SearchResp.SearchResult searchResult : searchResp.getSearchResults().get(0)) {
@@ -99,18 +104,18 @@ public class ColumnRetriever {
                     columnInfo.setDescription(getStringField(searchResult, "description"));
                     columnInfo.setScore(searchResult.getScore());
 
-                    // Filter by table name if specified
+                    // 如果指定了表名，则按表名过滤
                     if (tableName == null || tableName.equalsIgnoreCase(columnInfo.getTableName())) {
                         results.add(columnInfo);
                     }
                 }
             }
 
-            log.info("Column retrieval completed: query={}, found={}, topK={}",
+            log.info("列检索完成: query={}, found={}, topK={}",
                     query, results.size(), topK);
 
         } catch (Exception e) {
-            log.error("Column retrieval failed: query={}", query, e);
+            log.error("列检索失败: query={}", query, e);
         }
 
         return results;
@@ -130,33 +135,33 @@ public class ColumnRetriever {
      * @param schemas    表 Schema 列表
      */
     public void indexColumns(String databaseId, List<TableSchema> schemas) {
-        if (milvusClient == null) {
-            log.warn("MilvusClient not configured, skipping column indexing");
+        if (milvusClientProvider.get() == null) {
+            log.warn("MilvusClient 未配置，跳过列索引");
             return;
         }
 
-        if (embeddingService == null) {
-            log.warn("EmbeddingService not configured, skipping column indexing");
+        if (embeddingServiceProvider.get() == null) {
+            log.warn("EmbeddingService 未配置，跳过列索引");
             return;
         }
 
         try {
-            log.info("Starting column indexing: databaseId={}, tables={}", databaseId, schemas.size());
+            log.info("开始索引列: databaseId={}, tables={}", databaseId, schemas.size());
 
-            // Delete old data
+            // 删除旧数据
             deleteColumnsByDatabase(databaseId);
 
-            // Index new data
+            // 索引新数据
             for (TableSchema tableSchema : schemas) {
                 for (ColumnSchema column : tableSchema.getColumns()) {
                     indexColumn(databaseId, tableSchema.getTableName(), column);
                 }
             }
 
-            log.info("Column indexing completed: databaseId={}", databaseId);
+            log.info("列索引完成: databaseId={}", databaseId);
 
         } catch (Exception e) {
-            log.error("Column indexing failed: databaseId={}", databaseId, e);
+            log.error("列索引失败: databaseId={}", databaseId, e);
         }
     }
 
@@ -165,19 +170,19 @@ public class ColumnRetriever {
      */
     private void indexColumn(String databaseId, String tableName, ColumnSchema column) {
         try {
-            // Generate description text
+            // 生成描述文本
             String description = String.format("%s.%s (%s): %s",
                     tableName, column.getColumnName(), column.getBaseType(),
                     column.getDescription() != null ? column.getDescription() : "");
 
-            // Generate embedding
+            // 生成向量
             List<Float> embedding = generateEmbedding(description);
             if (embedding == null || embedding.isEmpty()) {
-                log.warn("Failed to generate embedding for: {}.{}", tableName, column.getColumnName());
+                log.warn("为 {}.{} 生成向量失败", tableName, column.getColumnName());
                 return;
             }
 
-            // Create data object
+            // 创建数据对象
             JsonObject data = new JsonObject();
             data.addProperty("database_id", databaseId);
             data.addProperty("table_name", tableName);
@@ -186,16 +191,16 @@ public class ColumnRetriever {
             data.addProperty("description", description);
             data.add("embedding", gson.toJsonTree(embedding));
 
-            // Insert into Milvus
+            // 插入 Milvus
             InsertReq req = InsertReq.builder()
                     .collectionName(text2SqlProperties.getRetrieval().getCollectionName())
                     .data(Collections.singletonList(data))
                     .build();
 
-            milvusClient.insert(req);
+            milvusClientProvider.get().insert(req);
 
         } catch (Exception e) {
-            log.warn("Failed to index column: {}.{}", tableName, column.getColumnName(), e);
+            log.warn("索引列失败: {}.{}", tableName, column.getColumnName(), e);
         }
     }
 
@@ -209,11 +214,11 @@ public class ColumnRetriever {
                     .filter("database_id == \"" + databaseId + "\"")
                     .build();
 
-            milvusClient.delete(req);
-            log.debug("Deleted database columns: databaseId={}", databaseId);
+            milvusClientProvider.get().delete(req);
+            log.debug("已删除数据库列: databaseId={}", databaseId);
 
         } catch (Exception e) {
-            log.warn("Failed to delete database columns: databaseId={}", databaseId, e);
+            log.warn("删除数据库列失败: databaseId={}", databaseId, e);
         }
     }
 
@@ -221,13 +226,13 @@ public class ColumnRetriever {
      * 生成嵌入向量
      */
     private List<Float> generateEmbedding(String text) {
-        if (embeddingService == null) {
-            log.warn("EmbeddingService not configured");
+        if (embeddingServiceProvider.get() == null) {
+            log.warn("EmbeddingService 未配置");
             return null;
         }
 
         try {
-            float[] embedding = embeddingService.embed(text);
+            float[] embedding = embeddingServiceProvider.get().embed(text);
             if (embedding == null) {
                 return null;
             }
@@ -237,7 +242,7 @@ public class ColumnRetriever {
             }
             return result;
         } catch (Exception e) {
-            log.error("Failed to generate embedding: {}", text, e);
+            log.error("生成嵌入向量失败: {}", text, e);
             return null;
         }
     }
@@ -253,12 +258,12 @@ public class ColumnRetriever {
             Object value = result.getEntity().get(fieldName);
             return value != null ? value.toString() : null;
         } catch (Exception e) {
-            log.warn("Failed to get field value: field={}", fieldName, e);
+            log.warn("获取字段值失败: field={}", fieldName, e);
             return null;
         }
     }
 
-    // ==================== Data Models ====================
+    // ==================== 数据模型 ====================
 
     /**
      * 列信息
@@ -270,7 +275,7 @@ public class ColumnRetriever {
         private String description;
         private double score;
 
-        // Getters and Setters
+        // getter 和 setter
         public String getColumnName() {
             return columnName;
         }
@@ -360,7 +365,7 @@ public class ColumnRetriever {
             this.baseType = baseType;
         }
 
-        // Getters and Setters
+        // getter 和 setter
         public String getColumnName() {
             return columnName;
         }

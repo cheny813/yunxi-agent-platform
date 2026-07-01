@@ -130,6 +130,7 @@ class ConfigFragmentValidationTest {
         validateConfigFile("config/agentscope.yml", "io.yunxi.platform.agentscope");
     }
 
+    @SuppressWarnings("unchecked")
     private void validateConfigFile(String filePath, String expectedRootKey) {
         try {
             Path configPath = Paths.get("src/main/resources", filePath);
@@ -259,6 +260,7 @@ class ConfigFragmentValidationTest {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private void validateYamlFile(String fileName) {
         try {
             Path filePath = Paths.get("src/main/resources", fileName);

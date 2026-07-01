@@ -36,6 +36,8 @@ import java.util.Map;
 @ConditionalOnProperty(name = "milvus.enabled", havingValue = "true")
 public class SceneDetectionService {
 
+    // Lombok @Slf4j 会自动生成 log 字段
+
     /** 场景检测开关 */
     @Value("${memory.scene-detection.enabled:true}")
     private boolean enabled;

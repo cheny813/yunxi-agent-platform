@@ -29,15 +29,15 @@
         </encoder>
     </appender>
 
-    <!-- 文件Appender -->
+    <!-- 文件Appender - 写入公共目录 -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/${LOG_NAME}.log</file>
+        <file>${LOG_DIR:-logs}/${LOG_NAME}.log</file>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>${FILE_LOG_PATTERN}</pattern>
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>logs/${LOG_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR:-logs}/${LOG_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>10MB</maxFileSize>
             <maxHistory>30</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
@@ -53,30 +53,21 @@
         <includeCallerData>false</includeCallerData>
     </appender>
 
-    <!-- 异步控制台Appender -->
-    <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
-        <appender-ref ref="CONSOLE"/>
-        <queueSize>1024</queueSize>
-        <discardingThreshold>0</discardingThreshold>
-        <neverBlock>false</neverBlock>
-        <includeCallerData>false</includeCallerData>
-    </appender>
-
     <!-- 根Logger配置 -->
     <root level="${LOG_LEVEL}">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
+        <appender-ref ref="ASYNC_FILE"/>
     </root>
 
     <!-- 特定包名日志级别调整 -->
     <logger name="io.yunxi.platform" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
+        <appender-ref ref="ASYNC_FILE"/>
     </logger>
 
     <logger name="io.yunxi.platform.shared.mapper" level="DEBUG" additivity="false">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
+        <appender-ref ref="ASYNC_FILE"/>
     </logger>
 
     <!-- 抑制不重要的日志 -->
