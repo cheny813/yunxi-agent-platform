@@ -28,7 +28,13 @@ public class AgentscopeLifecycleManager implements SmartLifecycle {
     @Override public void stop() {
         if (!running) return;
         log.info("AgentScope 生命周期管理器停止 (phase={})", phase);
-        GracefulShutdownManager.getInstance().performGracefulShutdown();
+        try {
+            GracefulShutdownManager.getInstance().performGracefulShutdown();
+        } catch (NoClassDefFoundError | ExceptionInInitializerError e) {
+            log.warn("GracefulShutdownManager 类未初始化，跳过优雅关停 (phase={}): {}", phase, e.getMessage());
+        } catch (Exception e) {
+            log.warn("优雅关停执行异常 (phase={}): {}", phase, e.getMessage());
+        }
         running = false;
     }
 

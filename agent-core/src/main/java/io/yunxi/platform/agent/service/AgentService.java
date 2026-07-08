@@ -135,7 +135,7 @@ public class AgentService {
                 ? config.getModelName()
                 : properties.getModelName();
         // 注册 prototype Agent Bean
-        registerPrototypeAgentBean(name, model, prompt, properties.getWorkspaceBasePath() + "/" + name);
+        registerPrototypeAgentBean(name, model, prompt, properties.getWorkspaceBasePath() + "/agents/" + name);
         // 更新缓存
         AgentInfoDto info = new AgentInfoDto(name, prompt, modelName, Instant.now());
         agentCache.put(name, info);

@@ -17,7 +17,7 @@ import io.yunxi.platform.shared.exception.BadRequestException;
  * 支持多用户场景下（如 yunxiClaw 前端调用），每个用户拥有独立的 Agent 实例，
  * 且 Agent 的工作空间相互隔离。路径格式遵循底层 agentscope-java-v2.0 框架设计：
  * agent 优先，users 嵌套在 agent 下，即
- * {@code workspaceBasePath}/{agentName}/users/{userId}/}。
+ * {@code workspaceBasePath}/agents/{agentName}/users/{userId}/}。
  * </p>
  *
  * <p>
@@ -28,7 +28,7 @@ import io.yunxi.platform.shared.exception.BadRequestException;
  * <li>例如 key = {@code food-chat#zhangsan}，代表 Agent {@code food-chat}
  * 的用户版</li>
  * <li>workspace 路径 =
- * {@code .agentscope/workspace/food-chat/users/zhangsan/}</li>
+ * {@code .agentscope/workspace/agents/food-chat/users/zhangsan/}</li>
  * </ul>
  * </p>
  *
@@ -87,7 +87,7 @@ public class UserWorkspaceService {
      *
      * @param agentName Agent 名称（如 "food-chat"）
      * @param userId    用户 ID（如 "zhangsan"）
-     * @return Agent 实例，workspace 路径为 {agentName}/users/{userId}/
+     * @return Agent 实例，workspace 路径为 agents/{agentName}/users/{userId}/
      * @throws BadRequestException agentName 或 userId 为空时抛出
      */
     public Agent getOrCreateUserAgent(String agentName, String userId) {
@@ -114,9 +114,9 @@ public class UserWorkspaceService {
                 return existing;
             }
 
-            // 构建用户专属工作空间路径：框架设计为 agent 优先 → {agentName}/users/{userId}/
+            // 构建用户专属工作空间路径：框架设计为 agent 优先 → agents/{agentName}/users/{userId}/
             String workspacePath = coreProperties.getWorkspaceBasePath()
-                    + "/" + agentName + "/users/" + userId;
+                    + "/agents/" + agentName + "/users/" + userId;
 
             // 初始化工作空间目录结构
             workspaceInitializer.initialize(agentName, null, null, workspacePath);

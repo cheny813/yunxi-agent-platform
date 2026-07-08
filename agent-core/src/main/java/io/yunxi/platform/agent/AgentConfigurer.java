@@ -245,14 +245,14 @@ public class AgentConfigurer implements SmartLifecycle {
      *
      * <p>
      * 为每个 Agent 定义创建对应的工作空间目录，路径格式为：
-     * {workspaceBasePath}/{agentName}
+     * {workspaceBasePath}/agents/{agentName}
      * </p>
      *
      * @param definitions Agent 定义列表
      */
     private void initializeWorkspaces(List<AgentDefinition> definitions) {
         for (AgentDefinition def : definitions) {
-            String workspacePath = coreProperties.getWorkspaceBasePath() + "/" + def.getName();
+            String workspacePath = coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName();
             workspaceInitializer.initialize(def.getName(), description(def), def.getPrompt(), workspacePath);
         }
     }
@@ -301,7 +301,7 @@ public class AgentConfigurer implements SmartLifecycle {
             // 配置 HarnessAgent Builder
             HarnessAgent.Builder builder = HarnessAgent.builder()
                     .name(def.getName()).sysPrompt(def.getPrompt()).model(model).toolkit(toolkit)
-                    .workspace(coreProperties.getWorkspaceBasePath() + "/" + def.getName())
+                    .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName())
                     .compaction(buildCompactionConfig());
 
             // 配置 Middleware 链、运行时参数、规划功能
@@ -335,7 +335,10 @@ public class AgentConfigurer implements SmartLifecycle {
             // 打印工作空间自动发现结果
             logWorkspaceDiscovery(def.getName());
             log.info("Agent 创建成功: {}, ragMode={}", def.getName(), def.getRagMode());
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            // 捕获 Throwable 而非 Exception：agentscope 框架内部类初始化可能抛出
+            // NoClassDefFoundError / ExceptionInInitializerError（均继承 Error），
+            // 若不被捕获会冲破 Spring 生命周期导致 stopBeans() 级联失败
             log.error("Agent 创建失败: {}", def.getName(), e);
         }
     }
@@ -412,7 +415,7 @@ public class AgentConfigurer implements SmartLifecycle {
         // 配置 Supervisor Agent Builder
         HarnessAgent.Builder builder = HarnessAgent.builder()
                 .name(def.getName()).sysPrompt(def.getPrompt()).model(model).toolkit(toolkit)
-                .workspace(coreProperties.getWorkspaceBasePath() + "/" + def.getName())
+                .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName())
                 .compaction(buildCompactionConfig());
 
         configureMiddlewares(builder, def, toolkit);
