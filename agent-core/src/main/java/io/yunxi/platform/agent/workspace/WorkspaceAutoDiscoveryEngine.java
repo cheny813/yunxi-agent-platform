@@ -61,42 +61,35 @@ public class WorkspaceAutoDiscoveryEngine {
     }
 
     /**
-     * 应用启动后执行工作空间自动发现
+     * 应用启动后执行工作空间自动发现。
+     * <p>
+     * 扫描 {@code .agentscope/workspace/agents/} 目录下的所有 Agent 工作空间。
+     * 根目录下的 AGENTS.md 和 skills/ 作为共享资源，不参与 agent 级发现。
+     * </p>
      */
     @EventListener(ApplicationReadyEvent.class)
     public void discoverAll() {
         log.info("WorkspaceAutoDiscoveryEngine: 开始扫描工作空间...");
 
-        // 扫描默认工作空间目录下的所有Agent 工作空间
+        // 扫描 agents/ 子目录（官方约定：所有 agent 工作空间在 agents/ 下）
         Path workspaceRoot = Path.of(defaultWorkspaceBase);
-        if (!Files.exists(workspaceRoot)) {
-            log.info("工作空间根目录不存在 {}，跳过扫描", workspaceRoot);
+        Path agentsDir = workspaceRoot.resolve("agents");
+        if (!Files.exists(agentsDir)) {
+            log.info("工作空间 agents/ 目录不存在 {}，跳过扫描", agentsDir);
             return;
         }
 
-        try (Stream<Path> dirs = Files.list(workspaceRoot)) {
+        try (Stream<Path> dirs = Files.list(agentsDir)) {
             dirs.filter(Files::isDirectory)
-                    .forEach(this::discoverOrRecurse);
+                    .forEach(this::discoverSingleWorkspace);
         } catch (IOException e) {
-            log.warn("扫描工作空间根目录异常: {}", workspaceRoot, e);
+            log.warn("扫描工作空间 agents/ 目录异常: {}", agentsDir, e);
         }
 
         log.info("WorkspaceAutoDiscoveryEngine: 扫描完成，发现{}个工作空间，{}个场景规则",
                 discoveredWorkspaces.size(), discoveredSceneRules.size());
     }
 
-    /**
-     * 扫描工作空间根目录，跳过非 Agent 目录（如 skills/）。
-     * users/ 按框架设计嵌套在 agent 目录下（{agentName}/users/{userId}/），
-     * 由 WorkspaceManager 运行时管理，不在根级别处理。
-     */
-    private void discoverOrRecurse(Path dir) {
-        String name = dir.getFileName().toString();
-        if ("skills".equals(name)) {
-            return;
-        }
-        discoverSingleWorkspace(dir);
-    }
 
     /**
      * 发现单个 Agent 工作空间

@@ -136,30 +136,34 @@ curl -X POST http://localhost:8080/api/chat \
 
 ## 工作空间目录结构
 
-yunxi 采用 **Agent 优先** 的目录布局：每个 Agent 拥有独立工作空间目录，用户数据嵌套在 Agent 内部。基础路径为 `.agentscope/workspace/`。
+yunxi 采用 **Agent 优先** 的目录布局，遵循底层 agentscope-java 框架约定，所有 Agent 工作空间汇聚在 `agents/` 子目录下。基础路径为 `.agentscope/workspace/`。
 
 ```
 .agentscope/workspace/
-├── food-chat/              # Agent 工作空间（{agentName}）
-│   ├── AGENTS.md           # Agent 身份定义与场景规则
-│   ├── knowledge/          # 知识文档
-│   ├── memory/             # 记忆文件（YYYY-MM-DD.md + MEMORY.md）
-│   ├── skills/             # Agent 专属技能
-│   ├── subagents/          # 子智能体定义
-│   └── users/              # 用户运行时数据（{agentName}/users/{userId}/）
-│       └── user-001/       # 用户隔离的工作空间
-├── nutrition-assistant/    # 另一个 Agent
-│   ├── AGENTS.md
-│   ├── knowledge/
-│   └── users/
-│       └── user-001/
-└── skills/                 # 全局共享技能（框架唯一识别，Agent 不可在此创建）
+├── AGENTS.md                 # 根级共享 Agent 人格（可选）
+├── agents/                   # Agent 工作空间统一目录（框架官方约定）
+│   ├── food-chat/            # Agent 工作空间（agents/{agentName}）
+│   │   ├── AGENTS.md         # Agent 身份定义与场景规则
+│   │   ├── knowledge/        # 知识文档
+│   │   ├── memory/           # 记忆文件（YYYY-MM-DD.md + MEMORY.md）
+│   │   ├── sessions/         # 原始对话日志（永不压缩）
+│   │   ├── skills/           # Agent 专属技能
+│   │   ├── subagents/        # 子智能体定义
+│   │   └── users/            # 用户运行时数据（agents/{agentName}/users/{userId}/）
+│   │       └── user-001/     # 用户隔离的工作空间
+│   └── nutrition-assistant/  # 另一个 Agent
+│       ├── AGENTS.md
+│       ├── knowledge/
+│       └── users/
+│           └── user-001/
+└── skills/                   # 全局共享技能（框架唯一识别，Agent 不可在此创建）
 ```
 
 **设计原则**：
-- **Agent 优先**：工作空间以 Agent 为顶层目录，`users/` 嵌套在 Agent 下
-- **用户隔离**：同一 Agent 的不同用户数据完全隔离在 `{agentName}/users/{userId}/` 下
-- **WorkspaceAutoDiscoveryEngine** 启动时只扫描 Agent 目录（跳过 `skills/`），`users/` 由 `UserWorkspaceService` 运行时管理
+- **Agent 优先**：工作空间以 `agents/` 为统一入口，`users/` 嵌套在 Agent 下
+- **用户隔离**：同一 Agent 的不同用户数据完全隔离在 `agents/{agentName}/users/{userId}/` 下
+- **WorkspaceAutoDiscoveryEngine** 启动时扫描 `agents/` 子目录，`users/` 由 `UserWorkspaceService` 运行时管理
+- **根级共享**：workspace 根目录下的 `AGENTS.md` 和 `skills/` 为全局共享资源
 - API 路由使用 `compositeKey = agentName + "#" + userId` 定位用户专属 Agent 实例
 
 ---

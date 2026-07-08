@@ -126,7 +126,7 @@ public class TempAgentFactory {
                     .name(baseAgentName + "-temp-" + System.currentTimeMillis())
                     .sysPrompt(sysPrompt != null ? sysPrompt : "")
                     .model(model)
-                    .workspace(coreProperties.getWorkspaceBasePath() + "/" + baseAgentName)
+                    .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + baseAgentName)
                     .compaction(buildCompactionConfig());
 
             // 应用高级配置：RAG、记忆、执行参数

@@ -14,18 +14,22 @@ import org.springframework.stereotype.Component;
  *
  * <p>
  * 在 Agent 首次创建时初始化工作空间目录结构，创建 AGENTS.md 和 knowledge/ 目录等。
- * 工作空间路径格式：{@code .agentscope/workspace/<agentName>/}
+ * 工作空间路径格式：{@code .agentscope/workspace/agents/<agentName>/}
  * </p>
  *
  * <pre>
  * workspace/
- * ├── AGENTS.md              — Agent 描述文件
- * ├── MEMORY.md              — 记忆存储（由 HarnessAgent 内置管理）
- * ├── knowledge/             — 知识文件目录
- * │   └── KNOWLEDGE.md       — 知识索引文件
- * ├── memory/                — 记忆持久化目录（由 memoryFlushManager 内部使用）
- * ├── skills/                — 技能目录
- * └── subagents/             — 子 Agent 定义（由 subagentsHook 内部使用）
+ * ├── AGENTS.md              — 根级共享 Agent 人格（可选）
+ * └── agents/
+ *     └── &lt;agentName&gt;/
+ *         ├── AGENTS.md              — Agent 描述文件
+ *         ├── MEMORY.md              — 记忆存储（由 HarnessAgent 内置管理）
+ *         ├── knowledge/             — 知识文件目录
+ *         │   └── KNOWLEDGE.md       — 知识索引文件
+ *         ├── memory/                — 记忆持久化目录（由 memoryFlushManager 内部使用）
+ *         ├── skills/                — 技能目录
+ *         ├── sessions/              — 原始对话日志（永不压缩）
+ *         └── subagents/             — 子 Agent 定义（由 subagentsHook 内部使用）
  * </pre>
  */
 @Component
@@ -39,7 +43,7 @@ public class AgentWorkspaceInitializer {
      *
      * <p>
      * 创建工作空间下的所有子目录和默认文件：
-     * - 根目录、knowledge/、memory/、skills/、subagents/ 目录
+     * - 根目录、knowledge/、memory/、skills/、sessions/、subagents/ 目录
      * - AGENTS.md：Agent 描述文件，包含名称、系统提示词和可用工具说明
      * - knowledge/KNOWLEDGE.md：知识索引文件
      * 已存在的文件不会被覆盖。
@@ -49,7 +53,7 @@ public class AgentWorkspaceInitializer {
      * @param agentDisplayName Agent 显示名称
      * @param sysPrompt        Agent 系统提示词（用于生成 AGENTS.md 描述文件）
      * @param workspacePath    工作空间路径，如
-     *                         {@code .agentscope/workspace/nutrition-assistant}
+     *                         {@code .agentscope/workspace/agents/nutrition-assistant}
      */
     public void initialize(String agentName, String agentDisplayName, String sysPrompt, String workspacePath) {
         try {
@@ -60,6 +64,7 @@ public class AgentWorkspaceInitializer {
             createDir(root.resolve("knowledge"));
             createDir(root.resolve("memory"));
             createDir(root.resolve("skills"));
+            createDir(root.resolve("sessions"));
             createDir(root.resolve("subagents"));
 
             // 创建 AGENTS.md — Agent 描述文件

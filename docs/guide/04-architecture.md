@@ -138,7 +138,7 @@ cache/       ← Redis 缓存
 ```yaml
 # 在 agent-definitions/<name>.yaml 中声明
 name: nutrition-assistant
-workspace: ./workspace/nutrition-assistant
+workspace: ./workspace/agents/nutrition-assistant
 tools:
   mcpServers:
     - name: nutrition-data-mcp
@@ -149,7 +149,7 @@ tools:
 然后在工作区目录中放置 AGENTS.md 定义人格和行为：
 
 ```markdown
-<!-- workspace/nutrition-assistant/AGENTS.md -->
+<!-- workspace/agents/nutrition-assistant/AGENTS.md -->
 # 场景检测
 - 场景: nutrition
 - 触发关键词: 食谱, 营养, 配餐, 热量
@@ -158,24 +158,27 @@ tools:
 
 框架自动从配置 + 工作区文件完成 Agent 装配，无需 Java 代码。
 
-**工作空间目录结构**：yunxi 采用 Agent 优先布局——顶层为 Agent 目录，用户数据嵌套在 `{agentName}/users/{userId}/` 下：
+**工作空间目录结构**：yunxi 遵循底层 agentscope-java 框架约定，所有 Agent 工作空间汇聚在 `agents/` 子目录下，用户数据嵌套在 `agents/{agentName}/users/{userId}/` 下：
 
 ```
 .agentscope/workspace/
-├── nutrition-assistant/      # Agent 顶层目录
-│   ├── AGENTS.md             # Agent 身份 + 场景规则
-│   ├── knowledge/            # 知识文档
-│   ├── memory/               # Harness 文件系统记忆
-│   └── users/                # 用户隔离运行时数据
-│       └── user-001/
-├── food-chat/
-│   └── users/
-│       └── user-001/
-├── skills/                   # 全局共享技能（Agent 不可在此创建）
-└── dish-searcher/
+├── AGENTS.md                   # 根级共享 Agent 人格（可选）
+├── agents/                     # Agent 工作空间统一目录（框架官方约定）
+│   ├── nutrition-assistant/    # Agent 工作空间
+│   │   ├── AGENTS.md           # Agent 身份 + 场景规则
+│   │   ├── knowledge/          # 知识文档
+│   │   ├── memory/             # Harness 文件系统记忆
+│   │   ├── sessions/           # 原始对话日志（永不压缩）
+│   │   └── users/              # 用户隔离运行时数据
+│   │       └── user-001/
+│   ├── food-chat/
+│   │   └── users/
+│   │       └── user-001/
+│   └── dish-searcher/
+└── skills/                     # 全局共享技能（Agent 不可在此创建）
 ```
 
-`WorkspaceAutoDiscoveryEngine` 启动时扫描根目录，跳过 `skills/`，只处理 Agent 目录。`UserWorkspaceService` 运行时按需创建用户隔离的 Agent 实例。
+`WorkspaceAutoDiscoveryEngine` 启动时扫描 `agents/` 子目录，`users/` 由 `UserWorkspaceService` 运行时按需创建用户隔离的 Agent 实例。根级 `AGENTS.md` 和 `skills/` 为全局共享资源。
 
 ### 依赖关系图
 
@@ -710,7 +713,7 @@ agentscope:
 |------|---------|------|---------|
 | Agent 运行时状态 | Session（workspace/redis） | 崩溃恢复、弹性迁移 | `agent.loadIfExists()` |
 | 会话元数据 | MySQL + Redis（ConversationService） | 前端列表展示、标题搜索 | REST API |
-| 长期记忆 | workspace/MEMORY.md + memory/ 文件 | 跨会话知识积累 | HarnessAgent 内部 Middleware |
+| 长期记忆 | workspace/agents/{agentName}/MEMORY.md + memory/ 文件 | 跨会话知识积累 | HarnessAgent 内部 Middleware |
 
 三个存储层各司其职，不重复。Session 负责运行时恢复，ConversationService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
 
@@ -766,7 +769,7 @@ private final CacheProvider cacheProvider;
 # 在 agent-definitions/ 目录新增 YAML 文件
 # 在工作区目录新建知识/技能文件即可
 - name: new-business-agent
-  workspace: ./workspace/new-business-agent
+  workspace: ./workspace/agents/new-business-agent
   tools:
     mcpServers:
       - name: business-mcp
