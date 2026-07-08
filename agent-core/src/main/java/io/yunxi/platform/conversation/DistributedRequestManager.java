@@ -342,11 +342,9 @@ public class DistributedRequestManager {
         return Flux.merge(
                 originalFlux,
                 createCancellationSignal(requestId)
-                        .flatMap(ignore -> Flux.error(new RequestCancelledException("请求被客户端取消"))))
+                        .flatMap(ignore -> Flux.<T>error(new RequestCancelledException("请求被客户端取消"))))
                 .takeUntil(signal -> {
-
                     if (signal instanceof Throwable) {
-
                         return true;
                     }
                     return false;

@@ -1,6 +1,5 @@
 package io.yunxi.platform.agent.workspace;
 
-import io.yunxi.platform.agent.workspace.AgentWorkspaceInitializer;
 import io.yunxi.platform.agent.workspace.model.SceneDetectionRule;
 import io.yunxi.platform.agent.workspace.model.WorkspaceConfig;
 import org.slf4j.Logger;
@@ -87,35 +86,16 @@ public class WorkspaceAutoDiscoveryEngine {
     }
 
     /**
-     * 递归发现工作空间：直接扫描 agent 目录，或进入 users/ 按用户扫描
+     * 扫描工作空间根目录，跳过非 Agent 目录（如 skills/）。
+     * users/ 按框架设计嵌套在 agent 目录下（{agentName}/users/{userId}/），
+     * 由 WorkspaceManager 运行时管理，不在根级别处理。
      */
     private void discoverOrRecurse(Path dir) {
         String name = dir.getFileName().toString();
-        // 跳过非 Agent 目录
-        if ("users".equals(name) || "skills".equals(name)) {
-            // users: 多级结构，需要递归扫描子目录
-            // skills: 技能目录，不是 Agent 工作空间，跳过
-            if ("users".equals(name)) {
-                try (Stream<Path> userDirs = Files.list(dir)) {
-                    userDirs.filter(Files::isDirectory)
-                            .forEach(this::recurseUserWorkspaces);
-                } catch (IOException e) {
-                    log.warn("扫描用户工作空间目录异常: {}", dir, e);
-                }
-            }
-        } else {
-            discoverSingleWorkspace(dir);
+        if ("skills".equals(name)) {
+            return;
         }
-    }
-
-    /** 扫描单个用户下的所有Agent 工作空间 */
-    private void recurseUserWorkspaces(Path userDir) {
-        try (Stream<Path> agentDirs = Files.list(userDir)) {
-            agentDirs.filter(Files::isDirectory)
-                    .forEach(this::discoverSingleWorkspace);
-        } catch (IOException e) {
-            log.warn("扫描用户 Agent 工作空间异常: {}", userDir, e);
-        }
+        discoverSingleWorkspace(dir);
     }
 
     /**

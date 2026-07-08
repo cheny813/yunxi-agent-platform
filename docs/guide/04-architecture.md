@@ -158,6 +158,25 @@ tools:
 
 框架自动从配置 + 工作区文件完成 Agent 装配，无需 Java 代码。
 
+**工作空间目录结构**：yunxi 采用 Agent 优先布局——顶层为 Agent 目录，用户数据嵌套在 `{agentName}/users/{userId}/` 下：
+
+```
+.agentscope/workspace/
+├── nutrition-assistant/      # Agent 顶层目录
+│   ├── AGENTS.md             # Agent 身份 + 场景规则
+│   ├── knowledge/            # 知识文档
+│   ├── memory/               # Harness 文件系统记忆
+│   └── users/                # 用户隔离运行时数据
+│       └── user-001/
+├── food-chat/
+│   └── users/
+│       └── user-001/
+├── skills/                   # 全局共享技能（Agent 不可在此创建）
+└── dish-searcher/
+```
+
+`WorkspaceAutoDiscoveryEngine` 启动时扫描根目录，跳过 `skills/`，只处理 Agent 目录。`UserWorkspaceService` 运行时按需创建用户隔离的 Agent 实例。
+
 ### 依赖关系图
 
 ```

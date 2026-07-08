@@ -98,7 +98,9 @@ agent-core/src/main/java/io/yunxi/platform/
 | `AgentService` | Agent 生命周期管理（创建、缓存、获取），通过 HarnessAgent 包装 | ~320行 |
 | `AgentConfigurer` | **Agent 自动装配引擎** — 启动时两轮初始化：独立 Agent → 编排 Agent | ~555行 |
 | `AgentInterruptService` | Agent 执行中断服务，封装 agentscope interrupt() API | ~240行 |
-| `AgentWorkspaceInitializer` | 工作区目录结构初始化（AGENTS.md、knowledge/ 等） | - |
+| `AgentWorkspaceInitializer` | 工作区目录初始化（AGENTS.md、knowledge/、memory/、users/ 等） | - |
+| `UserWorkspaceService` | 用户工作空间服务，负责创建用户隔离的 Agent 实例，路径为 `{agentName}/users/{userId}/` | - |
+| `WorkspaceAutoDiscoveryEngine` | 启动时扫描 Agent 工作空间（跳过 `skills/`），解析 AGENTS.md 场景规则、knowledge/、skills/、subagents/ | - |
 | `TempAgentFactory` | 临时 Agent 创建工厂（原名 AdvancedAgentFactory） | - |
 | `ProfileRouter` | Profile 路由：agentName + profile → Agent 实例 | - |
 | `ModelFactory` | 统一模型工厂，复用框架内置 Provider | - |

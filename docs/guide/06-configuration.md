@@ -660,7 +660,7 @@ agentscope:
       type: redis      # workspace（默认）| redis
 ```
 
-`workspace` 模式无需额外依赖，数据存储在 `workspace/agents/<agentId>/context/<sessionId>/`。`redis` 模式需 `spring-boot-starter-data-redis`，通过 `RedisTemplateAdapter` 适配。配置文件修改后重启即生效，无需改动 Java 代码。
+`workspace` 模式无需额外依赖，Session 数据按框架设计存储在 `{agentName}/` 工作空间目录下（与 `users/`、`knowledge/` 等同级）。`redis` 模式需 `spring-boot-starter-data-redis`，通过 `RedisTemplateAdapter` 适配。配置文件修改后重启即生效，无需改动 Java 代码。
 | SIMPLE_KB_ENABLED | 启用本地知识库 | false |
 | **RAG_DEFAULT_LIMIT** | **默认检索文档数** | **5** |
 | **RAG_DEFAULT_SCORE_THRESHOLD** | **默认相似度阈值** | **0.5** |
