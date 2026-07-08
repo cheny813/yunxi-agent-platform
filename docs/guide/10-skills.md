@@ -25,28 +25,41 @@
 
 ## 技能目录结构
 
+技能存放在 `.agentscope/workspace/skills/` 全局目录中，与 Agent 工作空间并列。完整的 workspace 目录布局如下：
+
 ```
 .agentscope/workspace/
-└── skills/                    # 主技能目录（框架唯一识别）
-    ├── skill-vetter/          # 安全审查（外部技能审查）
-    ├── java-developer/        # Java 开发
-    │   └── SKILL.md
-    ├── git-operator/          # Git 操作
-    ├── deployer/              # 应用部署
-    ├── docker-builder/        # Docker 构建
-    ├── code-reviewer/         # 代码审查
-    ├── devops-engineer/       # DevOps
-    ├── database-admin/        # 数据库管理
-    ├── api-developer/         # API 开发
-    ├── sql-designer/          # SQL 设计
-    ├── node-developer/        # Node.js 开发
-    ├── qa-tester/             # 测试工程师
-    ├── file-manager/          # 文件管理
-    ├── shell-executor/        # Shell 执行
-    ├── notion-writer/         # 技术文档
-    ├── uml-designer/          # UML 图表
-    └── logger/                # 日志分析
+├── skills/                    # 全局共享技能目录（框架唯一识别）
+│   ├── skill-vetter/          # 安全审查（外部技能审查）
+│   ├── java-developer/        # Java 开发
+│   │   └── SKILL.md
+│   ├── git-operator/          # Git 操作
+│   ├── deployer/              # 应用部署
+│   ├── docker-builder/        # Docker 构建
+│   ├── code-reviewer/         # 代码审查
+│   ├── devops-engineer/       # DevOps
+│   ├── database-admin/        # 数据库管理
+│   ├── api-developer/         # API 开发
+│   ├── sql-designer/          # SQL 设计
+│   ├── node-developer/        # Node.js 开发
+│   ├── qa-tester/             # 测试工程师
+│   ├── file-manager/          # 文件管理
+│   ├── shell-executor/        # Shell 执行
+│   ├── notion-writer/         # 技术文档
+│   ├── uml-designer/          # UML 图表
+│   └── logger/                # 日志分析
+├── food-chat/                 # Agent 工作空间
+│   ├── AGENTS.md
+│   ├── knowledge/
+│   ├── skills/                # Agent 专属技能（与全局 skills/ 独立）
+│   └── users/                 # 用户运行时数据
+│       └── user-001/
+└── nutrition-assistant/       # 另一个 Agent 工作空间
+    ├── AGENTS.md
+    └── users/
 ```
+
+> **设计原则**：`skills/` 目录与 Agent 目录同级，由 `WorkspaceAutoDiscoveryEngine` 在其 `discoverOrRecurse` 中跳过处理。全局技能对所有 Agent 可见，Agent 专属技能存放在各自 `{agentName}/skills/` 下。
 
 ---
 
