@@ -2,11 +2,13 @@ package io.yunxi.platform.shared.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.agentscope.core.event.AgentEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * SSE 消息构建器
@@ -138,6 +140,16 @@ public class SseMessageBuilder {
     }
 
     /**
+     * 构建 Agent 状态事件消息（与 thinking 区分，前端按行独立展示状态文本）。
+     *
+     * @param statusText 状态文本（如"正在执行: 读取文件"、"读取文件 完成"）
+     * @return SSE 格式的状态消息
+     */
+    public String buildAgentStatusMessage(String statusText) {
+        return buildMessage("agent_status", statusText);
+    }
+
+    /**
      * 构建内容事件消息
      *
      * @param content 内容片段
@@ -202,6 +214,83 @@ public class SseMessageBuilder {
      */
     public String buildPlanProgressMessage(String progressJson) {
         return buildMessage("plan_progress", progressJson);
+    }
+
+    /**
+     * 构建工具调用开始事件消息。
+     * <p>
+     * 前端收到 type=tool_call 事件后，应在消息气泡下方显示工具调用指示器。
+     * 数据透传自 AgentScope 的 {@code ToolCallStartEvent}。
+     * </p>
+     *
+     * @param toolCallId   工具调用唯一标识
+     * @param toolCallName 工具名称（如 search_web、execute_sql）
+     * @return SSE 格式的工具调用消息
+     */
+    public String buildToolCallMessage(String toolCallId, String toolCallName) {
+        return buildMessage("tool_call", toJsonString(Map.of(
+                "toolCallId", toolCallId,
+                "toolCallName", toolCallName
+        )));
+    }
+
+    /**
+     * 构建工具调用结束事件消息。
+     * <p>
+     * 前端收到 type=tool_call_done 事件后，应标记参数组装完成。
+     * 数据透传自 AgentScope 的 {@code ToolCallEndEvent}。
+     * </p>
+     *
+     * @param toolCallId   工具调用唯一标识
+     * @param toolCallName 工具名称
+     * @return SSE 格式的工具调用完成消息
+     */
+    public String buildToolCallDoneMessage(String toolCallId, String toolCallName) {
+        return buildMessage("tool_call_done", toJsonString(Map.of(
+                "toolCallId", toolCallId,
+                "toolCallName", toolCallName
+        )));
+    }
+
+    /**
+     * 构建工具结果事件消息。
+     * <p>
+     * 前端收到 type=tool_result 事件后，应更新工具调用指示器的状态。
+     * 数据透传自 AgentScope 的 {@code ToolResultEndEvent}。
+     * </p>
+     *
+     * @param toolCallId   工具调用唯一标识
+     * @param toolCallName 工具名称
+     * @param state        执行结果（success/error/interrupted/denied/running）
+     * @return SSE 格式的工具结果消息
+     */
+    public String buildToolResultMessage(String toolCallId, String toolCallName, String state) {
+        return buildMessage("tool_result", toJsonString(Map.of(
+                "toolCallId", toolCallId,
+                "toolCallName", toolCallName,
+                "state", state != null ? state : "unknown"
+        )));
+    }
+
+    /**
+     * 透传 AgentScope 原生事件给前端。
+     * <p>
+     * 将 AgentEvent 完整序列化为 JSON，SSE 消息的 type 为事件类型名
+     * （如 "TOOL_CALL_DELTA"、"SUBAGENT_EXPOSED" 等），content 为事件 JSON。
+     * 前端 {@code JSON.parse(data.content)} 即可获得完整事件数据。
+     * </p>
+     *
+     * @param event AgentScope 原生事件
+     * @return SSE 格式的消息
+     */
+    public String buildAgentEvent(AgentEvent event) {
+        try {
+            String eventJson = objectMapper.writeValueAsString(event);
+            return buildMessage(event.getType().getValue(), eventJson);
+        } catch (Exception e) {
+            log.error("序列化 Agent 事件失败: type={}", event.getType().getValue(), e);
+            return buildErrorMessage("事件序列化失败");
+        }
     }
 
     /**
