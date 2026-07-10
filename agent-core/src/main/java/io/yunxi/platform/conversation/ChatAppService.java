@@ -13,9 +13,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import io.agentscope.core.agent.Agent;
-import io.agentscope.core.event.AgentEvent;
-import io.agentscope.core.event.ThinkingBlockDeltaEvent;
-import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.Msg;
 import io.yunxi.agent.rule.core.RuleContext;
 import io.yunxi.agent.rule.core.RuleEngine;
@@ -729,13 +726,20 @@ public class ChatAppService {
                     }
                 }
 
-                // 思考事件文本（深度模式/A2A 模式显示更详细的提示）
+                // 思考事件文本：展示 Agent 正在分析的实际问题，比空洞的"A2A 协作模式"更有意义
                 String thinkingText;
                 boolean useA2A = request.isUseA2A() || request.isDeepMode();
-                if (useA2A) {
-                    thinkingText = String.format("A2A 协作模式 - 主智能体正在分析 %d 条消息，将协调专家智能体处理..", allMessages.size());
-                } else if (request.isEnableThinking()) {
-                    thinkingText = String.format("正在分析 %d 条消息..", allMessages.size());
+                if (useA2A || request.isEnableThinking()) {
+                    String userQuestion = request.getMessage();
+                    if (userQuestion != null && userQuestion.length() > 80) {
+                        userQuestion = userQuestion.substring(0, 80) + "...";
+                    }
+                    if (useA2A) {
+                        thinkingText = String.format("分析需求: %s\n正在协调专家智能体处理 (%d 条上下文)..",
+                                userQuestion, allMessages.size());
+                    } else {
+                        thinkingText = String.format("分析: %s", userQuestion);
+                    }
                 } else {
                     thinkingText = null;
                 }
@@ -782,12 +786,7 @@ public class ChatAppService {
                 conversationId != null ? sseMessageBuilder.buildStartMessageWithConversationId(conversationId)
                         : sseMessageBuilder.buildStartMessage());
 
-        // 2. 思考事件（如果启用）
-        Flux<String> thinkingFlux = thinkingText != null
-                ? Flux.just(sseMessageBuilder.buildThinkingMessage(thinkingText))
-                : Flux.empty();
-
-        // 3. 调用 Agent 获取响应（深度/A2A 模式使用更长超时）
+        // 2. 确定运行模式（深度/A2A 模式使用更长超时）
         boolean useA2A = request.isUseA2A() || request.isDeepMode();
         int timeoutSeconds = useA2A
                 ? properties.getChatTimeoutSeconds() * 3 // 深度/A2A 模式 3 倍超时
@@ -798,15 +797,15 @@ public class ChatAppService {
             log.info("深度/A2A 协作模式已启用，超时时间: {}s", timeoutSeconds);
         }
 
-        // 4. A2A 进度心跳流（让用户知道系统在工作）
-        Flux<String> heartbeatFlux = useA2A
-                ? Flux.interval(Duration.ofSeconds(8))
-                        .map(seq -> sseMessageBuilder.buildThinkingMessage(
-                                "协作处理中... 主智能体正在与专家智能体沟通 (" + (seq + 1) + ")"))
-                        .take(20) // 最多 20 条心跳（160 秒）
+        // 3. 思考事件（A2A 模式用 agent_status 类型，前端按独立状态行展示；
+        //    普通模式用 thinking 类型，推理文本流式拼接）
+        Flux<String> thinkingFlux = thinkingText != null
+                ? Flux.just(useA2A
+                        ? sseMessageBuilder.buildAgentStatusMessage(thinkingText)
+                        : sseMessageBuilder.buildThinkingMessage(thinkingText))
                 : Flux.empty();
 
-        // 5. 使用 agent.streamEvents() 获取流式事件（替代已废弃的 stream()）
+        // 4. 使用 agent.streamEvents() 获取流式事件（替代已废弃的 stream()）
         // V2.0-RC3: HarnessAgent 自身提供 streamEvents()，不再继承 ReActAgent
         io.agentscope.harness.agent.HarnessAgent harnessAgent = (io.agentscope.harness.agent.HarnessAgent) agent;
         Flux<io.agentscope.core.event.AgentEvent> eventFlux;
@@ -821,11 +820,23 @@ public class ChatAppService {
         // 积累推理文本，最终存入 Msg metadata
         StringBuilder thinkingAccumulator = new StringBuilder();
 
-        // 6. 将 AgentEvent 流转换为 SSE 事件流
+        // 6. 将 AgentEvent 流转换为 SSE 事件流（透传架构：除内容事件外，全部原生透传给前端）
         Flux<String> contentFlux = eventFlux
                 .timeout(timeout)
                 .flatMapSequential(event -> {
-                    if (event.getType() == io.agentscope.core.event.AgentEventType.THINKING_BLOCK_DELTA) {
+                    io.agentscope.core.event.AgentEventType type = event.getType();
+
+                    // ── 内容事件：需要后端处理（流式输出/保存会话） ──
+                    // 这类事件已被完整消费，不再额外透传（避免重复流量）
+                    if (type == io.agentscope.core.event.AgentEventType.TEXT_BLOCK_DELTA) {
+                        String delta = event instanceof io.agentscope.core.event.TextBlockDeltaEvent
+                                ? ((io.agentscope.core.event.TextBlockDeltaEvent) event).getDelta()
+                                : null;
+                        return delta != null && !delta.isEmpty()
+                                ? Flux.just(sseMessageBuilder.buildContentMessage(delta))
+                                : Flux.empty();
+                    }
+                    if (type == io.agentscope.core.event.AgentEventType.THINKING_BLOCK_DELTA) {
                         String text = event instanceof io.agentscope.core.event.ThinkingBlockDeltaEvent
                                 ? ((io.agentscope.core.event.ThinkingBlockDeltaEvent) event).getDelta()
                                 : null;
@@ -835,9 +846,8 @@ public class ChatAppService {
                         }
                         return Flux.empty();
                     }
-                    if (event.getType() == io.agentscope.core.event.AgentEventType.AGENT_RESULT) {
+                    if (type == io.agentscope.core.event.AgentEventType.AGENT_RESULT) {
                         if (event instanceof io.agentscope.core.event.AgentResultEvent resultEvent) {
-                            // 保存完整响应到会话（附带推理内容）
                             Msg resultMsg = resultEvent.getResult();
                             String reasoningText = thinkingAccumulator.toString();
                             if (!reasoningText.isEmpty()) {
@@ -854,7 +864,6 @@ public class ChatAppService {
                             }
                             String text = resultMsg != null ? resultMsg.getTextContent() : null;
                             if (text != null && !text.isEmpty()) {
-                                // 切块发送（前端分块显示）
                                 int chunkSize = 200;
                                 return Flux.fromStream(
                                         splitTextIntoChunks(text, chunkSize).stream())
@@ -863,30 +872,68 @@ public class ChatAppService {
                         }
                         return Flux.empty();
                     }
-                    if (event.getType() == io.agentscope.core.event.AgentEventType.TEXT_BLOCK_DELTA) {
-                        String delta = event instanceof io.agentscope.core.event.TextBlockDeltaEvent
-                                ? ((io.agentscope.core.event.TextBlockDeltaEvent) event).getDelta()
-                                : null;
-                        if (delta != null && !delta.isEmpty()) {
-                            return Flux.just(sseMessageBuilder.buildContentMessage(delta));
+
+                    // ── 透传模式：所有其他事件 ——
+                    // 收集要发送的消息列表：UX 友好消息 + 原生事件透传
+                    List<String> messages = new ArrayList<>();
+
+                    // 对需要向用户展示进度的事件附加 UX 友好消息
+                    // 注意：MODEL_CALL_START/END 不附加 agent_status
+                    // 原因：qwen-plus 等模型不产生 THINKING_BLOCK_DELTA，
+                    // MODEL_CALL_START 几乎和 TEXT_BLOCK_DELTA 同时到达，
+                    // 此时推理块显示"正在调用模型..."而答案已在流式输出，没有意义
+                    switch (type) {
+                        case MODEL_CALL_START:
+                        case MODEL_CALL_END:
+                            // 不附加 agent_status，仅透传原生事件
+                            break;
+                        case TOOL_CALL_START: {
+                            io.agentscope.core.event.ToolCallStartEvent tc =
+                                    (io.agentscope.core.event.ToolCallStartEvent) event;
+                            messages.add(sseMessageBuilder.buildToolCallMessage(
+                                    tc.getToolCallId(), tc.getToolCallName()));
+                            messages.add(sseMessageBuilder.buildAgentStatusMessage(
+                                    "正在执行: " + friendlyToolName(tc.getToolCallName())));
+                            break;
                         }
-                        return Flux.empty();
+                        case TOOL_CALL_END: {
+                            io.agentscope.core.event.ToolCallEndEvent tc =
+                                    (io.agentscope.core.event.ToolCallEndEvent) event;
+                            messages.add(sseMessageBuilder.buildToolCallDoneMessage(
+                                    tc.getToolCallId(), tc.getToolCallName()));
+                            break;
+                        }
+                        case TOOL_RESULT_END: {
+                            io.agentscope.core.event.ToolResultEndEvent tr =
+                                    (io.agentscope.core.event.ToolResultEndEvent) event;
+                            String stateValue = tr.getState() != null ? tr.getState().getValue() : "unknown";
+                            String stateLabel = "SUCCESS".equalsIgnoreCase(stateValue) ? " 完成" : " (" + stateValue + ")";
+                            messages.add(sseMessageBuilder.buildToolResultMessage(
+                                    tr.getToolCallId(), tr.getToolCallName(), stateValue));
+                            messages.add(sseMessageBuilder.buildAgentStatusMessage(
+                                    friendlyToolName(tr.getToolCallName()) + stateLabel));
+                            break;
+                        }
+                        default:
+                            break;
                     }
-                    return Flux.empty();
+
+                    // 原生事件透传给前端（所有事件，包括已发 agent_status 的）
+                    messages.add(sseMessageBuilder.buildAgentEvent(event));
+
+                    return Flux.fromIterable(messages);
                 })
                 .onErrorResume(e -> {
                     log.error("Agent 推理异常: {}", e.getMessage(), e);
                     return Flux.just(sseMessageBuilder.buildErrorMessage(formatAgentError(e)));
                 });
 
-        // 组合所有事件流（A2A 模式下心跳流和内容流并发，内容返回后心跳自动停止）
-        if (useA2A) {
-            // 使用 takeUntilOther：当 contentFlux 发出第一个元素时，heartbeatFlux 自动停止
-            Flux<String> activeHeartbeat = heartbeatFlux.takeUntilOther(contentFlux.filter(s -> true).next());
-            return Flux.concat(startFlux, thinkingFlux, activeHeartbeat, contentFlux);
-        } else {
-            return Flux.concat(startFlux, thinkingFlux, contentFlux);
-        }
+        // 组合所有事件流（深度/A2A 模式进度通过工具调用事件驱动，不再使用定时心跳）
+        // finishFlux：流结束前发送 agent_status "处理完成"，更新推理块最终状态
+        Flux<String> finishFlux = thinkingText != null
+                ? Flux.just(sseMessageBuilder.buildAgentStatusMessage("处理完成"))
+                : Flux.empty();
+        return Flux.concat(startFlux, thinkingFlux, contentFlux, finishFlux);
     }
 
     /** 将文本按指定大小切块 */
@@ -896,6 +943,34 @@ public class ChatAppService {
             chunks.add(text.substring(i, Math.min(i + chunkSize, text.length())));
         }
         return chunks;
+    }
+
+    /**
+     * 将 AgentScope 工具名称映射为中文描述（用于 A2A 推理块状态展示）。
+     */
+    private static String friendlyToolName(String toolName) {
+        switch (toolName) {
+            case "agent_spawn":         return "启动专家智能体";
+            case "agent_send":          return "与专家智能体沟通";
+            case "agent_list":          return "列出可用智能体";
+            case "task_list":           return "查看任务列表";
+            case "task_output":         return "产出任务结果";
+            case "task_cancel":         return "取消任务";
+            case "read_file":           return "读取文件";
+            case "write_file":          return "写入文件";
+            case "edit_file":           return "编辑文件";
+            case "list_files":          return "浏览目录";
+            case "grep_files":          return "搜索文件内容";
+            case "glob_files":          return "匹配文件";
+            case "execute":             return "执行命令";
+            case "memory_search":       return "搜索记忆";
+            case "memory_get":          return "获取记忆";
+            case "session_history":     return "获取会话历史";
+            case "session_list":        return "列出会话";
+            case "session_search":      return "搜索会话";
+            case "load_skill_through_path": return "加载技能";
+            default:                    return toolName;
+        }
     }
 
     /**

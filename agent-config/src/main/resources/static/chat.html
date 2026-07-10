@@ -508,6 +508,56 @@
             display: none;
         }
 
+        /* 工具调用指示器 — 胶囊形标签，显示在消息气泡下方 */
+        .tool-call-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #16a34a;
+            transition: all 0.3s ease;
+        }
+        .tool-call-indicator.executing {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #3b82f6;
+        }
+        .tool-call-indicator.error {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #dc2626;
+        }
+        .tool-call-indicator .tool-spinner {
+            width: 12px;
+            height: 12px;
+            border: 2px solid #93c5fd;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: tool-spin 0.8s linear infinite;
+        }
+        .tool-call-indicator.error .tool-spinner,
+        .tool-call-indicator:not(.executing) .tool-spinner {
+            display: none;
+        }
+        @keyframes tool-spin {
+            to { transform: rotate(360deg); }
+        }
+        .tool-call-indicator .tool-icon-done {
+            display: none;
+        }
+        .tool-call-indicator:not(.executing) .tool-icon-done {
+            display: inline;
+        }
+        .tool-call-indicator.error .tool-icon-done {
+            display: inline;
+        }
+
         .message.user .message-bubble {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -1414,6 +1464,143 @@ const requestBody = {
             thinkingBlock.classList.remove('collapsed');
         }
 
+        // ─── 工具调用指示器（复用 AgentScope TOOL_CALL_START / TOOL_RESULT_END 事件） ───
+        /** 活跃工具调用映射：toolCallId → indicator DOM 元素 */
+        const activeToolCalls = {};
+
+        /**
+         * 添加工具调用指示器（收到 TOOL_CALL_START 事件时调用）。
+         * 在最后一条 assistant 消息的 message-content 尾部插入胶囊形标签。
+         */
+        function addToolCallIndicator(toolCallId, toolCallName) {
+            const container = document.getElementById('messagesContainer');
+            let assistantMsg = container.querySelector('.message.assistant:last-child');
+            if (!assistantMsg) {
+                addMessage('assistant', '');
+                assistantMsg = container.querySelector('.message.assistant:last-child');
+            }
+            const msgContent = assistantMsg.querySelector('.message-content');
+
+            const indicator = document.createElement('div');
+            indicator.className = 'tool-call-indicator executing';
+            indicator.id = 'tool-' + toolCallId;
+            indicator.innerHTML = '<span class="tool-spinner"></span>'
+                + '<span class="tool-icon-done">✓</span>'
+                + '<span class="tool-name">' + escapeHtml(toolCallName) + '</span>';
+            msgContent.appendChild(indicator);
+            activeToolCalls[toolCallId] = indicator;
+        }
+
+        /**
+         * 更新工具调用结果为完成状态（收到 TOOL_RESULT_END 事件时调用）。
+         */
+        function updateToolResultIndicator(toolCallId, state) {
+            const indicator = activeToolCalls[toolCallId];
+            if (!indicator) return;
+            indicator.classList.remove('executing');
+            const iconEl = indicator.querySelector('.tool-icon-done');
+            if (state === 'success') {
+                indicator.classList.remove('error');
+                if (iconEl) iconEl.textContent = '✓';
+            } else {
+                indicator.classList.add('error');
+                if (iconEl) iconEl.textContent = '✗';
+                const nameEl = indicator.querySelector('.tool-name');
+                if (nameEl) nameEl.textContent += ' (' + state + ')';
+            }
+            // 完成后不删除映射，保留状态可在页面保留查看
+        }
+
+        /**
+         * 处理 AgentScope 原生事件透传。
+         * 将事件数据显示在推理块中，重要事件（子智能体、迭代超限、确认请求等）高亮展示。
+         */
+        function handleNativeAgentEvent(eventType, eventJson) {
+            let evt;
+            try {
+                evt = typeof eventJson === 'string' ? JSON.parse(eventJson) : eventJson;
+            } catch (e) {
+                console.warn('Parse native event failed:', eventType, e);
+                return;
+            }
+
+            // 高频/冗余事件：不展示，仅调试日志
+            const silentTypes = [
+                'TEXT_BLOCK_START', 'TEXT_BLOCK_END',
+                'THINKING_BLOCK_START', 'THINKING_BLOCK_END',
+                'DATA_BLOCK_START', 'DATA_BLOCK_DELTA', 'DATA_BLOCK_END',
+                'TOOL_CALL_DELTA',           // 参数流：频率太高，已在 tool_call 指示器中展示
+                'TOOL_RESULT_START',         // 紧接着 TOOL_RESULT_TEXT_DELTA，不单独展示
+                'TOOL_RESULT_TEXT_DELTA',    // 结果流：频率太高
+                'TOOL_RESULT_DATA_DELTA',    // 二进制结果流
+                'MODEL_CALL_START',          // 与 TEXT_BLOCK_DELTA 几乎同时到达，无展示价值
+                'MODEL_CALL_END',            // 无额外信息，省略
+                'TOOL_CALL_START',           // 已有 agent_status + tool_call
+                'TOOL_CALL_END',             // 已有 tool_call_done
+                'TOOL_RESULT_END',           // 已有 agent_status + tool_result
+                'AGENT_RESULT',              // 已有 content 流
+            ];
+            if (silentTypes.includes(eventType)) {
+                console.debug('[AgentEvent]', eventType, evt);
+                return;
+            }
+
+            // 需要展示的事件：生成状态文本
+            let statusText = null;
+            switch (eventType) {
+                case 'AGENT_START':
+                    statusText = '智能体已启动' + (evt.name ? ': ' + evt.name : '');
+                    break;
+                case 'AGENT_END':
+                    statusText = '智能体已完成';
+                    break;
+                case 'EXCEED_MAX_ITERS':
+                    statusText = '⚠ 已达最大迭代次数 (' + evt.maxIters + ')，当前 ' + evt.currentIter + ' 次';
+                    break;
+                case 'SUBAGENT_EXPOSED':
+                    statusText = '专家智能体已就绪: ' + (evt.label || evt.subagentId || evt.agentId);
+                    break;
+                case 'REQUIRE_USER_CONFIRM':
+                    const toolNames = evt.toolCalls ? evt.toolCalls.map(t => t.name || t.function?.name).join(', ') : '';
+                    statusText = '⚠ 需要用户确认操作' + (toolNames ? ': ' + toolNames : '');
+                    break;
+                case 'REQUIRE_EXTERNAL_EXECUTION':
+                    statusText = '需要外部执行';
+                    break;
+                case 'REQUEST_STOP':
+                    statusText = '已停止' + (evt.reason ? ': ' + evt.reason : '');
+                    break;
+                case 'HINT_BLOCK':
+                    statusText = (evt.hintSource && evt.hintSource !== 'system'
+                            ? evt.hintSource + ': ' : '') + evt.hint;
+                    break;
+                case 'CUSTOM':
+                    if (evt.name === 'state_updated') {
+                        statusText = '状态已更新';
+                    } else if (evt.name === 'team_updated') {
+                        statusText = '团队已更新';
+                    } else {
+                        statusText = '事件: ' + (evt.name || 'custom');
+                    }
+                    break;
+                default:
+                    console.debug('[AgentEvent]', eventType, evt);
+                    return;
+            }
+
+            if (statusText) {
+                if (currentThinking.length > 0) {
+                    currentThinking += '\n';
+                }
+                currentThinking += statusText;
+                updateThinkingBlock(currentThinking);
+            }
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
         // 处理流式响应
         function handleStreamResponse(response) {
             console.log('Stream response status:', response.status);
@@ -1433,6 +1620,7 @@ const requestBody = {
             const decoder = new TextDecoder();
             let assistantMessage = '';
             let currentThinking = ''; // 保存 thinking 事件的内容
+            let lastThinkingType = ''; // 上一个 thinking 事件类型（用于换行分隔）
             let buffer = '';
 
             function read() {
@@ -1511,11 +1699,25 @@ const requestBody = {
                             if (data.type === 'content' && data.content) {
                                 console.log('Adding content, length:', data.content.length);
                                 assistantMessage += data.content;
+                            } else if (data.type === 'agent_status' && data.content) {
+                                console.log('Agent status:', data.content);
+                                // Agent 状态消息：每行独立展示（工具调用进度等）
+                                if (currentThinking.length > 0) {
+                                    currentThinking += '\n';
+                                }
+                                currentThinking += data.content;
+                                lastThinkingType = 'agent_status';
+                                updateThinkingBlock(currentThinking);
                             } else if (data.type === 'thinking' && data.content) {
                                 console.log('Thinking:', data.content);
-                                // 收到 thinking 事件时，追加到 thinking 内容
+                                // Agent 推理文本：流式拼接。
+                                // 如果之前是 agent_status，加分隔线后再拼接推理文本
+                                if (lastThinkingType === 'agent_status' && currentThinking.length > 0
+                                        && !currentThinking.endsWith('\n── Agent 推理 ──\n')) {
+                                    currentThinking += '\n── Agent 推理 ──\n';
+                                }
                                 currentThinking += data.content;
-                                // 更新或创建 thinking 区域
+                                lastThinkingType = 'thinking';
                                 updateThinkingBlock(currentThinking);
                             } else if (data.type === 'error') {
                                 assistantMessage += '\n[错误: ' + data.content + ']';
@@ -1552,6 +1754,21 @@ const requestBody = {
                                 } catch (e) {
                                     console.error('Parse progress data failed:', e);
                                 }
+                            } else if (data.type === 'tool_call' && data.content) {
+                                // 工具调用开始（透传 AgentScope TOOL_CALL_START 事件）
+                                const td = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+                                addToolCallIndicator(td.toolCallId, td.toolCallName);
+                            } else if (data.type === 'tool_call_done' && data.content) {
+                                // 工具参数组装完成（透传 AgentScope TOOL_CALL_END 事件）
+                                // 当前仅记录，前端暂不做视觉变化
+                                console.log('Tool call args complete:', data.content);
+                            } else if (data.type === 'tool_result' && data.content) {
+                                // 工具执行结果（透传 AgentScope TOOL_RESULT_END 事件）
+                                const td = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+                                updateToolResultIndicator(td.toolCallId, td.state);
+                            } else if (data.content) {
+                                // ── 原生 AgentScope 事件透传：type 为事件枚举名，content 为事件 JSON ──
+                                handleNativeAgentEvent(data.type, data.content);
                             } else {
                                 console.log('Unhandled message type or empty content:', data);
                             }
