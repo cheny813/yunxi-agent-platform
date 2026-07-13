@@ -57,6 +57,15 @@ public class MilvusSchemaInitializer implements InitializingBean {
     private static final String FIELD_CONVERSATION_ID = "conversationId";
     private static final String FIELD_CONTENT_TYPE = "contentType";
 
+    /**
+     * 构造 Milvus 集合初始化器。
+     *
+     * @param milvusOps               Milvus 操作门面
+     * @param embeddingService        文本向量化服务
+     * @param pipelineConfigs         同步流水线配置列表（按 Bean 名称 {@code syncPipelineConfigs} 注入）
+     * @param milvusConfig            Milvus 配置
+     * @param milvusCollectionService 集合服务（用于判断集合是否已存在数据）
+     */
     public MilvusSchemaInitializer(
             MilvusOperations milvusOps,
             EmbeddingService embeddingService,
@@ -70,6 +79,11 @@ public class MilvusSchemaInitializer implements InitializingBean {
         this.milvusCollectionService = milvusCollectionService;
     }
 
+    /**
+     * Bean 初始化完成后统一创建全部 Milvus 集合。
+     *
+     * <p>依次确保内置集合（file_content / file_image_feature / conversation_memory / user_memory）\n     * 与所有同步流水线的目标集合存在；Milvus 不可用时跳过。</p>
+     */
     @Override
     @PostConstruct
     public void afterPropertiesSet() {
@@ -101,6 +115,11 @@ public class MilvusSchemaInitializer implements InitializingBean {
         log.info("========== MilvusSchemaInitializer: 集合初始化完成，共 {} 个集合 ==========", 4 + pipelineCount);
     }
 
+    /**
+     * 构建文件内容向量集合 schema。
+     *
+     * @return 文件内容集合 schema
+     */
     private CreateCollectionReq.CollectionSchema buildFileContentSchema() {
         int dimension = embeddingService.getDimension();
         return CreateCollectionReq.CollectionSchema.builder()
@@ -117,6 +136,11 @@ public class MilvusSchemaInitializer implements InitializingBean {
                 .build();
     }
 
+    /**
+     * 构建图像特征向量集合 schema（固定 512 维特征向量）。
+     *
+     * @return 图像特征集合 schema
+     */
     private CreateCollectionReq.CollectionSchema buildFileImageFeatureSchema() {
         return CreateCollectionReq.CollectionSchema.builder()
                 .fieldSchemaList(Arrays.asList(
@@ -133,6 +157,12 @@ public class MilvusSchemaInitializer implements InitializingBean {
                 .build();
     }
 
+    /**
+     * 构建会话/用户记忆向量集合 schema（维度来自配置）。
+     *
+     * @param type 记忆类型标识（"conversation" 或 "user"），仅用于语义区分
+     * @return 记忆集合 schema
+     */
     private CreateCollectionReq.CollectionSchema buildMemorySchema(String type) {
         int dimension = milvusConfig.getEmbedding().getDimension();
         return CreateCollectionReq.CollectionSchema.builder()
@@ -148,38 +178,98 @@ public class MilvusSchemaInitializer implements InitializingBean {
                 .build();
     }
 
+    /**
+     * 构建自动索引（AUTOINDEX + COSINE）参数。
+     *
+     * @return 索引参数列表
+     */
     private List<IndexParam> buildAutoIndexParams() {
         return Collections.singletonList(IndexParam.builder().fieldName(FIELD_EMBEDDING)
                 .indexType(IndexParam.IndexType.AUTOINDEX).metricType(IndexParam.MetricType.COSINE).build());
     }
 
+    /**
+     * 构建 IVF_FLAT 索引（IP 距离 + nlist 参数）参数。
+     *
+     * @return 索引参数列表
+     */
     private List<IndexParam> buildIvfFlatIndexParams() {
         return Collections.singletonList(IndexParam.builder().fieldName(FIELD_EMBEDDING)
                 .indexType(IndexParam.IndexType.IVF_FLAT).metricType(IndexParam.MetricType.IP)
                 .extraParams(Map.of("nlist", String.valueOf(milvusConfig.getEmbedding().getNlist()))).build());
     }
 
+    /**
+     * 构造普通字段 schema。
+     *
+     * @param name 字段名
+     * @param type 数据类型
+     * @param maxLength VarChar 最大长度
+     * @param desc 字段描述
+     * @return 字段 schema
+     */
     private static CreateCollectionReq.FieldSchema field(String name, DataType type, int maxLength, String desc) {
         return CreateCollectionReq.FieldSchema.builder().name(name).dataType(type).maxLength(maxLength).description(desc).build();
     }
 
+    /**
+     * 构造普通字段 schema（无长度限制，如 Int64）。
+     *
+     * @param name 字段名
+     * @param type 数据类型
+     * @param desc 字段描述
+     * @return 字段 schema
+     */
     private static CreateCollectionReq.FieldSchema field(String name, DataType type, String desc) {
         return CreateCollectionReq.FieldSchema.builder().name(name).dataType(type).description(desc).build();
     }
 
+    /**
+     * 构造主键字段 schema（自定主键，autoID=false）。
+     *
+     * @param name 字段名
+     * @param type 数据类型
+     * @param maxLength VarChar 最大长度
+     * @param primaryKey 是否主键
+     * @param desc 字段描述
+     * @return 主键字段 schema
+     */
     private static CreateCollectionReq.FieldSchema field(String name, DataType type, int maxLength, boolean primaryKey, String desc) {
         return CreateCollectionReq.FieldSchema.builder().name(name).dataType(type).maxLength(maxLength)
                 .isPrimaryKey(primaryKey).autoID(false).description(desc).build();
     }
 
+    /**
+     * 构造向量字段 schema（FloatVector）。
+     *
+     * @param name 字段名
+     * @param dimension 向量维度
+     * @param desc 字段描述
+     * @return 向量字段 schema
+     */
     private static CreateCollectionReq.FieldSchema vecField(String name, int dimension, String desc) {
         return CreateCollectionReq.FieldSchema.builder().name(name).dataType(DataType.FloatVector).dimension(dimension).description(desc).build();
     }
 
+    /**
+     * 构造 JSON 类型字段 schema。
+     *
+     * @param name 字段名
+     * @param desc 字段描述
+     * @return JSON 字段 schema
+     */
     private static CreateCollectionReq.FieldSchema jsonField(String name, String desc) {
         return CreateCollectionReq.FieldSchema.builder().name(name).dataType(DataType.JSON).description(desc).build();
     }
 
+    /**
+     * 确保目标集合存在：已有非空集合则跳过，已有空集合则先重建，均未创建则新建。
+     *
+     * @param name 集合名称
+     * @param description 集合描述
+     * @param schema 集合 schema
+     * @param indexParams 索引参数列表
+     */
     private void ensureCollection(String name, String description, CreateCollectionReq.CollectionSchema schema, List<IndexParam> indexParams) {
         if (milvusOps.hasCollection(name) && milvusCollectionService != null && milvusCollectionService.getCollectionCount(name) > 0) return;
         if (milvusOps.hasCollection(name)) { milvusOps.dropCollection(name); }

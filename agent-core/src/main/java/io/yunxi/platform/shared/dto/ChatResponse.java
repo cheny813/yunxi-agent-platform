@@ -26,7 +26,7 @@ package io.yunxi.platform.shared.dto;
  * </pre>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  * @see ChatRequest 对话请求
  * @see UnifiedChatResponse 统一对话响应（支持更多功能）
  */

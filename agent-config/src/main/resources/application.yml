@@ -51,7 +51,6 @@
 # │   ├── gateway.yml          ← 消息网关
 # │   ├── business.yml         ← 业务服务
 # │   ├── text2sql.yml         ← 自然语言转 SQL
-# │   ├── rule-engine.yml      ← 规则引擎
 # │   └── sync-pipelines.yml   ← 同步管道
 # ├── agent-definitions/       ← 各 Agent 定义（名称/提示词/工具）
 # ├── prompts/                 ← 提示词模板
@@ -74,7 +73,7 @@ spring:
 # 此列表仅用于激活 @Profile 注解的 Spring Bean，目前没有 Bean 使用这些 profile 名。
 # 如有自定义配置需要按 profile 隔离时再启用对应值。
 # spring.profiles:
-#   active: server,datasource,cache,async,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,resilience,file-upload,a2a-pipeline,gateway,business,text2sql,rule-engine
+#   active: server,datasource,cache,async,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,resilience,file-upload,a2a-pipeline,gateway,business,text2sql
 
 # ============================================================
 # 日志配置

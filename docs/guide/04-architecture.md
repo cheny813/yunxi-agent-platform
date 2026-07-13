@@ -1,6 +1,6 @@
 # 04. 架构设计
 
-> **⚠️ V2.0-RC3 架构说明**：yunxi-agent-platform 已升级至 AgentScope V2.0.0-RC3。包结构已从 `framework/` / `infra/` / `shared/` 三层重构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等 13 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为 Middleware 体系（6 个 Middleware），Pipeline 已移除，Skill 系统已替换为 V2.0 内置 SkillCurator。`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`）。
+> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等 13 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，Pipeline 已移除，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`）。
 
 ## 软件架构理论基础
 
@@ -82,7 +82,7 @@
 │  - 领域模型                                                  │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 2: Platform 平台层                                    │
-│  - Agent 编排、MCP、记忆、规则引擎（13 个功能包）               │
+│  - Agent 编排、MCP、记忆（13 个功能包）               │
 │  - SPI 接口定义                                              │
 │  - 配置驱动自动装配                                            │
 ├─────────────────────────────────────────────────────────────┤
@@ -96,12 +96,12 @@
 
 #### AgentScope 核心运行时（底层）
 
-**定位**：第三方 SDK 依赖（AgentScope V2.0.0-RC3），不可修改
+**定位**：第三方 SDK 依赖（AgentScope-Java 2.0.0 GA），不可修改
 
 **职责**：
 - 提供 Agent/Model/Toolkit/Middleware/State 核心抽象
-- ReActAgent / HarnessAgent 运行时（注：RC3 中 HarnessAgent 不再继承 ReActAgent，两者各自实现 Agent 接口）
-- Middleware 洋葱模型、SkillCurator 技能治理
+- ReActAgent / HarnessAgent 运行时（HarnessAgent 与 ReActAgent 各自实现 Agent 接口）
+- Middleware 洋葱模型、原生技能治理（`AgentSkillRepository` + `DynamicSkillMiddleware`）
 
 #### Platform 平台层
 
@@ -110,7 +110,7 @@
 **职责**：
 - 实现 AgentScope 扩展点
 - Agent 编排自动装配（`AgentConfigurer`）
-- MCP 协议集成、规则引擎、记忆系统
+- MCP 协议集成、记忆系统
 - 配置管理、持久化、会话管理
 
 **核心包**（`io.yunxi.platform`）：
@@ -178,7 +178,7 @@ tools:
 └── skills/                     # 全局共享技能（Agent 不可在此创建）
 ```
 
-`WorkspaceAutoDiscoveryEngine` 启动时扫描 `agents/` 子目录，`users/` 由 `UserWorkspaceService` 运行时按需创建用户隔离的 Agent 实例。根级 `AGENTS.md` 和 `skills/` 为全局共享资源。
+多租户运行时隔离由 GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 实现：按用户命名空间隔离工作空间与 AgentState 会话槽，`users/` 由框架运行时按需创建。根级 `AGENTS.md` 和 `skills/` 为全局共享资源。
 
 ### 依赖关系图
 
@@ -456,8 +456,8 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 |------|---------|---------|:--:|
 | **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
 | **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl` 8 步拦截链 | 否 |
-| **3. 多通道网关层** | 钉钉/飞书/企微/Web API 多渠道接入 | `agent-gateway` 模块、`MessageChannel` | 否 |
-| **4. 生产特性层** | 熔断器、HITL 人工审核、会话管理、分布式缓存、多租户 | `ToolCircuitBreaker`、`ToolGateMiddleware`、`ConversationService` | 否 |
+| **3. 统一治理层（网关能力内置）** | 接入层认证/限流/路由由 GA Channel + AgentGatewayImpl 承接 | `AgentGatewayImpl`、`agent-core` | 否 |
+| **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | `ContentFilterMiddleware`（提示注入防护）、`ConversationService` | 否 |
 | **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
 | **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
 | **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Routing | `AgentConfigurer`（~555行） | 否 |
@@ -600,8 +600,8 @@ public class ModelFactory {
 │  第 4 层: 生产特性 (CircuitBreaker, HITL, Audit, Metrics)        │
 │    熔断器 | 人工审核 | 审计 | 监控 | 多租户 Profile                │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 3 层: 多通道网关 (agent-gateway)                              │
-│    钉钉 | 飞书 | 企微 | Web API | WS                              │
+│  第 3 层: 接入层 (GA Channel: 企微/钉钉/飞书/Web API)             │
+│    由 agentscope-extensions-channel-* 原生承载                    │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 2 层: 统一治理 (AgentGatewayImpl)                             │
 │    审计→限流→优雅关闭→超时→Pre→Agent.call→Post→监控               │
@@ -629,7 +629,6 @@ public class ModelFactory {
 | MCP | 基础客户端 → V2.0 McpServerRegistrar | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
 | 多 Agent | A2A 协议 | Supervisor/Routing 编排 + Profile 路由 | ~10 |
 | 网关 | 无 | 4 通道 + 会话 + 限流 + 认证 | ~20 |
-| 规则管控 | 无 | 三阶段规则引擎 + SpEL | ~15 |
 | 生产治理 | 无 | 熔断/审计/监控/HITL/优雅关闭 | ~12 |
 
 ### 诚实的评估：哪些代码可以优化？
@@ -637,7 +636,7 @@ public class ModelFactory {
 1. **YAML 配置 → DTO 的转换链**：`AgentDefinition` → `AgentConfigDto` → `AgentInfoDto` 有多层映射，部分可以合并
 2. ~~**自建 LLM Provider**~~：✅ **已修复** — 拆除 `ChatModelProvider` 接口及 3 个自建 Provider，复用框架 `ModelRegistry` 工厂机制
 3. ~~**自建 Shell 命令安全**~~：✅ **已修复** — 拆除 `CommandSafetyClassifier`，使用框架 `ShellCommandTool` 白名单/验证器
-4. ~~**Session 包删除适配**~~：✅ **已适配** — RC3 删除 `Session` 包，改用 `DistributedStore` + `RedisDistributedStore.fromJedis()`
+4. ~~**Session 包删除适配**~~：✅ **已适配** — GA 删除 `Session` 包，改用 `DistributedStore` + `RedisDistributedStore.fromJedis()`
 5. ~~**Tracer 废弃适配**~~：✅ **已适配** — 删除 `OpenTelemetryTracer.java`，改用全局 `OpenTelemetry` API
 6. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
 
@@ -736,7 +735,7 @@ agentscope:
 - Domain：通过 YAML Agent 定义 + 工作区 AGENTS.md 声明
 - Bounded Context：通过模块划分
 - Entity：Agent、Scene、Rule
-- Domain Service：SupervisorService、RuleEngine
+- Domain Service：SupervisorService
 
 ### 2. 依赖倒置原则 (DIP)
 
@@ -789,7 +788,6 @@ private final CacheProvider cacheProvider;
 ```java
 // AgentService：只负责 Agent 生命周期
 // ChatAppService：只负责对话编排
-// RuleEngine：只负责规则执行
 ```
 
 ---

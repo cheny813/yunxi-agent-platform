@@ -55,7 +55,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </pre>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Service
@@ -154,6 +154,11 @@ public A2AClient(ObjectProvider<A2AConfig> configProvider, @Autowired A2ARegistr
             int port,
             String protocol,
             Map<String, String> metadata) {
+        /**
+         * 拼接该端点的远程调用 URL。
+         *
+         * @return 形如 {@code <protocol>://<host>:<port>/a2a/invoke} 的地址
+         */
         public String getUrl() {
             return String.format("%s://%s:%d/a2a/invoke", protocol, host, port);
         }
@@ -340,10 +345,20 @@ public A2AClient(ObjectProvider<A2AConfig> configProvider, @Autowired A2ARegistr
             List<String> results,
             List<String> failedAgents,
             List<AgentResponse> allResponses) {
+        /**
+         * 聚合结果中调用成功的 Agent 数量。
+         *
+         * @return 成功 Agent 数
+         */
         public int successCount() {
             return results.size();
         }
 
+        /**
+         * 聚合结果中调用失败的 Agent 数量。
+         *
+         * @return 失败 Agent 数
+         */
         public int failureCount() {
             return failedAgents.size();
         }

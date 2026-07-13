@@ -25,8 +25,7 @@ import java.util.stream.Collectors;
  * 通用数据同步引擎
  *
  * <p>
- * 读取 YAML 配置的 SyncPipeline，执行 MySQL 到 Milvus 的 ETL 流程
- * 替代 agent-business 中多个手写的 SyncHandler 实现
+ * 读取 YAML 配置的 SyncPipeline，执行 MySQL 到 Milvus 的 ETL 流程。
  * </p>
  *
  * <p>
@@ -34,7 +33,7 @@ import java.util.stream.Collectors;
  * </p>
  * <ol>
  * <li>读取管道配置（YAML）</li>
- * <li>执行 SQL 查询（通过 MCP 或 JDBC）</li>
+ * <li>执行 SQL 查询（通过 JDBC）</li>
  * <li>执行转换（文本拼接、值映射、过滤）</li>
  * <li>文本向量化（批量 embedding）</li>
  * <li>创建/验证 Milvus 集合 Schema</li>
@@ -49,9 +48,9 @@ public class SyncEngine implements InitializingBean {
 
     private static final Logger log = LoggerFactory.getLogger(SyncEngine.class);
 
-    /** MCP 数据库查询服务 */
+    /** 外部数据库查询服务（通过 JDBC 直连） */
     @Autowired(required = false)
-    private McpQueryService mcpQueryService;
+    private ExternalDbQueryService externalDbQueryService;
 
     /** Milvus 集合服务 */
     @Autowired(required = false)
@@ -74,13 +73,17 @@ public class SyncEngine implements InitializingBean {
      */
     private List<SyncPipelineConfig> pipelineConfigs = new ArrayList<>();
 
-    /** MCP 数据库主机地址 */
-    @Value("${static-sync.mcp-database.host:localhost}")
-    private String mcpDbHost;
+    /** 外部数据库 JDBC URL */
+    @Value("${static-sync.database.jdbc-url:jdbc:mysql://localhost:3306/default}")
+    private String dbJdbcUrl;
 
-    /** MCP 数据库端口号 */
-    @Value("${static-sync.mcp-database.port:40101}")
-    private int mcpDbPort;
+    /** 外部数据库用户名 */
+    @Value("${static-sync.database.username:root}")
+    private String dbUsername;
+
+    /** 外部数据库密码 */
+    @Value("${static-sync.database.password:root}")
+    private String dbPassword;
 
     /** 批量同步的批次大小 */
     @Value("${static-sync.batch-size:100}")
@@ -162,10 +165,9 @@ public class SyncEngine implements InitializingBean {
         String sql = buildSql(cfg);
         log.debug("  SQL: {}", sql);
 
-        // 2. 执行查询（通过 MCP，传递 datasource 作为 db_id）
-        String jsonResult = mcpQueryService != null
-                ? mcpQueryService.callMcpDatabase(mcpDbHost, mcpDbPort,
-                        cfg.getSource().getDatasource(), sql, 10000)
+        // 2. 执行查询（直接 JDBC 连接目标数据库）
+        String jsonResult = externalDbQueryService != null
+                ? externalDbQueryService.query(dbJdbcUrl, dbUsername, dbPassword, sql, 10000)
                 : "[]";
         List<Map<String, Object>> rows = parseJsonResult(jsonResult);
         log.info("  查询到 {} 条记录", rows.size());

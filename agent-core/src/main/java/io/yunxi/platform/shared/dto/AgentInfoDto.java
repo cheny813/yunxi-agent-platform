@@ -27,6 +27,14 @@ public class AgentInfoDto {
     public AgentInfoDto() {
     }
 
+    /**
+     * 构造 Agent 信息
+     *
+     * @param name       Agent 名称
+     * @param prompt     系统提示词
+     * @param modelName  模型名称
+     * @param createdAt  创建时间
+     */
     public AgentInfoDto(String name, String prompt, String modelName, Instant createdAt) {
         this.name = name;
         this.prompt = prompt;
@@ -34,6 +42,15 @@ public class AgentInfoDto {
         this.createdAt = createdAt;
     }
 
+    /**
+     * 构造 Agent 信息（含描述）
+     *
+     * @param name         Agent 名称
+     * @param description  Agent 描述（前端展示）
+     * @param prompt       系统提示词
+     * @param modelName    模型名称
+     * @param createdAt    创建时间
+     */
     public AgentInfoDto(String name, String description, String prompt, String modelName, Instant createdAt) {
         this.name = name;
         this.description = description;

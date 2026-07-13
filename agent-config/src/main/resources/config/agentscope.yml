@@ -62,6 +62,36 @@ agentscope:
       #   command: npx
       #   args: ["-y", "@modelcontextprotocol/server-sqlite", "./data/sample.db"]
 
+    # ============================================================
+    # GA PlanMode 计划模式配置（agentscope.core.plan，由 AgentConfigurer.configurePlan 读取）
+    # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core 与 mcp-servers 一致。
+    # ============================================================
+    plan:
+      enabled: ${PLAN_ENABLED:false}
+      plan-dir: ${PLAN_DIR:plan}
+      # 只读工具关键字（逗号分隔）：plan 模式下仅允许这些只读工具 + GA 内置 plan 控制工具
+      read-only-tools: ${PLAN_READONLY_TOOLS:read_file,cat,ls,grep,memory_search,git}
+
+    # ============================================================
+    # GA 原生技能系统（agentscope.core.skill，由 AgentConfigurer.configureSkills 读取）
+    # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core。
+    # ============================================================
+    skill:
+      enabled: ${SKILL_ENABLED:false}
+      filesystem-dir: ${SKILL_FS_DIR:.agentscope/workspace/skills}
+      writeable: ${SKILL_WRITABLE:false}
+      project-global-dir: ${SKILL_PROJECT_DIR:}
+
+    # ============================================================
+    # GA 原生韧性配置（agentscope.core.resilience，由 AgentConfigurer.configureResilience 读取）
+    # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core。
+    # ============================================================
+    resilience:
+      max-retries: ${RESILIENCE_MAX_RETRIES:2}
+      fallback-model: ${RESILIENCE_FALLBACK_MODEL:}
+      stop-on-reject: ${RESILIENCE_STOP_ON_REJECT:false}
+      timeout-ms: ${RESILIENCE_TIMEOUT_MS:120000}
+
   extensions:
     # 自动配置开关
     autoConfigEnabled: ${AGENTSCOPE_AUTO_CONFIG:true}
@@ -74,51 +104,11 @@ agentscope:
       default-score-threshold: ${RAG_DEFAULT_SCORE_THRESHOLD:0.5}
 
     # ============================================================
-    # 知识库配置 (RAG)
+    # V2.0 GA 升级：原 knowledge-bases 配置段（bailian/dify/ragflow/simple）
+    # 对应的 KnowledgeAutoConfiguration / *KnowledgeCreator 已删除（rag 包 @Deprecated）。
+    # 应用层 RAG 由 ApplicationRAG（基于 FileVectorService + EmbeddingService）在
+    # ChatAppService 中注入，不再依赖此 YAML 段。此处删除该段避免 Jackson 绑定到已删类。
     # ============================================================
-    knowledge-bases:
-
-      # 百炼知识库（阿里云）
-      tech-docs:
-        enabled: ${BAILIAN_ENABLED:false}
-        type: bailian
-        access-key-id: ${BAILIAN_ACCESS_KEY_ID:}
-        access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET:}
-        workspace-id: ${BAILIAN_WORKSPACE_ID:}
-        index-id: ${BAILIAN_INDEX_ID:}
-
-      # Dify 知识库
-      product-manual:
-        enabled: ${DIFY_ENABLED:false}
-        type: dify
-        api-key: ${DIFY_API_KEY:}
-        api-url: ${DIFY_API_URL:}
-        dataset-id: ${DIFY_DATASET_ID:}
-        retrieval-mode: ${DIFY_RETRIEVAL_MODE:HYBRID_SEARCH}
-
-      # RAGFlow 知识库（开源 RAG 引擎）
-      company-docs:
-        enabled: ${RAGFLOW_ENABLED:false}
-        type: ragflow
-        api-key: ${RAGFLOW_API_KEY:}
-        api-url: ${RAGFLOW_API_URL:http://localhost:9380}
-        dataset-id: ${RAGFLOW_DATASET_ID:}
-        similarity-threshold: ${RAGFLOW_SIMILARITY_THRESHOLD:0.3}
-        vector-similarity-weight: ${RAGFLOW_VECTOR_WEIGHT:0.3}
-
-      # Simple 本地知识库（开发测试用，基于项目已有的 EmbeddingService）
-      local-docs:
-        enabled: ${SIMPLE_KB_ENABLED:false}
-        type: simple
-        dimension: ${SIMPLE_KB_DIMENSION:1024}
-
-    # ============================================================
-    # 技能系统（V2.0）
-    # 启用后自动注册 skill_manage 和 skill_propose 工具
-    # skill_propose：Agent 可提案新技能，写入 workspace/skills/
-    # ============================================================
-    skills:
-      enabled: ${SKILLS_ENABLED:true}
 
     # A2A 协议
     a2a:

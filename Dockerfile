@@ -6,10 +6,7 @@ WORKDIR /build
 
 # Copy pom files first for better layer caching
 COPY pom.xml .
-COPY agent-rule-engine/pom.xml agent-rule-engine/
 COPY agent-core/pom.xml agent-core/
-COPY agent-business/pom.xml agent-business/
-COPY agent-gateway/pom.xml agent-gateway/
 COPY agent-app/pom.xml agent-app/
 COPY agent-text2sql/pom.xml agent-text2sql/
 

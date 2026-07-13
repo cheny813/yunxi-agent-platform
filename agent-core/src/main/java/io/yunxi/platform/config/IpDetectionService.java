@@ -36,6 +36,13 @@ public class IpDetectionService {
             "192.168.", "127.", "169.254."
     };
 
+    /**
+     * 从 HTTP 请求中提取客户端真实 IP。
+     * <p>依次读取常见代理请求头，解析并过滤私有地址，若无候选则回退到远程地址。</p>
+     *
+     * @param request 当前 HTTP 请求
+     * @return 解析得到的最佳客户端 IP，无法解析时返回 {@code 0.0.0.0}
+     */
     public String getClientIp(HttpServletRequest request) {
         Set<String> ipCandidates = new LinkedHashSet<>();
         for (String header : IP_HEADERS) {
@@ -51,6 +58,12 @@ public class IpDetectionService {
         return selectBestIp(ipCandidates);
     }
 
+    /**
+     * 解析代理请求头中的 IP 候选列表，过滤非法与私有地址。
+     *
+     * @param headerValue 单个请求头的原始值（可能含多个逗号分隔的 IP）
+     * @return 合法且非私有的 IP 候选集合（保持出现顺序）
+     */
     private Set<String> parseIpCandidates(String headerValue) {
         Set<String> candidates = new LinkedHashSet<>();
         for (String ip : headerValue.split(",")) {
@@ -60,18 +73,36 @@ public class IpDetectionService {
         return candidates;
     }
 
+    /**
+     * 从候选集合中选择最佳（非私有）IP。
+     *
+     * @param candidates IP 候选集合
+     * @return 首个非私有 IP；若均为私有则返回首个候选；空集合返回 {@code 0.0.0.0}
+     */
     private String selectBestIp(Set<String> candidates) {
         if (candidates.isEmpty()) return "0.0.0.0";
         for (String candidate : candidates) { if (!isPrivateIp(candidate)) return candidate; }
         return candidates.iterator().next();
     }
 
+    /**
+     * 判断字符串是否为合法 IPv4/IPv6 地址（含本地回环）。
+     *
+     * @param ip 待校验的 IP 字符串
+     * @return 合法时返回 true，空或格式不符时返回 false
+     */
     public boolean isValidIp(String ip) {
         if (!StringUtils.hasText(ip)) return false;
         return IPV4_PATTERN.matcher(ip).matches() || IPV6_PATTERN.matcher(ip).matches()
                 || "0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip);
     }
 
+    /**
+     * 判断 IP 是否属于私有/内网地址段。
+     *
+     * @param ip 待判断的 IP 字符串
+     * @return 私有地址返回 true；非法 IP 或公网地址返回 false
+     */
     public boolean isPrivateIp(String ip) {
         if (!isValidIp(ip)) return false;
         if (IPV4_PATTERN.matcher(ip).matches()) {
@@ -81,11 +112,23 @@ public class IpDetectionService {
         return ip.equals("::1") || ip.equals("0:0:0:0:0:0:0:1");
     }
 
+    /**
+     * 返回 IP 的网络类型分类。
+     *
+     * @param ip 待分类的 IP 字符串
+     * @return {@code PRIVATE}/{@code PUBLIC}/{@code INVALID}
+     */
     public String getNetworkType(String ip) {
         if (!isValidIp(ip)) return "INVALID";
         return isPrivateIp(ip) ? "PRIVATE" : "PUBLIC";
     }
 
+    /**
+     * 根据 IP 构造地理信息（私有地址归类为内网，公网地址标记为未知）。
+     *
+     * @param ip 客户端 IP
+     * @return 填充了国家/地区/城市等字段的地理信息对象
+     */
     public IpGeoInfo getGeoInfo(String ip) {
         IpGeoInfo geoInfo = new IpGeoInfo();
         geoInfo.setIp(ip);
@@ -96,10 +139,23 @@ public class IpDetectionService {
         return geoInfo;
     }
 
+    /**
+     * 判断 IP 是否来自受信任的代理地址列表。
+     *
+     * @param ip               待校验的 IP
+     * @param trustedProxyIps  受信任代理 IP 数组
+     * @return 合法且命中信任列表时返回 true
+     */
     public boolean isFromTrustedProxy(String ip, String[] trustedProxyIps) {
         return isValidIp(ip) && trustedProxyIps != null && Arrays.asList(trustedProxyIps).contains(ip);
     }
 
+    /**
+     * 汇总单次请求的 IP 统计信息（IP、网络类型、地理信息、UA、时间戳）。
+     *
+     * @param request 当前 HTTP 请求
+     * @return IP 统计信息对象
+     */
     public IpStats getIpStats(HttpServletRequest request) {
         String clientIp = getClientIp(request);
         IpStats stats = new IpStats();
@@ -109,6 +165,9 @@ public class IpDetectionService {
         return stats;
     }
 
+    /**
+     * IP 地理信息，承载国家、地区、城市及经纬度等位置字段。
+     */
     public static class IpGeoInfo {
         private String ip; private String country; private String region; private String city;
         private double latitude; private double longitude;
@@ -120,6 +179,9 @@ public class IpDetectionService {
         public double getLongitude() { return longitude; } public void setLongitude(double longitude) { this.longitude = longitude; }
     }
 
+    /**
+     * IP 统计信息，记录请求来源 IP、网络类型、地理信息、UA 及请求时间等维度。
+     */
     public static class IpStats {
         private String ip; private String networkType; private IpGeoInfo geoInfo;
         private long requestTime; private String userAgent; private int requestCount;

@@ -32,6 +32,12 @@ public class RedisCacheService implements CacheProvider {
     /** 默认过期时间 */
     private static final long DEFAULT_TTL_HOURS = 24;
 
+    /**
+     * 构造 Redis 缓存服务。
+     *
+     * @param redisTemplate Redis 模板（由 Spring 注入）
+     * @param objectMapper  JSON 序列化器（由 Spring 注入）
+     */
     public RedisCacheService(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;

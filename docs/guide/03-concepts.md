@@ -1,6 +1,6 @@
 # 03. 核心概念
 
-> **⚠️ V2.0-RC3 更新**：AgentScope V2.0 将 Hook 体系替换为 Middleware 体系（6 个拦截点），`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），Pipeline 已删除，Skill 系统替换为 SkillCurator。
+> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），Pipeline 已删除，Skill 系统采用框架原生 `AgentSkillRepository`。
 
 ## 理论基础
 
@@ -626,106 +626,6 @@ public class MemorySceneRegistry {
 
 ---
 
-## 规则引擎
-
-### 理论基础：基于规则的专家系统
-
-**专家系统**：模拟人类专家决策能力的计算机系统。
-
-**规则引擎核心**：
-- **事实 (Facts)**：当前系统的状态
-- **规则 (Rules)**：如果条件满足，则执行动作
-- **推理机 (Inference Engine)**：匹配规则并执行
-
-### 三阶段规则模型
-
-本框架采用 **PRE-RUNTIME-POST** 三阶段规则模型：
-
-```
-请求处理流程：
-
-用户请求
-    ↓
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  PRE 阶段   │───→│ RUNTIME 阶段 │───→│  POST 阶段  │
-│  (前置检查)  │    │ (运行时监控) │    │ (后置处理)  │
-│             │    │             │    │             │
-│ • 权限检查   │    │ • 限流控制   │    │ • 审计日志   │
-│ • 参数校验   │    │ • 熔断保护   │    │ • 结果处理   │
-│ • 安全过滤   │    │ • 性能监控   │    │ • 缓存更新   │
-└─────────────┘    └─────────────┘    └─────────────┘
-    │                    │                    │
-    └────────────────────┴────────────────────┘
-                        ↓
-                   返回结果
-```
-
-**PRE 阶段**：执行前检查，不通过则拒绝请求
-**RUNTIME 阶段**：执行期监控，可干预执行过程
-**POST 阶段**：执行后处理，记录日志、更新状态
-
-### 规则类型
-
-| 类型 | 执行时机 | 用途 | 示例 |
-|------|----------|------|------|
-| **PRE** | 执行前 | 准入控制 | 权限检查、参数校验 |
-| **RUNTIME** | 执行中 | 运行时保护 | 限流、熔断、监控 |
-| **POST** | 执行后 | 后置处理 | 审计日志、结果处理 |
-
-### 规则表达式
-
-本框架使用 **SpEL (Spring Expression Language)** 作为规则表达式：
-
-```java
-// 权限检查
-"@permissionService.hasPermission(#context.get('userId'), 'nutrition')"
-
-// 参数校验
-"#context.get('recipe') != null && #context.get('recipe').getDishes().size() > 0"
-
-// 限流判断
-"@rateLimiter.tryAcquire('nutrition-api', 1)"
-```
-
-### 在本框架中的实现
-
-```java
-@Component
-public class MyRuleProvider implements RuleDefinitionProvider {
-    
-    @Override
-    public List<RuleDefinition> getRuleDefinitions() {
-        return List.of(
-            // PRE 规则：权限检查
-            SpELRule.builder()
-                .name("permission-check")
-                .phase(RulePhase.PRE)
-                .condition("@permissionService.hasPermission(#context.get('userId'), 'nutrition')")
-                .violationAction("#context.put('error', '无权访问')")
-                .build(),
-            
-            // RUNTIME 规则：限流
-            SpELRule.builder()
-                .name("rate-limit")
-                .phase(RulePhase.RUNTIME)
-                .condition("@rateLimiter.tryAcquire('api', 1)")
-                .violationAction("#context.put('error', '请求过于频繁')")
-                .build(),
-            
-            // POST 规则：审计日志
-            SpELRule.builder()
-                .name("audit-log")
-                .phase(RulePhase.POST)
-                .condition("true")
-                .action("@auditService.log('nutrition', #context)")
-                .build()
-        );
-    }
-}
-```
-
----
-
 ## MCP 协议
 
 ### 理论基础：标准化接口
@@ -877,7 +777,6 @@ public class MyTool implements ToolHandler {
 | **DomainContributor** | 定义业务领域 | NutritionDomainContributor |
 | **SceneContributor** | 定义业务场景 | RecipeSceneContributor |
 | **ContextEnricher** | 增强上下文 | NutritionContextEnricher |
-| **RuleDefinitionProvider** | 定义业务规则 | NutritionRuleProvider |
 | **VectorSearchProvider** | 向量搜索实现 | DishVectorSearchProvider |
 
 ### 分层职责
@@ -919,44 +818,30 @@ public class MyTool implements ToolHandler {
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 2. Rule Engine PRE (规则引擎-前置)       │
-│    - 权限检查                            │
-│    - 参数校验                            │
-│    - 安全过滤                            │
-└─────────────┬───────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│ 3. Scene Router (场景路由)               │
+│ 2. Scene Router (场景路由)               │
 │    - 领域识别 (Domain Detection)         │
 │    - 场景匹配 (Scene Matching)           │
 │    - 上下文组装 (Context Assembly)       │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 4. Agent Core (核心层)                   │
+│ 3. Agent Core (核心层)                   │
 │    - Agent 选择                          │
 │    - 记忆检索                            │
 │    - 提示词组装                          │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 5. AgentScope ChatAppService (运行时)        │
+│ 4. AgentScope ChatAppService (运行时)        │
 │    - LLM 推理                            │
 │    - 工具调用决策                        │
 │    - 循环执行                            │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 6. MCP Tool (工具层)                     │
+│ 5. MCP Tool (工具层)                     │
 │    - 工具执行                            │
 │    - 结果返回                            │
-└─────────────┬───────────────────────────┘
-              ↓
-┌─────────────────────────────────────────┐
-│ 7. Rule Engine POST (规则引擎-后置)      │
-│    - 审计日志                            │
-│    - 结果处理                            │
-│    - 缓存更新                            │
 └─────────────┬───────────────────────────┘
               ↓
          返回结果
@@ -977,7 +862,6 @@ public class MyTool implements ToolHandler {
 ├─────────────────────────────────────────┤
 │  应用层安全                               │
 │  - 权限控制 (RBAC)                        │
-│  - 规则引擎过滤                           │
 │  - 输入校验                               │
 ├─────────────────────────────────────────┤
 │  数据层安全                               │

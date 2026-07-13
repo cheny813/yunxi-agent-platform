@@ -18,7 +18,7 @@ import lombok.extern.slf4j.Slf4j;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 3.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Service
@@ -44,14 +44,19 @@ public class SchemaClassRegistry {
          */
         private final Map<String, Class<?>> namedSchemas = new ConcurrentHashMap<>();
 
+        /** @return 默认 Schema 类（兼容旧版单 Schema 配置），未设置时返回 null */
         public Class<?> getDefaultSchemaClass() {
             return defaultSchemaClass;
         }
 
+        /** 设置默认 Schema 类。
+         * @param defaultSchemaClass 默认 Schema 类
+         */
         public void setDefaultSchemaClass(Class<?> defaultSchemaClass) {
             this.defaultSchemaClass = defaultSchemaClass;
         }
 
+        /** @return 命名 Schema 类映射（Key: schemaName, Value: Schema 类），不可为 null */
         public Map<String, Class<?>> getNamedSchemas() {
             return namedSchemas;
         }

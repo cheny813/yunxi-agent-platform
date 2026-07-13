@@ -23,13 +23,13 @@ import reactor.core.publisher.Flux;
  * ReAct 循环追踪 Middleware。
  *
  * <p>
- * 监听 V2.0 AgentEvent 事件流，创建三层 Span 结构：
+ * 监听 AgentEvent 事件流，创建三层 Span 结构：
  * agent.call → react.iteration → llm.invoke。
  * </p>
  *
  * <p>
- * 替代 V1.1 的 ReActSpanHook，使用 V2.0 MiddlewareBase + AgentEvent 机制。
- * 三层 Span 分别对应：Agent 整体调用、ReAct 单轮推理、LLM 模型调用，
+ * 基于 MiddlewareBase + AgentEvent 机制实现，三层 Span 分别对应：
+ * Agent 整体调用、ReAct 单轮推理、LLM 模型调用，
  * 便于在 Jaeger/Zipkin 等链路追踪系统中定位性能瓶颈。
  * </p>
  */
@@ -141,7 +141,7 @@ public class ReActSpanMiddleware implements MiddlewareBase {
             Function<ModelCallInput, Flux<AgentEvent>> next) {
         // 创建最内层 llm.invoke Span，记录调用的模型名称
         Span span = otelTracer.spanBuilder("llm.invoke")
-                .setAttribute("model.name", "AgentScope V2.0")
+                .setAttribute("model.name", "AgentScope")
                 .startSpan();
         try (Scope ignored = span.makeCurrent()) {
             return next.apply(input)

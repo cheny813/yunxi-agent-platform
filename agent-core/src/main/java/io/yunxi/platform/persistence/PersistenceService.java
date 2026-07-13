@@ -36,6 +36,11 @@ public class PersistenceService {
     @Autowired
     private ConversationMapper conversationMapper;
 
+    /**
+     * 应用启动后初始化数据库：建表并统计已有数据。
+     *
+     * <p>若数据库未启用则直接跳过；否则创建所需表并输出 Agent、工具配置计数。</p>
+     */
     @PostConstruct
     public void initializeDatabase() {
         createTablesIfNotExist();
@@ -56,6 +61,11 @@ public class PersistenceService {
         }
     }
 
+    /**
+     * 按需创建全部业务表（幂等）。
+     *
+     * <p>依次创建 agents / conversations / tool_configs / chat_logs 表，\n     * 失败仅记录日志不阻断应用启动。</p>
+     */
     private void createTablesIfNotExist() {
         try {
             conversationMapper.createAgentsTableIfNotExists();
@@ -70,6 +80,11 @@ public class PersistenceService {
         }
     }
 
+    /**
+     * 保存或新增 Agent 实体（数据库启用时生效）。
+     *
+     * @param entity 待保存的 Agent 实体
+     */
     @Transactional
     public void saveAgent(AgentEntity entity) {
         if (!databasePropertiesProvider.getIfAvailable().isEnabled())
@@ -85,6 +100,13 @@ public class PersistenceService {
         }
     }
 
+    /**
+     * 保存工具配置，按工具名称幂等 upsert。
+     *
+     * <p>已存在同名工具配置则更新，否则新增。</p>
+     *
+     * @param entity 待保存的工具配置实体
+     */
     @Transactional
     public void saveToolConfig(ToolConfigEntity entity) {
         if (!databasePropertiesProvider.getIfAvailable().isEnabled())

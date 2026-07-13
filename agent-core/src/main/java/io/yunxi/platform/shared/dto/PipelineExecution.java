@@ -10,7 +10,7 @@ import java.util.List;
  * PipelineExecution 流水线执行记录
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Data
 @Builder

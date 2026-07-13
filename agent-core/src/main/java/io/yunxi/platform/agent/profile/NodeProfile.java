@@ -6,6 +6,12 @@ import java.time.LocalDateTime;
 /**
  * 节点画像实体
  *
+ * <p>记录某客户端（clientId）下某用户（userId）所在节点的环境信息，
+ * 用于结构化管理客户端主机的软硬件与网络特征。其中 {@code tags}、{@code osInfo}、
+ * {@code hardware}、{@code network}、{@code services}、{@code software}、
+ * {@code commonPaths}、{@code cloudInfo}、{@code cloudManagedServices} 等字段
+ * 均以 JSON 字符串形式存储，由采集端序列化后写入。</p>
+ *
  * @author yunxi-agent-platform
  */
 @Data

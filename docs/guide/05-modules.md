@@ -10,9 +10,7 @@
 yunxi-agent-platform/
 ├── agent-spi               # SPI 接口定义（最底层抽象）
 ├── agent-config            # 集中化配置管理
-├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎）
-├── agent-gateway           # 统一消息网关（企微/钉钉/飞书/Web API）
-├── agent-rule-engine       # 规则引擎 + 评分引擎
+├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、GA Channel 网关接入）
 ├── agent-text2sql          # 自然语言转 SQL
 ├── agent-app               # 可执行应用打包
 └── agent-integration-test  # 跨模块集成测试
@@ -23,10 +21,10 @@ yunxi-agent-platform/
 ### 依赖链
 
 ```
-agent-spi → agent-config → agent-core → agent-gateway
-                ↑               ↑
-          agent-rule-engine  agent-text2sql
-                ↓               ↓
+agent-spi → agent-config → agent-core
+                                ↑
+                          agent-text2sql
+                                ↓
             agent-app (聚合 + 启动入口)
 ```
 
@@ -97,40 +95,32 @@ agent-core/src/main/java/io/yunxi/platform/
 | `AgentGatewayImpl` | **核心实现** — 8 步拦截链：审计→限流→优雅关闭→超时→Pre→Agent.call→Post→监控 | ~430行 |
 | `AgentService` | Agent 生命周期管理（创建、缓存、获取），通过 HarnessAgent 包装 | ~320行 |
 | `AgentConfigurer` | **Agent 自动装配引擎** — 启动时两轮初始化：独立 Agent → 编排 Agent | ~555行 |
-| `AgentInterruptService` | Agent 执行中断服务，封装 agentscope interrupt() API | ~240行 |
-| `AgentWorkspaceInitializer` | 工作区目录初始化（AGENTS.md、knowledge/、memory/、sessions/、users/ 等），路径为 `agents/{agentName}/` | - |
-| `UserWorkspaceService` | 用户工作空间服务，负责创建用户隔离的 Agent 实例，路径为 `agents/{agentName}/users/{userId}/` | - |
-| `WorkspaceAutoDiscoveryEngine` | 启动时扫描 `agents/` 子目录下的 Agent 工作空间，解析 AGENTS.md 场景规则、knowledge/、skills/、subagents/ | - |
 | `TempAgentFactory` | 临时 Agent 创建工厂（原名 AdvancedAgentFactory） | - |
 | `ProfileRouter` | Profile 路由：agentName + profile → Agent 实例 | - |
 | `ModelFactory` | 统一模型工厂，复用框架内置 Provider | - |
 
 扩展点（agent/middleware/）：
-- `ContentFilterMiddleware` — 提示注入防护（替换原 ContentFilterHook）
-- `TextToolCallParserMiddleware` — 文本工具调用解析（替换原 TextToolCallParserHook）
-- `ToolGateMiddleware` — HITL 工具门控（替换原 ToolGateHook）
-- `ReasoningReviewMiddleware` — 推理审查（替换原 ReasoningReviewHook）
-- `ReActSpanMiddleware` — OpenTelemetry 链路追踪（替换原 ReActSpanHook）
-- `GracefulShutdownMiddleware` — 优雅关闭（替换原 GracefulShutdownHook）
+- `ContentFilterMiddleware` — 提示注入防护（HITL 安全护栏，平台自建）
+- `ReActSpanMiddleware` — OpenTelemetry 链路追踪（平台自建，实现 `MiddlewareBase`）
+- 优雅关闭由框架内置 `GracefulShutdownMiddleware` 自动注册，无需平台实现
+
+> 说明：上层 Hook 体系已全面迁移为 AgentScope 原生 Middleware 体系；原 `ToolGate`/`ReasoningReview`/`TextToolCallParser` 等自建 Middleware 已在 GA 升级中移除，其能力由框架原生机制（如 `PermissionContextState` 的 ASK 规则、HITL 配置链）承接。
 
 #### 工具体系（tool/）
 
 | 组件 | 说明 |
 |------|------|
 | `Tool` 接口 | 平台工具接口：getName/getDescription/getParameterSchema/execute |
-| `ToolAdapter` | **桥接类** — 将平台 Tool 适配为 agentscope 的 AgentTool，集成熔断器 |
+| `ToolAdapter` | **桥接类** — 将平台 Tool 适配为 agentscope 的 AgentTool |
 | `ToolRegistry` | 本地工具注册中心 |
 | `ToolGroupManager` | 工具分组管理器（MCP 按服务器分组，本地分 agent/page/general） |
-| `ToolCircuitBreaker` | 工具级熔断器（Resilience4j） |
 | 实现类 | DatabaseTool、HttpTool、CalculatorTool、NodeTool 等 |
 
 #### MCP 协议（mcp/）
 
 | 组件 | 说明 |
 |------|------|
-| `McpServerRegistrar` | ✅ V2.0 内置 MCP 服务器注册器（替代 McpToolRegistry） |
-| `McpClientService` | MCP 客户端，JSON-RPC 2.0 协议调用 |
-| `McpClient` / `McpClientConfig` | MCP 客户端配置 |
+| `McpServerRegistrar` | AgentScope 原生 MCP 服务器注册器（框架内置，替代旧版 McpToolRegistry） |
 | `CacheableTool` | 支持缓存的 MCP 工具 |
 
 #### 其他框架组件
@@ -139,9 +129,9 @@ agent-core/src/main/java/io/yunxi/platform/
 |------|------|
 | `a2a/` | 跨服务 Agent 协作协议（A2AServer/A2AClient/A2ARegistry） |
 | `memory/` | 记忆系统（MemoryRecord/MemoryScene/MemorySceneRegistry + Harness 内置记忆） |
-| `skill/` | ❌ 已删除 — 替换为 V2.0 SkillCurator 治理流水线 |
+| `skill/` | ❌ 已删除 — 技能系统已迁移至 AgentScope 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
 | `conversation/` | 对话编排（ChatAppService/ConversationService） |
-| `workspace/` | 工作区自动发现引擎 |
+| `workspace/` | 多租户运行时隔离（GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 按用户命名空间隔离工作空间与 AgentState 会话槽） |
 | `session/` | 会话管理 |
 | `sync/` | 数据同步引擎（MySQL → Milvus） |
 | `plan/` | PlanNotebook 持久化、计划模板 |
@@ -168,50 +158,6 @@ agent-core/src/main/java/io/yunxi/platform/
 
 ---
 
-## agent-gateway（统一消息网关）
-
-### 通道支持
-
-| 平台 | 协议 | 实现类 |
-|------|------|--------|
-| Web API | HTTP/REST | `WebApiChannel` |
-| 企业微信 | Webhook | `WeComChannel` |
-| 钉钉 | Stream | `DingTalkChannel` |
-| 飞书 | WebSocket | `FeishuChannel` |
-
-### 核心组件
-
-| 组件 | 说明 |
-|------|------|
-| `GatewayDispatcher` | 消息调度中心，接收回调 → 调用 agent-core → 返回响应 |
-| `CoreAgentClient` | 通过 WebClient 调用 agent-core 的 SSE 流式接口 |
-| `GatewaySessionManager` | 会话管理 |
-| `MessageChannel` 接口 | 消息通道统一抽象 |
-| `GatewayRateLimitFilter` | 限流过滤 |
-| `GatewayAdminAuthFilter` | 认证过滤 |
-| `InMemorySessionStore` / `SqliteSessionStore` | 会话存储 |
-
----
-
-## agent-rule-engine（规则引擎）
-
-基于 `easy-rules-core` 4.1.0 + Spring SpEL（替代不安全的 MVEL）：
-
-| 组件 | 说明 |
-|------|------|
-| `core/RuleEngine` | 规则引擎门面，支持三阶段：PRE → RUNTIME → POST |
-| `core/SpELRule` | Spring Expression Language 规则 |
-| `spi/RuleDefinitionProvider` | 规则定义 SPI 扩展点 |
-| `model/Rule/RuleType/RulePriority/RuleResult` | 数据模型 |
-| `repository/RuleRepository` | 规则仓库 |
-
-三阶段执行：
-- **PRE**：权限检查、参数校验
-- **RUNTIME**：限流、熔断、运行时约束
-- **POST**：审计日志、结果校验
-
----
-
 ## agent-text2sql（SQL生成）
 
 6 步流水线：
@@ -232,9 +178,7 @@ agent-core/src/main/java/io/yunxi/platform/
 ```
 agent-app
     ↓
-agent-core ←→ agent-rule-engine
-    ↓
-agent-gateway → agent-core
+agent-core
 ```
 
 业务能力通过 MCP 协议接入，不依赖 Java 模块：
@@ -259,8 +203,6 @@ yunxi-mcp-servers/          ← 独立项目，30+ MCP 服务
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | agent-core | 40001 | 核心服务 |
-| agent-rule-engine | 40002 | 规则引擎 |
-| agent-gateway | 40003 | 网关服务 |
 | mcp-nutrition | 40602 | 营养数据 MCP |
 
 ---

@@ -3,6 +3,10 @@ package io.yunxi.platform.agent.model;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ModelRegistry;
+import io.agentscope.extensions.model.anthropic.AnthropicChatModel;
+import io.agentscope.extensions.model.dashscope.DashScopeChatModel;
+import io.agentscope.extensions.model.openai.OpenAIChatModel;
+import io.agentscope.extensions.model.openai.formatter.DeepSeekFormatter;
 import io.yunxi.platform.shared.config.AgentModelConfig;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import jakarta.annotation.PostConstruct;
@@ -16,17 +20,24 @@ import org.springframework.stereotype.Component;
  * <p>
  * 在初始化时将 yunxi 自定义工厂注册到 ModelRegistry，随后统一通过
  * {@code ModelRegistry.resolve("provider:modelName")} 创建。
- * 利用 RC3 框架的 ModelRegistry 机制，避免手动构造各 ChatModel。
+ * 利用框架的 ModelRegistry 机制，避免手动构造各 ChatModel。
  * </p>
  *
  * <p>
  * 支持的供应商：
  * <ul>
- * <li>openai / dashscope / claude / deepseek — 通过 ModelRegistry 工厂</li>
+ * <li>openai / deepseek — 通过 OpenAIChatModel（extensions-model-openai）</li>
+ * <li>dashscope — 通过 DashScopeChatModel（extensions-model-dashscope）</li>
+ * <li>claude / anthropic — 通过 AnthropicChatModel（extensions-model-anthropic）</li>
  * <li>baidu / huawei — 框架未内置，保留自定义 BaiduModelProvider /
  * HuaweiModelProvider</li>
  * <li>ollama — 框架已内置，通过 {@code ollama:modelName} 格式</li>
  * </ul>
+ * </p>
+ *
+ * <p>
+ * 注：各厂商 ChatModel 已从 {@code io.agentscope.core.model} 拆分到
+ * 独立的 {@code agentscope-extensions-model-*} 模块，故本工厂需引入对应的 extension 依赖。
  * </p>
  */
 @Component
@@ -36,6 +47,11 @@ public class ModelFactory {
 
         private final AgentscopeCoreProperties coreProperties;
 
+        /**
+         * 构造模型工厂。
+         *
+         * @param coreProperties 核心配置属性，提供各供应商与默认生成参数
+         */
         public ModelFactory(AgentscopeCoreProperties coreProperties) {
                 this.coreProperties = coreProperties;
         }
@@ -57,7 +73,7 @@ public class ModelFactory {
                 ModelRegistry.registerFactory("openai:.+", modelId -> {
                         String modelName = modelId.substring("openai:".length());
                         var cfg = coreProperties.getOpenai();
-                        return io.agentscope.core.model.OpenAIChatModel.builder()
+                        return OpenAIChatModel.builder()
                                         .apiKey(cfg.getApiKey() != null ? cfg.getApiKey() : coreProperties.getApiKey())
                                         .modelName(modelName)
                                         .baseUrl(cfg.getBaseUrl() != null ? cfg.getBaseUrl()
@@ -82,7 +98,7 @@ public class ModelFactory {
                                         "DashScope API Key 未配置。请设置 agentscope.core.dashscope.api-key 或"
                                                 + " agentscope.core.api-key 或环境变量 DASHSCOPE_API_KEY");
                         }
-                        return io.agentscope.core.model.DashScopeChatModel.builder()
+                        return DashScopeChatModel.builder()
                                         .apiKey(apiKey)
                                         .modelName(modelName)
                                         .stream(true)
@@ -94,7 +110,7 @@ public class ModelFactory {
                 ModelRegistry.registerFactory("anthropic:.+", modelId -> {
                         String modelName = modelId.substring("anthropic:".length());
                         var cfg = coreProperties.getOpenai(); // Anthropic 暂无独立配置，复用全局
-                        return io.agentscope.core.model.AnthropicChatModel.builder()
+                        return AnthropicChatModel.builder()
                                         .apiKey(cfg.getApiKey() != null ? cfg.getApiKey() : coreProperties.getApiKey())
                                         .modelName(modelName)
                                         .baseUrl(cfg.getBaseUrl())
@@ -106,7 +122,7 @@ public class ModelFactory {
                 ModelRegistry.registerFactory("claude:.+", modelId -> {
                         String modelName = modelId.substring("claude:".length());
                         var cfg = coreProperties.getOpenai();
-                        return io.agentscope.core.model.AnthropicChatModel.builder()
+                        return AnthropicChatModel.builder()
                                         .apiKey(cfg.getApiKey() != null ? cfg.getApiKey() : coreProperties.getApiKey())
                                         .modelName(modelName)
                                         .baseUrl(cfg.getBaseUrl())
@@ -119,13 +135,13 @@ public class ModelFactory {
                 ModelRegistry.registerFactory("deepseek:.+", modelId -> {
                         String modelName = modelId.substring("deepseek:".length());
                         var cfg = coreProperties.getOpenai();
-                        return io.agentscope.core.model.OpenAIChatModel.builder()
+                        return OpenAIChatModel.builder()
                                         .apiKey(cfg.getApiKey() != null ? cfg.getApiKey() : coreProperties.getApiKey())
                                         .modelName(modelName)
                                         .baseUrl(cfg.getBaseUrl() != null ? cfg.getBaseUrl()
                                                         : "https://api.deepseek.com/v1")
                                         .stream(true)
-                                        .formatter(new io.agentscope.core.formatter.openai.DeepSeekFormatter(true))
+                                        .formatter(new DeepSeekFormatter(true))
                                         .generateOptions(buildOptions(gen, null))
                                         .build();
                 });
@@ -155,7 +171,6 @@ public class ModelFactory {
                 String modelId = provider + ":" + modelName;
 
                 // 对 baidu/huawei — 框架未内置，保留自定义实现
-                // V2.0-RC3: 框架未内置 Baidu/Huawei ChatModel，待官方补充后迁移
                 if ("baidu".equals(provider)) {
                         GenerateOptions options = buildGenerateOptions(config);
                         log.info("创建 Model (自定义): provider=baidu, model={}", modelName);
@@ -194,6 +209,9 @@ public class ModelFactory {
          * <p>
          * 合并策略：配置中的参数优先，未指定的参数使用全局默认值。
          * </p>
+         *
+         * @param config 模型配置，为 null 时全部使用全局默认值
+         * @return 构建完成的 GenerateOptions 实例
          */
         public GenerateOptions buildGenerateOptions(AgentModelConfig config) {
                 var gen = coreProperties.getGeneration();
@@ -228,9 +246,16 @@ public class ModelFactory {
 
         // ==================== 私有辅助方法 ====================
 
+        /**
+         * 基于全局生成配置构建 GenerateOptions。
+         *
+         * @param gen     全局 GenerationConfig（提供温度、最大 Token、topP、缓存控制）
+         * @param config 模型配置（当前未参与默认选项构建，预留扩展）
+         * @return 构建完成的 GenerateOptions 实例
+         */
         private GenerateOptions buildOptions(AgentscopeCoreProperties.GenerationConfig gen,
                         AgentModelConfig config) {
-                var builder = GenerateOptions.builder();
+            var builder = GenerateOptions.builder();
                 if (gen.getTemperature() != null)
                         builder.temperature(gen.getTemperature());
                 if (gen.getMaxTokens() != null)
@@ -242,8 +267,18 @@ public class ModelFactory {
                 return builder.build();
         }
 
+        /**
+         * 按优先级解析指定供应商的 API Key。
+         *
+         * <p>优先级：模型配置显式 Key &gt; 全局配置 Key &gt; 对应环境变量（DASHSCOPE_API_KEY /
+         * OPENAI_API_KEY / ANTHROPIC_API_KEY）。</p>
+         *
+         * @param config   模型配置，可能为 null
+         * @param provider 供应商名称（dashscope/openai/deepseek/claude/anthropic 等）
+         * @return 解析到的 API Key，均无法获取时返回 null
+         */
         private String resolveApiKey(AgentModelConfig config, String provider) {
-                if (config != null && config.getApiKey() != null)
+            if (config != null && config.getApiKey() != null)
                         return config.getApiKey();
                 if (coreProperties.getApiKey() != null && !coreProperties.getApiKey().isBlank())
                         return coreProperties.getApiKey();
@@ -262,23 +297,41 @@ public class ModelFactory {
                 return null;
         }
 
+        /**
+         * 判断模型配置是否包含自定义生成参数。
+         *
+         * <p>当温度、最大 Token、topP、缓存控制中任一字段非空时，视为需要注册带专属选项的命名模型。</p>
+         *
+         * @param config 模型配置
+         * @return true 表示存在自定义生成选项
+         */
         private boolean hasCustomOptions(AgentModelConfig config) {
-                return config.getTemperature() != null
+            return config.getTemperature() != null
                                 || config.getMaxTokens() != null
                                 || config.getTopP() != null
                                 || config.getCacheControl() != null;
         }
 
+        /**
+         * 向 ModelRegistry 注册一个带自定义 GenerateOptions 的命名模型。
+         *
+         * <p>根据供应商选择对应的 ChatModel 构建器，绑定 API Key 与生成选项，避免与同名默认模型冲突。</p>
+         *
+         * @param namedKey  命名模型标识（含唯一后缀）
+         * @param provider  供应商名称
+         * @param modelName 模型名称
+         * @param options   自定义生成选项
+         */
         private void registerModelWithOptions(String namedKey, String provider,
                         String modelName, GenerateOptions options) {
-                ModelRegistry.register(namedKey, switch (provider) {
-                        case "openai" -> io.agentscope.core.model.OpenAIChatModel.builder()
+            ModelRegistry.register(namedKey, switch (provider) {
+                        case "openai", "deepseek" -> OpenAIChatModel.builder()
                                         .apiKey(coreProperties.getApiKey()).modelName(modelName)
                                         .stream(true).generateOptions(options).build();
-                        case "dashscope" -> io.agentscope.core.model.DashScopeChatModel.builder()
+                        case "dashscope" -> DashScopeChatModel.builder()
                                         .apiKey(coreProperties.getApiKey()).modelName(modelName)
                                         .stream(true).defaultOptions(options).build();
-                        case "claude", "anthropic" -> io.agentscope.core.model.AnthropicChatModel.builder()
+                        case "claude", "anthropic" -> AnthropicChatModel.builder()
                                         .apiKey(coreProperties.getApiKey()).modelName(modelName)
                                         .stream(true).defaultOptions(options).build();
                         default -> throw new IllegalArgumentException("不支持的供应商: " + provider);

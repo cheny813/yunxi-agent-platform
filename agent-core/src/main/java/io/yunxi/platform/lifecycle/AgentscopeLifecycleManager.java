@@ -17,6 +17,9 @@ public class AgentscopeLifecycleManager implements SmartLifecycle {
     private volatile boolean running = false;
     private final int phase;
 
+    /** 构造生命周期管理器，绑定其启动/停止的执行顺序相位（phase 越小越先启动、越后停止）。
+     * @param phase 生命周期相位值
+     */
     public AgentscopeLifecycleManager(int phase) { this.phase = phase; }
 
     @Override public void start() {

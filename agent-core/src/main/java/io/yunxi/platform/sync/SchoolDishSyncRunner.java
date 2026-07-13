@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  * 学校菜品同步运行器
  *
  * <p>
- * 替代旧的 SchoolDishVectorSyncService，处理公共菜品库和各校专属菜品库的同步
+ * 处理公共菜品库和各校专属菜品库的同步
  * </p>
  *
  * <p>
@@ -55,7 +55,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
     private static final String COLLECTION_PREFIX = "school_dishes_";
 
     private final MilvusOperations milvusOps;
-    private final McpQueryService mcpQueryService;
+    private final ExternalDbQueryService externalDbQueryService;
     private final EmbeddingBatchService embeddingBatchService;
     private final EmbeddingService embeddingService;
     private final MilvusCollectionService milvusCollectionService;
@@ -63,11 +63,14 @@ public class SchoolDishSyncRunner implements InitializingBean {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Gson gson = new GsonBuilder().create();
 
-    @Value("${static-sync.mcp-database.host:localhost}")
-    private String mcpDbHost;
+    @Value("${dish-sync.database.jdbc-url:jdbc:mysql://localhost:3306/nutrition}")
+    private String dbJdbcUrl;
 
-    @Value("${static-sync.mcp-database.port:40101}")
-    private int mcpDbPort;
+    @Value("${dish-sync.database.username:root}")
+    private String dbUsername;
+
+    @Value("${dish-sync.database.password:root}")
+    private String dbPassword;
 
     @Value("${dish-sync.batch-size:100}")
     private int batchSize;
@@ -77,12 +80,12 @@ public class SchoolDishSyncRunner implements InitializingBean {
 
     public SchoolDishSyncRunner(
             MilvusOperations milvusOps,
-            McpQueryService mcpQueryService,
+            ExternalDbQueryService externalDbQueryService,
             EmbeddingBatchService embeddingBatchService,
             EmbeddingService embeddingService,
             MilvusCollectionService milvusCollectionService) {
         this.milvusOps = milvusOps;
-        this.mcpQueryService = mcpQueryService;
+        this.externalDbQueryService = externalDbQueryService;
         this.embeddingBatchService = embeddingBatchService;
         this.embeddingService = embeddingService;
         this.milvusCollectionService = milvusCollectionService;
@@ -149,7 +152,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
     private List<Long> queryAllSchoolIds() {
         try {
             String sql = "SELECT id FROM institution WHERE type = 'SCHOOL' AND deleted = 0";
-            String response = mcpQueryService.callMcpDatabase(mcpDbHost, mcpDbPort, sql);
+            String response = externalDbQueryService.query(dbJdbcUrl, dbUsername, dbPassword, sql);
             return parseLongIds(response);
         } catch (Exception e) {
             log.error("Query school list failed", e);
@@ -237,7 +240,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
                     schoolCondition, queryPageSize, offset);
 
             try {
-                String response = mcpQueryService.callMcpDatabase(mcpDbHost, mcpDbPort, null, sql, queryPageSize);
+                String response = externalDbQueryService.query(dbJdbcUrl, dbUsername, dbPassword, sql, queryPageSize);
                 List<Dish> page = parseDishList(response);
                 if (page.isEmpty()) {
                     break;
@@ -276,7 +279,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
                     + "WHERE dfi.d_id IN (" + idList + ")";
 
             try {
-                String response = mcpQueryService.callMcpDatabase(mcpDbHost, mcpDbPort, sql);
+                String response = externalDbQueryService.query(dbJdbcUrl, dbUsername, dbPassword, sql);
                 List<Map<String, Object>> rows = parseJsonRows(response);
                 for (Map<String, Object> row : rows) {
                     DishIngredient di = new DishIngredient();
@@ -311,7 +314,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
                     + "WHERE fin.fi_id IN (" + idList + ")";
 
             try {
-                String response = mcpQueryService.callMcpDatabase(mcpDbHost, mcpDbPort, sql);
+                String response = externalDbQueryService.query(dbJdbcUrl, dbUsername, dbPassword, sql);
                 List<Map<String, Object>> rows = parseJsonRows(response);
                 for (Map<String, Object> row : rows) {
                     IngredientNutrient in = new IngredientNutrient();
@@ -480,6 +483,12 @@ public class SchoolDishSyncRunner implements InitializingBean {
 
     // ==================== 数据解析 ====================
 
+    /**
+     * 将查询结果 JSON 解析为菜品列表。
+     *
+     * @param json 查询返回的 JSON 数组字符串
+     * @return 菜品列表
+     */
     private List<Dish> parseDishList(String json) {
         List<Map<String, Object>> rows = parseJsonRows(json);
         return rows.stream().map(row -> {
@@ -492,6 +501,12 @@ public class SchoolDishSyncRunner implements InitializingBean {
         }).collect(Collectors.toList());
     }
 
+    /**
+     * 将查询结果 JSON 解析为学校 ID 列表。
+     *
+     * @param json 查询返回的 JSON 数组字符串
+     * @return 学校 ID 列表（过滤 null）
+     */
     private List<Long> parseLongIds(String json) {
         List<Map<String, Object>> rows = parseJsonRows(json);
         return rows.stream()
@@ -500,6 +515,12 @@ public class SchoolDishSyncRunner implements InitializingBean {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 解析查询结果为 Map 行列表（容错空串与解析失败）。
+     *
+     * @param json JSON 数组字符串
+     * @return 行列表，空或失败时返回空列表
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> parseJsonRows(String json) {
         try {
@@ -515,6 +536,12 @@ public class SchoolDishSyncRunner implements InitializingBean {
 
     // ==================== 类型转换 ====================
 
+    /**
+     * 将任意对象安全转为 Long（数字直接取值，字符串解析）。
+     *
+     * @param v 原始值
+     * @return Long 或 null
+     */
     private static Long longValue(Object v) {
         if (v == null)
             return null;
@@ -523,6 +550,12 @@ public class SchoolDishSyncRunner implements InitializingBean {
         return Long.parseLong(v.toString());
     }
 
+    /**
+     * 将任意对象安全转为 Double。
+     *
+     * @param v 原始值
+     * @return Double 或 null
+     */
     private static Double doubleValue(Object v) {
         if (v == null)
             return null;
@@ -531,27 +564,37 @@ public class SchoolDishSyncRunner implements InitializingBean {
         return Double.parseDouble(v.toString());
     }
 
+    /**
+     * 将任意对象转为字符串（null 转空串）。
+     *
+     * @param v 原始值
+     * @return 字符串
+     */
     private static String strValue(Object v) {
         return v != null ? v.toString() : "";
     }
 
     // ==================== Schema 构建工具 ====================
 
+    /** 构建普通字段 schema（无长度/主键）。 */
     private static CreateCollectionReq.FieldSchema field(String name, DataType type, String desc) {
         return CreateCollectionReq.FieldSchema.builder()
                 .name(name).dataType(type).description(desc).build();
     }
 
+    /** 构建带长度限制的 VarChar 字段 schema。 */
     private static CreateCollectionReq.FieldSchema field(String name, DataType type, int maxLength, String desc) {
         return CreateCollectionReq.FieldSchema.builder()
                 .name(name).dataType(type).maxLength(maxLength).description(desc).build();
     }
 
+    /** 构建主键字段 schema（自定主键，autoID=false）。 */
     private static CreateCollectionReq.FieldSchema field(String name, DataType type, boolean primaryKey, String desc) {
         return CreateCollectionReq.FieldSchema.builder()
                 .name(name).dataType(type).isPrimaryKey(primaryKey).autoID(false).description(desc).build();
     }
 
+    /** 构建向量字段 schema（FloatVector）。 */
     private static CreateCollectionReq.FieldSchema vecField(String name, int dimension, String desc) {
         return CreateCollectionReq.FieldSchema.builder()
                 .name(name).dataType(DataType.FloatVector).dimension(dimension).description(desc).build();
@@ -559,6 +602,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
 
     // ==================== 内部数据类型 ====================
 
+    /** 菜品数据载体，承载同步过程中单条菜品的核心字段。 */
     static class Dish {
         Long id;
         String name;
@@ -566,6 +610,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
         String updateTime;
     }
 
+    /** 菜品-食材关联关系数据载体，描述某菜品包含的食材及其用量。 */
     static class DishIngredient {
         Long dishId;
         Long ingredientId;
@@ -573,6 +618,7 @@ public class SchoolDishSyncRunner implements InitializingBean {
         Double dosage;
     }
 
+    /** 食材营养成分数据载体，描述某食材单条营养素及其含量与单位。 */
     static class IngredientNutrient {
         Long ingredientId;
         String nutrientName;

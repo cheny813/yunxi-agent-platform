@@ -1,0 +1,47 @@
+# 冒烟测试用最小配置
+# 禁用所有外部依赖（MCP/数据库连接/向量检索），仅验证 Agent 注册流程
+
+spring:
+  main:
+    allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration
+
+agentscope:
+  core:
+    api-key: test-key
+    model-name: test-model
+    provider: test
+    workspace-base-path: target/test-workspaces
+    skill:
+      enabled: false
+    plan:
+      enabled: false
+    resilience:
+      max-retries: 1
+      stop-on-reject: true
+    compaction:
+      trigger-messages: 50
+      trigger-tokens: 0
+      keep-messages: 10
+      flush-before-compact: false
+      offload-before-compact: false
+    mcp-servers: {}
+
+platform:
+  mcp-servers:
+    chart:
+      enabled: false
+    pagegen:
+      enabled: false
+    formfill:
+      enabled: false
+
+dish-sync:
+  enabled: false
+
+static-sync:
+  enabled: false

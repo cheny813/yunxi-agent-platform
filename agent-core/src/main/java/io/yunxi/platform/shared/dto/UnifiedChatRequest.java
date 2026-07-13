@@ -228,7 +228,7 @@ public class UnifiedChatRequest {
      * Schema 名称（可选）
      * <p>
      * 仅在 {@code structured=true} 时生效。
-     * <p>
+     * </p>
      * <b>使用场景</b>：当 Agent 配置了多个 Schema 时，通过此参数选择使用哪个 Schema。
      * </p>
      * <p>
@@ -664,18 +664,38 @@ public class UnifiedChatRequest {
         return 10;
     }
 
+    /**
+     * 获取响应模式（如 {@code quick}/{@code deep}/空）。
+     *
+     * @return 响应模式字符串
+     */
     public String getResponseMode() {
         return responseMode;
     }
 
+    /**
+     * 设置响应模式。
+     *
+     * @param responseMode 响应模式字符串
+     */
     public void setResponseMode(String responseMode) {
         this.responseMode = responseMode;
     }
 
+    /**
+     * 判断是否为快速模式。
+     *
+     * @return 响应模式为 {@code quick}（忽略大小写）时返回 true
+     */
     public boolean isQuickMode() {
         return "quick".equalsIgnoreCase(responseMode);
     }
 
+    /**
+     * 判断是否为深度模式。
+     *
+     * @return 响应模式为 {@code deep}（忽略大小写）时返回 true
+     */
     public boolean isDeepMode() {
         return "deep".equalsIgnoreCase(responseMode);
     }

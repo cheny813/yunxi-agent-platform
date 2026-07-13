@@ -30,7 +30,7 @@ import java.util.List;
  * </ol>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  * @see io.yunxi.platform.config.AgentDefinition 基础 Agent 定义
  */
 @Data

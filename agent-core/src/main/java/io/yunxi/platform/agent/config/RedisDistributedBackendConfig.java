@@ -13,7 +13,7 @@ import redis.clients.jedis.UnifiedJedis;
  * Redis 分布式后端配置（AgentStateStore + BaseStore + SnapshotSpec 一站式配置）。
  *
  * <p>
- * RC2+ 框架使用 {@link DistributedStore} 统一接口收敛所有分布式存储组件：
+ * 框架使用 {@link DistributedStore} 统一接口收敛所有分布式存储组件：
  * <ul>
  * <li>{@link DistributedStore#agentStateStore()} — Agent 运行时状态持久化</li>
  * <li>{@link DistributedStore#baseStore()} — 工作区文件系统 KV 存储</li>

@@ -58,11 +58,23 @@ public class HuaweiEmbeddingProvider implements EmbeddingProvider {
             .connectTimeout(java.time.Duration.ofSeconds(30))
             .build();
 
+    /**
+     * 返回提供者名称
+     *
+     * @return 固定返回 "huawei"
+     */
     @Override
     public String getProviderName() {
         return "huawei";
     }
 
+    /**
+     * 对单条文本生成向量嵌入（使用 HMAC-SHA256 签名进行认证）
+     *
+     * @param text 待嵌入的文本
+     * @return 文本的向量表示（维度由 {@link #getDimension()} 决定）
+     * @throws RuntimeException 当华为云 API 调用失败或返回结构异常时抛出
+     */
     @Override
     public List<Float> embed(String text) {
         try {
@@ -106,6 +118,12 @@ public class HuaweiEmbeddingProvider implements EmbeddingProvider {
         }
     }
 
+    /**
+     * 批量对文本生成向量嵌入（逐条调用 {@link #embed(String)}）
+     *
+     * @param texts 待嵌入的文本列表
+     * @return 与输入顺序一一对应的向量列表
+     */
     @Override
     public List<List<Float>> embedBatch(List<String> texts) {
         List<List<Float>> results = new ArrayList<>();
@@ -115,16 +133,33 @@ public class HuaweiEmbeddingProvider implements EmbeddingProvider {
         return results;
     }
 
+    /**
+     * 返回当前模型的向量维度
+     *
+     * @return 固定返回 768
+     */
     @Override
     public int getDimension() {
         return 768;
     }
 
+    /**
+     * 返回当前使用的模型名称
+     *
+     * @return 配置的模型名称
+     */
     @Override
     public String getModelName() {
         return modelName;
     }
 
+    /**
+     * 使用 HMAC-SHA256 对请求体进行签名，生成华为云认证头
+     *
+     * @param body      待签名的请求体内容
+     * @param timestamp 请求时间戳（毫秒）
+     * @return 形如 "HMAC-SHA256 <base64>" 的认证字符串
+     */
     private String sign(String body, String timestamp) {
         try {
             String stringToSign = "POST\n" +
@@ -143,6 +178,12 @@ public class HuaweiEmbeddingProvider implements EmbeddingProvider {
         }
     }
 
+    /**
+     * 计算字符串的 SHA-256 十六进制摘要
+     *
+     * @param content 待计算的内容
+     * @return 小写十六进制哈希字符串
+     */
     private String sha256Hex(String content) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");

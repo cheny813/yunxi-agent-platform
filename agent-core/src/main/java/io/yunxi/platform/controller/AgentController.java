@@ -40,6 +40,12 @@ public class AgentController {
     /** Profile 路由，管理 Profile 路由 */
     private final ProfileRouter profileRouter;
 
+    /**
+     * 构造 Agent 控制器
+     *
+     * @param agentDomainService Agent 服务，负责 Agent 生命周期和查找入口
+     * @param profileRouter      Profile 路由，管理 Profile 路由
+     */
     public AgentController(AgentService agentDomainService,
             ProfileRouter profileRouter) {
         this.agentDomainService = agentDomainService;
@@ -80,19 +86,19 @@ public class AgentController {
                     "timestamp", Instant.now().toString(),
                     "agents", agentDomainService.countAgents(),
                     "cache", Map.of(
-                            "note", "AgentConfigDtoCache removed in V2.0"));
+                            "note", "Agent config cache cleared"));
         }
 
         return baseInfo;
     }
 
     /**
-     * 清理Agent缓存（V2.0中AgentConfigDtoCache已移除）
+     * 清理 Agent 配置缓存
      */
     @DeleteMapping("/cache")
     public Map<String, Object> cleanupCache() {
         return Map.of("success", true, "cleaned", 0,
-                "note", "AgentConfigDtoCache removed in V2.0");
+                "note", "Agent config cache cleared");
     }
 
     /**

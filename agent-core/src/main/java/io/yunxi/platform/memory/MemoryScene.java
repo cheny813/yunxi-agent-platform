@@ -24,7 +24,10 @@ public final class MemoryScene {
     }
 
     /**
-     * 是否为长期保留场景
+     * 是否为长期保留场景（永久记忆）。
+     *
+     * @param sceneName 场景标识
+     * @return 个人助手场景返回 true
      */
     public static boolean isLongTerm(String sceneName) {
         return PERSONAL_ASSISTANT.equals(sceneName);

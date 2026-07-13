@@ -61,7 +61,9 @@ public class DesktopController {
     }
 
     /**
-     * 监听命令结果事件
+     * 监听命令结果事件，唤醒等待中的同步调用。
+     *
+     * @param event 命令结果事件（含 requestId 与结果）
      */
     @EventListener
     public void handleCommandResultEvent(CommandResultEvent event) {
@@ -72,7 +74,9 @@ public class DesktopController {
     }
 
     /**
-     * 获取所有在线的桌面客户端
+     * 获取所有在线的桌面客户端。
+     *
+     * @return 包含在线客户端数量与详情的响应
      */
     @GetMapping("/clients")
     public ResponseEntity<Map<String, Object>> getClients() {
@@ -90,6 +94,13 @@ public class DesktopController {
      * 向指定桌面客户端发送命令并同步等待结果
      *
      * AI 调用此 API 将命令发给桌面客户端执行，并等待执行结果
+     */
+    /**
+     * 向指定桌面客户端发送命令并同步等待结果。
+     *
+     * @param clientId 目标客户端ID
+     * @param request  命令请求体
+     * @return 同步等待命令执行结果（默认超时 30 秒）的响应
      */
     @PostMapping("/command/{clientId}")
     public ResponseEntity<Map<String, Object>> sendCommandSync(
@@ -124,7 +135,7 @@ public class DesktopController {
             // 等待结果，默认超时30秒
             Map<String, Object> result = future.get(30, TimeUnit.SECONDS);
 
-            // 缓存结果（保留5分钟）
+            // 缓存结果（保留1分钟）
             resultCache.put(requestId, new CommandResult(result, System.currentTimeMillis() + 60000));
 
             // 清理pending
@@ -155,6 +166,13 @@ public class DesktopController {
      * 向指定桌面客户端发送命令并异步返回
      *
      * 命令发送后立即返回，AI 可通过 /result/{requestId} 获取结果
+     */
+    /**
+     * 向指定桌面客户端发送命令并立即异步返回。
+     *
+     * @param clientId 目标客户端ID
+     * @param request  命令请求体
+     * @return 提交确认响应（含 requestId 与轮询地址 pollUrl）
      */
     @PostMapping("/command/async/{clientId}")
     public ResponseEntity<Map<String, Object>> sendCommandAsync(
@@ -188,6 +206,12 @@ public class DesktopController {
 
     /**
      * 获取命令执行结果（轮询）
+     */
+    /**
+     * 轮询获取命令执行结果。
+     *
+     * @param requestId 请求唯一标识
+     * @return 执行中返回 PENDING；完成/缓存命中返回结果；否则返回错误
      */
     @GetMapping("/result/{requestId}")
     public ResponseEntity<Map<String, Object>> getResult(@PathVariable String requestId) {
@@ -234,6 +258,12 @@ public class DesktopController {
     /**
      * 广播命令到所有桌面客户端
      */
+    /**
+     * 向所有在线桌面客户端广播命令。
+     *
+     * @param request 命令请求体
+     * @return 广播提交确认响应（含 requestId）
+     */
     @PostMapping("/broadcast")
     public ResponseEntity<Map<String, Object>> broadcast(@RequestBody CommandRequest request) {
         log.info("AI 广播命令: type={}", request.getType());
@@ -263,6 +293,11 @@ public class DesktopController {
     /**
      * 获取客户端连接状态
      */
+    /**
+     * 获取桌面中继服务的整体连接状态。
+     *
+     * @return 包含在线客户端数量、客户端列表与待处理请求数的响应
+     */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getStatus() {
         Map<String, Object> status = new HashMap<>();
@@ -276,6 +311,12 @@ public class DesktopController {
 
     /**
      * 根据 userId 查询关联的在线节点
+     */
+    /**
+     * 根据 userId 查询其关联的在线节点。
+     *
+     * @param userId 用户唯一标识
+     * @return 关联的在线客户端详情列表
      */
     @GetMapping("/clients/user/{userId}")
     public ResponseEntity<Map<String, Object>> getClientsByUser(@PathVariable String userId) {
@@ -294,6 +335,12 @@ public class DesktopController {
 
     /**
      * 根据 tag 查询关联的在线节点
+     */
+    /**
+     * 根据 tag 查询关联的在线节点。
+     *
+     * @param tag 标签
+     * @return 关联的在线客户端详情列表
      */
     @GetMapping("/clients/tag/{tag}")
     public ResponseEntity<Map<String, Object>> getClientsByTag(@PathVariable String tag) {
@@ -316,6 +363,12 @@ public class DesktopController {
      * <p>
      * 请求体中 targets 为目标标识列表（支持 clientId、userId:xxx、tag:xxx 格式）
      * </p>
+     */
+    /**
+     * 批量向多个节点发送命令（targets 支持 clientId / userId:xxx / tag:xxx）。
+     *
+     * @param request 批量命令请求体
+     * @return 各目标节点的发送结果映射
      */
     @PostMapping("/command/batch")
     public ResponseEntity<Map<String, Object>> sendBatchCommand(@RequestBody BatchCommandRequest request) {
@@ -382,6 +435,15 @@ public class DesktopController {
     /**
      * 查询命令审计日志
      */
+    /**
+     * 查询节点命令审计日志。
+     *
+     * @param operatorId    操作人ID（可选）
+     * @param targetClientId 目标客户端ID（可选）
+     * @param safetyLevel   安全级别（可选）
+     * @param limit         返回条数上限（默认 50）
+     * @return 审计日志记录列表
+     */
     @GetMapping("/audit")
     public ResponseEntity<Map<String, Object>> getAuditLog(
             @RequestParam(required = false) String operatorId,
@@ -402,6 +464,12 @@ public class DesktopController {
     /**
      * 查询指定节点的画像
      */
+    /**
+     * 查询指定节点的画像信息。
+     *
+     * @param clientId 客户端ID
+     * @return 节点画像详情响应
+     */
     @GetMapping("/profile/{clientId}")
     public ResponseEntity<Map<String, Object>> getNodeProfile(@PathVariable String clientId) {
         NodeProfile profile = profileService.getByClientId(clientId);
@@ -416,6 +484,12 @@ public class DesktopController {
 
     /**
      * 按标签查询节点画像
+     */
+    /**
+     * 按标签查询节点画像列表。
+     *
+     * @param tag 标签
+     * @return 匹配的节点画像列表
      */
     @GetMapping("/profile/tag/{tag}")
     public ResponseEntity<Map<String, Object>> getNodeProfilesByTag(@PathVariable String tag) {
@@ -433,6 +507,12 @@ public class DesktopController {
     /**
      * 按用户查询节点画像
      */
+    /**
+     * 按用户查询节点画像列表。
+     *
+     * @param userId 用户唯一标识
+     * @return 匹配的节点画像列表
+     */
     @GetMapping("/profile/user/{userId}")
     public ResponseEntity<Map<String, Object>> getNodeProfilesByUser(@PathVariable String userId) {
         List<NodeProfile> profiles = profileService.getByUserId(userId);
@@ -447,7 +527,10 @@ public class DesktopController {
     }
 
     /**
-     * 处理桌面客户端返回的结果（供 DesktopRelayHandler 调用）
+     * 处理桌面客户端异步返回的结果（供 DesktopRelayHandler 调用）。
+     *
+     * @param requestId 请求唯一标识
+     * @param result   客户端返回的结果
      */
     public void handleClientResult(String requestId, Map<String, Object> result) {
         CompletableFuture<Map<String, Object>> future = pendingResults.get(requestId);
@@ -456,6 +539,14 @@ public class DesktopController {
         }
     }
 
+    /**
+     * 根据命令请求构建下发给桌面客户端的消息体。
+     * <p>按请求类型（execute/git/list-dir/read-file/write-file/ping）组装不同字段。</p>
+     *
+     * @param request   命令请求
+     * @param requestId 请求唯一标识
+     * @return 待下发的消息 Map
+     */
     private Map<String, Object> buildMessage(CommandRequest request, String requestId) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", request.getType());
@@ -499,6 +590,13 @@ public class DesktopController {
         return message;
     }
 
+    /**
+     * 构建命令执行完成的标准响应体。
+     *
+     * @param requestId 请求唯一标识
+     * @param result    客户端返回的结果（可为 null）
+     * @return 响应 Map（status=COMPLETED，含 success 与 result）
+     */
     private Map<String, Object> buildResultResponse(String requestId, Map<String, Object> result) {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "COMPLETED");
@@ -512,6 +610,13 @@ public class DesktopController {
         return response;
     }
 
+    /**
+     * 构建命令执行错误的标准响应体。
+     *
+     * @param requestId 请求唯一标识
+     * @param message   错误信息
+     * @return 响应 Map（status=ERROR）
+     */
     private Map<String, Object> buildErrorResponse(String requestId, String message) {
         Map<String, Object> response = new HashMap<>();
         response.put("status", "ERROR");

@@ -28,7 +28,6 @@ Write-Host ""
 Write-Host "2. 建议移动的零散文件..." -ForegroundColor Green
 Write-Host "   (以下文件建议手动移动，确保功能正常后删除原文件)"
 Write-Host ""
-Write-Host "   建议移动: 启动规则引擎.bat        -> scripts/startup/"
 Write-Host "   建议移动: 启动AgentScopeStudio.bat -> scripts/startup/"  
 Write-Host "   建议移动: 强制停止进程.bat        -> scripts/shutdown/"
 Write-Host "   建议移动: config-template.txt     -> config/templates/"

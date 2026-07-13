@@ -1,6 +1,6 @@
 # 15. 可观测性
 
-> **⚠️ V2.0-RC3 更新**：AgentScope V2.0.0-RC3 废弃了 `Tracer`/`TracerRegistry` 接口，改用 OpenTelemetry 直连 API。平台已删除 `OpenTelemetryTracer.java`，通过 `ReActSpanMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
+> **可观测性说明**：AgentScope-Java 2.0.0（GA）废弃了 `Tracer`/`TracerRegistry` 接口，改用 OpenTelemetry 直连 API。平台已删除 `OpenTelemetryTracer.java`，通过 `ReActSpanMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
 
 了解 yunxi Agent Platform 的可观测性设计。
 
@@ -8,7 +8,7 @@
 
 ## 架构
 
-通过实现 AgentScope V2.0 SDK 的 `MiddlewareBase` 接口（V2.0-RC3 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
+通过实现 AgentScope V2.0 SDK 的 `MiddlewareBase` 接口（V2.0.0 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
 
 ### 组件关系
 
@@ -42,7 +42,7 @@
 | `ReActSpanMiddleware`（平台自建） | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
 | OpenTelemetry 全局实例 | 直连 API | SDK 内部 | llm.invoke / tool.execute Span |
 
-> V2.0-RC3 之前：框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。RC3 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
+> V2.0.0（GA）之前：框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。GA 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
 
 ---
 
@@ -176,7 +176,7 @@ agent-core/.../tracing/
 
 核心代码约 530 行，零侵入现有业务代码。
 
-> **注**：`OpenTelemetryTracer.java`（约 120 行）已在 V2.0-RC3 升级中删除。框架不再需要平台实现 `Tracer` 接口，改为内部直接使用 `GlobalOpenTelemetry`。
+> **注**：`OpenTelemetryTracer.java`（约 120 行）已在 2.0.0（GA）升级中删除。框架不再需要平台实现 `Tracer` 接口，改为内部直接使用 `GlobalOpenTelemetry`。
 
 ---
 

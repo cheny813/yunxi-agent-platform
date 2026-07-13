@@ -50,11 +50,23 @@ public class BaiduEmbeddingProvider implements EmbeddingProvider {
             .connectTimeout(java.time.Duration.ofSeconds(30))
             .build();
 
+    /**
+     * 返回提供者名称
+     *
+     * @return 固定返回 "baidu"
+     */
     @Override
     public String getProviderName() {
         return "baidu";
     }
 
+    /**
+     * 对单条文本生成向量嵌入（调用前自动确保 access_token 有效）
+     *
+     * @param text 待嵌入的文本
+     * @return 文本的向量表示（维度由 {@link #getDimension()} 决定）
+     * @throws RuntimeException 当百度千帆 API 调用失败或返回结构异常时抛出
+     */
     @Override
     public List<Float> embed(String text) {
         try {
@@ -94,6 +106,12 @@ public class BaiduEmbeddingProvider implements EmbeddingProvider {
         }
     }
 
+    /**
+     * 批量对文本生成向量嵌入（逐条调用 {@link #embed(String)}）
+     *
+     * @param texts 待嵌入的文本列表
+     * @return 与输入顺序一一对应的向量列表
+     */
     @Override
     public List<List<Float>> embedBatch(List<String> texts) {
         List<List<Float>> results = new ArrayList<>();
@@ -103,11 +121,21 @@ public class BaiduEmbeddingProvider implements EmbeddingProvider {
         return results;
     }
 
+    /**
+     * 返回当前模型的向量维度
+     *
+     * @return 固定返回 384
+     */
     @Override
     public int getDimension() {
         return 384;
     }
 
+    /**
+     * 返回当前使用的模型名称
+     *
+     * @return 配置的模型名称
+     */
     @Override
     public String getModelName() {
         return modelName;

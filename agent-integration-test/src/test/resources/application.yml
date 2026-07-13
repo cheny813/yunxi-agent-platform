@@ -1,0 +1,108 @@
+# 集成测试专用配置（仅在 agent-integration-test 模块测试时生效，优先级高于主配置）
+#
+# 目的：
+#   1. 通过 spring.config.import 拉起与主程序一致的全量配置（datasource / redis /
+#      agentscope / mybatis / agent-definitions 等），使 @SpringBootTest 上下文能正常起来；
+#   2. 注入本地 LLM 凭证，使 ChatAppService.chat 能真正调用大模型（与 start.ps1 一致）；
+#   3. 禁用默认启用的 MCP 服务器（本地未运行 mcp-nutrition/database/redis/milvus/knowledge/puppeteer），
+#      避免 AgentConfigurer 启动时对不可达端点 buildAsync().block() 建连，导致 Agent 注册失败；
+#   4. Milvus 本地可用（默认 192.168.11.48:19530 可达），保留 milvus.enabled=true，
+#      让 SyncEngine 完整跑通 MySQL→Milvus ETL（外部库 nutrition_zhaoxian → 向量集合）；
+#   5. 提供确定性的 concepts 配置，供 ConceptRegistry 集成测试做断言。
+#
+# 说明：Redis / MySQL / LLM 由本地基建提供（见 start.ps1）。
+
+spring:
+  # 拉起与主程序一致的全量配置（config/imports.yml 再 import 各 config/*.yml）。
+  # 这一步之前缺失，导致 datasource / redis / agentscope 等配置在 @SpringBootTest 中未加载。
+  config:
+    import: optional:classpath:config/imports.yml
+
+  # 直连本地 MySQL（与 start.ps1 一致：127.0.0.1:3306/yunxi_agent_platform root/root）
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/yunxi_agent_platform?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useUnicode=true&createDatabaseIfNotExist=true&connectionCollation=utf8mb4_unicode_ci
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # 直连本地 Redis（与 start.ps1 一致：127.0.0.1:6379 redispass）
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: redispass
+      database: 0
+      timeout: 3000ms
+
+# 外部库（营养平台库 nutrition_zhaoxian @ 192.168.10.153:3306，与 mcp-database 服务同源，
+# 见 yunxi-mcp-servers/mcp-database/src/main/resources/application.yml:10-18）。
+# 重新启用同步，让 SyncEngine 在启动期真实连接外部库做 MySQL→Milvus ETL 验证；
+# Milvus 本地可用（192.168.11.48:19530），upsert 阶段会真正写入向量集合，完整验证
+# 外部库 JDBC 连通 + 向量入库链路。之前默认 localhost:3306/default 导致
+# "Unknown database 'default'" 告警即源于此。
+dish-sync:
+  enabled: true
+  database:
+    jdbc-url: jdbc:mysql://192.168.10.153:3306/nutrition_zhaoxian?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+static-sync:
+  enabled: true
+  database:
+    jdbc-url: jdbc:mysql://192.168.10.153:3306/nutrition_zhaoxian?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+
+agentscope:
+  core:
+    # 本地 LLM 凭证（与 start.ps1 保持一致）
+    api-key: sk-dd32b521ea86488c972a0d60d8d08a9e
+    model-name: qwen-plus
+    provider: dashscope
+    # DashScope Provider 专属配置（框架实际读取此段）
+    dashscope:
+      api-key: sk-dd32b521ea86488c972a0d60d8d08a9e
+      model: qwen-plus
+    # 禁用默认启用的 MCP 服务器（本地未运行）
+      mcp-servers:
+      database:
+        enabled: false
+      redis:
+        enabled: false
+      milvus:
+        enabled: true
+      knowledge:
+        enabled: false
+      mcp-nutrition:
+        enabled: false
+      puppeteer:
+        enabled: false
+
+# 业务 MCP 服务器（agent-business 已删除，其配置段仍被 import；显式关闭避免任何建连尝试）
+platform:
+  mcp-servers:
+    chart:
+      enabled: false
+    pagegen:
+      enabled: false
+    formfill:
+      enabled: false
+
+# 概念注册表（确定性配置，供 ConceptRegistry 集成测试断言）
+concepts:
+  entries:
+    - name: MEDICAL
+      domain: health
+      displayName: 医疗健康
+      keywords: "医疗、诊断、症状、治疗、康复、护理、血压、血糖、健康"
+      category: PROFESSION
+    - name: NUTRITION
+      domain: health
+      displayName: 营养健康
+      keywords: "营养、饮食、膳食、食补、营养均衡、蛋白质、儿童营养"
+      category: PROFESSION
+    - name: PARENTING
+      domain: family
+      displayName: 家庭育儿
+      keywords: "孩子、子女、上学、辅导、幼儿园、家长、亲子、儿童"
+      category: ROLE

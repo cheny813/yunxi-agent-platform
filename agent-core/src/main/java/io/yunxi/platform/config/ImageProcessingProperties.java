@@ -12,7 +12,7 @@ import java.util.List;
  * 图像处理配置属性
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Data
 @Component

@@ -36,7 +36,7 @@ const AgentClient = require('./AgentClient.js');
 const AgentClient = require('yunxi-agent-client');
 
 // 创建客户端
-const client = new AgentClient('http://localhost:8080');
+const client = new AgentClient('http://localhost:40001');
 
 // 发送消息
 const response = await client.chat('如何使用JavaScript?');

@@ -26,7 +26,7 @@ function Stop-JavaProcess {
     Write-Host "[INFO] Stopping agent-app process..."
     try {
         $procs = Get-CimInstance Win32_Process -Filter "name='java.exe'" -ErrorAction Stop |
-            Where-Object { $_.CommandLine -like '*agent-app-1.0.0.jar*' }
+            Where-Object { $_.CommandLine -like '*agent-app-2.0.0.jar*' }
         foreach ($p in $procs) {
             Write-Host "[INFO] 终止 PID: $($p.ProcessId)"
             Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
@@ -60,6 +60,11 @@ Write-Host "  Multi-module version"
 Write-Host "========================================"
 Write-Host ""
 
+# 基础设施检查提示
+Write-Host "[提示] 如基础设施（MySQL/Redis/Milvus/OTel Collector）未启动，请先执行："
+Write-Host "       docker compose up -d"
+Write-Host ""
+
 # 停止旧进程
 Stop-JavaProcess
 
@@ -78,7 +83,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32b521ea86480d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b521ea808a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -104,7 +109,7 @@ if ($Maven) { $mode = "maven" }
 if ($Clean) { $mode = "clean" }
 
 # JAR 路径
-$jarFile = Join-Path $scriptDir "agent-app\target\agent-app-1.0.0.jar"
+$jarFile = Join-Path $scriptDir "agent-app\target\agent-app-2.0.0.jar"
 
 # 通用 JVM 参数
 $javaArgs = @(
@@ -195,7 +200,7 @@ switch ($mode) {
         Stop-JavaProcess
 
         Write-Host "[INFO] Cleaning old files..."
-        $targetDirs = @("agent-app", "agent-core", "agent-gateway", "agent-rule-engine",
+        $targetDirs = @("agent-app", "agent-core",
                         "agent-text2sql", "agent-spi", "agent-config")
         foreach ($dir in $targetDirs) {
             $target = Join-Path $scriptDir "$dir\target"

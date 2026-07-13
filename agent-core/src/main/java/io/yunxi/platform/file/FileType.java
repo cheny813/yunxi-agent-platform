@@ -4,7 +4,7 @@ package io.yunxi.platform.file;
  * 文件类型枚举
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public enum FileType {
 

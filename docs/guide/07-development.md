@@ -32,7 +32,6 @@
   - AgentGateway (统一调用入口，含拦截链)
   - ChatAppService (对话编排，精简版)
   - SupervisorService (多 Agent 编排)
-  - RuleEngine (规则管控)
   - SceneDetectionService (场景路由)
   - A2AServer (跨服务 Agent 调用)
 
@@ -166,69 +165,6 @@ public class DomainRouter {
 
 ---
 
-## 创建自定义规则
-
-### 规则理论基础
-
-**什么是业务规则**：
-- 业务规则是描述业务约束和逻辑的声明
-- 与业务流程分离，便于独立管理
-- 支持动态修改，无需重新部署
-
-**规则引擎的优势**：
-| 优势 | 说明 |
-|------|------|
-| **声明式** | 用声明式语言描述规则，而非代码 |
-| **可维护** | 业务人员可直接修改规则 |
-| **可追踪** | 规则执行结果可追溯 |
-| **高性能** | 规则引擎优化执行效率 |
-
-### 实现 RuleDefinitionProvider
-
-```java
-@Component
-public class MyRuleProvider implements RuleDefinitionProvider {
-
-    @Override
-    public List List<RuleDefinition> getRuleDefinitions() {
-        return List.of(
-            SpELRule.builder()
-                .name("my-check")
-                .phase(RulePhase.PRE)
-                .condition("#context.get('user') != null")
-                .build()
-        );
-    }
-}
-```
-
-**关键概念**：
-- **RulePhase**：规则执行阶段（PRE/IN/POST）
-- **SpEL**：Spring Expression Language，表达式语言
-- **condition**：规则条件表达式
-
-### SpEL 表达式详解
-
-**基本语法**：
-```java
-// 访问属性
-#context.user.name
-
-// 方法调用
-#context.getUser().getName()
-
-// 逻辑运算
-#context.age >= 18 && #context.verified
-
-// 集合操作
-#context.roles.contains('admin')
-
-// 正则匹配
-#context.email matches '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}'
-```
-
----
-
 ## 创建 MCP 工具
 
 ### MCP 工具理论基础
@@ -314,7 +250,7 @@ public class MyTool implements Tool {
 │     ↓                                   │
 │  3. Spring 启动时扫描                     │
 │     ↓                                   │
-│  4. 注册到 McpToolRegistry               │
+│  4. 注册到 Agent 的 Toolkit（按服务器分组）  │
 │     ↓                                   │
 │  5. Agent 可以调用工具                    │
 │                                         │
@@ -383,7 +319,7 @@ public class MyContextEnricher implements ContextEnricher {
 
 ## 创建自定义知识库类型
 
-> **⚠️ V2.0 兼容性说明**：`Knowledge`/`LongTermMemory`/`RetrieveConfig` 在 AgentScope 2.0.0-RC1 中标记为 `@Deprecated(forRemoval=true)`。新增知识库类型时请添加 `@SuppressWarnings("removal")` 并标注 `TODO: AgentScope 2.0 新 RAG 模块上线后迁移`。新 RAG 模块上线后本接口将更新签名以对接新的 SDK API。
+> **⚠️ V2.0 兼容性说明**：`Knowledge`/`LongTermMemory`/`RetrieveConfig` 在 AgentScope 2.0.0（GA）中标记为 `@Deprecated(forRemoval=true)`。新增知识库类型时请添加 `@SuppressWarnings("removal")` 并标注 `TODO: AgentScope 2.0 新 RAG 模块上线后迁移`。新 RAG 模块上线后本接口将更新签名以对接新的 SDK API。
 
 ### 扩展点：KnowledgeCreator
 

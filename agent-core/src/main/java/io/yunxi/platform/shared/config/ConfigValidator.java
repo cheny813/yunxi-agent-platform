@@ -24,7 +24,7 @@ import java.util.List;
  * </ul>
  * 
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Component
@@ -108,7 +108,7 @@ public class ConfigValidator {
             return;
         }
 
-        // Host 是必填项（已移除 localhost 默认值）
+        // Host 为必填项，未配置 localhost 默认值
         if (milvusConfig.getHost() == null || milvusConfig.getHost().isBlank()) {
             errors.add("milvus.host 未配置（启用 Milvus 时必填）。请设置环境变量 MILVUS_HOST");
         }

@@ -26,6 +26,11 @@ public class DatabaseTool {
 
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * 创建数据库查询工具
+     *
+     * @param jdbcTemplate Spring JDBC 模板，用于执行只读查询
+     */
     public DatabaseTool(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }

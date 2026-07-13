@@ -44,7 +44,7 @@ import java.util.Map;
  * </pre>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  * @see ChatResponse 对话响应
  * @see UnifiedChatRequest 统一对话请求
  */

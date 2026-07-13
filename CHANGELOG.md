@@ -1,5 +1,42 @@
 # 更新日志
 
+## [2.0.0] - 2026-07-12
+
+> **版本策略变更**：自本版本起，yunxi Agent Platform 的版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 保持同步，本版本对应 AgentScope-Java **2.0.0 正式版（GA）**。此前的 1.0.0 / 3.x 为独立版本线（见下方历史记录），不影响其变更内容的有效性。
+
+### 🚀 升级 AgentScope 框架至 2.0.0 GA（RC3 → GA 正式版）
+
+本次在 2.0.0-RC3 基础上，全面拥抱 GA 原生能力，根治"屏蔽底层能力 / 重复开发"两类历史问题，并清理无业务使用的模块。
+
+#### 框架 API 全面对齐 GA 2.0.0（已对照 GA 源码逐类核实）
+
+- **入口 Builder 锁定 `HarnessAgent.builder()`**：plan/workspace/compaction 为 harness 专属中间件，依赖 HarnessAgent 运行时。重点补齐此前未用的 GA 配置项（权限、重试降级、超时、Skill、MCP 真注册）。
+- **MCP 真注册（P1-5 DONE）**：删除 `AgentscopeAutoConfiguration.mcpServerBeans()` 死配置，改由 `AgentConfigurer.registerMcpServers()` 用框架原生 `McpClientBuilder`（SSE/STDIO/HTTP）按 `agentscope.core.mcp-servers` 实例化并注册进 `Toolkit`（以服务器名建组，与分组激活衔接）。7 个自建 MCP 客户端类 + 残留自建 MCP HTTP 客户端（`DatabaseToolkit` 等）已全部删除，数据同步改直连 JDBC（`ExternalDbQueryService`）。
+- **权限引擎（替代 ToolGate/ReasoningReview）**：新增 `PermissionConfig`，将 HITL 配置映射为 `PermissionContextState`（`DEFAULT` + `addAskRule` / `addDenyRule`），经 `builder.permissionContext(...)` 注入。
+- **应用层 RAG（替代废弃 `rag.Knowledge`）**：新增 `ApplicationRAG`，经 `MiddlewareBase.onSystemPrompt` 注入检索上下文。
+- **Plan 模式（替代自建 PlanPreCreator）**：启用 GA `PlanModeMiddleware` + `PlanModeManager`，复用 `WorkspaceManager(Path)`。
+- **Skill 系统**：启用 GA 原生 `AgentSkillRepository`（FileSystem + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载。
+- **韧性（重试/降级/超时）**：启用 `maxRetries` / `fallbackModel` / `stopOnReject` / `modelExecutionConfig(timeout)`，完全复用框架 API。
+- **多租户路由**：删除 `UserWorkspaceService`，改用 `RuntimeContext(userId,sessionId)` 注入，由 GA `HarnessAgent.workspaceFor(...)` 运行时按用户命名空间隔离工作空间。
+
+#### 移除（屏蔽/重复 / 无业务使用）
+
+- **`agent-gateway` 模块整体删除**：IM 渠道（企微/钉钉/飞书/Web API）未上线，GA `agentscope-extensions-channel-*` 已原生覆盖传输层；根 pom 模块列表、agent-app 依赖同步移除。
+- **`agent-rule-engine` 模块整体删除**：当前无实际业务使用（规则引擎预处理/后处理已无调用方），未来需要时再重建。相关文档/配置/测试引用一并清理（端口 40002、SpEL 规则、rule-engine.yml 等）。
+- **屏蔽/重复类删除**：`ToolGateMiddleware`、`ReasoningReviewMiddleware`、`TextToolCallParserMiddleware`、`KnowledgeRetrievalMiddleware`、`KnowledgeAutoConfiguration`、`KnowledgeCreator`、`PlanPreCreator`、`PlanTemplateLoader`、`Plan*.java`、`AgentWorkspaceInitializer`、`WorkspaceValidator`、`ToolCircuitBreaker`、`SseProgressListenerAdapter`、`TaskProgressEvent`、`AgentInterruptService`、`CallOptions`、`DatabaseToolkit` 等。
+- **场景检测链整体删除**（经二次复核确认为死代码）：`WorkspaceAutoDiscoveryEngine`、`DefaultSceneDetector`、`SceneDetectionParser`、`WorkspaceConfig`、`SceneDetectionRule`；工作空间知识/技能/子 Agent 发现已由 GA 原生 `WorkspaceContextMiddleware` 承载，记忆场景路由由 `MemorySceneRegistry` + `SceneDetectionService` 覆盖。
+- 根 pom `agentscope.version` 由 `2.0.0-RC3` 升至 `2.0.0`；项目版本号 `1.0.0` → `2.0.0`，与底层框架同步。
+
+#### 保留（GA 未覆盖的合法价值）
+
+- 业务工具（HttpTool/DatabaseTool/SessionSearchTool/NodeTool/CalculatorTool/ShellToolFactory）、`ModelFactory`（百度/华为私有模型）、`ContentFilterMiddleware`（提示注入检测）、`HumanToolRegistrar`（HITL）、`agent-spi`、`RedisDistributedBackendConfig`、记忆体系（CompactionConfig/DistributedStore）。
+
+#### 验证
+
+- `mvn clean compile -DskipTests` 全模块 BUILD SUCCESS（GA 2.0.0 构件本地仓库可解析）。
+- **集成测试重写并通过**：`agent-integration-test` 下 5 个测试类已按新架构（主类 `io.yunxi.platform.AgentPlatformApplication`）重写，脱离已废弃的 `agent-business` 服务。`EndToEndIntegrationTest`、`CrossModuleIntegrationTest`、`ErrorRecoveryIntegrationTest` 共 13 个用例全部通过（真实调用本地 DashScope LLM + 本地 MySQL/Redis）。
+- **Milvus ETL 链路验证**：本地 Milvus（`192.168.11.48:19530`）可用，`SyncEngine` 完整跑通「外部库 `nutrition_zhaoxian` (MySQL) → 向量集合」ETL；10 个集合初始化完成，`ingredient_classes`/`nutrient_standard_details`/`ingredient_nutrients`/`cook_book_score_index` 等数据入库并复用。集成测试配置默认启用 `milvus` MCP。
+
 ## [3.5.0] - 2026-06-26
 
 ### 🏗️ 升级 AgentScope 框架至 2.0.0-RC3（破坏性升级）
@@ -153,16 +190,14 @@
 - 初始版本发布
 - 支持多 Agent 协作
 - 集成 MCP 协议
-- 规则引擎支持
 - 多平台接入（Web、企业微信、钉钉、飞书）
 
 ### 📦 模块
 
 | 模块 | 说明 |
 |------|------|
-| `agent-core` | 核心框架 |
-| `agent-gateway` | 统一网关 |
-| `agent-rule-engine` | 规则引擎 |
-| `agent-business` | 业务实现 |
+| `agent-core` | 核心框架（含网关接入、Agent 编排、记忆、技能、安全） |
 | `agent-text2sql` | SQL 生成 |
-| `mcp-common` | MCP 协议 |
+| `agent-spi` | SPI 接口定义 |
+| `agent-config` | 统一配置 |
+| `agent-app` | 启动入口 |

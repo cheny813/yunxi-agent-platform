@@ -11,10 +11,11 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.TimeUnit;
 
 /**
- * text2sql 鎸囨爣服务
+ * text2sql 指标服务
  *
  * <p>
- * 提供鍚勯樁娈垫€ц兘鎸囨爣监控銆丩LM 调用统计銆丼QL 鍑嗙‘鐜囩粺璁＄瓑功能銆? * </p>
+ * 提供各阶段性能指标监控、LLM 调用统计、SQL 正确率统计等功能。
+ * </p>
  *
  */
 @Slf4j
@@ -23,7 +24,7 @@ public class Text2SqlMetricsService {
 
     private final MeterRegistry meterRegistry;
 
-    /** 是否鍚敤鎸囨爣鏀堕泦 */
+    /** 是否启用指标收集 */
     @Value("${text2sql.metrics.enabled:true}")
     private boolean metricsEnabled;
 
@@ -38,58 +39,72 @@ public class Text2SqlMetricsService {
     private Counter failureCounter;
     private Counter llmCallCounter;
 
+    /**
+     * 构造指标服务并初始化各阶段监控指标。
+     *
+     * @param meterRegistry Micrometer 指标注册中心，用于注册与上报 Timer / Counter
+     */
     @Autowired
     public Text2SqlMetricsService(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
         initMetrics();
     }
 
+    /**
+     * 初始化各阶段监控指标。
+     * <p>
+     * 当指标收集开关（{@code text2sql.metrics.enabled}）关闭时直接返回，不注册任何 Meter。
+     * 否则在 {@link MeterRegistry} 上注册各阶段耗时 {@code Timer}（Schema / 检索 / 生成 /
+     * 对齐 / 投票 / 总耗时）以及成功、失败、LLM 调用次数 {@code Counter}，供后续
+     * {@code recordXxx} 方法写入观测数据。
+     * </p>
+     */
     private void initMetrics() {
         if (!metricsEnabled) {
             return;
         }
 
-        // 鍚勯樁娈佃€楁椂 Timer
+        // 各阶段耗时 Timer
         schemaTimer = Timer.builder("text2sql.schema")
-                .description("Schema 鐢熸垚鑰楁椂")
+                .description("Schema 生成耗时")
                 .register(meterRegistry);
 
         retrievalTimer = Timer.builder("text2sql.retrieval")
-                .description("鍒楁绱㈣€楁椂")
+                .description("检索耗时")
                 .register(meterRegistry);
 
         generationTimer = Timer.builder("text2sql.generation")
-                .description("SQL 鐢熸垚鑰楁椂")
+                .description("SQL 生成耗时")
                 .register(meterRegistry);
 
         alignmentTimer = Timer.builder("text2sql.alignment")
-                .description("SQL 瀵归綈鑰楁椂")
+                .description("SQL 对齐耗时")
                 .register(meterRegistry);
 
         votingTimer = Timer.builder("text2sql.voting")
-                .description("SQL 鎶曠エ鑰楁椂")
+                .description("SQL 投票耗时")
                 .register(meterRegistry);
 
         totalTimer = Timer.builder("text2sql.total")
-                .description("鎬绘墽琛岃€楁椂")
+                .description("总执行耗时")
                 .register(meterRegistry);
 
-        // 璁℃暟 Counter
+        // 计数 Counter
         successCounter = Counter.builder("text2sql.success")
-                .description("SQL 鐢熸垚成功娆℃暟")
+                .description("SQL 生成成功次数")
                 .register(meterRegistry);
 
         failureCounter = Counter.builder("text2sql.failure")
-                .description("SQL 鐢熸垚失败娆℃暟")
+                .description("SQL 生成失败次数")
                 .register(meterRegistry);
 
         llmCallCounter = Counter.builder("text2sql.llm.calls")
-                .description("LLM 调用娆℃暟")
+                .description("LLM 调用次数")
                 .register(meterRegistry);
     }
 
     /**
-     * 记录 Schema 鐢熸垚鑰楁椂
+     * 记录 Schema 生成耗时
      */
     public void recordSchemaTime(long durationMs) {
         if (schemaTimer != null) {
@@ -98,7 +113,7 @@ public class Text2SqlMetricsService {
     }
 
     /**
-     * 记录鍒楁绱㈣€楁椂
+     * 记录检索耗时
      */
     public void recordRetrievalTime(long durationMs) {
         if (retrievalTimer != null) {
@@ -107,7 +122,7 @@ public class Text2SqlMetricsService {
     }
 
     /**
-     * 记录 SQL 鐢熸垚鑰楁椂
+     * 记录 SQL 生成耗时
      */
     public void recordGenerationTime(long durationMs) {
         if (generationTimer != null) {
@@ -116,7 +131,7 @@ public class Text2SqlMetricsService {
     }
 
     /**
-     * 记录 SQL 瀵归綈鑰楁椂
+     * 记录 SQL 对齐耗时
      */
     public void recordAlignmentTime(long durationMs) {
         if (alignmentTimer != null) {
@@ -125,7 +140,7 @@ public class Text2SqlMetricsService {
     }
 
     /**
-     * 记录 SQL 鎶曠エ鑰楁椂
+     * 记录 SQL 投票耗时
      */
     public void recordVotingTime(long durationMs) {
         if (votingTimer != null) {
@@ -134,7 +149,7 @@ public class Text2SqlMetricsService {
     }
 
     /**
-     * 记录鎬绘墽琛岃€楁椂
+     * 记录总执行耗时
      */
     public void recordTotalTime(long durationMs) {
         if (totalTimer != null) {
@@ -170,7 +185,8 @@ public class Text2SqlMetricsService {
     }
 
     /**
-     * 获取成功鐜?     */
+     * 获取成功率
+     */
     public double getSuccessRate() {
         if (successCounter == null || failureCounter == null) {
             return 0.0;
@@ -182,7 +198,8 @@ public class Text2SqlMetricsService {
     }
 
     /**
-     * 获取鎬昏皟鐢ㄦ鏁?     */
+     * 获取总调用次数
+     */
     public long getTotalCalls() {
         return successCounter != null ? (long) successCounter.count() : 0
                 + (failureCounter != null ? (long) failureCounter.count() : 0);

@@ -145,6 +145,43 @@ java -Xms2g -Xmx2g \
 | **资源隔离** | 进程级隔离 |
 | **易于扩展** | 快速复制实例 |
 
+#### 基础设施一键启动
+
+项目根目录的 `docker-compose.yml` 提供了完整基础设施的一键启动。在 IDE 终端或 PowerShell 中执行：
+
+```powershell
+# 在项目根目录下执行
+docker compose up -d
+```
+
+将启动以下服务（共 6 个容器）：
+
+| 容器 | 镜像 | 端口 | 用途 |
+|------|------|------|------|
+| yunxi-mysql | mysql:8.0 | 3306 | 主数据库 |
+| yunxi-redis | redis:7-alpine | 6379 | 缓存/会话 |
+| yunxi-milvus | milvusdb/milvus:v2.3.3 | 19530 | 向量数据库 |
+| yunxi-milvus-etcd | etcd:v3.5.5 | 2379 | Milvus 元数据 |
+| yunxi-milvus-minio | minio/minio | 9000 | Milvus 存储 |
+| yunxi-otel-collector | otel/opentelemetry-collector-contrib:0.97.0 | 4318 | 链路追踪 |
+
+OTel Collector 的配置文件位于 `scripts/otel-collector-config.yaml`，默认将 trace 输出到 Docker 日志。
+
+确认所有服务就绪：
+
+```powershell
+docker compose ps          # 查看容器状态
+```
+
+关闭服务：
+
+```powershell
+docker compose down           # 停止但保留数据
+docker compose down -v        # 停止并清除所有数据（彻底重置）
+```
+
+#### 应用容器构建
+
 ```bash
 # 构建镜像
 docker build -t yunxi-agent-core:latest ./agent-core

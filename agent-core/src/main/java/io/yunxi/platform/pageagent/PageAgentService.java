@@ -286,7 +286,12 @@ public class PageAgentService {
     }
 
     /**
-     * 解析大模型响应，提取操作指令
+     * 解析大模型响应，提取其中的操作指令 JSON 片段。
+     * <p>若响应中包含 {...} 形式的 JSON 块则截取并返回该片段，否则原样返回。</p>
+     *
+     * @param response 大模型原始文本响应
+     * @param task     用户任务描述（当前保留用于扩展，未参与解析）
+     * @return 解析出的指令内容（JSON 片段或原始文本）
      */
     private String parseModelResponse(String response, String task) {
         // 简单尝试解析 JSON
@@ -306,14 +311,19 @@ public class PageAgentService {
     }
 
     /**
-     * 获取会话状态
+     * 获取会话状态。
+     *
+     * @param sessionId 会话唯一标识
+     * @return 对应的会话信息；不存在时返回 null
      */
     public PageAgentSession getSession(String sessionId) {
         return sessions.get(sessionId);
     }
 
     /**
-     * 关闭会话
+     * 关闭并移除会话。
+     *
+     * @param sessionId 会话唯一标识
      */
     public void closeSession(String sessionId) {
         sessions.remove(sessionId);

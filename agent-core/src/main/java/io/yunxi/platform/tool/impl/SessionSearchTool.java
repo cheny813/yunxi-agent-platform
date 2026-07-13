@@ -13,9 +13,9 @@ import io.yunxi.platform.security.auth.SecurityContext;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 会话搜索ュ叿
+ * 会话搜索工具
  * <p>
- * 鐢ㄤ簬Agent搜索历史会话、查看最近会话和获取会话摘
+ * 用于 Agent 搜索历史会话、查看最近会话和获取会话摘要
  * </p>
  *
  * @author yunxi-agent-platform
@@ -30,6 +30,14 @@ public class SessionSearchTool {
     private final ObjectMapper objectMapper;
     private final SecurityContext securityContext;
 
+    /**
+     * 创建会话搜索工具
+     *
+     * @param sessionSearchService   会话搜索服务（全文检索）
+     * @param sessionDatabaseService 会话数据库服务（摘要查询）
+     * @param objectMapper           JSON 序列化器
+     * @param securityContext        安全上下文，用于获取当前用户
+     */
     public SessionSearchTool(SessionSearchService sessionSearchService,
             SessionDatabaseService sessionDatabaseService,
             ObjectMapper objectMapper,
@@ -61,37 +69,61 @@ public class SessionSearchTool {
                     userId = "default_user";
             }
 
-            log.info("鎵ц会话搜索操作: action={}, userId={}", action, userId);
+            log.info("执行会话搜索操作: action={}, userId={}", action, userId);
 
             return switch (action) {
                 case "search" -> executeSearch(query, userId, agentName, limit);
                 case "list_recent" -> executeListRecent(userId, agentName, limit);
                 case "get_summary" -> executeGetSummary(conversationId, userId);
-                default -> "鏈的操作类? " + action;
+                default -> "未知的操作类型：" + action;
             };
         } catch (Exception e) {
-            log.error("会话搜索ュ叿鎵ц失败", e);
-            return "鎵ц会话搜索失败: " + e.getMessage();
+            log.error("会话搜索工具执行失败", e);
+            return "执行会话搜索失败: " + e.getMessage();
         }
     }
 
+    /**
+     * 执行会话全文搜索。
+     *
+     * @param query 搜索关键词
+     * @param userId 用户标识
+     * @param agentName 可选的 Agent 名称过滤
+     * @param limit 返回数量限制
+     * @return 搜索结果 JSON（含总命中数与会话数）
+     */
     private String executeSearch(String query, String userId, String agentName, int limit) {
         if (query == null || query.isBlank())
-            return "search操作€要提供query参数";
+            return "search 操作需要提供 query 参数";
         var results = sessionSearchService.searchSessions(query, userId, agentName, limit);
         return String.format("{\"action\":\"search\",\"query\":\"%s\",\"totalMatches\":%d,\"sessionCount\":%d}",
                 query, results.getTotalMatches(), results.getSessionSummaries().size());
     }
 
+    /**
+     * 列出用户最近的会话。
+     *
+     * @param userId 用户标识
+     * @param agentName 可选的 Agent 名称过滤
+     * @param limit 返回数量限制
+     * @return 最近会话列表 JSON
+     */
     private String executeListRecent(String userId, String agentName, int limit) {
         var recentSessions = sessionSearchService.listRecentSessions(userId, agentName, limit);
         return String.format("{\"action\":\"list_recent\",\"userId\":\"%s\",\"count\":%d}", userId,
                 recentSessions.size());
     }
 
+    /**
+     * 获取指定会话的摘要（标题 + 摘要文本）。
+     *
+     * @param conversationId 会话标识
+     * @param userId 用户标识（当前保留用于日志/扩展）
+     * @return 会话摘要 JSON，未找到时返回提示
+     */
     private String executeGetSummary(String conversationId, String userId) {
         if (conversationId == null || conversationId.isBlank())
-            return "get_summary操作€要提供conversationId参数";
+            return "get_summary 操作需要提供 conversationId 参数";
         var summaryEntity = sessionDatabaseService.getSessionSummary(conversationId);
         if (summaryEntity != null) {
             return String.format(

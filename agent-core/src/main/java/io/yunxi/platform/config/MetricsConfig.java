@@ -14,6 +14,12 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
 @EnableAspectJAutoProxy
 public class MetricsConfig {
 
+    /**
+     * 注册 {@link TimedAspect} 以启用 @Timed 注解指标采集。
+     *
+     * @param registry 指标注册表
+     * @return Timed 切面实例
+     */
     @Bean
     public TimedAspect timedAspect(MeterRegistry registry) {
         return new TimedAspect(registry);

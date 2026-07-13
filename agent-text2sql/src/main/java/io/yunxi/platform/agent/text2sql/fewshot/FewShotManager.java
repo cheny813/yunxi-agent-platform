@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Component
 public class FewShotManager {
@@ -31,6 +31,7 @@ public class FewShotManager {
 
     /**
      * Few-shot 示例
+     * <p>封装单条问答示例（问题、SQL、Schema 及相似度评分），用于检索与 Prompt 组装。</p>
      */
     public static class FewShotExample {
         private String question;

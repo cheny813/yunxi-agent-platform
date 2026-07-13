@@ -12,7 +12,7 @@ import java.util.Map;
  * 具体实现由业务层提供。</p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public interface VectorSearchProvider {
 
@@ -27,7 +27,11 @@ public interface VectorSearchProvider {
     List<VectorData> search(Long contextId, String query, int topK);
 
     /**
-     * 向量数据结构
+     * 向量检索返回的数据结构，承载单条被检索向量记录的标识与内容。
+     * <p>
+     * {@code id}/{@code name}/{@code type} 描述记录的身份与类别，
+     * {@code metadata} 携带附加业务字段，{@code content} 为原始文本内容。
+     * </p>
      */
     class VectorData {
         private String id;

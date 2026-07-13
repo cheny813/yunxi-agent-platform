@@ -29,7 +29,12 @@ public class FormValidationService {
     );
 
     /**
-     * 验证字段是否必填
+     * 验证字段是否必填（非空、非空白、非空集合/映射）。
+     *
+     * @param fieldName 字段名称（用于错误信息）
+     * @param value     待验证的值
+     * @param selector  字段对应的页面选择器（用于定位）
+     * @return 验证结果
      */
     public ValidationResult validateRequired(String fieldName, Object value, String selector) {
         ValidationResult result = new ValidationResult(fieldName, selector);
@@ -50,7 +55,14 @@ public class FormValidationService {
     }
 
     /**
-     * 验证数值范围
+     * 验证数值是否在指定范围内 [min, max]。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证的数值（为 null 时报 FIELD_NULL）
+     * @param min       最小值下限（可为 null，表示不限制）
+     * @param max       最大值上限（可为 null，表示不限制）
+     * @param selector  页面选择器
+     * @return 验证结果
      */
     public ValidationResult validateNumberRange(String fieldName, Double value, Double min, Double max, String selector) {
         ValidationResult result = new ValidationResult(fieldName, selector);
@@ -81,7 +93,14 @@ public class FormValidationService {
     }
 
     /**
-     * 验证字符串长度
+     * 验证字符串长度是否在 [min, max] 区间内。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证字符串（为 null 时报 FIELD_NULL）
+     * @param min       最小长度（可为 null）
+     * @param max       最大长度（可为 null）
+     * @param selector  页面选择器
+     * @return 验证结果
      */
     public ValidationResult validateStringLength(String fieldName, String value, Integer min, Integer max, String selector) {
         ValidationResult result = new ValidationResult(fieldName, selector);
@@ -114,7 +133,12 @@ public class FormValidationService {
     }
 
     /**
-     * 验证邮箱格式
+     * 使用预设正则验证邮箱格式。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证邮箱字符串
+     * @param selector  页面选择器
+     * @return 验证结果
      */
     public ValidationResult validateEmail(String fieldName, String value, String selector) {
         ValidationResult result = new ValidationResult(fieldName, selector);
@@ -138,7 +162,12 @@ public class FormValidationService {
     }
 
     /**
-     * 验证手机号格式
+     * 使用预设正则验证中国大陆手机号格式（1[3-9] 开头共 11 位）。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证手机号字符串
+     * @param selector  页面选择器
+     * @return 验证结果
      */
     public ValidationResult validatePhone(String fieldName, String value, String selector) {
         ValidationResult result = new ValidationResult(fieldName, selector);
@@ -162,7 +191,10 @@ public class FormValidationService {
     }
 
     /**
-     * 批量验证表单字段
+     * 批量验证表单中的多个字段。
+     *
+     * @param formFields 字段名到表单字段定义的映射
+     * @return 每个字段对应的验证结果列表
      */
     public List<ValidationResult> validateForm(Map<String, FormField> formFields) {
         List<ValidationResult> results = new ArrayList<>();
@@ -198,14 +230,20 @@ public class FormValidationService {
     }
 
     /**
-     * 检查表单验证结果是否有错误
+     * 判断验证结果列表中是否存在错误。
+     *
+     * @param results 验证结果列表
+     * @return 存在任一未通过验证的结果时返回 true
      */
     public boolean hasErrors(List<ValidationResult> results) {
         return results.stream().anyMatch(result -> !result.isValid());
     }
 
     /**
-     * 获取所有错误信息
+     * 提取所有未通过验证的错误信息。
+     *
+     * @param results 验证结果列表
+     * @return 错误信息字符串列表
      */
     public List<String> getErrorMessages(List<ValidationResult> results) {
         return results.stream()
@@ -224,11 +262,15 @@ public class FormValidationService {
         private String errorCode;
         private String errorMessage;
 
-        public ValidationResult(String fieldName, String selector) {
-            this.fieldName = fieldName;
-            this.selector = selector;
-            this.valid = true;
-        }
+    /** 构造验证结果（默认 valid=true）。
+     * @param fieldName 字段名称
+     * @param selector  页面选择器
+     */
+    public ValidationResult(String fieldName, String selector) {
+        this.fieldName = fieldName;
+        this.selector = selector;
+        this.valid = true;
+    }
 
         // Getter 和 Setter 方法
         public String getFieldName() { return fieldName; }
@@ -261,11 +303,16 @@ public class FormValidationService {
         private Double maxValue;
         private boolean required;
 
-        public FormField(String fieldName, String selector, String fieldType) {
-            this.fieldName = fieldName;
-            this.selector = selector;
-            this.fieldType = fieldType;
-        }
+    /** 构造表单字段定义。
+     * @param fieldName 字段名称
+     * @param selector  页面选择器
+     * @param fieldType 字段类型（email/phone/number/text 等）
+     */
+    public FormField(String fieldName, String selector, String fieldType) {
+        this.fieldName = fieldName;
+        this.selector = selector;
+        this.fieldType = fieldType;
+    }
 
         // Getter 和 Setter 方法
         public String getFieldName() { return fieldName; }

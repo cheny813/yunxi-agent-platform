@@ -69,8 +69,10 @@
 
 - **JDK**: 17 或更高版本
 - **Maven**: 3.8 或更高版本
+- **Docker Desktop**：用于一键启动数据库、缓存、向量库等基础设施（推荐）
 - **数据库**: MySQL 8.0+ 或 PostgreSQL 14+
 - **缓存**: Redis 6.0+
+- **向量数据库**: Milvus Standalone v2.3.3（知识库/语义检索）
 - **操作系统**: Windows / Linux / macOS
 
 ### 为什么需要这些组件
@@ -81,6 +83,48 @@
 | Maven | 项目构建 | Gradle |
 | MySQL | 数据持久化 | PostgreSQL |
 | Redis | 缓存、会话 | 内存模式（开发） |
+| Milvus | 向量检索（知识库/语义匹配） | Qdrant |
+| Ollama | 本地向量嵌入模型 | 云端 Embedding API |
+
+### 一键启动基础设施
+
+项目根目录提供了 `docker-compose.yml`，一键拉起所有依赖服务。在 IDE 终端或 Windows PowerShell 中执行：
+
+```powershell
+# 进入项目根目录
+cd yunxi-agent-platform
+
+# 启动所有基础设施（MySQL + Redis + Milvus + OTel Collector）
+docker compose up -d
+
+# 确认所有容器就绪
+docker compose ps
+```
+
+启动的容器清单：
+
+| 容器名 | 镜像 | 端口 | 说明 |
+|--------|------|------|------|
+| yunxi-mysql | mysql:8.0 | 3306 | 主数据库 |
+| yunxi-redis | redis:7-alpine | 6379 | 缓存与分布式状态 |
+| yunxi-milvus | milvusdb/milvus:v2.3.3 | 19530 | 向量数据库 |
+| yunxi-milvus-etcd | quay.io/coreos/etcd:v3.5.5 | 2379（内部） | Milvus 元数据协调 |
+| yunxi-milvus-minio | minio/minio | 9000 | Milvus 对象存储 |
+| yunxi-otel-collector | otel/opentelemetry-collector-contrib | 4318 | 链路追踪接收器 |
+
+首次启动约 30-60 秒。Ollama 向量嵌入需在宿主机单独安装：
+
+```powershell
+# 安装 Ollama 并拉取嵌入模型
+ollama pull nomic-embed-text
+```
+
+关闭所有服务：
+
+```powershell
+docker compose down          # 停止但保留数据
+docker compose down -v       # 停止并清除所有数据（彻底重置）
+```
 
 ### 检查环境
 
@@ -91,8 +135,8 @@ java -version
 # 检查 Maven
 mvn -version
 
-# 检查 Redis
-redis-cli ping
+# 检查 Docker 容器状态
+docker compose ps
 ```
 
 ---
@@ -201,26 +245,17 @@ mysql -u root -p < sql/init-database.sql
 
 **为什么需要按顺序启动**：
 ```
-规则引擎 (40002) ──→ 核心服务 (40001)
-                           ↓
-                      网关 (40003) ←── 对外提供服务
+核心服务 (40001)
+       ↓
+   网关 (40003) ←── 对外提供服务
 ```
 
-- 核心服务依赖规则引擎
 - 网关依赖核心服务
 
 ### 方式一：命令行启动
 
 ```bash
-# 启动规则引擎（端口 40002）
-cd agent-rule-engine
-mvn spring-boot:run
-
-# 新终端 - 启动网关（端口 40003）
-cd agent-gateway
-mvn spring-boot:run
-
-# 新终端 - 启动核心服务（端口 40001）
+# 启动核心服务（端口 40001，内置 GA Channel 网关接入）
 cd agent-core
 mvn spring-boot:run
 ```
@@ -249,9 +284,6 @@ curl http://localhost:40001/actuator/health
 
 # 检查网关
 curl http://localhost:40003/actuator/health
-
-# 检查规则引擎
-curl http://localhost:40002/actuator/health
 ```
 
 ### 2. 查看指标
@@ -290,12 +322,6 @@ curl -X POST http://localhost:40003/api/gateway/webapi/chat \
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ Rule Engine (端口 40002)                 │  ← yunxi 规则引擎层
-│ - PRE 规则检查                           │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
 │ Agent Core (端口 40001)                  │  ← yunxi 核心层
 │ - 场景路由                               │
 └─────────────────────────────────────────┘
@@ -315,7 +341,7 @@ curl -X POST http://localhost:40003/api/gateway/webapi/chat \
 
 **关键点**：
 - 你的业务代码写在 yunxi 的 Agent 中（实现 DomainContributor 或 SceneContributor 接口）
-- yunxi 负责路由、规则、编排
+- yunxi 负责路由、编排
 - AgentScope-Java 负责实际的 LLM 交互和工具调用
 
 ---

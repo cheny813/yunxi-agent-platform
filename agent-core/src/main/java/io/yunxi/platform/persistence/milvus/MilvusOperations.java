@@ -38,7 +38,7 @@ import io.yunxi.platform.config.MilvusConfig;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Service
 public class MilvusOperations {
@@ -51,6 +51,14 @@ public class MilvusOperations {
     private final MilvusConfig milvusConfig;
     private final Set<String> initializedCollections = ConcurrentHashMap.newKeySet();
 
+    /**
+     * 构造 Milvus 操作门面。
+     *
+     * @param milvusClientProvider Milvus 客户端提供者（不可用时取到 null，向量功能降级）
+     * @param embeddingService     文本向量化服务
+     * @param embeddingBatchService 批量向量化服务
+     * @param milvusConfig         Milvus 配置
+     */
     public MilvusOperations(
             ObjectProvider<MilvusClientV2> milvusClientProvider,
             EmbeddingService embeddingService,
@@ -67,11 +75,26 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 判断 Milvus 客户端是否可用（已成功注入且非 null）。
+     *
+     * @return 可用时返回 true
+     */
     public boolean isAvailable() { return milvusClient != null; }
 
+    /**
+     * 返回底层原生 Milvus 客户端（可能为 null）。
+     *
+     * @return Milvus 客户端，不可用时为 null
+     */
     @Nullable
     public MilvusClientV2 getRawClient() { return milvusClient; }
 
+    /**
+     * 列出当前 Milvus 实例中的全部集合名称。
+     *
+     * @return 集合名称列表，不可用时返回空列表
+     */
     public List<String> listCollections() {
         if (!isAvailable()) return Collections.emptyList();
         try {
@@ -83,6 +106,12 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 检查指定集合是否存在。
+     *
+     * @param collectionName 集合名称
+     * @return 存在时返回 true，不可用时返回 false
+     */
     public boolean hasCollection(String collectionName) {
         if (!isAvailable()) return false;
         try {
@@ -94,6 +123,12 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 获取集合的实体数量统计。
+     *
+     * @param collectionName 集合名称
+     * @return 实体数量，不可用时返回 -1
+     */
     public long getCollectionStatistics(String collectionName) {
         if (!isAvailable()) return -1;
         try {
@@ -106,6 +141,13 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 创建集合（仅 schema，无索引）。
+     *
+     * @param collectionName 集合名称
+     * @param schema 集合 schema
+     * @return 创建成功返回 true，不可用时返回 false
+     */
     public boolean createCollection(String collectionName, CreateCollectionReq.CollectionSchema schema) {
         if (!isAvailable()) return false;
         try {
@@ -120,6 +162,15 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 创建集合（含描述与索引参数）。
+     *
+     * @param collectionName 集合名称
+     * @param description 集合描述
+     * @param schema 集合 schema
+     * @param indexParams 索引参数列表
+     * @return 创建成功返回 true，不可用时返回 false
+     */
     public boolean createCollection(String collectionName, String description,
             CreateCollectionReq.CollectionSchema schema, List<IndexParam> indexParams) {
         if (!isAvailable()) return false;
@@ -136,6 +187,14 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 创建集合（带索引参数，省略描述）。
+     *
+     * @param collectionName 集合名称
+     * @param schema 集合 schema
+     * @param indexParams 索引参数列表
+     * @return 创建成功返回 true，不可用时返回 false
+     */
     public boolean createCollection(String collectionName, CreateCollectionReq.CollectionSchema schema,
             List<IndexParam> indexParams) {
         if (!isAvailable()) return false;
@@ -151,6 +210,13 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 确保集合存在（不存在则创建，无索引）。已初始化则跳过。
+     *
+     * @param collectionName 集合名称
+     * @param schema 集合 schema
+     * @return 本次创建返回 true，已存在或重复初始化返回 false
+     */
     public boolean ensureCollection(String collectionName, CreateCollectionReq.CollectionSchema schema) {
         if (!isAvailable()) return false;
         if (initializedCollections.contains(collectionName)) return false;
@@ -164,6 +230,14 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 确保集合存在（带索引参数）。已初始化则跳过。
+     *
+     * @param collectionName 集合名称
+     * @param schema 集合 schema
+     * @param indexParams 索引参数列表
+     * @return 本次创建返回 true，已存在或重复初始化返回 false
+     */
     public boolean ensureCollection(String collectionName, CreateCollectionReq.CollectionSchema schema,
             List<IndexParam> indexParams) {
         if (!isAvailable()) return false;
@@ -178,6 +252,12 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 删除集合并清理本地初始化缓存。
+     *
+     * @param collectionName 集合名称
+     * @return 删除成功返回 true，不可用时返回 false
+     */
     public boolean dropCollection(String collectionName) {
         if (!isAvailable()) return false;
         try {
@@ -191,9 +271,26 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 标记集合已完成初始化（加入缓存）。
+     *
+     * @param collectionName 集合名称
+     */
     public void markCollectionInitialized(String collectionName) { initializedCollections.add(collectionName); }
+    /**
+     * 清除集合的初始化缓存标记。
+     *
+     * @param collectionName 集合名称
+     */
     public void clearCollectionCache(String collectionName) { initializedCollections.remove(collectionName); }
 
+    /**
+     * 向集合插入数据行。
+     *
+     * @param collectionName 集合名称
+     * @param data 待插入的 JSON 行数据
+     * @return 插入成功返回 true，不可用时返回 false
+     */
     public boolean insert(String collectionName, List<JsonObject> data) {
         if (!isAvailable()) return false;
         try {
@@ -205,6 +302,13 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 向集合 upsert（插入或更新）数据行。
+     *
+     * @param collectionName 集合名称
+     * @param data 待 upsert 的 JSON 行数据
+     * @return 操作成功返回 true，不可用时返回 false
+     */
     public boolean upsert(String collectionName, List<JsonObject> data) {
         if (!isAvailable()) return false;
         try {
@@ -216,6 +320,13 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 分批 upsert 数据行（按 batchSize 切片，单批失败仅告警不中断）。
+     *
+     * @param collectionName 集合名称
+     * @param dataList 待 upsert 的 JSON 行数据
+     * @param batchSize 每批大小
+     */
     public void upsertBatch(String collectionName, List<JsonObject> dataList, int batchSize) {
         if (!isAvailable() || dataList == null || dataList.isEmpty()) return;
         int totalSize = dataList.size();
@@ -232,6 +343,16 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 按向量在集合中做语义搜索（默认向量字段）。
+     *
+     * @param collectionName 集合名称
+     * @param vector 查询向量
+     * @param topK 返回最相似结果数量
+     * @param searchFields 输出字段列表
+     * @param filterExpr 可选的过滤表达式（Milvus expr）
+     * @return 搜索结果列表，不可用时返回空列表
+     */
     public List<SearchResp.SearchResult> search(String collectionName, List<Float> vector,
             int topK, List<String> searchFields, @Nullable String filterExpr) {
         if (!isAvailable()) return Collections.emptyList();
@@ -249,6 +370,17 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 按向量在集合中做语义搜索（指定向量字段）。
+     *
+     * @param collectionName 集合名称
+     * @param vector 查询向量
+     * @param annsField 向量字段名
+     * @param topK 返回最相似结果数量
+     * @param filterExpr 可选的过滤表达式
+     * @param outputFields 输出字段列表
+     * @return 搜索结果列表，不可用时返回空列表
+     */
     public List<SearchResp.SearchResult> search(String collectionName, List<Float> vector,
             String annsField, int topK, @Nullable String filterExpr, List<String> outputFields) {
         if (!isAvailable()) return Collections.emptyList();
@@ -266,6 +398,13 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 按过滤表达式删除集合数据。
+     *
+     * @param collectionName 集合名称
+     * @param filterExpr Milvus 删除过滤表达式
+     * @return 删除成功返回 true，不可用时返回 false
+     */
     public boolean delete(String collectionName, String filterExpr) {
         if (!isAvailable()) return false;
         try {
@@ -277,8 +416,30 @@ public class MilvusOperations {
         }
     }
 
+    /**
+     * 返回当前嵌入模型维度。
+     *
+     * @return 向量维度
+     */
     public int getEmbeddingDimension() { return embeddingService.getDimension(); }
+    /**
+     * 将文本嵌入为向量（异常时返回空列表）。
+     *
+     * @param text 待嵌入文本
+     * @return 向量，失败返回空列表
+     */
     public List<Float> embed(String text) { try { return embeddingService.embed(text); } catch (Exception e) { log.error("Text embedding failed", e); return Collections.emptyList(); } }
+    /**
+     * 批量嵌入文本（带重试）。
+     *
+     * @param texts 待嵌入文本列表
+     * @return 向量列表
+     */
     public List<List<Float>> embedBatch(List<String> texts) { return embeddingBatchService.embedBatchWithRetry(texts); }
+    /**
+     * 返回 Milvus 配置。
+     *
+     * @return MilvusConfig 实例
+     */
     public MilvusConfig getConfig() { return milvusConfig; }
 }

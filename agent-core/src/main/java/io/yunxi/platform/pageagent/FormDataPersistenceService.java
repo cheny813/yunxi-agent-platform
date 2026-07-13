@@ -27,7 +27,11 @@ public class FormDataPersistenceService {
     private static final String FORM_HISTORY_PREFIX = "form:history:";
 
     /**
-     * 保存表单会话数据
+     * 保存表单会话数据（有效期 24 小时）。
+     *
+     * @param sessionId   会话唯一标识
+     * @param sessionData 表单会话数据
+     * @throws RuntimeException 持久化异常时抛出
      */
     public void saveFormSession(String sessionId, FormSessionData sessionData) {
         try {
@@ -41,7 +45,10 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 获取表单会话数据
+     * 获取表单会话数据，并续期其过期时间至 24 小时。
+     *
+     * @param sessionId 会话唯一标识
+     * @return 表单会话数据；不存在或异常时返回 null
      */
     public FormSessionData getFormSession(String sessionId) {
         try {
@@ -59,7 +66,12 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 更新表单数据
+     * 更新指定会话中某个表单的数据（存在则更新，不存在则新建）。
+     *
+     * @param sessionId 会话唯一标识
+     * @param formId    表单ID
+     * @param formData  表单字段数据
+     * @throws IllegalArgumentException 会话不存在时抛出
      */
     public void updateFormData(String sessionId, String formId, Map<String, Object> formData) {
         FormSessionData sessionData = getFormSession(sessionId);
@@ -92,7 +104,11 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 获取特定表单的数据
+     * 获取指定会话中某个表单的数据。
+     *
+     * @param sessionId 会话唯一标识
+     * @param formId    表单ID
+     * @return 表单字段数据映射；会话或表单不存在时返回空 Map
      */
     public Map<String, Object> getFormData(String sessionId, String formId) {
         FormSessionData sessionData = getFormSession(sessionId);
@@ -108,7 +124,11 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 保存表单模板
+     * 保存表单模板（永不过期）。
+     *
+     * @param templateId 模板唯一标识
+     * @param template   表单模板
+     * @throws RuntimeException 持久化异常时抛出
      */
     public void saveFormTemplate(String templateId, FormTemplate template) {
         try {
@@ -122,7 +142,10 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 获取表单模板
+     * 获取表单模板。
+     *
+     * @param templateId 模板唯一标识
+     * @return 表单模板；不存在或异常时返回 null
      */
     public FormTemplate getFormTemplate(String templateId) {
         try {
@@ -135,7 +158,10 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 保存表单提交历史
+     * 保存表单提交历史（有效期 30 天）。
+     *
+     * @param userId  用户唯一标识
+     * @param history 表单历史记录
      */
     public void saveFormHistory(String userId, FormHistory history) {
         try {
@@ -147,7 +173,11 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 获取用户表单历史
+     * 获取指定用户的表单提交历史（按提交时间倒序，取最新 limit 条）。
+     *
+     * @param userId 用户唯一标识
+     * @param limit  返回条数上限
+     * @return 表单历史记录列表；无记录或异常时返回空列表
      */
     public List<FormHistory> getFormHistory(String userId, int limit) {
         try {
@@ -179,7 +209,7 @@ public class FormDataPersistenceService {
     }
 
     /**
-     * 清理过期会话数据
+     * 清理已过期的表单会话数据（TTL 小于等于 0 的键）。
      */
     public void cleanupExpiredSessions() {
         try {

@@ -226,7 +226,7 @@ agentscope:
 
 ## 知识库（RAG）配置
 
-> **⚠️ V2.0 兼容性说明**：`io.agentscope.core.rag.Knowledge` 在 AgentScope 2.0.0-RC1 中标记为 `@Deprecated(forRemoval=true)`。官方新 RAG 模块计划在后续 minor 版本上线，届时需要迁移知识库创建逻辑到新的 SPI 接口。当前通过 `@SuppressWarnings("removal")` 保持功能正常，所有相关代码均标记 `TODO: AgentScope 2.0` 方便后续定位。参见 [框架适配](#) 了解更多。
+> **⚠️ V2.0 兼容性说明**：`io.agentscope.core.rag.Knowledge` 在 AgentScope 2.0.0（GA）中标记为 `@Deprecated(forRemoval=true)`。官方新 RAG 模块计划在后续 minor 版本上线，届时需要迁移知识库创建逻辑到新的 SPI 接口。当前通过 `@SuppressWarnings("removal")` 保持功能正常，所有相关代码均标记 `TODO: AgentScope 2.0` 方便后续定位。参见 [框架适配](#) 了解更多。
 
 ### 理论基础：检索增强生成
 

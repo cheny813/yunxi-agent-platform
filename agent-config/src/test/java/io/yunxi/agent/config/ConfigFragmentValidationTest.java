@@ -106,11 +106,6 @@ class ConfigFragmentValidationTest {
     }
 
     @Test
-    void testRuleEngineConfigFormat() {
-        validateConfigFile("config/rule-engine.yml", "rule.engine");
-    }
-
-    @Test
     void testPersistenceConfigFormat() {
         validateConfigFile("config/persistence.yml", "spring.jpa");
     }
