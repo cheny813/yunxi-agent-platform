@@ -27,6 +27,9 @@ public class HttpTool {
 
     private final OkHttpClient httpClient;
 
+    /**
+     * 创建 HTTP 请求工具，初始化带有连接/读写超时的 OkHttpClient。
+     */
     public HttpTool() {
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(Duration.ofSeconds(30))

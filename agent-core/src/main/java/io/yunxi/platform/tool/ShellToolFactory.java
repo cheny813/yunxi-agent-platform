@@ -12,8 +12,7 @@ import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 /**
  * Shell 命令工具工厂 — 封装框架 {@link ShellCommandTool} 的创建
  * <p>
- * 依赖框架内置的 Shell 安全机制：白名单 allowlist + 人工审批回调 + 平台验证
- * 替代原本的 {@code CommandSafetyClassifier} 命令分类系统
+ * 依赖框架内置的 Shell 安全机制：白名单 allowlist + 人工审批回调 + 平台验证。
  * </p>
  *
  * <p>

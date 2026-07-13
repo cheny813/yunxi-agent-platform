@@ -1,7 +1,7 @@
 package io.yunxi.platform.desktop.relay;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.yunxi.platform.agent.workspace.UserWorkspaceService;
+
 import io.yunxi.platform.desktop.model.NodeInfo;
 import io.yunxi.platform.agent.profile.NodeProfileService;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +15,6 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
@@ -45,9 +44,6 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /** 节点画像服务 */
     private final NodeProfileService profileService;
 
-    /** 用户工作空间服务 */
-    private final UserWorkspaceService userWorkspaceService;
-
     /** 在线客户端映射: clientId -> session */
     private final Map<String, WebSocketSession> clients = new ConcurrentHashMap<>();
 
@@ -69,13 +65,14 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
      * @param eventPublisher Spring 事件发布器
      * @param profileService 节点画像服务
      */
-    public DesktopRelayHandler(ApplicationEventPublisher eventPublisher, NodeProfileService profileService,
-            UserWorkspaceService userWorkspaceService) {
+    public DesktopRelayHandler(ApplicationEventPublisher eventPublisher, NodeProfileService profileService) {
         this.eventPublisher = eventPublisher;
         this.profileService = profileService;
-        this.userWorkspaceService = userWorkspaceService;
     }
 
+    /** WebSocket 连接建立时回调，分配 clientId 并发送欢迎消息。
+     * @param session 新建的 WebSocket 会话
+     */
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String clientId = getClientId(session);
@@ -94,6 +91,10 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
                 "message", "已连接到中继服务器"));
     }
 
+    /** 接收并分发客户端上报的文本消息（register/pong/result/error）。
+     * @param session 发送消息的会话
+     * @param message 消息内容
+     */
     @Override
     @SuppressWarnings("unchecked")
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
@@ -131,6 +132,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
      * <p>
      * 解析客户端上报的 userId/nodeType/tags/hostname/os/localIp 等信息。
      * </p>
+     */
+    /**
+     * 处理桌面客户端注册请求，解析并构建节点信息、维护 userId/tag 索引。
+     *
+     * @param session WebSocket 会话
+     * @param data    客户端上报的注册数据（userId/nodeType/tags/hostname/os 等）
      */
     @SuppressWarnings("unchecked")
     private void handleRegister(WebSocketSession session, Map<String, Object> data) {
@@ -186,18 +193,8 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
         log.info("节点注册成功: {}, nodeType={}, userId={}, tags={}, capabilities={}",
                 clientId, info.getNodeType(), info.getUserId(), info.getTags(), info.getCapabilities());
 
-        // 异步为用户预初始化 Agent 工作空间
-        if (info.getUserId() != null && !info.getUserId().isBlank()) {
-            String userId = info.getUserId();
-            CompletableFuture.runAsync(() -> {
-                try {
-                    userWorkspaceService.getOrCreateUserAgent("food-chat", userId);
-                    log.info("用户 Agent 工作空间预初始化完成: userId={}", userId);
-                } catch (Exception e) {
-                    log.warn("用户 Agent 工作空间预初始化失败（非关键）: userId={}, {}", userId, e.getMessage());
-                }
-            });
-        }
+        // 多租户工作空间隔离已由 GA 原生（HarnessAgent.workspaceFor）在运行时按
+        // RuntimeContext(userId, sessionId) 自动处理，无需在此预初始化用户工作空间。
 
         // 持久化节点画像
         try {
@@ -215,6 +212,11 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 处理命令执行结果
      */
+    /**
+     * 处理客户端命令执行结果，发布命令结果事件供等待方消费。
+     *
+     * @param data 含 requestId 与结果的数据
+     */
     private void handleCommandResult(Map<String, Object> data) {
         String requestId = (String) data.get("requestId");
         if (requestId != null) {
@@ -227,6 +229,11 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 处理命令执行错误
      */
+    /**
+     * 处理客户端命令执行错误，发布命令结果事件（含错误数据）。
+     *
+     * @param data 含 requestId 与错误信息的数据
+     */
     private void handleCommandError(Map<String, Object> data) {
         String requestId = (String) data.get("requestId");
         if (requestId != null) {
@@ -236,6 +243,10 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
         }
     }
 
+    /** WebSocket 连接关闭时回调，清理客户端及其 userId/tag 索引并更新在线状态。
+     * @param session 关闭的会话
+     * @param status  关闭状态
+     */
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String clientId = (String) session.getAttributes().get("clientId");
@@ -369,6 +380,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 按 userId 获取在线 clientId 列表
      */
+    /**
+     * 按 userId 获取其关联的在线 clientId 列表。
+     *
+     * @param userId 用户唯一标识
+     * @return 在线客户端ID列表（无则空列表）
+     */
     public List<String> getClientIdsByUserId(String userId) {
         Set<String> nodeIds = userNodeMap.get(userId);
         if (nodeIds == null || nodeIds.isEmpty()) {
@@ -382,6 +399,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 按 tag 获取在线 clientId 列表
      */
+    /**
+     * 按 tag 获取关联的在线 clientId 列表。
+     *
+     * @param tag 标签
+     * @return 在线客户端ID列表（无则空列表）
+     */
     public List<String> getClientIdsByTag(String tag) {
         Set<String> nodeIds = tagNodeMap.get(tag);
         if (nodeIds == null || nodeIds.isEmpty()) {
@@ -394,6 +417,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
 
     /**
      * 按多个 tag 取交集（必须同时拥有所有指定 tag）
+     */
+    /**
+     * 按多个 tag 取交集获取节点（必须同时拥有所有指定 tag 且在线）。
+     *
+     * @param tags 标签列表
+     * @return 同时满足所有标签的在线客户端ID列表（无则空列表）
      */
     public List<String> getNodesByTags(List<String> tags) {
         if (tags == null || tags.isEmpty()) {
@@ -422,6 +451,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 获取节点信息
      */
+    /**
+     * 获取指定客户端的节点信息。
+     *
+     * @param clientId 客户端ID
+     * @return 节点信息；不存在时返回 null
+     */
     public NodeInfo getNodeInfo(String clientId) {
         return nodeRegistry.get(clientId);
     }
@@ -430,6 +465,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
 
     /**
      * 向指定客户端发送消息
+     */
+    /**
+     * 向指定客户端发送消息（在线则发送并记录待处理请求）。
+     *
+     * @param clientId 客户端ID
+     * @param message  待发送的消息 Map
      */
     public void sendToClient(String clientId, Map<String, Object> message) {
         WebSocketSession session = clients.get(clientId);
@@ -447,6 +488,11 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 向全部在线客户端广播
      */
+    /**
+     * 向全部在线客户端广播消息。
+     *
+     * @param message 待广播的消息 Map
+     */
     public void broadcast(Map<String, Object> message) {
         clients.forEach((clientId, session) -> {
             if (session.isOpen()) {
@@ -457,6 +503,13 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
 
     /**
      * 向多个客户端发送消息
+     */
+    /**
+     * 向多个客户端发送消息，为每个离线目标标记 OFFLINE。
+     *
+     * @param clientIds 目标客户端ID列表
+     * @param message   待发送的消息 Map
+     * @return 各客户端ID到请求ID（或 OFFLINE）的映射
      */
     public Map<String, String> sendToClients(List<String> clientIds, Map<String, Object> message) {
         Map<String, String> results = new HashMap<>();
@@ -481,6 +534,11 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 获取全部在线客户端
      */
+    /**
+     * 获取全部在线客户端的节点信息快照。
+     *
+     * @return clientId 到 NodeInfo 的映射
+     */
     public Map<String, NodeInfo> getOnlineClients() {
         return new ConcurrentHashMap<>(nodeRegistry);
     }
@@ -488,12 +546,23 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
     /**
      * 获取在线数量
      */
+    /**
+     * 获取当前在线客户端数量。
+     *
+     * @return 在线客户端数量
+     */
     public int getClientCount() {
         return clients.size();
     }
 
     /**
      * 判断客户端是否在线
+     */
+    /**
+     * 判断指定客户端是否在线（会话存在且处于打开状态）。
+     *
+     * @param clientId 客户端ID
+     * @return 在线返回 true，否则返回 false
      */
     public boolean isClientOnline(String clientId) {
         WebSocketSession session = clients.get(clientId);
@@ -504,6 +573,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
 
     /**
      * 通过 WebSocket 发送 JSON
+     */
+    /**
+     * 通过 WebSocket 向指定会话发送 JSON 消息。
+     *
+     * @param session WebSocket 会话
+     * @param message 待发送的消息 Map
      */
     private void sendMessage(WebSocketSession session, Map<String, Object> message) {
         try {
@@ -516,6 +591,12 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
 
     /**
      * 从 URL 参数或 Session 属性中提取 clientId
+     */
+    /**
+     * 从连接 URL 参数或会话属性中提取 clientId。
+     *
+     * @param session WebSocket 会话
+     * @return 解析到的 clientId；不存在时返回 null
      */
     private String getClientId(WebSocketSession session) {
         String query = session.getUri().getQuery();

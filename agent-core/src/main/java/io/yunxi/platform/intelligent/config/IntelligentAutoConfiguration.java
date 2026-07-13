@@ -7,10 +7,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 /**
  * 智能化服务自动配置
  * <p>
- * 重构后仅保留 IntelligentLlmService 及其依赖的配置。
- * 已删除无用代码子服务：strategy, reflection, background, prediction,
- * prompt, recommendation, fallback, evolution, monitor, event, memory,
- * controller
+ * 仅装配 IntelligentLlmService 及其依赖的配置。
  * </p>
  *
  * @author yunxi-agent-platform

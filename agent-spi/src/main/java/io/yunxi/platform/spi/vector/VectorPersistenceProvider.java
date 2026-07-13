@@ -15,7 +15,7 @@ import java.util.Map;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public interface VectorPersistenceProvider {
 
@@ -40,7 +40,11 @@ public interface VectorPersistenceProvider {
     List<SearchResult> searchSimilarMemory(String query, String userId, int topK);
 
     /**
-     * 搜索结果
+     * 语义搜索命中结果，封装单条被检索到的记忆及其相似度评分。
+     * <p>
+     * {@code score} 表示与查询文本的语义相似度（分值越高越相关），
+     * {@code metadata} 与 {@code createdAt} 可用于业务层做元数据过滤与时间排序。
+     * </p>
      */
     class SearchResult {
         private String id;

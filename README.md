@@ -2,14 +2,15 @@
 
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)](https://spring.io/projects/spring-boot)
+[![AgentScope](https://img.shields.io/badge/AgentScope--Java-2.0.0-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Maven](https://img.shields.io/badge/Maven-3.8%2B-red)](https://maven.apache.org/)
 
-**yunxi Agent Platform** 是一个企业级多 Agent 协作框架，基于 **AgentScope V2.0**（2.0.0-RC3）核心运行时，提供开箱即用的 Agent 编排、规则引擎、MCP 协议集成、记忆系统等能力。
+**yunxi Agent Platform** 是一个企业级多 Agent 协作框架，基于 **AgentScope-Java 2.0.0（GA 正式版）** 核心运行时，提供开箱即用的 Agent 编排、MCP 协议集成、记忆系统等能力。
 
 > **yunxi**（云曦），寓意 AI 平台像晨曦之光赋能万物。
 >
-> **V2.0-RC3 升级说明**：本平台已完成从 AgentScope V1.1-RC2 → V2.0.0-RC1 → V2.0.0-RC3 的大版本升级。核心变更包括：Hook → Middleware 迁移、`Session` → `DistributedStore` 替换、`Tracer` → OpenTelemetry 直连 API、`stream()` → `streamEvents()`、`ModelRegistry` 统一模型创建、包结构扁平化重构。
+> **版本策略**：yunxi Agent Platform 的版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 保持同步。当前版本 **2.0.0** 基于 AgentScope-Java 2.0.0 正式版（GA）构建。完整的版本变更记录见 [CHANGELOG](CHANGELOG.md)。
 
 ---
 
@@ -18,12 +19,11 @@
 | 特性 | 说明 |
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
-| **AgentScope 深度集成** | 基于 AgentScope V2.0-RC3，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
+| **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.0 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
-| **规则引擎** | 内置轻量级规则引擎，支持 SpEL 表达式、动态规则加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
-| **技能系统** | V2.0 内置 `SkillCurator` 治理流水线（原 SkillBox 已移除） |
+| **技能系统** | 启用 GA 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
 | **流式事件** | 使用 `streamEvents()` 替代废弃的 `stream()`，按 `AgentEventType` 过滤事件 |
 | **工具分组** | 按职责隔离工具（memory/filesystem/execute），默认最小权限，YAML 按需开放 |
 | **提示注入防护** | ContentFilterMiddleware 基于框架 Middleware 接口，`onAgent` 拦截点拦截中英文注入模式 |
@@ -43,11 +43,36 @@
 
 - JDK 17+
 - Maven 3.8+
-- MySQL 8.0+（可选）
-- Redis 6.0+（可选）
+- Docker Desktop（推荐，用于一键启动基础设施）
 - Ollama / OpenAI API（LLM 后端，可选一种即可）
 
-### 启动应用
+### 第一步：一键启动基础设施
+
+项目根目录的 `docker-compose.yml` 提供了所有依赖服务的一键启动能力。在 IDE 终端或 PowerShell 中执行：
+
+```powershell
+# 在项目根目录下执行（IDE 终端或 Windows PowerShell 均可）
+docker compose up -d
+```
+
+这将启动以下服务（共 6 个容器）：
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| MySQL 8.0 | 3306 | 主数据库（会话/技能/配置持久化） |
+| Redis 7 | 6379 | 缓存/分布式状态/会话 |
+| Milvus Standalone | 19530 | 向量数据库（记忆/语义检索） |
+| MinIO | 9000 | Milvus 对象存储（内部） |
+| etcd | 2379 | Milvus 元数据协调（内部） |
+| OTel Collector | 4318 | 链路追踪收集器（消除 "Failed to connect to 127.0.0.1:4318" 日志错误） |
+
+首次启动约需 30-60 秒（主要等 Milvus 就绪）。可用 `docker compose ps` 确认所有容器状态。
+
+Ollama 向量嵌入服务建议在宿主机安装（`ollama pull nomic-embed-text`），由应用通过 `localhost:11434` 调用。
+
+**关闭服务**：`docker compose down`；**彻底重置**：`docker compose down -v && docker compose up -d`
+
+### 第二步：启动应用
 
 ```bash
 # 1. 克隆项目
@@ -59,7 +84,12 @@ mvn clean install -DskipTests
 
 # 3. 启动核心服务
 mvn spring-boot:run -pl agent-app
+
+# 或使用 PowerShell 启动脚本（推荐）
+.\启动项目.ps1 -Fast
 ```
+
+启动后访问：http://127.0.0.1:40001/chat.html
 
 ### 发送第一条消息
 
@@ -77,9 +107,7 @@ curl -X POST http://localhost:8080/api/chat \
 
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
-| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全 | Spring Boot, agentscope-harness |
-| **agent-gateway** | 网关：通道管理、流控、认证 | WebSocket, SSE |
-| **agent-rule-engine** | 规则引擎：动态规则、SpEL 评估 | Spring SpEL |
+| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全、网关（GA Channel 接入） | Spring Boot, agentscope-harness |
 | **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
 | **agent-spi** | SPI 接口定义 | Java SPI |
 | **agent-config** | 统一配置：YAML、数据库初始化 | Spring Cloud |
@@ -99,14 +127,14 @@ curl -X POST http://localhost:8080/api/chat \
 │               编排层 (Core + agentscope-harness)          │
 │  Agent 编排 · 会话管理 · 路由 · 技能治理 · 工作空间        │
 │   SmartLifecycle 启停 · prototype 作用域 · @Tool 注解     │
-└───────┬──────────────┬──────────────┬───────────────────┘
-        │              │              │
-┌───────▼───────┐ ┌────▼──────┐ ┌────▼─────────────────┐
-│   规则引擎     │ │ MCP 协议  │ │  AgentScope V2.0       │
-│   SpEL 规则   │ │ 30+ 工具  │ │  Model/Toolkit/Memory  │
-│   动态加载     │ │ SPI 扩展  │ │  Middleware/State      │
-└───────┬───────┘ └────┬──────┘ └────┬─────────────────┘
-        │              │              │
+└───────┬──────────────┬───────────────────────────────┘
+        │              │
+┌───────▼──────┐ ┌────▼─────────────────┐
+│   MCP 协议    │ │  AgentScope V2.0       │
+│   30+ 工具   │ │  Model/Toolkit/Memory  │
+│   SPI 扩展   │ │  Middleware/State      │
+└───────┬──────┘ └────┬─────────────────┘
+        │              │
 ┌───────▼──────────────▼──────────────▼─────────────────┐
 │                基础设施 (Spring Boot)                   │
 │   SmartLifecycle · Actuator · Micrometer · OTel       │
@@ -162,7 +190,7 @@ yunxi 采用 **Agent 优先** 的目录布局，遵循底层 agentscope-java 框
 **设计原则**：
 - **Agent 优先**：工作空间以 `agents/` 为统一入口，`users/` 嵌套在 Agent 下
 - **用户隔离**：同一 Agent 的不同用户数据完全隔离在 `agents/{agentName}/users/{userId}/` 下
-- **WorkspaceAutoDiscoveryEngine** 启动时扫描 `agents/` 子目录，`users/` 由 `UserWorkspaceService` 运行时管理
+- **多租户运行时隔离**：由 GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 在调用时按用户/会话命名空间路由到独立工作空间视图，无需自建扫描器（调用点：`ChatAppService`、`DesktopRelayHandler`）
 - **根级共享**：workspace 根目录下的 `AGENTS.md` 和 `skills/` 为全局共享资源
 - API 路由使用 `compositeKey = agentName + "#" + userId` 定位用户专属 Agent 实例
 
@@ -186,7 +214,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 
 ## 框架适配
 
-本平台基于 **AgentScope-Java**（阿里巴巴开源，V2.0.0-RC3 版本）构建。在实际使用中，我们对底层框架的一些设计限制做了适配：
+本平台基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。在实际使用中，我们对底层框架的一些设计限制做了适配：
 
 | 问题 | 根因 | 解决方案 | 文档 |
 |------|------|---------|------|
@@ -195,9 +223,9 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 | **MCP 工具组隔离** | 框架 Toolkit 单例模式，所有工具注册在同一实例 | 按 MCP 服务器名分组 + YAML 配置组激活 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
 | ~~**自建 LLM Provider**~~ | ✅ **已修复** — 拆除 `ChatModelProvider` 接口，复用框架 `ModelRegistry` 工厂机制 | 通过 `ModelRegistry.registerFactory()` 注册自定义工厂 | [配置 → 生成参数](docs/guide/06-configuration.md#生成参数配置) |
 | ~~**自建 Shell 安全**~~ | ✅ **已修复** — 拆除 `CommandSafetyClassifier`（~200 行），使用框架 `ShellCommandTool` | 白名单+平台验证器+审批回调，含多命令分隔符/路径穿越检测 | [配置 → Shell 安全](docs/guide/06-configuration.md#shell-命令安全配置) |
-| ~~**Session 包删除**~~ | ✅ **已适配** — RC3 删除 `io.agentscope.core.session` 包，替换为 `DistributedStore` | 改为注入 `DistributedStore`，通过 `RedisDistributedStore.fromJedis()` 创建 | [配置 → Session](docs/guide/06-configuration.md#session-持久化配置) |
-| ~~**Tracer 弃用**~~ | ✅ **已适配** — RC3 废弃 `Tracer`/`TracerRegistry`，改用 OpenTelemetry API | 移除 `OpenTelemetryTracer.java`，直接使用 `OpenTelemetry` 全局实例 | [可观测性](docs/guide/15-observability.md) |
-| **RAG 知识库 API 弃用** | AgentScope 2.0.0-RC3 中 `Knowledge` 标记 `@Deprecated(forRemoval=true)`，新 RAG 模块延后到后续版本 | 8 个文件添加 `@SuppressWarnings("removal")` + `TODO: AgentScope 2.0` 迁移标记 | [配置 → 知识库](docs/guide/06-configuration.md#知识库rag配置) |
+| ~~**Session 包删除**~~ | ✅ **已适配** — GA 删除 `io.agentscope.core.session` 包，替换为 `DistributedStore` | 改为注入 `DistributedStore`，通过 `RedisDistributedStore.fromJedis()` 创建 | [配置 → Session](docs/guide/06-configuration.md#session-持久化配置) |
+| ~~**Tracer 弃用**~~ | ✅ **已适配** — GA 废弃 `Tracer`/`TracerRegistry`，改用 OpenTelemetry API | 移除 `OpenTelemetryTracer.java`，直接使用 `OpenTelemetry` 全局实例 | [可观测性](docs/guide/15-observability.md) |
+| ~~**RAG 知识库 API 弃用**~~ | ✅ **已适配** — GA 中 `rag.Knowledge` 标记 `@Deprecated(forRemoval=true)`，官方建议在应用层集成检索 | 迁移到应用层 RAG（`ApplicationRAG`），经 `MiddlewareBase.onSystemPrompt` 注入检索上下文 | [配置 → 知识库](docs/guide/06-configuration.md#知识库rag配置) |
 
 所有适配代码位于项目中，不修改框架源码，框架升级时通过 try-catch 保证容错回退。
 
@@ -207,9 +235,9 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 
 - [x] 重构包名为 `io.yunxi.*`，品牌升级为 **yunxi**
 - [x] 完整重构 Agent 编排与记忆系统
+- [x] 提供 Docker Compose 一键部署（`docker compose up -d`）
 - [ ] 补充英文文档
 - [ ] 发布 Maven Central
-- [ ] 提供 Docker Compose 一键部署
 - [ ] 公开 MCP Server 市场
 
 ---

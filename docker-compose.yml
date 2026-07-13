@@ -1,0 +1,189 @@
+# ============================================================
+# yunxi-agent-platform 基础设施一键启动
+# ============================================================
+# 启动： docker compose up -d
+# 停止： docker compose down
+# 重置： docker compose down -v && docker compose up -d
+#
+# 服务清单（共 6 个容器 + 1 个本地进程）：
+# ┌──────────────────┬────────┬───────────────────────────────────┐
+# │ 服务              │ 端口    │ 说明                              │
+# ├──────────────────┼────────┼───────────────────────────────────┤
+# │ MySQL 8.0        │ 3306   │ 主数据库（会话/技能/配置持久化）    │
+# │ Redis 7          │ 6379   │ 缓存/分布式状态/会话               │
+# │ Milvus Standalone │ 19530  │ 向量数据库（记忆/食谱语义检索）    │
+# │ MinIO (Milvus)   │ 9000   │ Milvus 对象存储（内部）            │
+# │ etcd (Milvus)    │ 2379   │ Milvus 元数据协调（内部）           │
+# │ OTel Collector   │ 4318   │ 链路追踪收集器（可选）             │
+# ├──────────────────┼────────┼───────────────────────────────────┤
+# │ Ollama (本地进程) │ 11434  │ 向量嵌入（需单独安装 ollama pull） │
+# └──────────────────┴────────┴───────────────────────────────────┘
+#
+# Milvus 首次启动需要 30-60 秒，请耐心等待。
+# OTel Collector 不启动也不影响核心功能，仅追踪丢失。
+#
+# 注意：LLM API Key 请在 start.ps1 或环境变量中配置。
+
+services:
+  # ============================================================
+  # MySQL 8.0 — 主数据库
+  # ============================================================
+  mysql:
+    image: mysql:8.0
+    container_name: yunxi-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: yunxi_agent_platform
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+      TZ: Asia/Shanghai
+    command:
+      [
+        "--character-set-server=utf8mb4",
+        "--collation-server=utf8mb4_unicode_ci",
+      ]
+    healthcheck:
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - yunxi-mysql-data:/var/lib/mysql
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Redis 7 — 缓存 & 分布式状态
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: yunxi-redis
+    ports:
+      - "6379:6379"
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "redispass",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - yunxi-redis-data:/data
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # etcd — Milvus 元数据协调（内部组件，不暴露端口）
+  # ============================================================
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: yunxi-milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    command: >
+      etcd
+      -advertise-client-urls=http://127.0.0.1:2379
+      -listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    volumes:
+      - yunxi-etcd-data:/etcd
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # MinIO — Milvus 对象存储（内部组件）
+  # ============================================================
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: yunxi-milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test:
+        ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    volumes:
+      - yunxi-minio-data:/minio_data
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Milvus Standalone — 向量数据库
+  # ============================================================
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    container_name: yunxi-milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - yunxi-milvus-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # OpenTelemetry Collector — 链路追踪（可选）
+  # ============================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.97.0
+    container_name: yunxi-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./scripts/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    networks:
+      - yunxi-net
+
+networks:
+  yunxi-net:
+    driver: bridge
+
+volumes:
+  yunxi-mysql-data:
+  yunxi-redis-data:
+  yunxi-etcd-data:
+  yunxi-minio-data:
+  yunxi-milvus-data:

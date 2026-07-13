@@ -9,19 +9,14 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
-import io.yunxi.agent.rule.core.RuleContext;
-import io.yunxi.agent.rule.core.RuleEngine;
-import io.yunxi.agent.rule.exception.RuleViolationException;
-import io.yunxi.agent.rule.model.RuleResult;
-import io.yunxi.platform.agent.plan.PlanPreCreator;
+import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.agent.profile.ProfileRouter;
 import io.yunxi.platform.agent.service.AgentService;
-import io.yunxi.platform.agent.workspace.UserWorkspaceService;
 import io.yunxi.platform.file.FileUploadService;
 import io.yunxi.platform.file.dto.FileSearchRequest;
 import io.yunxi.platform.file.dto.FileSearchResult;
@@ -105,15 +100,6 @@ public class ChatAppService {
     /** 安全上下文 */
     private final SecurityContext securityContext;
 
-    /** 规则引擎 */
-    private final RuleEngine ruleEngine;
-
-    /** 规划预创建器 */
-    private final PlanPreCreator planPreCreator;
-
-    /** 用户工作区懒加载服务 */
-    private final UserWorkspaceService userWorkspaceService;
-
     /**
      * 构造对话应用服务
      *
@@ -123,21 +109,16 @@ public class ChatAppService {
      * @param sseMessageBuilder         SSE 消息构建器
      * @param sceneDetectionService     场景检测服务
      * @param fileUploadService         文件上传服务
-     * @param contextEnrichers          上下文增强器列表
      * @param securityContext           安全上下文
-     * @param ruleEngine                规则引擎
-     * @param metricsService            指标服务
+     * @param profileRouter             Profile 路由器
      */
     public ChatAppService(AgentService agentService, AgentscopeCoreProperties properties,
             ConversationDomainService conversationDomainService,
             SseMessageBuilder sseMessageBuilder,
             SceneDetectionService sceneDetectionService,
             FileUploadService fileUploadService,
-            ObjectProvider<RuleEngine> ruleEngineProvider,
             SecurityContext securityContext,
-            ProfileRouter profileRouter,
-            PlanPreCreator planPreCreator,
-            UserWorkspaceService userWorkspaceService) {
+            ProfileRouter profileRouter) {
         this.agentService = agentService;
         this.profileRouter = profileRouter;
         this.properties = properties;
@@ -146,9 +127,6 @@ public class ChatAppService {
         this.sceneDetectionService = sceneDetectionService;
         this.fileUploadService = fileUploadService;
         this.securityContext = securityContext;
-        this.ruleEngine = ruleEngineProvider.getIfAvailable();
-        this.planPreCreator = planPreCreator;
-        this.userWorkspaceService = userWorkspaceService;
     }
 
     /**
@@ -163,16 +141,36 @@ public class ChatAppService {
      * @return Agent 实例
      */
     private Agent resolveAgent(String name, String profile, String userId) {
-        // 优先：用户工作区隔离（yunxiClaw 个人端）
-        if (userId != null && !userId.isBlank() && !"default-user".equals(userId)) {
-            return userWorkspaceService.getOrCreateUserAgent(name, userId);
-        }
-        // 其次：Profile 路由
+        // 多租户工作空间隔离完全复用 GA 原生能力（HarnessAgent.workspaceFor）：
+        // Agent 为共享实例，调用时通过 RuntimeContext(userId, sessionId) 由框架按用户命名空间隔离，
+        // yunxi 不再自建每用户 Bean 与路径。userId 经 RuntimeContext 透传，此处仅用于路由决策。
+        // 优先：Profile 路由
         if (profile != null && !profile.isBlank()) {
             return profileRouter.resolve(name, profile);
         }
-        // 默认：全局 Agent
+        // 默认：全局共享 Agent（多租户由 GA 运行时隔离）
         return agentService.getAgentInstance(name);
+    }
+
+    /**
+     * 构建 GA 原生运行时上下文，携带 userId 与 sessionId。
+     *
+     * <p>GA 的 HarnessAgent.workspaceFor(userId, sessionId) 据此按用户命名空间隔离工作空间，
+     * 并对 AgentState 按 (userId, sessionId) 分会话槽。yunxi 不在此做任何封装。</p>
+     *
+     * @param userId    用户 ID（可为 null/blank）
+     * @param sessionId 会话 ID（通常为 conversationId，可为 null/blank）
+     * @return RuntimeContext
+     */
+    private RuntimeContext buildRuntimeContext(String userId, String sessionId) {
+        RuntimeContext.Builder b = RuntimeContext.builder();
+        if (userId != null && !userId.isBlank()) {
+            b.userId(userId);
+        }
+        if (sessionId != null && !sessionId.isBlank()) {
+            b.sessionId(sessionId);
+        }
+        return b.build();
     }
 
     /**
@@ -180,6 +178,9 @@ public class ChatAppService {
      * <p>
      * 对已知的内部错误进行翻译，避免向用户暴露技术细节。
      * </p>
+     *
+     * @param e 原始异常
+     * @return 面向用户的友好错误描述
      */
     private String formatAgentError(Throwable e) {
         if (e instanceof IllegalArgumentException) {
@@ -203,62 +204,33 @@ public class ChatAppService {
      * @return 对话响应
      */
     public ChatResponse chat(String name, ChatRequest request) {
+        // 获取真实 Agent 实例（支持用户工作区隔离）
+        String userId = securityContext.getCurrentUserId();
+        Agent agent = resolveAgent(name, null, userId);
+
+        String message = request == null ? null : request.getMessage();
+        if (message == null || message.isBlank()) {
+            throw new BadRequestException("message 不能为空");
+        }
+
         try {
-            // 获取真实 Agent 实例（支持用户工作区隔离）
-            String userId = securityContext.getCurrentUserId();
-            Agent agent = resolveAgent(name, null, userId);
+            Msg userMsg = Msg.builder()
+                    .textContent(message)
+                    .build();
 
-            String message = request == null ? null : request.getMessage();
-            if (message == null || message.isBlank()) {
-                throw new BadRequestException("message 不能为空");
+            // 调用 Agent，设置超时；多租户隔离经 RuntimeContext 透传 userId
+            Duration timeout = Duration.ofSeconds(properties.getChatTimeoutSeconds());
+            Msg responseMsg = ((HarnessAgent) agent).call(userMsg, buildRuntimeContext(userId, userId)).block(timeout);
+
+            if (responseMsg == null) {
+                throw new RuntimeException("Agent 响应为空");
             }
 
-            // ==================== 规则引擎集成：构建规则上下文 ====================
-            // 从安全上下文获取用户ID（支持请求头 X-User-Id、ThreadLocal 等多种来源）
-            // userId 已在上面 resolveAgent 时获取，此处直接复用
-            RuleContext ruleContext = buildRuleContext(name, message, null, userId);
+            return new ChatResponse(responseMsg.getTextContent());
 
-            try {
-                // ==================== 规则引擎集成：前置规则检查 ====================
-                checkPreRules(ruleContext);
-
-                // 构建消息（注入安全规则）
-                String messageWithSafety = injectSafetyRules(message);
-
-                Msg userMsg = Msg.builder()
-                        .textContent(messageWithSafety)
-                        .build();
-
-                // 调用 Agent，设置超时
-                Duration timeout = Duration.ofSeconds(properties.getChatTimeoutSeconds());
-                Msg responseMsg = agent.call(userMsg).block(timeout);
-
-                if (responseMsg == null) {
-                    throw new RuntimeException("Agent 响应为空");
-                }
-
-                String reply = responseMsg.getTextContent();
-
-                // ==================== 规则引擎集成：后置规则验证 ====================
-                checkPostRules(ruleContext, reply);
-
-                return new ChatResponse(reply);
-
-            } catch (RuleViolationException e) {
-                log.error("规则违反: {}", e.getMessage());
-                // 后置规则检查（即使异常也要记录审计日志）
-                ruleContext.setErrorMessage(e.getMessage());
-                checkPostRules(ruleContext, null);
-                throw e;
-            } catch (Exception e) {
-                log.error("对话执行失败: {}", e.getMessage(), e);
-                // 后置规则检查
-                ruleContext.setErrorMessage(e.getMessage());
-                checkPostRules(ruleContext, null);
-                throw new RuntimeException("对话执行失败", e);
-            }
         } catch (Exception e) {
-            throw e;
+            log.error("对话执行失败: {}", e.getMessage(), e);
+            throw new RuntimeException("对话执行失败", e);
         }
     }
 
@@ -275,19 +247,14 @@ public class ChatAppService {
         // 获取会话信息（用于提取用户上下文）
         ConversationEntity conversation = conversationDomainService.getConversation(request.getConversationId());
 
-        // ==================== 规则引擎集成：构建规则上下文 ====================
         // 从会话中获取真实用户ID
         String userId = conversation.getUserId() != null ? conversation.getUserId()
                 : securityContext.getCurrentUserId();
 
         // 获取 Agent 实例（支持用户工作区隔离）
         Agent agent = resolveAgent(conversation.getAgentName(), null, userId);
-        RuleContext ruleContext = buildRuleContext(name, request.getMessage(), request.getConversationId(), userId);
 
         try {
-            // ==================== 规则引擎集成：前置规则检查 ====================
-            checkPreRules(ruleContext);
-
             // 构建用户消息
             Msg userMsg = Msg.builder()
                     .textContent(request.getMessage())
@@ -329,7 +296,7 @@ public class ChatAppService {
             if (memoryConfig.isNone() || !request.isIncludeHistory()) {
                 // 无记忆模式 - 不包含历史，作为新对话
                 log.debug("无记忆模式: ConversationId={}", request.getConversationId());
-                responseMsg = agent.call(userMsg).block(timeout);
+                responseMsg = ((HarnessAgent) agent).call(userMsg, buildRuntimeContext(userId, request.getConversationId())).block(timeout);
             } else {
                 // 使用智能记忆系统
                 try {
@@ -339,7 +306,7 @@ public class ChatAppService {
                             historyMessages.size(), request.getConversationId());
 
                     // 添加用户消息到记忆（由 HarnessAgent 内部 MemoryFlushHook 自动处理）
-                    // MemoryCoordinatorService.addMessages 已移除 — 改为直接使用 Msg 列表
+                    // 将用户消息封装为 Msg 列表，供后续记忆处理
                     List<Msg> userMessagesList = new ArrayList<>();
                     userMessagesList.add(userMsg);
                     List<Msg> enhancedMessages = new ArrayList<>(historyMessages);
@@ -370,10 +337,10 @@ public class ChatAppService {
                     log.debug("调用 Agent: ConversationId={}, contextCount={}, mode={}, ragFiles={}",
                             request.getConversationId(), contextMessages.size(), memoryConfig.getMemoryMode(),
                             relevantFiles.size());
-                    responseMsg = agent.call(contextMessages).block(timeout);
+                    responseMsg = ((HarnessAgent) agent).call(contextMessages, buildRuntimeContext(userId, request.getConversationId())).block(timeout);
 
                     // 添加助手回复到记忆（由 HarnessAgent 内部 MemoryFlushHook 自动处理）
-                    // MemoryCoordinatorService.addMessages 已移除
+                    // 助手回复由 HarnessAgent 内部 MemoryFlushHook 自动写入记忆
 
                 } catch (Exception e) {
                     log.error("智能记忆系统失败，降级为简单模式: ConversationId={}", request.getConversationId(), e);
@@ -388,7 +355,7 @@ public class ChatAppService {
                     List<Msg> allMessages = new ArrayList<>(history);
                     allMessages.add(userMsg);
 
-                    responseMsg = agent.call(allMessages).block(timeout);
+                    responseMsg = ((HarnessAgent) agent).call(allMessages, buildRuntimeContext(userId, request.getConversationId())).block(timeout);
                 }
             }
 
@@ -405,84 +372,52 @@ public class ChatAppService {
 
             String reply = responseMsg.getTextContent();
 
-            // ==================== 规则引擎集成：后置规则验证 ====================
-            checkPostRules(ruleContext, reply);
-
             ChatResponse response = new ChatResponse(reply);
             response.setConversationId(request.getConversationId());
             return response;
 
-        } catch (RuleViolationException e) {
-            log.error("规则违反: {}", e.getMessage());
-            // 后置规则检查（即使异常也要记录审计日志）
-            ruleContext.setErrorMessage(e.getMessage());
-            checkPostRules(ruleContext, null);
-            throw e;
         } catch (Exception e) {
             log.error("对话执行失败: {}", e.getMessage(), e);
-            // 后置规则检查
-            ruleContext.setErrorMessage(e.getMessage());
-            checkPostRules(ruleContext, null);
             throw new RuntimeException("对话执行失败", e);
         }
     }
 
+    /**
+     * 发起无会话的流式对话（不使用多轮记忆）
+     *
+     * <p>用于一次性问答场景：构建用户消息后经 {@link #buildStreamResponse} 调用 Agent 的
+     * {@code streamEvents} 并以 SSE 格式流式返回。多租户隔离经 {@code RuntimeContext} 透传 userId。</p>
+     *
+     * @param name    Agent 名称
+     * @param request 流式对话请求
+     * @return Flux&lt;String&gt; SSE 格式的响应流
+     */
     public Flux<String> chatStream(String name, StreamChatRequest request) {
         log.info("开始流式对话: Agent={}, Message={}, responseMode={}", name, request.getMessage(),
                 request.getResponseMode());
 
-        // ==================== 规则引擎集成：构建规则上下文 ====================
         // 从安全上下文获取用户ID（支持请求头 X-User-Id、ThreadLocal 等多种来源）
         String userId = securityContext.getCurrentUserId();
-        RuleContext ruleContext = buildRuleContext(name, request.getMessage(), null, userId);
 
         return Flux.defer(() -> {
             try {
-                // ==================== 规则引擎集成：前置规则检查 ====================
-                checkPreRules(ruleContext);
-
                 // 获取 Agent 实例（支持用户工作区隔离和 Profile 路由）
                 Agent agent = resolveAgent(name, request.getProfile(), userId);
 
                 // 构建用户消息（含上下文数据）
                 Msg userMsg = buildUserMessage(request.getMessage(), request.getContextData());
 
-                // ==== 配置驱动的规划预创建 ====
-                var planResult = planPreCreator.preCreateIfConfigured(
-                        request.getMessage(), name, agent);
-                if (planResult == PlanPreCreator.PreCreateResult.PRE_CREATED) {
-                    return buildPlanConfirmationStream(agent, request.getMessage())
-                            .doOnComplete(() -> log.info("规划待确认: agent={}", name));
-                }
-
                 // 构建响应式流（无会话，不使用记忆）
-                return buildStreamResponse(agent, userMsg, request, null, null, null, null, null)
+                // 注：计划模式已交由 GA PlanModeMiddleware 统一处理（见 AgentConfigurer），
+                // 此处不再做 yunxi 自建的规划预创建。
+                return buildStreamResponse(agent, userMsg, request, null, null, null, null, null, userId)
                         .doOnNext(chunk -> {
                             // 流式输出的每个 chunk 可以在这里处理
                             log.trace("流式输出chunk: {}", chunk);
-                        })
-                        .doOnComplete(() -> {
-                            // ==================== 规则引擎集成：后置规则验证（流式完成） ====================
-                            checkPostRules(ruleContext, "stream-completed");
-                        })
-                        .doOnError(error -> {
-                            // ==================== 规则引擎集成：后置规则验证（异常情况） ====================
-                            log.error("流式对话失败: {}", error.getMessage());
-                            ruleContext.setErrorMessage(error.getMessage());
-                            checkPostRules(ruleContext, null);
                         });
 
-            } catch (RuleViolationException e) {
-                log.error("规则违反: {}", e.getMessage());
-                // 后置规则检查（即使异常也要记录审计日志）
-                ruleContext.setErrorMessage(e.getMessage());
-                checkPostRules(ruleContext, null);
-                return Flux.just(sseMessageBuilder.buildErrorMessage("规则违反: " + e.getMessage()));
             } catch (Exception e) {
                 log.error("流式对话失败: Agent={}", name, e);
-                // 后置规则检查
-                ruleContext.setErrorMessage(e.getMessage());
-                checkPostRules(ruleContext, null);
                 return Flux.just(sseMessageBuilder.buildErrorMessage(formatAgentError(e)));
             }
         }).subscribeOn(Schedulers.boundedElastic());
@@ -530,6 +465,9 @@ public class ChatAppService {
 
     /**
      * 转义 JSON 字符串中的特殊字符
+     *
+     * @param str 待转义的字符串（允许为 null）
+     * @return 转义后的字符串；输入为 null 时返回空串
      */
     private String escapeJson(String str) {
         if (str == null) {
@@ -549,6 +487,9 @@ public class ChatAppService {
      * 处理通用 key（configSummary、formData、pageType），
      * 业务上下文通过工作区 knowledge/ 文件自动注入。
      * </p>
+     *
+     * @param contextData 页面收集的上下文数据
+     * @return 拼接后的可读文本（含引导语）
      */
     private String formatContextData(Map<String, Object> contextData) {
         StringBuilder sb = new StringBuilder();
@@ -652,15 +593,8 @@ public class ChatAppService {
                 // 构建用户消息（含上下文数据）
                 Msg userMsg = buildUserMessage(request.getMessage(), request.getContextData());
 
-                // ==== 配置驱动的规划预创建 ====
-                var planResult = planPreCreator.preCreateIfConfigured(
-                        request.getMessage(), conversation.getAgentName(), agent);
-                if (planResult == PlanPreCreator.PreCreateResult.PRE_CREATED) {
-                    return buildPlanConfirmationStream(agent, request.getMessage())
-                            .doOnComplete(() -> log.info("规划待确认: conversationId={}", conversationId));
-                }
-
                 // ---- 快速模式：跳过 RAG、记忆、场景检测，直接调用 Agent ----
+                // 注：规划模式已交由 GA PlanModeMiddleware 统一处理，此处不再做 yunxi 自建规划预创建。
                 if (request.isQuickMode()) {
                     log.info("快速模式: ConversationId={}, 跳过 RAG/记忆/场景检测", conversationId);
                     List<Msg> quickMessages = new ArrayList<>();
@@ -668,7 +602,7 @@ public class ChatAppService {
                     conversation.addMessage(userMsg);
 
                     return buildStreamResponse(agent, quickMessages, request, conversation, null,
-                            conversationId, null, null)
+                            conversationId, null, null, userId)
                             .doOnComplete(() -> log.info("快速模式对话完成: ConversationId={}", conversationId));
                 }
 
@@ -746,7 +680,7 @@ public class ChatAppService {
 
                 // 构建响应式流并保存消息
                 return buildStreamResponse(agent, allMessages, request, conversation, thinkingText,
-                        conversationId, memoryConfig, sceneName)
+                        conversationId, memoryConfig, sceneName, userId)
                         .doOnComplete(() -> {
                             log.info("基于会话的流式对话完成: ConversationId={}", conversationId);
                         });
@@ -759,20 +693,23 @@ public class ChatAppService {
     }
 
     /**
-     * 构建规划确认 SSE 事件流。
-     * <p>
-     * 当 PlanPreCreator 预创建了规划时，发送 type=plan 事件给前端，
-     * 前端展示规划确认卡片，等待用户确认/修改/跳过。
-     * 此时不调用 agent.call()，不启动 Agent 执行。
-     * </p>
+     * 构建统一的 SSE 流式响应。
+     *
+     * <p>编排流式对话的完整事件链路：开始事件 → 思考事件 → Agent 事件流 → 结束事件。
+     * 通过 GA 的 {@code HarnessAgent.streamEvents} 获取标准化 {@code AgentEvent}，再将内容类事件
+     * （文本/推理增量、最终结果）转换为 SSE 内容消息，其余事件原样透传前端，并附加 UX 友好的状态消息。</p>
+     *
+     * @param agent          Agent 实例
+     * @param inputMsg       输入消息（单条 {@code Msg} 或 {@code List<Msg>} 历史上下文）
+     * @param request        流式对话请求（用于判断运行模式、超时等）
+     * @param conversation   会话实体（可为 null，无会话场景）
+     * @param thinkingText   思考事件文本（可 null，表示不展示思考态）
+     * @param conversationId 会话 ID（可为 null）
+     * @param memoryConfig   记忆配置（可为 null，无会话场景）
+     * @param sceneName      场景名称（可为 null）
+     * @param userId         用户 ID（用于运行时上下文隔离）
+     * @return Flux&lt;String&gt; 组合后的 SSE 事件流
      */
-    private Flux<String> buildPlanConfirmationStream(Agent agent, String goal) {
-        // PlanNotebook 由 HarnessAgent 内部管理
-        // Plan 确认流程通过 PlanInteractionController 处理
-        log.debug("Plan confirmation for goal: {} (handled via PlanInteractionController)", goal);
-        return Flux.just(sseMessageBuilder.buildMessage("plan_ready", "Plan created"));
-    }
-
     private Flux<String> buildStreamResponse(Agent agent,
             Object inputMsg,
             StreamChatRequest request,
@@ -780,7 +717,8 @@ public class ChatAppService {
             String thinkingText,
             String conversationId,
             MemoryConfig memoryConfig,
-            String sceneName) {
+            String sceneName,
+            String userId) {
         // 1. 开始事件（如果有会话ID，包含在开始消息中）
         Flux<String> startFlux = Flux.just(
                 conversationId != null ? sseMessageBuilder.buildStartMessageWithConversationId(conversationId)
@@ -805,16 +743,17 @@ public class ChatAppService {
                         : sseMessageBuilder.buildThinkingMessage(thinkingText))
                 : Flux.empty();
 
-        // 4. 使用 agent.streamEvents() 获取流式事件（替代已废弃的 stream()）
-        // V2.0-RC3: HarnessAgent 自身提供 streamEvents()，不再继承 ReActAgent
+        // 4. 使用 agent.streamEvents() 获取标准化流式事件
+        // HarnessAgent 通过 streamEvents() 暴露流式事件，承载运行时上下文
         io.agentscope.harness.agent.HarnessAgent harnessAgent = (io.agentscope.harness.agent.HarnessAgent) agent;
+        io.agentscope.core.agent.RuntimeContext rc = buildRuntimeContext(userId, conversationId);
         Flux<io.agentscope.core.event.AgentEvent> eventFlux;
         if (inputMsg instanceof List) {
             @SuppressWarnings("unchecked")
             List<Msg> messages = (List<Msg>) inputMsg;
-            eventFlux = harnessAgent.streamEvents(messages);
+            eventFlux = harnessAgent.streamEvents(messages, rc);
         } else {
-            eventFlux = harnessAgent.streamEvents((Msg) inputMsg);
+            eventFlux = harnessAgent.streamEvents((Msg) inputMsg, rc);
         }
 
         // 积累推理文本，最终存入 Msg metadata
@@ -936,7 +875,13 @@ public class ChatAppService {
         return Flux.concat(startFlux, thinkingFlux, contentFlux, finishFlux);
     }
 
-    /** 将文本按指定大小切块 */
+    /**
+     * 将文本按指定大小切块
+     *
+     * @param text     待切分的文本
+     * @param chunkSize 每块的最大字符数
+     * @return 切分后的文本块列表
+     */
     private static List<String> splitTextIntoChunks(String text, int chunkSize) {
         List<String> chunks = new ArrayList<>();
         for (int i = 0; i < text.length(); i += chunkSize) {
@@ -947,6 +892,9 @@ public class ChatAppService {
 
     /**
      * 将 AgentScope 工具名称映射为中文描述（用于 A2A 推理块状态展示）。
+     *
+     * @param toolName AgentScope 原始工具名
+     * @return 对应的中文友好描述；未匹配时返回原名称
      */
     private static String friendlyToolName(String toolName) {
         switch (toolName) {
@@ -1000,118 +948,5 @@ public class ChatAppService {
 
         context.append("[请基于以上文件内容回答用户问题]\n");
         return context.toString();
-    }
-
-    // ==================== 规则引擎集成 ====================
-
-    /**
-     * 从安全上下文中提取用户ID
-     *
-     * <p>
-     * <b>已废弃</b>：请使用 {@link SecurityContext#getCurrentUserId()} 代替。
-     * </p>
-     *
-     * <p>
-     * 用户信息来源优先级：
-     * <ol>
-     * <li>ThreadLocal（最高优先级，用于异步任务）</li>
-     * <li>请求属性（由拦截器设置）</li>
-     * <li>请求头 X-User-Id（当前主要方式）</li>
-     * <li>默认值 "anonymous-user"</li>
-     * </ol>
-     * </p>
-     *
-     * /**
-     * 构建规则上下文
-     *
-     * @param agentName      Agent 名称
-     * @param message        用户消息
-     * @param conversationId 会话ID（可选）
-     * @param userId         用户ID（可选）
-     * @return 规则上下文
-     */
-    private RuleContext buildRuleContext(String agentName, String message, String conversationId, String userId) {
-        return RuleContext.builder()
-                .agentId(agentName)
-                .userInfo(RuleContext.UserInfo.builder()
-                        .userId(userId != null ? userId : "anonymous-user")
-                        .username(userId != null ? userId : "anonymous-user")
-                        .roles(List.of("user"))
-                        .permissions(List.of("chat"))
-                        .build())
-                .taskInfo(RuleContext.TaskInfo.builder()
-                        .taskId(conversationId != null ? conversationId : "chat-" + System.currentTimeMillis())
-                        .taskType("chat")
-                        .skillName(agentName)
-                        .inputs(Map.of("message", message))
-                        .startTime(System.currentTimeMillis())
-                        .timeout((long) properties.getChatTimeoutSeconds())
-                        .build())
-                .params(Map.of(
-                        "agentName", agentName,
-                        "conversationId", conversationId != null ? conversationId : ""))
-                .build();
-    }
-
-    /**
-     * 执行前置规则检查
-     *
-     * @param context 规则上下文
-     * @throws RuleViolationException 如果规则检查失败
-     */
-    private void checkPreRules(RuleContext context) {
-        if (ruleEngine == null) {
-            log.debug("规则引擎未启用，跳过前置规则检查");
-            return;
-        }
-
-        log.info("执行前置规则检查: agentId={}, taskId={}",
-                context.getAgentId(), context.getTaskInfo().getTaskId());
-
-        RuleResult result = ruleEngine.executeRules(io.yunxi.agent.rule.model.RuleType.PRE,
-                new org.jeasy.rules.api.Facts(), context);
-        if (!result.isPassed()) {
-            log.warn("前置规则检查失败: {}", result.getErrorMessage());
-            throw new RuleViolationException(result.getErrorMessage());
-        }
-
-        log.info("前置规则检查通过");
-    }
-
-    /**
-     * 执行后置规则验证
-     *
-     * @param context 规则上下文
-     * @param result  执行结果
-     */
-    private void checkPostRules(RuleContext context, Object result) {
-        if (ruleEngine == null) {
-            log.debug("规则引擎未启用，跳过后置规则验证");
-            return;
-        }
-
-        log.info("执行后置规则验证: agentId={}, taskId={}",
-                context.getAgentId(), context.getTaskInfo().getTaskId());
-
-        context.setResult(result);
-        RuleResult postResult = ruleEngine.checkPostRules(context);
-
-        if (!postResult.isPassed()) {
-            // 后置规则失败通常不影响结果，仅记录日志
-            log.warn("后置规则检查失败: {}", postResult.getErrorMessage());
-        } else {
-            log.info("后置规则验证通过");
-        }
-    }
-
-    /**
-     * 注入用户安全规则到消息中
-     *
-     * <p>
-     * 统一记忆管理器已在重构中移除，安全规则注入暂不提供。
-     * </p>
-     */
-    private String injectSafetyRules(String message) {
-        return message;
     }
 }

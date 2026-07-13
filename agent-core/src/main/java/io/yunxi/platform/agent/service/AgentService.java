@@ -33,7 +33,7 @@ import io.yunxi.platform.shared.exception.NotFoundException;
  * </p>
  *
  * <p>
- * V2.0 升级：使用 HarnessAgent.builder() 替代 HarnessAgent.from(ReActAgent)。
+ * 使用 HarnessAgent.builder() 构建 Agent。
  * </p>
  */
 @Service
@@ -172,33 +172,6 @@ public class AgentService {
                 .setScope(BeanDefinition.SCOPE_PROTOTYPE);
         beanFactory.registerBeanDefinition(name + "-agent", builder.getBeanDefinition());
         log.info("注册 prototype Agent Bean: {}", name);
-    }
-
-    /**
-     * 创建用户级别的 Agent（支持自定义工作空间路径）。
-     *
-     * <p>
-     * 与 createAgent 类似，但支持指定工作空间路径，
-     * 用于用户级别的动态 Agent 创建场景。
-     * </p>
-     *
-     * @param name          Agent 名称
-     * @param config        Agent 配置
-     * @param workspacePath 自定义工作空间路径
-     * @return Agent 信息
-     */
-    public AgentInfoDto createUserAgent(String name, AgentConfigDto config, String workspacePath) {
-        Model model = modelFactory.create(toModelConfig(config));
-        String prompt = config != null && config.getPrompt() != null && !config.getPrompt().isBlank()
-                ? config.getPrompt()
-                : properties.getDefaultPrompt();
-        registerPrototypeAgentBean(name, model, prompt, workspacePath);
-        AgentInfoDto info = new AgentInfoDto(name, prompt, null, Instant.now());
-        agentCache.put(name, info);
-        modelCache.put(name, model);
-        sysPromptCache.put(name, prompt);
-        log.info("动态创建用户 Agent: {} (workspace={})", name, workspacePath);
-        return info;
     }
 
     /**

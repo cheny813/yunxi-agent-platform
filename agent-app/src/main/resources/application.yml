@@ -10,7 +10,7 @@
 # 设置 SPRING_PROFILES_ACTIVE 或 --spring.profiles.active 参数切换环境
 # 可用 profile: datasource, redis, llm, milvus, embedding, persistence,
 #               mcp-core, mcp-external, mcp-business, skill, resilience,
-#               file-upload, a2a-pipeline, gateway, business, text2sql, rule-engine
+#               file-upload, a2a-pipeline, gateway, business, text2sql
 #
 # ============================================================
 
@@ -19,7 +19,7 @@ spring:
     import: optional:classpath:config/imports.yml
 
   profiles:
-    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,mcp-business,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql,rule-engine
+    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,mcp-business,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql
 
 # ============================================================
 # Agent 可观测性配置

@@ -31,7 +31,7 @@ import java.util.*;
  * <p>基于 Milvus 实现向量存储，支持语义搜索</p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Service
@@ -43,6 +43,13 @@ public class MilvusVectorPersistenceStrategy implements DataPersistenceStrategy,
     private final EmbeddingService embeddingService;
     private final MilvusConfig milvusConfig;
 
+    /**
+     * 构造 Milvus 向量持久化策略。
+     *
+     * @param milvusClient      Milvus 客户端（v2）
+     * @param embeddingService  文本向量化服务
+     * @param milvusConfig      Milvus 配置（含向量维度等）
+     */
     public MilvusVectorPersistenceStrategy(MilvusClientV2 milvusClient, EmbeddingService embeddingService, MilvusConfig milvusConfig) {
         this.milvusClient = milvusClient;
         this.embeddingService = embeddingService;
@@ -150,7 +157,7 @@ public class MilvusVectorPersistenceStrategy implements DataPersistenceStrategy,
     public List<Msg> getMemory(String conversationId, MemoryConfig config) {
         try {
             if (conversationMapper == null) return List.of();
-            // V2.0: findByConversationId 不可用，使用 findById 代替
+            // 通过 conversationId 查询所属会话实体
             ConversationEntity entity = conversationMapper.findById(conversationId);
             if (entity == null || entity.getMessages() == null || entity.getMessages().isEmpty())
                 return List.of();

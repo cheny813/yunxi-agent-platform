@@ -29,7 +29,7 @@ import java.util.*;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Component
@@ -99,6 +99,13 @@ public class AsrContentExtractor implements FileContentExtractor {
         this.objectMapper = new ObjectMapper();
     }
 
+    /**
+     * 提取音频/视频文件的语音识别（ASR）文本内容。
+     *
+     * @param file 用户文件实体
+     * @return 识别出的文本（失败时返回占位说明）
+     * @throws Exception 当识别调用失败时抛出
+     */
     @Override
     public String extract(UserFileEntity file) throws Exception {
         log.info("开始ASR语音识别: fileId={}, fileName={}", file.getId(), file.getFileName());

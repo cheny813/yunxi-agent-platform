@@ -108,6 +108,15 @@ public class AgentscopeCoreProperties {
     /** Shell 命令安全配置 */
     private ShellConfig shell = new ShellConfig();
 
+    /** 计划模式（PlanMode）配置：由 GA PlanModeMiddleware + PlanModeManager 托管 */
+    private PlanProperties plan = new PlanProperties();
+
+    /** 技能仓库（Skill）配置：由 GA AgentSkillRepository 体系自动装载 DynamicSkillMiddleware */
+    private SkillProperties skill = new SkillProperties();
+
+    /** 韧性配置：模型重试 / 降级模型 / 拒绝停止 / 执行超时 —— 完全复用 GA Builder 原生能力 */
+    private ResilienceProperties resilience = new ResilienceProperties();
+
     /**
      * 各 Provider 配置
      */
@@ -346,5 +355,74 @@ public class AgentscopeCoreProperties {
 
         /** 工作目录限制（null 表示不限制） */
         private String baseDir;
+    }
+
+    /**
+     * 计划模式（PlanMode）配置
+     * <p>
+     * 计划能力完全由 GA {@code PlanModeMiddleware} + {@code PlanModeManager} 托管。
+     * 本配置仅声明式开关与路径，运行时生命周期由 GA 中间件负责。
+     * </p>
+     */
+    @Data
+    public static class PlanProperties {
+        /** 是否启用 GA PlanMode 计划模式（默认 false，避免无感知地进入只读规划态） */
+        private boolean enabled = false;
+
+        /** 计划文件存放目录（相对 workspace 根），默认 plan */
+        private String planDir = "plan";
+
+        /**
+         * 只读解析器：判断某工具是否为只读（plan 模式下仅允许只读工具 + plan 控制工具）。
+         * 配置逗号分隔的只读工具名前缀关键字，命中即视为只读。
+         * 留空则使用 GA 默认（仅 plan 控制工具 + agent_spawn 等内部工具）。
+         */
+        private String readOnlyTools;
+    }
+
+    /**
+     * 技能仓库（Skill）配置
+     * <p>
+     * 技能通过 GA 原生 {@code AgentSkillRepository} 体系装载
+     * （FileSystemSkillRepository / ClasspathSkillRepository / WorkspaceSkillRepository），
+     * 通过 {@code HarnessAgent.Builder.skillRepository(repo)} 自动装载 DynamicSkillMiddleware。
+     * </p>
+     */
+    @Data
+    public static class SkillProperties {
+        /** 是否启用技能系统 */
+        private boolean enabled = false;
+
+        /** 文件系统技能目录（绝对或相对路径），每个子目录含 SKILL.md */
+        private String filesystemDir;
+
+        /** 是否允许框架向该技能目录回写（自学习闭环），默认 false（只读加载） */
+        private boolean writeable = false;
+
+        /** 项目级全局技能目录（projectGlobalSkillsDir），与 filesystemDir 可并存 */
+        private String projectGlobalDir;
+    }
+
+    /**
+     * 韧性（Resilience）配置
+     * <p>
+     * 基于 {@code HarnessAgent.Builder} 原生能力配置：
+     * {@code maxRetries} / {@code fallbackModel} / {@code stopOnReject} /
+     * {@code modelExecutionConfig(timeout)}。
+     * </p>
+     */
+    @Data
+    public static class ResilienceProperties {
+        /** 模型调用最大重试次数（GA 原生 ModelConfig.maxRetries） */
+        private Integer maxRetries;
+
+        /** 降级模型 ID（GA 原生 fallbackModel(String)），模型主调用失败时自动切换 */
+        private String fallbackModel;
+
+        /** 权限被拒时是否停止 Agent（GA 原生 ReactConfig.stopOnReject），默认 false（拒绝后继续） */
+        private boolean stopOnReject = false;
+
+        /** 单次模型调用超时毫秒数（注入 GA ExecutionConfig.timeout） */
+        private Integer timeoutMs;
     }
 }

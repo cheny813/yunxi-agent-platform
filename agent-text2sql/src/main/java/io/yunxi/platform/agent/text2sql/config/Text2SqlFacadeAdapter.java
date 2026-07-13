@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Component
@@ -43,11 +43,23 @@ public class Text2SqlFacadeAdapter implements Text2SqlFacade {
         this.properties = properties;
     }
 
+    /**
+     * 执行带投票的 Text-to-SQL 生成（委托给 Text2SqlService）
+     *
+     * @param databaseId 数据库 ID
+     * @param question   自然语言问题
+     * @return 生成的 SQL 语句
+     */
     @Override
     public String text2SqlWithVoting(String databaseId, String question) {
         return text2SqlService.text2SqlWithVoting(databaseId, question);
     }
 
+    /**
+     * 判断 Text-to-SQL 能力是否可用
+     *
+     * @return 配置启用时返回 true
+     */
     @Override
     public boolean isAvailable() {
         return properties.isEnabled();

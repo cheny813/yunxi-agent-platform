@@ -6,7 +6,7 @@ package io.yunxi.platform.spi.text2sql;
  * <p>为其他模块提供自然语言转 SQL 的统一入口。</p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public interface Text2SqlFacade {
 

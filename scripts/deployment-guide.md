@@ -42,7 +42,7 @@ ls target/*.jar
 # 创建环境配置
 cat > /opt/yunxi-agent-platform/.env << EOF
 APP_NAME=yunxi-agent-platform
-APP_VERSION=1.0.0
+APP_VERSION=2.0.0
 JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 LOG_PATH=/var/log/yunxi-agent
 DATA_PATH=/var/data/yunxi-agent

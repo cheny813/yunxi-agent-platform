@@ -36,7 +36,7 @@ import io.yunxi.platform.security.auth.AuthInterceptor;
  * </ul>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {

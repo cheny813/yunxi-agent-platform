@@ -9,9 +9,9 @@
 # 菜品向量同步配置
 # ============================================================
 dish-sync:
-  enabled: true                                    # 是否启用定时同步
+  enabled: false                                    # 是否启用定时同步（关闭：需要外部 nutrition 数据库）
   sync-on-startup: false                           # 启动时是否执行同步（默认false，集合已有数据时跳过；设为true则每次启动都全量同步）
-  school-sync-enabled: true                        # 是否启用学校菜品同步（查询所有学校并逐个同步到 school_dishes_{schoolId} 集合）
+  school-sync-enabled: false                        # 是否启用学校菜品同步（关闭：需要外部 nutrition 数据库）
   mcp-database:
     host: ${MCP_DB_HOST:localhost}
     port: ${MCP_DB_PORT:40101}
@@ -35,7 +35,7 @@ dish-sync:
 # - 菜品分类 (dish_classes)
 # ============================================================
 static-sync:
-  enabled: true                                    # 是否启用静态数据同步
+  enabled: false                                    # 是否启用静态数据同步（关闭：需要外部 default 数据库）
   async: true                                      # 异步执行，不阻塞应用启动
   mcp-database:
     host: ${MCP_DB_HOST:localhost}

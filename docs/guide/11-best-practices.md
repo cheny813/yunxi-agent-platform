@@ -396,7 +396,7 @@ log.info("操作耗时: {}ms", duration);
 | 优势 | 说明 |
 |------|------|
 | **快速开发** | YAML 配置即可创建复杂 Agent |
-| **企业级** | 内置规则引擎、安全管控 |
+| **企业级** | 内置安全管控 |
 | **可扩展** | SPI 机制支持灵活扩展 |
 | **多平台** | 统一适配多种 LLM 平台 |
 | **智能** | 自适应策略、自我改进 |
@@ -414,7 +414,7 @@ log.info("操作耗时: {}ms", duration);
 
 ## 底层框架适配
 
-本平台基于 **AgentScope-Java**（阿里巴巴开源，V2.0.0-RC3 版本），在实际使用中遇到了一些底层框架的设计限制。
+本平台基于 **AgentScope-Java**（阿里巴巴开源，2.0.0 GA 正式版），在实际使用中遇到了一些底层框架的设计限制。
 
 ### 1. 工具组管理（理解框架内置工具与应用层工具的分组边界）
 
@@ -445,7 +445,7 @@ public boolean isActiveTool(String toolName) {
 
 #### 我们的决策：不干预框架内置工具
 
-V2.0-RC1 阶段曾通过 `assignUngroupedTools()` 反射 hack 将未分组工具强行分配到 "general" 组。**这个方案已在 V2.0-RC3 升级中移除**，原因：
+早期版本曾通过 `assignUngroupedTools()` 反射 hack 将未分组工具强行分配到 "general" 组。**这个方案已在 2.0.0（GA）中移除**，原因：
 
 - 底层框架的内置工具属于 Agent 基础设施能力，不参与分组是框架的设计意图
 - 应用框架的职责是管好自己的工具，不应通过反射 hack 干预框架内部状态
@@ -502,10 +502,9 @@ List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "
 
 #### 解决方案
 
-通过 `McpToolRegistry` 在每个 Agent 的 `Toolkit` 中独立注册：
+通过框架原生的 `Toolkit.registration()` API 在每个 Agent 的 `Toolkit` 中按 MCP 服务器名独立分组注册：
 
 ```java
-// McpToolRegistry.java
 toolkit.registration()
     .agentTool(agentTool)
     .group(serverName)  // 按 MCP 服务器名分组

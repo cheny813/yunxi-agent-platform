@@ -3,6 +3,7 @@ package io.yunxi.platform.sync.config;
 import io.yunxi.platform.sync.SyncEngine;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,9 +25,14 @@ import java.util.List;
  * 因此需要通过此方式手动注入。
  * </p>
  *
+ * <p>
+ * 受 {@code static-sync.enabled} 控制：设为 false 时整个同步管道体系不加载。
+ * </p>
+ *
  * @author yunxi-agent-platform
  */
 @Configuration
+@ConditionalOnProperty(name = "static-sync.enabled", havingValue = "true", matchIfMissing = false)
 public class SyncPipelineConfigLoader {
 
     /**

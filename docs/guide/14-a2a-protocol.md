@@ -232,7 +232,7 @@ agentscope:
         nutrition-agent:
           - url: http://localhost:40001
             weight: 100
-          - url: http://localhost:40002
+          - url: http://localhost:40009
             weight: 100
         recipe-agent:
           - url: http://localhost:40003

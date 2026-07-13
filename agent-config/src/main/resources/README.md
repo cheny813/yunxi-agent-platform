@@ -24,7 +24,6 @@ agent-config/src/main/resources/
 │   ├── gateway.yml                    #   API 网关路由
 │   ├── business.yml                   #   业务服务配置
 │   ├── text2sql.yml                   #   Text2SQL 配置
-│   ├── rule-engine.yml                #   规则引擎
 │   ├── a2a-pipeline.yml               #   A2A Pipeline 配置
 │   └── file-upload.yml                #   文件上传
 │

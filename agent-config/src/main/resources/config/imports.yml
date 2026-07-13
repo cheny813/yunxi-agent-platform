@@ -31,8 +31,6 @@ spring:
       optional:classpath:config/file-upload.yml,
       optional:classpath:config/a2a-pipeline.yml,
       optional:classpath:config/agentscope.yml,
-      optional:classpath:config/gateway.yml,
       optional:classpath:config/business.yml,
       optional:classpath:config/text2sql.yml,
-      optional:classpath:config/rule-engine.yml,
       optional:classpath:config/sync-pipelines.yml

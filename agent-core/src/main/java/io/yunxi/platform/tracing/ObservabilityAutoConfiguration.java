@@ -28,7 +28,6 @@ import java.util.Collection;
  * Agent 可观测性自动配置
  * <p>当 {@code yunxi.observability.enabled=true}（默认）时，自动初始化 OpenTelemetry SDK。</p>
  *
- * @see OpenTelemetryTracer
  * @see ReActSpanMiddleware
  * @see LlmMetrics
  */
@@ -37,6 +36,13 @@ import java.util.Collection;
 @ConditionalOnProperty(name = "yunxi.observability.enabled", matchIfMissing = true)
 public class ObservabilityAutoConfiguration {
 
+    /**
+     * 构建并注册全局 OpenTelemetry SDK。
+     * <p>通过 {@code resolveConfig} 读取 service.name 与 OTLP 端点；
+     * 未配置端点时仅启用日志型 Span 导出器，配置端点时追加批量 OTLP HTTP 导出。</p>
+     *
+     * @return 已注册为全局实例的 OpenTelemetry SDK
+     */
     @Bean
     @ConditionalOnMissingBean
     public OpenTelemetry openTelemetry() {
@@ -64,6 +70,11 @@ public class ObservabilityAutoConfiguration {
         return sdk;
     }
 
+    /**
+     * 构建日志型 Span 导出器，将链路追踪数据以日志形式输出（无需外部 collector 即可观察）
+     *
+     * @return SpanExporter 实例
+     */
     private static SpanExporter loggingExporter() {
         return new SpanExporter() {
             @Override
@@ -80,6 +91,13 @@ public class ObservabilityAutoConfiguration {
         };
     }
 
+    /**
+     * 解析可观测性配置项：优先取 JVM 系统属性，其次取环境变量（点号转下划线并大写），最后取默认值
+     *
+     * @param propertyName 配置项名（如 otel.exporter.otlp.endpoint）
+     * @param defaultValue 默认值（未配置时返回）
+     * @return 最终配置值
+     */
     private static String resolveConfig(String propertyName, String defaultValue) {
         String value = System.getProperty(propertyName);
         if (value != null && !value.isEmpty()) return value;
@@ -89,12 +107,24 @@ public class ObservabilityAutoConfiguration {
         return defaultValue;
     }
 
+    /**
+     * 构建 ReAct 链路追踪 Middleware，关联 OpenTelemetry Tracer。
+     *
+     * @param openTelemetry OpenTelemetry 实例（由 {@link #openTelemetry()} 提供）
+     * @return 链路追踪中间件
+     */
     @Bean
     public ReActSpanMiddleware reActSpanHook(OpenTelemetry openTelemetry) {
-        Tracer otelTracer = openTelemetry.getTracer("io.yunxi.platform", "1.0.0");
+        Tracer otelTracer = openTelemetry.getTracer("io.yunxi.platform", "2.0.0");
         return new ReActSpanMiddleware(otelTracer);
     }
 
+    /**
+     * 构建 LLM 指标采集器，关联 OpenTelemetry Meter。
+     *
+     * @param openTelemetry OpenTelemetry 实例（由 {@link #openTelemetry()} 提供）
+     * @return LLM 指标采集器
+     */
     @Bean
     public LlmMetrics llmMetrics(OpenTelemetry openTelemetry) {
         Meter meter = openTelemetry.meterBuilder("io.yunxi.platform").build();

@@ -29,7 +29,7 @@ import java.util.List;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Service
 @ConditionalOnBean(SqlGenerator.class)
@@ -190,7 +190,12 @@ public class Text2SqlWorkflow {
     }
 
     /**
-     * Text-to-SQL 结果
+     * Text-to-SQL 工作流的执行结果封装。
+     * <p>
+     * 记录单次工作流从 Schema 生成到最终 SQL 产出的全过程状态，包括检索到的相关列、
+     * Few-shot 示例数量、候选与对齐 SQL 数量、是否启用投票，以及最终选定的 SQL、
+     * 执行是否成功、错误信息与耗时，便于上层调用方消费与统计。
+     * </p>
      */
     public static class Text2SqlResult {
         private String question;

@@ -11,7 +11,7 @@ import io.milvus.v2.service.collection.request.CreateCollectionReq;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public interface SyncHandler {
 

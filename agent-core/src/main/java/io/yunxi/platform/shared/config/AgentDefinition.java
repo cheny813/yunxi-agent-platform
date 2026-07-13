@@ -56,7 +56,7 @@ public class AgentDefinition {
 
     // ========== 编排模式 ==========
 
-    /** 编排配置（取代旧的 mode 枚举和 ModeResolver） */
+    /** 编排配置（supervisor / pipeline / routing / single） */
     private OrchestrationConfig orchestration;
 
     // ========== 模型配置 ==========

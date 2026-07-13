@@ -28,7 +28,7 @@ import okhttp3.Response;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Component
 @ConditionalOnProperty(name = "dashscope.api-key", matchIfMissing = false)

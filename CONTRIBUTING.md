@@ -123,9 +123,6 @@ mvn spring-boot:run -pl agent-core
 ```
 yunxi-agent-platform/
 ├── agent-core/          # 核心框架
-├── agent-business/      # 业务模块
-├── agent-gateway/       # 网关模块
-├── agent-rule-engine/  # 规则引擎
 ├── agent-text2sql/     # Text-to-SQL
 ├── agent-spi/          # SPI 接口
 ├── k8s/                # Kubernetes 部署

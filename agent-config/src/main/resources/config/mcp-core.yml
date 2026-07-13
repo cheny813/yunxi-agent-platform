@@ -1,8 +1,12 @@
 # ============================================================
-# MCP 核心服务配置
+# MCP 核心服务配置 (v2.0 迁移说明)
 # ============================================================
-# 包含：工具缓存配置 + 核心基础设施服务（数据库/Redis/Milvus/知识库）
-# 这些服务是平台运行的基础，默认启用
+# v2.0 升级：自建 MCP 协议层已删除，切换为官方 MCP SDK。
+# agentscope.core.mcp-servers 配置段由 yunxi 的
+# AgentConfigurer.registerMcpServers() 读取（AgentscopeCoreProperties，prefix=agentscope.core），
+# 用框架原生 McpClientBuilder 真注册进各 Agent 的 Toolkit（以服务器名建组）；
+# 不使用 McpServerRegistrar，也不依赖 mcp-servers.json。
+# 以下保留工具缓存配置（仍在使用）。
 # ============================================================
 
 # MCP 工具缓存配置 — 只读工具名称列表，这些工具的调用结果可被缓存
@@ -30,11 +34,11 @@ agentscope:
       # 提供工具：query_db, list_tables, describe_table
       # --------------------------------------------------------------------
       database:
-        enabled: ${MCP_DATABASE_ENABLED:true}
+        enabled: ${MCP_DATABASE_ENABLED:false}
         type: sse
         url: ${MCP_DATABASE_URL:http://localhost:40101/mcp/sse}
         timeout: ${MCP_DATABASE_TIMEOUT:60000}
-        description: "数据库操作 MCP 服务器"
+        description: "数据库操作 MCP 服务器【需要单独启动 yunxi-mcp-servers/mcp-database:40101】"
 
       # --------------------- Redis MCP 服务器 ---------------------
       # 端口：40102
@@ -43,11 +47,11 @@ agentscope:
       # 提供工具：redis_get, redis_set, redis_delete, redis_keys, redis_list_ops, redis_hash_ops
       # --------------------------------------------------------------------
       redis:
-        enabled: ${MCP_REDIS_ENABLED:true}
+        enabled: ${MCP_REDIS_ENABLED:false}
         type: sse
         url: ${MCP_REDIS_URL:http://localhost:40102/mcp/sse}
         timeout: ${MCP_REDIS_TIMEOUT:60000}
-        description: "Redis 数据库操作 MCP 服务器"
+        description: "Redis 数据库操作 MCP 服务器【需要单独启动 yunxi-mcp-servers/mcp-redis:40102】"
 
       # --------------------- Milvus 向量搜索 MCP 服务器 ---------------------
       # 端口：40103
@@ -56,7 +60,7 @@ agentscope:
       # 提供工具：search_dishes, get_dish_details（向量搜索学校菜品）
       # --------------------------------------------------------------------
       milvus:
-        enabled: ${MCP_MILVUS_ENABLED:true}
+        enabled: ${MCP_MILVUS_ENABLED:false}
         type: sse
         url: ${MCP_MILVUS_URL:http://localhost:40103/mcp/sse}
         timeout: ${MCP_MILVUS_TIMEOUT:60000}
@@ -69,11 +73,11 @@ agentscope:
       # 提供工具：search_knowledge, add_knowledge
       # --------------------------------------------------------------------
       knowledge:
-        enabled: ${MCP_KNOWLEDGE_ENABLED:true}
+        enabled: ${MCP_KNOWLEDGE_ENABLED:false}
         type: sse
         url: ${MCP_KNOWLEDGE_URL:http://localhost:40107/mcp/sse}
         timeout: ${MCP_KNOWLEDGE_TIMEOUT:60000}
-        description: "知识库 MCP 服务器（提供向量语义搜索功能）"
+        description: "知识库 MCP 服务器（提供向量语义搜索功能）【需要单独启动 yunxi-mcp-servers/mcp-knowledge:40107】"
 
       # --------------------- Nutrition MCP 服务器 ---------------------
       # 端口：40602
@@ -82,11 +86,11 @@ agentscope:
       # 源码：D:\work\code\yunxi-mcp-servers\mcp-nutrition
       # --------------------------------------------------------------------
       mcp-nutrition:
-        enabled: ${MCP_NUTRITION_ENABLED:true}
+        enabled: ${MCP_NUTRITION_ENABLED:false}
         type: http
         url: ${MCP_NUTRITION_URL:http://localhost:40602/mcp}
         timeout: ${MCP_NUTRITION_TIMEOUT:60000}
-        description: "营养配餐数据查询 MCP 服务器（菜品搜索、营养评估）"
+        description: "营养配餐数据查询 MCP 服务器（菜品搜索、营养评估）【需要单独启动 yunxi-mcp-servers/mcp-nutrition】"
 
       # --------------------- Puppeteer 官方 MCP 服务器 ---------------------
       # 官方提供的 Puppeteer MCP 服务器

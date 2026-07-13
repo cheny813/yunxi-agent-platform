@@ -33,6 +33,12 @@ public class NodeTool {
 
     private final Map<String, PendingCommand> pendingCommands = new ConcurrentHashMap<>();
 
+    /**
+     * 创建节点命令执行工具
+     *
+     * @param relayHandler    桌面客户端中继处理器，负责向节点下发命令
+     * @param shellToolFactory Shell 工具工厂，用于复用框架命令校验能力
+     */
     public NodeTool(DesktopRelayHandler relayHandler, ShellToolFactory shellToolFactory) {
         this.relayHandler = relayHandler;
         this.shellToolFactory = shellToolFactory;
@@ -68,6 +74,17 @@ public class NodeTool {
         }
     }
 
+    /**
+     * 为非白名单命令生成确认请求（返回 CONFIRMATION_REQUIRED，并暂存待确认命令）。
+     *
+     * @param command 待执行命令
+     * @param target 目标节点标识
+     * @param type 命令类型
+     * @param extractMode 提取模式
+     * @param path 文件路径
+     * @param content 文件内容
+     * @return 含 confirmToken 的确认提示 JSON
+     */
     private String requestConfirmation(String command, String target, String type, String extractMode,
             String path, String content) {
         String token = UUID.randomUUID().toString();
@@ -89,6 +106,12 @@ public class NodeTool {
                 safetyDesc, command, token, command, safetyDesc, token);
     }
 
+    /**
+     * 凭确认令牌执行之前挂起的命令（校验有效性与 5 分钟过期）。
+     *
+     * @param confirmToken 确认令牌
+     * @return 执行结果 JSON，或令牌无效/过期提示
+     */
     private String executeConfirmedCommand(String confirmToken) {
         PendingCommand pending = pendingCommands.remove(confirmToken);
         if (pending == null)
@@ -99,6 +122,16 @@ public class NodeTool {
         return doExecute(pending.target, pending.type, pending.command, pending.path, pending.content);
     }
 
+    /**
+     * 解析目标并执行命令（单节点直接执行，多节点批量执行）。
+     *
+     * @param target 目标节点标识
+     * @param type 命令类型
+     * @param command 命令
+     * @param path 文件路径
+     * @param content 文件内容
+     * @return 执行结果 JSON
+     */
     private String doExecute(String target, String type, String command, String path, String content) {
         if (type == null || type.isBlank())
             type = "execute";
@@ -112,6 +145,14 @@ public class NodeTool {
         return executeBatch(clientIds, type, command);
     }
 
+    /**
+     * 解析目标节点标识为 clientId 列表。
+     *
+     * <p>支持 userId:、tag: 前缀及直接 clientId；直接 clientId 时校验是否在线。</p>
+     *
+     * @param target 目标标识字符串
+     * @return 解析得到的在线 clientId 列表
+     */
     private List<String> resolveTargets(String target) {
         if (target == null || target.isBlank())
             return List.of();
@@ -126,6 +167,16 @@ public class NodeTool {
         }
     }
 
+    /**
+     * 向单个节点发送命令消息（按 type 组装 execute/list-dir/read-file/write-file 载荷）。
+     *
+     * @param clientId 目标节点 clientId
+     * @param type 命令类型
+     * @param command 命令
+     * @param path 文件路径
+     * @param content 文件内容
+     * @return 发送状态 JSON
+     */
     private String executeOnNode(String clientId, String type, String command, String path, String content) {
         NodeInfo nodeInfo = relayHandler.getNodeInfo(clientId);
         Map<String, Object> message = new HashMap<>();
@@ -149,6 +200,14 @@ public class NodeTool {
         return String.format("{\"status\":\"SENT\",\"clientId\":\"%s\",\"command\":\"%s\"}", clientId, command);
     }
 
+    /**
+     * 向多个节点批量广播命令。
+     *
+     * @param clientIds 目标 clientId 列表
+     * @param type 命令类型
+     * @param command 命令
+     * @return 批量发送状态 JSON
+     */
     private String executeBatch(List<String> clientIds, String type, String command) {
         Map<String, Object> message = new HashMap<>();
         message.put("type", type);
@@ -158,6 +217,9 @@ public class NodeTool {
         return String.format("{\"status\":\"BATCH_SENT\",\"totalTargets\":%d}", clientIds.size());
     }
 
+    /**
+     * 待确认命令暂存载体（确认令牌 → 命令上下文）。
+     */
     private static class PendingCommand {
         private String token;
         private String command;
@@ -169,38 +231,47 @@ public class NodeTool {
         private long createdAt;
         private long expireAt;
 
+        /** 设置确认令牌 */
         public void setToken(String token) {
             this.token = token;
         }
 
+        /** 设置待执行命令 */
         public void setCommand(String command) {
             this.command = command;
         }
 
+        /** 设置目标节点标识 */
         public void setTarget(String target) {
             this.target = target;
         }
 
+        /** 设置命令类型 */
         public void setType(String type) {
             this.type = type;
         }
 
+        /** 设置提取模式 */
         public void setExtractMode(String extractMode) {
             this.extractMode = extractMode;
         }
 
+        /** 设置文件路径 */
         public void setPath(String path) {
             this.path = path;
         }
 
+        /** 设置文件内容 */
         public void setContent(String content) {
             this.content = content;
         }
 
+        /** 设置创建时间戳 */
         public void setCreatedAt(long createdAt) {
             this.createdAt = createdAt;
         }
 
+        /** 设置过期时间戳 */
         public void setExpireAt(long expireAt) {
             this.expireAt = expireAt;
         }

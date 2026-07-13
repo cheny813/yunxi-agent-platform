@@ -1,0 +1,33 @@
+# ============================================================
+# OpenTelemetry Collector 配置
+# ============================================================
+# 用途：接收应用端 OTLP trace 数据，输出到本地日志，消除"connection refused"错误
+# 
+# 如果后续需要将 trace 发送到 Jaeger/Zipkin/Prometheus，
+# 在 exporters 段追加对应配置即可。
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 100
+
+exporters:
+  logging:
+    loglevel: info
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging]

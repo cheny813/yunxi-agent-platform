@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import io.yunxi.platform.config.AgentscopeExtensionProperties;
+import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -32,6 +33,9 @@ public class ConfigManagementController {
 
     private final AgentscopeExtensionProperties extensionProperties;
 
+    /** GA 原生技能仓库配置（agentscope.core.skill），技能状态以此为准 */
+    private final AgentscopeCoreProperties coreProperties;
+
     /**
      * 获取所有配置项概览
      * <p>
@@ -50,14 +54,11 @@ public class ConfigManagementController {
     @GetMapping("/overview")
     public Map<String, Object> getConfigOverview() {
         Map<String, Object> overview = new HashMap<>();
-        if (extensionProperties.getKnowledgeBases() != null) {
-            overview.put("knowledgeBases", extensionProperties.getKnowledgeBases().size());
-        }
         if (extensionProperties.getMemoryStores() != null) {
             overview.put("memoryStores", extensionProperties.getMemoryStores().size());
         }
-        if (extensionProperties.getSkills() != null) {
-            overview.put("skillsEnabled", extensionProperties.getSkills().isEnabled());
+        if (coreProperties.getSkill() != null) {
+            overview.put("skillsEnabled", coreProperties.getSkill().isEnabled());
         }
         overview.put("status", "active");
         overview.put("note", "autoConfigEnabled=true 时，YAML 配置的知识库、记忆等组件将自动注册为 Spring Bean");
@@ -102,30 +103,6 @@ public class ConfigManagementController {
     }
 
     /**
-     * 获取知识库配置信息
-     * <p>
-     * 返回已配置的知识库列表及其数量
-     * 当 {@code autoConfigEnabled=true} 时，这些配置将自动创建为 Knowledge Bean 并注册到 Spring 容器
-     * </p>
-     *
-     * @return 包含知识库配置信息的 Map，包括
-     *         <ul>
-     *         <li>knowledgeBases - 知识库配置列表</li>
-     *         <li>count - 知识库数量</li>
-     *         <li>note - 自动配置说明</li>
-     *         </ul>
-     */
-    @GetMapping("/knowledge-bases")
-    public Map<String, Object> getKnowledgeBases() {
-        Map<String, Object> result = new HashMap<>();
-        result.put("knowledgeBases", extensionProperties.getKnowledgeBases());
-        result.put("count",
-                extensionProperties.getKnowledgeBases() != null ? extensionProperties.getKnowledgeBases().size() : 0);
-        result.put("note", "autoConfigEnabled=true 时，配置将自动创建对应的 Knowledge Bean，API 请求可按 Bean 名称引用即可");
-        return result;
-    }
-
-    /**
      * 获取记忆存储配置信息
      * <p>
      * 返回已配置的记忆存储列表及其数量。记忆存储用于 Agent 的长期记忆功能
@@ -164,9 +141,9 @@ public class ConfigManagementController {
     @GetMapping("/skills")
     public Map<String, Object> getSkills() {
         Map<String, Object> result = new HashMap<>();
-        result.put("skills", extensionProperties.getSkills());
-        result.put("enabled", extensionProperties.getSkills() != null && extensionProperties.getSkills().isEnabled());
-        result.put("note", "配置仅供参考，请通过 @Bean 创建 SkillBox 实例");
+        result.put("skills", coreProperties.getSkill());
+        result.put("enabled", coreProperties.getSkill() != null && coreProperties.getSkill().isEnabled());
+        result.put("note", "技能由 GA AgentSkillRepository 体系承载，配置见 agentscope.core.skill");
         return result;
     }
 }

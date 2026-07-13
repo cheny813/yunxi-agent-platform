@@ -5,7 +5,7 @@ package io.yunxi.platform.cache;
  * <p>定义 Redis 缓存的命名空间，用于区分不同类型的缓存数据。</p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public final class CacheNamespaces {
 

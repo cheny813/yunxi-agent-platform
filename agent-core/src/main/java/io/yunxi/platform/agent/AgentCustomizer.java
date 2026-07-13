@@ -13,8 +13,7 @@ import io.yunxi.platform.shared.config.AgentDefinition;
  * </p>
  *
  * <p>
- * V2.0 升级：替代 V1.1 的 PreProcessor/PostProcessor SPI，
- * 统一为一个定制入口，简化扩展机制。
+ * 统一为单一定制入口，简化扩展机制，便于在 Agent 构建完成后进行二次加工。
  * </p>
  *
  * @see io.yunxi.platform.agent.AgentConfigurer

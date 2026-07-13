@@ -20,7 +20,7 @@ import java.util.List;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Service
@@ -38,6 +38,11 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         log.info("混合持久化策略初始化完成");
     }
 
+    /**
+     * 注入可选 Milvus 向量策略（存在且启用时加入策略链）。
+     *
+     * @param milvusStrategyProvider Milvus 策略的 ObjectProvider（条件装配，可能不存在）
+     */
     @Autowired
     public void setMilvusStrategy(ObjectProvider<MilvusVectorPersistenceStrategy> milvusStrategyProvider) {
         MilvusVectorPersistenceStrategy s = milvusStrategyProvider.getIfAvailable();
@@ -48,6 +53,11 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         }
     }
 
+    /**
+     * 注入可选 Qdrant 向量策略（存在且启用时加入策略链）。
+     *
+     * @param qdrantStrategyProvider Qdrant 策略的 ObjectProvider（条件装配，可能不存在）
+     */
     @Autowired
     public void setQdrantStrategy(ObjectProvider<QdrantVectorPersistenceStrategy> qdrantStrategyProvider) {
         QdrantVectorPersistenceStrategy s = qdrantStrategyProvider.getIfAvailable();
@@ -58,6 +68,12 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         }
     }
 
+    /**
+     * 依次调用各子策略保存会话，任一成功即视为成功（容错）。
+     *
+     * @param conversation 会话实体
+     * @return 任一子策略成功返回 true，全部失败返回 false
+     */
     @Override
     public boolean saveConversation(ConversationEntity conversation) {
         boolean anySuccess = false;
@@ -72,6 +88,12 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         return anySuccess;
     }
 
+    /**
+     * 依次调用各子策略删除会话，要求全部成功。
+     *
+     * @param conversationId 会话标识
+     * @return 所有子策略均成功返回 true，存在失败返回 false
+     */
     @Override
     public boolean deleteConversation(String conversationId) {
         boolean allSuccess = true;
@@ -86,6 +108,14 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         return allSuccess;
     }
 
+    /**
+     * 依次调用各子策略保存记忆，任一成功即视为成功（容错）。
+     *
+     * @param conversationId 会话标识
+     * @param messages 消息列表
+     * @param config 记忆配置
+     * @return 任一子策略成功返回 true，全部失败返回 false
+     */
     @Override
     public boolean saveMemory(String conversationId, List<Msg> messages, MemoryConfig config) {
         boolean anySuccess = false;
@@ -100,6 +130,13 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         return anySuccess;
     }
 
+    /**
+     * 遍历子策略获取记忆，返回首个非空结果。
+     *
+     * @param conversationId 会话标识
+     * @param config 记忆配置
+     * @return 首个子策略返回的非空消息列表，全部为空时返回空列表
+     */
     @Override
     public List<Msg> getMemory(String conversationId, MemoryConfig config) {
         for (DataPersistenceStrategy s : strategies) {
@@ -114,6 +151,12 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         return List.of();
     }
 
+    /**
+     * 依次调用各子策略删除记忆，要求全部成功。
+     *
+     * @param conversationId 会话标识
+     * @return 所有子策略均成功返回 true，存在失败返回 false
+     */
     @Override
     public boolean deleteMemory(String conversationId) {
         boolean allSuccess = true;
@@ -128,11 +171,21 @@ public class HybridPersistenceStrategy implements DataPersistenceStrategy {
         return allSuccess;
     }
 
+    /**
+     * 返回策略名称。
+     *
+     * @return 固定字符串 {@code "Hybrid"}
+     */
     @Override
     public String getStrategyName() {
         return "Hybrid";
     }
 
+    /**
+     * 返回策略类型。
+     *
+     * @return 混合策略 {@link StrategyType#HYBRID}
+     */
     @Override
     public StrategyType getStrategyType() {
         return StrategyType.HYBRID;

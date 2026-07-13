@@ -36,7 +36,7 @@ import java.util.Map;
  * </pre>
  *
  * @author yunxi-agent-platform
- * @version 3.2.0
+ * @version 2.0.0
  * @see AgentscopeCoreProperties
  * @see AgentscopeAutoConfiguration
  */
@@ -52,14 +52,6 @@ public class AgentscopeExtensionProperties {
      * </p>
      */
     private boolean autoConfigEnabled = false;
-
-    /**
-     * 知识库配置映射
-     * <p>
-     * 支持多种知识库类型：bailian、dify、haystack、ragflow、simple
-     * </p>
-     */
-    private Map<String, KnowledgeBaseConfig> knowledgeBases;
 
     /**
      * 记忆存储配置映射
@@ -80,11 +72,6 @@ public class AgentscopeExtensionProperties {
     private A2AConfig a2a;
 
     /**
-     * Skills 技能配置
-     */
-    private SkillsConfig skills;
-
-    /**
      * MCP 服务器配置映射
      */
     private Map<String, McpServerConfig> mcpServers;
@@ -95,57 +82,6 @@ public class AgentscopeExtensionProperties {
     private RetrieveConfig retrieve = new RetrieveConfig();
 
     // ==================== 内部配置类定义 ====================
-
-    /**
-     * 知识库配置类
-     */
-    @Data
-    public static class KnowledgeBaseConfig {
-        /** 是否启用 */
-        private boolean enabled = false;
-        /** 知识库类型：bailian、dify、haystack、ragflow、simple */
-        private String type;
-
-        // 百炼知识库参数
-        /** Access Key ID（百炼专用） */
-        private String accessKeyId;
-        /** Access Key Secret（百炼专用） */
-        private String accessKeySecret;
-        /** 工作空间 ID（百炼专用） */
-        private String workspaceId;
-        /** 索引 ID（百炼专用） */
-        private String indexId;
-
-        // Dify 知识库参数
-        /** API 密钥（Dify、RAGFlow 使用） */
-        private String apiKey;
-        /** API 服务地址（Dify、RAGFlow 使用） */
-        private String apiUrl;
-        /** 数据集ID（Dify、RAGFlow 使用） */
-        private String datasetId;
-        /** 检索模式：KEYWORD、SEMANTIC、HYBRID、FULLTEXT（Dify 专用） */
-        private String retrievalMode;
-
-        // RAGFlow 专有参数
-        /** RAGFlow 基础服务地址（与 apiUrl 二选一） */
-        private String baseUrl;
-        /** 相似度阈值（RAGFlow 专用，范围 0.0-1.0） */
-        private Double similarityThreshold;
-        /** 向量相似度权重（RAGFlow 专用，范围 0.0-1.0） */
-        private Double vectorSimilarityWeight;
-
-        // SimpleKnowledge 参数
-        /** 向量维度（Simple 知识库使用） */
-        private Integer dimension;
-        /** 嵌入模型名称（Simple 知识库使用） */
-        private String embeddingModel;
-
-        // 通用参数
-        /** 检索返回的最大文档数 */
-        private Integer topK = ConfigDefaults.DEFAULT_TOP_K;
-        /** 相似度阈值 */
-        private Double scoreThreshold = ConfigDefaults.DEFAULT_SCORE_THRESHOLD;
-    }
 
     /**
      * 记忆存储配置类
@@ -198,15 +134,6 @@ public class AgentscopeExtensionProperties {
         private String registryAddr;
         /** 注册中心命名空间（必填，无默认值） */
         private String namespace;
-    }
-
-    /**
-     * Skills 配置类
-     */
-    @Data
-    public static class SkillsConfig {
-        /** 是否启用 */
-        private boolean enabled = false;
     }
 
     /**

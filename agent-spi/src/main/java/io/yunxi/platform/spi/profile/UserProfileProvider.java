@@ -12,7 +12,7 @@ import java.util.Map;
  * 话题由问题内容决定，不由身份决定。</p>
  *
  * @author yunxi-agent-platform
- * @version 3.0.0
+ * @version 2.0.0
  */
 public interface UserProfileProvider {
 
@@ -25,7 +25,12 @@ public interface UserProfileProvider {
     UserProfile getProfile(String userId);
 
     /**
-     * 用户画像数据
+     * 用户画像数据，聚合多个身份维度、个人上下文、社会关系等结构化信息。
+     * <p>
+     * 由 {@link UserProfileProvider#getProfile(String)} 返回，供上层进行个性化推理；
+     * 其中话题由问题内容决定，不由身份决定。内置多个便捷方法（如按类别取身份、
+     * 取职业身份）以兼容历史调用方式。
+     * </p>
      */
     class UserProfile {
         private String userId;
@@ -64,7 +69,10 @@ public interface UserProfileProvider {
         }
 
         /**
-         * 获取指定类别的身份列表
+         * 获取指定类别的身份列表。
+         *
+         * @param category 身份类别（如 {@code PROFESSION}）
+         * @return 该类别下的身份列表，若未配置身份则返回空列表
          */
         public List<Identity> getIdentitiesByCategory(String category) {
             return identities == null ? List.of()
@@ -74,7 +82,9 @@ public interface UserProfileProvider {
         }
 
         /**
-         * 获取第一个职业身份
+         * 获取第一个职业身份（类别为 {@code PROFESSION} 的首条身份）。
+         *
+         * @return 职业身份，若不存在则返回 {@code null}
          */
         public Identity getPrimaryProfession() {
             List<Identity> professions = getIdentitiesByCategory("PROFESSION");
@@ -82,7 +92,9 @@ public interface UserProfileProvider {
         }
 
         /**
-         * 获取职业名称（向后兼容）
+         * 获取职业名称（向后兼容，等价于首个职业身份的 {@code name}）。
+         *
+         * @return 职业名称，若无职业身份则返回 {@code null}
          */
         public String professionName() {
             Identity primary = getPrimaryProfession();
@@ -90,7 +102,9 @@ public interface UserProfileProvider {
         }
 
         /**
-         * 获取职业阶段（向后兼容）
+         * 获取职业阶段（向后兼容，等价于首个职业身份的 {@code careerStage}）。
+         *
+         * @return 职业阶段，若无职业身份则返回 {@code null}
          */
         public String careerStageName() {
             Identity primary = getPrimaryProfession();
@@ -98,7 +112,9 @@ public interface UserProfileProvider {
         }
 
         /**
-         * 获取专业技能（向后兼容）
+         * 获取专业技能（向后兼容，等价于首个职业身份的 {@code keywords}）。
+         *
+         * @return 技能关键词列表，若无职业身份则返回空列表
          */
         public List<String> professionalSkills() {
             Identity primary = getPrimaryProfession();
@@ -107,7 +123,11 @@ public interface UserProfileProvider {
     }
 
     /**
-     * 身份数据
+     * 身份数据，描述用户在某一个维度上的身份标签及其置信度与画像关键词。
+     * <p>
+     * {@code category} 用于区分身份类别（如 {@code PROFESSION} 职业），
+     * {@code confidence} 表示画像对该身份的置信程度，{@code keywords} 携带职业相关技能标签。
+     * </p>
      */
     class Identity {
         private String name;

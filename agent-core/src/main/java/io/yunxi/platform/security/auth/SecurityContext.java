@@ -36,7 +36,7 @@ import lombok.extern.slf4j.Slf4j;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Component
@@ -96,27 +96,36 @@ public class SecurityContext {
     private Boolean springSecurityAvailable = null;
 
     /**
-     * 用户信息实体
+     * 用户信息载体，聚合用户标识、名称与角色，供认证链路在各来源间传递。
      */
+    /** 用户信息载体，聚合用户标识、名称与角色，供认证链路在各来源间传递。 */
     public static class UserInfo {
         private final String userId;
         private final String username;
         private final String[] roles;
 
+        /** 构造用户信息。
+         * @param userId   用户唯一标识
+         * @param username 用户名
+         * @param roles    用户角色数组
+         */
         public UserInfo(String userId, String username, String[] roles) {
             this.userId = userId;
             this.username = username;
             this.roles = roles;
         }
 
+        /** @return 用户唯一标识 */
         public String getUserId() {
             return userId;
         }
 
+        /** @return 用户名 */
         public String getUsername() {
             return username;
         }
 
+        /** @return 用户角色数组 */
         public String[] getRoles() {
             return roles;
         }

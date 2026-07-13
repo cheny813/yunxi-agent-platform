@@ -32,7 +32,7 @@ class ConfigValidationTest {
             "config/mcp-core.yml", "config/mcp-business.yml", "config/mcp-external.yml",
             "config/skill.yml", "config/resilience.yml", "config/file-upload.yml",
             "config/a2a-pipeline.yml", "config/gateway.yml", "config/business.yml",
-            "config/text2sql.yml", "config/rule-engine.yml"
+            "config/text2sql.yml"
         };
 
         for (String filePath : configFiles) {

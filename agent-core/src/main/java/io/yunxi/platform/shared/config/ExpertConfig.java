@@ -26,6 +26,17 @@ public class ExpertConfig {
      */
     private OrchestrationConfig orchestration;
 
+    /**
+     * 是否透传子 Agent 事件到 Supervisor 的事件流（默认 true）。
+     * <p>
+     * true：子 Agent 执行过程中产生的原生 AgentEvent（工具调用、思考、文本等）
+     * 会透出到 Supervisor 流，前端可完整观测子 Agent 行为；
+     * false：仅透出 SubAgent 暴露事件（SUBAGENT_EXPOSED），抑制子 Agent 内部明细，
+     * 适用于子 Agent 事件噪声过大或不希望前端感知内部细节的场景。
+     * </p>
+     */
+    private Boolean forwardEvents = Boolean.TRUE;
+
     public ExpertConfig() {
     }
 
@@ -51,5 +62,13 @@ public class ExpertConfig {
 
     public void setOrchestration(OrchestrationConfig orchestration) {
         this.orchestration = orchestration;
+    }
+
+    public Boolean getForwardEvents() {
+        return forwardEvents;
+    }
+
+    public void setForwardEvents(Boolean forwardEvents) {
+        this.forwardEvents = forwardEvents;
     }
 }

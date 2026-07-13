@@ -25,7 +25,6 @@ import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
-import io.yunxi.platform.agent.AgentInterruptService;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.conversation.ChatAppService;
 import io.yunxi.platform.conversation.ConversationDomainService;
@@ -78,10 +77,6 @@ public class ConversationController {
 
     /** JSON 序列化工具 */
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    /** Agent 中断服务（可选，用于中断/恢复 Agent 执行） */
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private AgentInterruptService agentInterruptService;
 
     /**
      * 获取用户会话列表
@@ -302,8 +297,8 @@ public class ConversationController {
                 // 开始事件（包含 requestId）
                 Flux<String> startFlux = Flux.just(sseMessageBuilder.buildMessageWithRequestId(
                         "start", null, requestId));
-                // 调用 Agent 的流式差异化输出（streamEvents 替代已废弃的 stream）
-                // V2.0-RC3: HarnessAgent 自身提供 streamEvents()，不再继承 ReActAgent
+                // 调用 Agent 的流式差异化输出
+                // 通过 HarnessAgent.streamEvents() 获取标准化流式事件
                 Flux<String> streamFlux = ((io.agentscope.harness.agent.HarnessAgent) agent).streamEvents(List.of(userMsg))
                         .takeWhile(event -> !requestManager.isRequestCancelled(requestId))
                         .flatMap(event -> {
@@ -451,27 +446,36 @@ public class ConversationController {
     public Map<String, Object> interruptAgent(@PathVariable String name,
             @RequestParam(required = false) String message) {
         log.info("中断 Agent: name={}, message={}", name, message);
-        AgentInterruptService.InterruptResult result = agentInterruptService.interrupt(name, message);
-        return Map.of("success", result.isSuccess(), "message", result.getMessage());
+        // 中断执行：有伴随消息则注入用户消息，否则仅发送中断信号。
+        // 框架在本次迭代结束后自动消费中断，无需显式恢复（详见 resumeAgent）。
+        Agent agent = agentDomainService.getAgentInstance(name);
+        if (message != null && !message.isBlank()) {
+            agent.interrupt(Msg.builder().textContent(message).build());
+        } else {
+            agent.interrupt();
+        }
+        return Map.of("success", true, "message", "Agent 已中断");
     }
 
     /** 查询 Agent 执行状态 */
     @GetMapping("/agent/{name}/status")
     public Map<String, Object> getAgentStatus(@PathVariable String name) {
         log.info("查询 Agent 状态: name={}", name);
-        var status = agentInterruptService.getAgentStatus(name);
-        return Map.of("agentName", status.getAgentName(),
-                "state", status.getState() != null ? status.getState().name() : "UNKNOWN",
-                "message", status.getMessage() != null ? status.getMessage() : "",
-                "timestamp", status.getTimestamp() != null ? status.getTimestamp() : 0);
+        // interrupt 为一次性信号，由框架在本次迭代结束后自动消费，
+        // 无独立的持久化状态机。此处仅根据 Agent 实例是否存在返回基础状态。
+        Agent agent = agentDomainService.findAgent(name);
+        String state = agent != null ? "IDLE" : "NOT_FOUND";
+        return Map.of("agentName", name, "state", state,
+                "message", agent != null ? "" : "Agent 未找到", "timestamp", 0L);
     }
 
     /** 恢复 Agent（清除中断状态） */
     @PostMapping("/agent/{name}/resume")
     public Map<String, Object> resumeAgent(@PathVariable String name) {
         log.info("恢复 Agent: name={}", name);
-        var result = agentInterruptService.resume(name);
-        return Map.of("success", result.isSuccess(), "message", result.getMessage());
+        // interrupt 为一次性暂停信号，下一次调用即自动恢复，
+        // 框架无独立的 resume API，故此处直接返回成功。
+        return Map.of("success", true, "message", "中断信号将在下次调用时自动消费，无需显式恢复");
     }
 
     // ========== 工具组控制 ==========

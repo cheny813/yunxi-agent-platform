@@ -8,7 +8,7 @@ package io.yunxi.platform.shared.config;
  * <p>此接口位于 shared 层，可被所有层引用。</p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public interface MemoryParams {
 

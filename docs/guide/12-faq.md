@@ -38,13 +38,36 @@
 
 ## 安装部署
 
+### Q: 如何一键启动所有基础设施？
+
+**A:** 项目根目录提供了 `docker-compose.yml`，在 IDE 终端或 PowerShell 中执行：
+
+```powershell
+# 进入项目目录
+cd yunxi-agent-platform
+
+# 一键启动全部基础设施（MySQL + Redis + Milvus + OTel Collector）
+docker compose up -d
+
+# 确认所有容器就绪
+docker compose ps
+```
+
+启动后即可直接运行 `.\启动项目.ps1 -Fast` 启动应用。关闭所有服务：`docker compose down`。
+
+详见 README.md「快速开始」章节。
+
+### Q: 日志中出现 "Failed to connect to /127.0.0.1:4318" 错误？
+
+**A:** 这是 OpenTelemetry 链路追踪的 span 导出错误，不影响业务功能。应用尝试将 trace 数据上报到本地的 OTLP Collector（端口 4318），但没有接收端。执行 `docker compose up -d` 即会启动 OTel Collector 接收这些 trace 数据，错误消失。
+
 ### Q: 启动失败，提示端口被占用？
 
 **A:** 修改对应模块的 `application.yml`：
 
 ```yaml
 server:
-  port: 40004  # 修改为未被占用的端口
+  port: 40001  # 修改为未被占用的端口（agent-core 默认 40001）
 ```
 
 **排查方法**：

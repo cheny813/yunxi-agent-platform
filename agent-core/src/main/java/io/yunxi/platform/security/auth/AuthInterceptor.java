@@ -45,7 +45,7 @@ import jakarta.servlet.http.HttpServletResponse;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Slf4j
 @Component
@@ -64,6 +64,12 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Autowired
     private SecurityContext securityContext;
 
+    /** 在控制器处理请求前拦截，从请求头提取用户信息并写入请求属性。
+     * @param request  当前 HTTP 请求
+     * @param response 当前 HTTP 响应
+     * @param handler  目标处理器
+     * @return 始终返回 true 以放行请求（仅做信息提取，不做鉴权拦截）
+     */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         // 从请求头提取用户信息

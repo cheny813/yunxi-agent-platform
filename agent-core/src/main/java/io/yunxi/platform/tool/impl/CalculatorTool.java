@@ -58,6 +58,14 @@ public class CalculatorTool {
         }
     }
 
+    /**
+     * 计算简单的二元运算表达式（仅支持单个 + 或 * 运算符）。
+     *
+     * <p>先剥离所有非数字与运算符字符，再按运算符切分求值。不支持复杂表达式。</p>
+     *
+     * @param expression 用户提供的表达式字符串
+     * @return 计算结果 JSON，或提示信息
+     */
     private String evaluateExpression(String expression) {
         String cleanExpr = expression.replaceAll("[^0-9+\\-*/(). ]", "");
         if (cleanExpr.contains("+")) {

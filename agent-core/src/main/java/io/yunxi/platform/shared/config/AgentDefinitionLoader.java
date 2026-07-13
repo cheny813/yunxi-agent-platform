@@ -22,8 +22,8 @@ import java.util.List;
 /**
  * Agent 定义加载器 — 从 agent-definitions 目录加载 YAML 配置
  * <p>
- * 取代旧的 AgentConfigDtoLoader，使用新的 AgentDefinition 配置模型。
- * 扫描 classpath:agent-definitions/ 目录下的所有 .yml 文件。
+ * 扫描 classpath:agent-definitions/ 目录下的所有 .yml 文件，
+ * 反序列化为 {@link AgentDefinition} 配置模型并校验后缓存。
  * </p>
  *
  * @author yunxi-agent-platform
@@ -41,6 +41,11 @@ public class AgentDefinitionLoader {
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
+    /**
+     * 容器启动后扫描并加载全部 Agent 定义配置。
+     * <p>按主配置路径模式与 agent-definitions 目录下的 .yml 文件解析资源，
+     * 逐个反序列化为 {@link AgentDefinition} 并校验后缓存；IO 异常时记录错误日志。</p>
+     */
     @PostConstruct
     public void loadConfigs() {
         try {
@@ -63,6 +68,14 @@ public class AgentDefinitionLoader {
         }
     }
 
+    /**
+     * 按给定路径模式解析资源并去重加入集合。
+     *
+     * @param resolver Spring 资源解析器
+     * @param set      去重后的资源集合（LinkedHashSet 保证顺序且唯一）
+     * @param pattern  资源匹配模式（如 classpath:agent-definitions/*.yml）
+     * @throws IOException 资源解析失败时抛出
+     */
     private void addResources(PathMatchingResourcePatternResolver resolver,
             LinkedHashSet<Resource> set, String pattern) throws IOException {
         for (Resource r : resolver.getResources(pattern)) {
@@ -70,6 +83,14 @@ public class AgentDefinitionLoader {
         }
     }
 
+    /**
+     * 解析单个 YAML 资源为 {@link AgentDefinition}。
+     *
+     * <p>依次执行根键校验、启用开关判断、字段校验，全部通过后加入已加载列表；
+     * 任意环节不通过则记录日志并跳过该文件。</p>
+     *
+     * @param resource 待加载的 YAML 资源
+     */
     private void loadAgentDefinition(Resource resource) {
         try (InputStream inputStream = resource.getInputStream()) {
             AgentDefinitionWrapper wrapper = yamlMapper.readValue(inputStream, AgentDefinitionWrapper.class);
@@ -135,10 +156,21 @@ public class AgentDefinitionLoader {
         return errors;
     }
 
+    /**
+     * 返回已加载的全部 Agent 定义（副本，避免外部修改内部列表）。
+     *
+     * @return Agent 定义列表
+     */
     public List<AgentDefinition> getAgentDefinitions() {
         return new ArrayList<>(agentDefinitions);
     }
 
+    /**
+     * 按名称查找 Agent 定义。
+     *
+     * @param name Agent 名称
+     * @return 匹配的定义，不存在时返回 null
+     */
     public AgentDefinition getAgentDefinition(String name) {
         return agentDefinitions.stream()
                 .filter(def -> def.getName().equals(name))
@@ -146,6 +178,9 @@ public class AgentDefinitionLoader {
                 .orElse(null);
     }
 
+    /**
+     * YAML 反序列化根包装类，承载 {@code agent:} 根键下的 Agent 定义。
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class AgentDefinitionWrapper {
         private AgentDefinition agent;

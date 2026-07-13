@@ -26,15 +26,31 @@ public class ToolController {
 
     private final Toolkit toolkit;
 
+    /**
+     * 构造工具管理控制器
+     *
+     * @param toolkit AgentScope 工具箱，承载所有已注册工具
+     */
     public ToolController(Toolkit toolkit) {
         this.toolkit = toolkit;
     }
 
+    /**
+     * 列出所有已注册工具名称
+     *
+     * @return 工具名称集合
+     */
     @GetMapping
     public Collection<String> listTools() {
         return toolkit.getToolNames();
     }
 
+    /**
+     * 获取指定工具的详情
+     *
+     * @param name 工具名称
+     * @return 包含工具名称与描述的映射；工具不存在时抛出 NotFoundException
+     */
     @GetMapping("/{name}")
     public Map<String, Object> getTool(@PathVariable String name) {
         AgentTool tool = toolkit.getTool(name);

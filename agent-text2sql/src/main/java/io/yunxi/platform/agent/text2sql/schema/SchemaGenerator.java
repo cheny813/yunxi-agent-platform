@@ -16,7 +16,7 @@ import java.util.*;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Component
 public class SchemaGenerator {
@@ -174,11 +174,19 @@ public class SchemaGenerator {
 
     // ==================== 数据模型 ====================
 
+    /**
+     * 数据库 Schema 模型，聚合表结构、列信息与推断出的外键关系
+     */
     public static class DatabaseSchema {
         private String databaseId;
         private List<TableSchema> tables;
         private List<ForeignKey> foreignKeys;
 
+        /**
+         * 将 Schema 渲染为供 LLM 消费的文本提示（含表、列及外键）
+         *
+         * @return Schema 文本描述
+         */
         public String toLLMPrompt() {
             StringBuilder sb = new StringBuilder();
             sb.append("Database Schema:\n\n");
@@ -217,6 +225,9 @@ public class SchemaGenerator {
         public void setForeignKeys(List<ForeignKey> foreignKeys) { this.foreignKeys = foreignKeys; }
     }
 
+    /**
+     * 表 Schema 模型，包含表名与列定义列表
+     */
     public static class TableSchema {
         private String tableName;
         private List<ColumnSchema> columns;
@@ -228,6 +239,9 @@ public class SchemaGenerator {
         public void setColumns(List<ColumnSchema> columns) { this.columns = columns; }
     }
 
+    /**
+     * 列 Schema 模型，描述单列的名称、类型与约束（主键/唯一/可空/自增）
+     */
     public static class ColumnSchema {
         private String columnName;
         private String dataType;
@@ -251,6 +265,9 @@ public class SchemaGenerator {
         public void setAutoIncrement(boolean autoIncrement) { this.autoIncrement = autoIncrement; }
     }
 
+    /**
+     * 外键模型，描述列到引用表/引用列的映射及推断置信度
+     */
     public static class ForeignKey {
         private String columnName;
         private String referencedTable;

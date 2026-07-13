@@ -16,7 +16,8 @@ import java.util.List;
 /**
  * 数据同步服务基类
  * <p>
- * 提供公用的 MCP 调用、数据解析、向量化、插入功能
+ * 提供公用的数据库查询、数据解析、向量化、插入功能。
+ * 数据同步通过 JDBC 直连目标数据库完成。
  * </p>
  *
  * @author yunxi-agent-platform
@@ -33,8 +34,8 @@ public abstract class BaseSyncService {
     /** 向量嵌入服务 */
     protected final EmbeddingService embeddingService;
 
-    /** MCP 查询服务 */
-    protected final McpQueryService mcpQueryService;
+    /** 外部数据库查询服务（通过 JDBC 直连） */
+    protected final ExternalDbQueryService externalDbQueryService;
 
     /** Milvus 集合管理服务 */
     protected final MilvusCollectionService milvusCollectionService;
@@ -53,19 +54,19 @@ public abstract class BaseSyncService {
      *
      * @param milvusOps               Milvus 操作门面
      * @param embeddingService        向量嵌入服务
-     * @param mcpQueryService         MCP 查询服务
+     * @param externalDbQueryService  外部数据库查询服务
      * @param milvusCollectionService Milvus 集合管理服务
      * @param embeddingBatchService   向量嵌入批量服务
      */
     public BaseSyncService(
             MilvusOperations milvusOps,
             EmbeddingService embeddingService,
-            McpQueryService mcpQueryService,
+            ExternalDbQueryService externalDbQueryService,
             MilvusCollectionService milvusCollectionService,
             EmbeddingBatchService embeddingBatchService) {
         this.milvusOps = milvusOps;
         this.embeddingService = embeddingService;
-        this.mcpQueryService = mcpQueryService;
+        this.externalDbQueryService = externalDbQueryService;
         this.milvusCollectionService = milvusCollectionService;
         this.embeddingBatchService = embeddingBatchService;
     }
@@ -73,69 +74,71 @@ public abstract class BaseSyncService {
     // ==================== MilvusCollectionService 委托方法 ====================
 
     /**
-     * 获取集合记录数
+     * 委托查询集合实体数量。
      *
      * @param collectionName 集合名称
-     * @return 记录数量
+     * @return 实体数量
      */
     protected long getCollectionCount(String collectionName) {
         return milvusCollectionService.getCollectionCount(collectionName);
     }
 
     /**
-     * 检查集合是否存在
+     * 委托判断集合是否存在。
      *
      * @param collectionName 集合名称
-     * @return true-存在，false-不存在
+     * @return 存在返回 true
      */
     protected boolean isCollectionExists(String collectionName) {
         return milvusCollectionService.isCollectionExists(collectionName);
     }
 
     /**
-     * 批量 upsert 数据到 Milvus（主键存在则更新，不存在则插入）
+     * 委托批量 upsert 数据到集合。
      *
      * @param collectionName 集合名称
-     * @param dataList       数据列表
-     * @param batchSize      批次大小
+     * @param dataList JSON 行数据
+     * @param batchSize 每批大小
      */
     protected void upsertBatch(String collectionName, List<JsonObject> dataList, int batchSize) {
         milvusCollectionService.upsertBatch(collectionName, dataList, batchSize);
     }
 
-    // ==================== McpQueryService 委托方法 ====================
+    // ==================== 数据库查询委托方法 ====================
 
     /**
-     * 通过 MCP 调用外部数据库执行 SQL 查询（默认 limit=10000）
+     * 查询外部数据库（直接 JDBC 连接，默认 limit=10000）
      *
-     * @param host MCP 服务地址
-     * @param port MCP 服务端口
-     * @param sql  SQL 查询语句
-     * @return 查询结果
+     * @param jdbcUrl  JDBC URL
+     * @param username 用户名
+     * @param password 密码
+     * @param sql      SQL 语句
+     * @return 查询结果 JSON 字符串
      */
-    protected String callMcpDatabase(String host, int port, String sql) {
-        return mcpQueryService.callMcpDatabase(host, port, sql);
+    protected String queryDatabase(String jdbcUrl, String username, String password, String sql) {
+        return externalDbQueryService.query(jdbcUrl, username, password, sql);
     }
 
     /**
-     * 通过 MCP 调用外部数据库执行 SQL 查询
+     * 查询外部数据库
      *
-     * @param host  MCP 服务地址
-     * @param port  MCP 服务端口
-     * @param sql   SQL 查询语句
-     * @param limit 返回结果数量限制
-     * @return 查询结果
+     * @param jdbcUrl  JDBC URL
+     * @param username 用户名
+     * @param password 密码
+     * @param sql      SQL 语句
+     * @param limit    返回数量限制
+     * @return 查询结果 JSON 字符串
      */
-    protected String callMcpDatabase(String host, int port, String sql, int limit) {
-        return mcpQueryService.callMcpDatabase(host, port, null, sql, limit);
+    protected String queryDatabase(String jdbcUrl, String username, String password, String sql, int limit) {
+        return externalDbQueryService.query(jdbcUrl, username, password, sql, limit);
     }
 
     // ==================== EmbeddingBatchService 委托方法 ====================
 
     /**
-     * 分批调用 embedding API（带重试）
+     * 委托批量向量化文本（带重试）。
      *
-     * @param texts 文本列表
+     * @param texts 待嵌入文本列表
      * @return 向量列表
      */
     protected List<List<Float>> embedBatchWithRetry(List<String> texts) {

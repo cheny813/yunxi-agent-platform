@@ -1,24 +1,27 @@
 package io.yunxi.platform.agent;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.Model;
-import io.agentscope.core.state.AgentStateStore;
+import io.agentscope.core.skill.repository.AgentSkillRepository;
+import io.agentscope.core.skill.repository.FileSystemSkillRepository;
 import io.agentscope.core.shutdown.GracefulShutdownManager;
 import io.agentscope.core.shutdown.GracefulShutdownMiddleware;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.core.tool.mcp.McpClientBuilder;
+import io.agentscope.core.tool.mcp.McpClientWrapper;
 import io.agentscope.core.tool.subagent.SubAgentConfig;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.DistributedStore;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
+import io.agentscope.harness.agent.workspace.WorkspaceManager;
+import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
-import io.yunxi.platform.agent.middleware.ReasoningReviewMiddleware;
-import io.yunxi.platform.agent.middleware.TextToolCallParserMiddleware;
-import io.yunxi.platform.agent.middleware.ToolGateMiddleware;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.agent.service.AgentService;
-import io.yunxi.platform.agent.workspace.AgentWorkspaceInitializer;
+import io.yunxi.platform.config.PermissionConfig;
 import io.yunxi.platform.security.hitl.HumanToolRegistrar;
-import io.yunxi.platform.agent.workspace.WorkspaceAutoDiscoveryEngine;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
@@ -33,11 +36,15 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Agent 配置器，负责根据 YAML 定义创建并注册 Agent。
@@ -48,14 +55,12 @@ import java.util.Set;
  * </p>
  *
  * <p>
- * V2.0 升级：
+ * 本配置类基于 AgentScope 框架构建：
  * </p>
  * <ul>
- * <li>用 {@link io.agentscope.core.middleware.MiddlewareBase} 替代 Hook 体系</li>
- * <li>删除反射 hack 的 assignUngroupedTools() 方法</li>
- * <li>MCP 管理迁移到 V2.0 McpServerRegistrar</li>
- * <li>删除 ChinesePlanToHint，改用 V2.0 PlanHintMiddleware</li>
- * <li>代码量从 735 行精简到约 450 行</li>
+ * <li>采用 {@link io.agentscope.core.middleware.MiddlewareBase} 实现扩展机制</li>
+ * <li>MCP 通过框架 McpClientBuilder（SSE/STDIO/HTTP）注册进 Toolkit</li>
+ * <li>计划能力由 PlanHintMiddleware 提供</li>
  * </ul>
  */
 @Component
@@ -76,17 +81,14 @@ public class AgentConfigurer implements SmartLifecycle {
     /** 核心配置属性，包含工作空间路径、模型名称、Compaction 配置等 */
     private final AgentscopeCoreProperties coreProperties;
 
-    /** 工作空间初始化器，在 Agent 创建前初始化其工作空间目录 */
-    private final AgentWorkspaceInitializer workspaceInitializer;
-
     /** Agent 自定义扩展 SPI 提供者（可选），允许外部对 Agent 实例进行二次定制 */
     private final ObjectProvider<AgentCustomizer> customizerProvider;
 
-    /** 工作空间自动发现引擎，扫描工作空间中的知识文件、技能、场景规则 */
-    private final WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine;
-
     /** 模型工厂，根据配置创建 LLM 模型实例 */
     private final ModelFactory modelFactory;
+
+    /** 权限配置构造器，将 HITL 配置映射为框架 PermissionContextState */
+    private final PermissionConfig permissionConfig;
 
     /** ReAct 链路追踪 Middleware 提供者（可选），用于 OpenTelemetry 分布式追踪 */
     private final ObjectProvider<ReActSpanMiddleware> reactSpanMiddlewareProvider;
@@ -94,33 +96,33 @@ public class AgentConfigurer implements SmartLifecycle {
     /** Agent 分布式后端（可选），提供 AgentStateStore + BaseStore + SandboxSnapshot 一站式配置 */
     private DistributedStore distributedBackend;
 
+    /** 已建立的 MCP 客户端连接缓存，按服务器名复用，避免每个 Agent 重复建连 */
+    private final Map<String, McpClientWrapper> mcpClientCache = new HashMap<>();
+
     /**
      * 构造 Agent 配置器，通过 Spring 依赖注入获取所有必要组件。
      *
      * @param definitionLoader            Agent 定义加载器
      * @param agentService                Agent 服务
      * @param coreProperties              核心配置属性
-     * @param workspaceInitializer        工作空间初始化器
      * @param customizerProvider          Agent 自定义扩展提供者（可选）
-     * @param workspaceDiscoveryEngine    工作空间自动发现引擎
      * @param modelFactory                模型工厂
+     * @param permissionConfig             权限配置构造器，将 HITL 配置映射为框架 PermissionContextState
      * @param reactSpanMiddlewareProvider ReAct 追踪 Middleware 提供者（可选）
      */
     public AgentConfigurer(AgentDefinitionLoader definitionLoader,
             AgentService agentService,
             AgentscopeCoreProperties coreProperties,
-            AgentWorkspaceInitializer workspaceInitializer,
             ObjectProvider<AgentCustomizer> customizerProvider,
-            WorkspaceAutoDiscoveryEngine workspaceDiscoveryEngine,
             ModelFactory modelFactory,
+            PermissionConfig permissionConfig,
             ObjectProvider<ReActSpanMiddleware> reactSpanMiddlewareProvider) {
         this.definitionLoader = definitionLoader;
         this.agentService = agentService;
         this.coreProperties = coreProperties;
-        this.workspaceInitializer = workspaceInitializer;
         this.customizerProvider = customizerProvider;
-        this.workspaceDiscoveryEngine = workspaceDiscoveryEngine;
         this.modelFactory = modelFactory;
+        this.permissionConfig = permissionConfig;
         this.reactSpanMiddlewareProvider = reactSpanMiddlewareProvider;
     }
 
@@ -128,7 +130,7 @@ public class AgentConfigurer implements SmartLifecycle {
      * 设置分布式后端实例。
      *
      * <p>
-     * V2.0-RC3: 使用 {@link DistributedStore} 统一接口替代旧 {@code Session}，
+     * 使用 {@link DistributedStore} 统一接口配置，
      * 一次性配置 AgentStateStore + BaseStore + SandboxSnapshotSpec。
      * </p>
      *
@@ -245,7 +247,13 @@ public class AgentConfigurer implements SmartLifecycle {
      *
      * <p>
      * 为每个 Agent 定义创建对应的工作空间目录，路径格式为：
-     * {workspaceBasePath}/agents/{agentName}
+     * {workspaceBasePath}/agents/{agentName}。
+     * </p>
+     *
+     * <p>
+     * 工作目录位于 {workspaceBasePath}/agents/{agentName}，
+     * 由框架 WorkspaceManager 在运行时托管文件读写；AGENTS.md 生成逻辑内联保留，
+     * 作为 Agent 身份描述文件。目录创建直接复用 JDK NIO，避免对框架能力的重复实现。
      * </p>
      *
      * @param definitions Agent 定义列表
@@ -253,7 +261,61 @@ public class AgentConfigurer implements SmartLifecycle {
     private void initializeWorkspaces(List<AgentDefinition> definitions) {
         for (AgentDefinition def : definitions) {
             String workspacePath = coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName();
-            workspaceInitializer.initialize(def.getName(), description(def), def.getPrompt(), workspacePath);
+            ensureWorkspaceDirs(workspacePath);
+            ensureAgentsMd(def.getName(), description(def), def.getPrompt(), workspacePath);
+        }
+    }
+
+    /**
+     * 创建 Agent 工作空间目录结构（knowledge/memory/skills/sessions/subagents）。
+     *
+     * @param workspacePath 工作空间根路径
+     */
+    private void ensureWorkspaceDirs(String workspacePath) {
+        try {
+            Path root = Path.of(workspacePath);
+            for (String sub : List.of("", "knowledge", "memory", "skills", "sessions", "subagents")) {
+                Path dir = sub.isEmpty() ? root : root.resolve(sub);
+                if (!java.nio.file.Files.exists(dir)) {
+                    java.nio.file.Files.createDirectories(dir);
+                }
+            }
+        } catch (java.io.IOException e) {
+            log.warn("工作空间目录创建失败: {} - {}", workspacePath, e.getMessage());
+        }
+    }
+
+    /**
+     * 生成 AGENTS.md Agent 身份描述文件（已存在则跳过）。
+     *
+     * <p>GA 的 {@code WorkspaceContextMiddleware} 在运行时自动读取此文件注入上下文，
+     * 因此保留其生成逻辑对业务有实际价值。</p>
+     *
+     * @param agentName       Agent 名称
+     * @param displayName    显示名称
+     * @param sysPrompt      系统提示词
+     * @param workspacePath  工作空间路径
+     */
+    private void ensureAgentsMd(String agentName, String displayName, String sysPrompt, String workspacePath) {
+        try {
+            Path agentsMd = Path.of(workspacePath).resolve("AGENTS.md");
+            if (java.nio.file.Files.notExists(agentsMd)) {
+                String content = "---\n"
+                        + "id: " + agentName + "\n"
+                        + "name: " + (displayName != null ? displayName : agentName) + "\n"
+                        + "---\n\n"
+                        + "## 描述\n\n我是 " + (displayName != null ? displayName : agentName) + "。\n\n"
+                        + "## 系统提示词\n\n" + (sysPrompt != null ? sysPrompt : "") + "\n\n"
+                        + "## 工作空间可用资源\n\n"
+                        + "- 函数 `read_file` 读取 knowledge/ 目录下的知识文件\n"
+                        + "- 函数 `memory_search` 搜索记忆内容\n"
+                        + "- 函数 `agent_spawn` 创建子 Agent 并执行任务\n"
+                        + "- 请勿修改 AGENTS.md 和 MEMORY.md 文件\n\n";
+                java.nio.file.Files.writeString(agentsMd, content);
+                log.info("生成 AGENTS.md: {}", agentsMd);
+            }
+        } catch (java.io.IOException e) {
+            log.warn("生成 AGENTS.md 失败: {} - {}", agentName, e.getMessage());
         }
     }
 
@@ -297,6 +359,8 @@ public class AgentConfigurer implements SmartLifecycle {
             Model model = modelFactory.create(def.getModel());
             // 构建工具集
             Toolkit toolkit = buildToolkit(def);
+            // 按 Agent 配置注册 MCP 服务器工具（框架原生 McpClientBuilder / SSE）
+            registerMcpServers(toolkit, def);
 
             // 配置 HarnessAgent Builder
             HarnessAgent.Builder builder = HarnessAgent.builder()
@@ -313,11 +377,11 @@ public class AgentConfigurer implements SmartLifecycle {
             if (distributedBackend != null)
                 builder.distributedStore(distributedBackend);
 
-            // 配置技能系统（可选）：透传 AgentScope V2.0 技能系统所有能力
-            // 包括 workspace/userDir/classpath/git 技能来源、自学习闭环、可见性过滤等
-            // TODO: 待框架 RC4 版本提供 harness-skill 模块后启用
-            // if (skillSystemConfigBuilder != null)
-            //     builder.skillSystem(skillSystemConfigBuilder.build());
+            // 配置 GA 原生能力：计划模式 / 技能系统 / 韧性（重试-降级-超时）
+            // 全部复用 HarnessAgent.Builder 原生 API，不自建任何等价逻辑
+            configurePlan(builder, def);
+            configureSkills(builder, def);
+            configureResilience(builder, def);
 
             // 应用 AgentCustomizer SPI 扩展（如有）
             AgentCustomizer customizer = findCustomizer(def);
@@ -332,8 +396,6 @@ public class AgentConfigurer implements SmartLifecycle {
                     def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName());
             agentService.registerAgentRagMode(def.getName(), def.getRagMode());
 
-            // 打印工作空间自动发现结果
-            logWorkspaceDiscovery(def.getName());
             log.info("Agent 创建成功: {}, ragMode={}", def.getName(), def.getRagMode());
         } catch (Throwable e) {
             // 捕获 Throwable 而非 Exception：agentscope 框架内部类初始化可能抛出
@@ -405,10 +467,20 @@ public class AgentConfigurer implements SmartLifecycle {
         Toolkit toolkit = new Toolkit();
         // 创建 "agent" 工具组，用于存放子 Agent 工具
         toolkit.createToolGroup("agent", "子 Agent 工具组", true);
+        // 按 Agent 配置注册 MCP 服务器工具（若有）
+        registerMcpServers(toolkit, def);
         // 将每个专家 Agent 注册为子 Agent 工具
-        for (Map.Entry<String, Agent> entry : expertAgents.entrySet()) {
+        for (ExpertConfig expert : experts) {
+            Agent agent = expertAgents.get(expert.getName());
+            if (agent == null) {
+                continue;
+            }
+            // forwardEvents 默认 true：透出子 Agent 事件到 Supervisor 流，前端可完整观测；
+            // 专家可在 YAML 中设 forwardEvents: false 抑制子 Agent 内部明细。
+            boolean forward = expert.getForwardEvents() == null || expert.getForwardEvents();
             toolkit.registration()
-                    .subAgent(() -> entry.getValue(), SubAgentConfig.builder().forwardEvents(false).build())
+                    .subAgent(() -> agent,
+                            SubAgentConfig.builder().forwardEvents(forward).build())
                     .group("agent").apply();
         }
 
@@ -425,6 +497,11 @@ public class AgentConfigurer implements SmartLifecycle {
         // 配置分布式后端（可选）
         if (distributedBackend != null)
             builder.distributedStore(distributedBackend);
+
+        // 配置 GA 原生能力：计划模式 / 技能系统 / 韧性（与单 Agent 一致，完全复用框架）
+        configurePlan(builder, def);
+        configureSkills(builder, def);
+        configureResilience(builder, def);
 
         // 应用 AgentCustomizer SPI 扩展
         AgentCustomizer customizer = findCustomizer(def);
@@ -487,7 +564,8 @@ public class AgentConfigurer implements SmartLifecycle {
      * 构建 Agent 的工具集。
      *
      * <p>
-     * 创建 Toolkit 并初始化本地工具组，MCP 工具通过 V2.0 McpServerRegistrar 单独注册。
+     * 创建 Toolkit 并初始化本地工具组；MCP 工具由 {@link #registerMcpServers} 按 Agent 配置
+     * 通过框架原生 McpClientBuilder 注册（SSE/STDIO/HTTP），确保配置与实际注册一致。
      * </p>
      *
      * @param def Agent 定义配置
@@ -526,6 +604,93 @@ public class AgentConfigurer implements SmartLifecycle {
         }
     }
 
+    // ========== MCP 工具注册 ==========
+
+    /**
+     * 按 Agent 配置注册 MCP 服务器工具到 Toolkit。
+     *
+     * <p>复用框架原生
+     * {@link McpClientBuilder} 按 {@code type}（sse/stdio/http）实例化 {@link McpClientWrapper}，
+     * 并以服务器名作为工具组名注册进 Toolkit，从而：1) 完全复用底层框架 MCP 能力，无任何自建协议层；
+     * 2) 与 {@code tools.mcpServers} / {@code toolsGroup.mcpServersToolsGroup} 分组激活无缝衔接。
+     * 单个服务器注册失败仅记录日志，不影响其余服务器与 Agent 启动（由外壳 try/catch 保证）。</p>
+     *
+     * @param toolkit 目标 Toolkit
+     * @param def     Agent 定义配置
+     */
+    private void registerMcpServers(Toolkit toolkit, AgentDefinition def) {
+        Map<String, AgentscopeCoreProperties.McpServerConfig> all = coreProperties.getMcpServers();
+        if (all == null || all.isEmpty()) {
+            return;
+        }
+
+        // 收集该 Agent 需要加载的 MCP 服务器名（去重）
+        Set<String> wanted = new LinkedHashSet<>();
+        if (def.getTools() != null && def.getTools().getMcpServers() != null) {
+            wanted.addAll(def.getTools().getMcpServers());
+        }
+        if (def.getToolsGroup() != null && def.getToolsGroup().getMcpServersToolsGroup() != null) {
+            wanted.addAll(def.getToolsGroup().getMcpServersToolsGroup());
+        }
+        if (wanted.isEmpty()) {
+            return;
+        }
+
+        for (String name : wanted) {
+            AgentscopeCoreProperties.McpServerConfig src = all.get(name);
+            if (src == null || !src.isEnabled()) {
+                log.warn("MCP 服务器 '{}' 未配置或已禁用，跳过注册", name);
+                continue;
+            }
+            try {
+                // 按服务器名复用已建立的连接，避免每个 Agent 重复建连
+                McpClientWrapper wrapper = mcpClientCache.computeIfAbsent(name, n -> buildMcpClient(n, src));
+                // 预建以服务器名命名的工具组（默认不激活，由 applyToolGroupActivation 按配置控制可见性）
+                try {
+                    toolkit.createToolGroup(name, "MCP 服务器: " + name, false);
+                } catch (Exception ignored) {
+                    // 组已存在则忽略
+                }
+                toolkit.registration().mcpClient(wrapper).group(name).apply();
+                log.info("MCP 服务器 '{}' 工具已注册进工具组 '{}'", name, name);
+            } catch (Exception e) {
+                log.error("MCP 服务器 '{}' 注册失败: {}", name, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 用框架原生 {@link McpClientBuilder} 按传输类型构建 MCP 客户端。
+     *
+     * @param name 服务器名（同时作为工具组名）
+     * @param src  服务器配置（来自 agentscope.core.mcp-servers）
+     * @return 已建立连接的 McpClientWrapper
+     */
+    private McpClientWrapper buildMcpClient(String name, AgentscopeCoreProperties.McpServerConfig src) {
+        McpClientBuilder builder = McpClientBuilder.create(name);
+        String type = src.getType() == null ? "sse" : src.getType();
+        switch (type) {
+            case "stdio" -> builder.stdioTransport(src.getCommand(), src.getArgs(), src.getEnv());
+            case "sse" -> {
+                builder.sseTransport(src.getUrl());
+                if (src.getHeaders() != null && !src.getHeaders().isEmpty()) {
+                    builder.headers(src.getHeaders());
+                }
+            }
+            case "http", "streamable-http", "streamablehttp" -> {
+                builder.streamableHttpTransport(src.getUrl());
+                if (src.getHeaders() != null && !src.getHeaders().isEmpty()) {
+                    builder.headers(src.getHeaders());
+                }
+            }
+            default -> throw new IllegalArgumentException("未知 MCP 传输类型: " + type);
+        }
+        if (src.getTimeout() != null) {
+            builder.timeout(Duration.ofMillis(src.getTimeout()));
+        }
+        return builder.buildAsync().block();
+    }
+
     // ========== Middleware 配置 ==========
 
     /**
@@ -533,26 +698,25 @@ public class AgentConfigurer implements SmartLifecycle {
      *
      * <p>
      * Middleware 按添加顺序执行，当前配置的 Middleware 顺序：
-     * 1. StudioMessageHook（可选，调试用）
-     * 2. GracefulShutdownMiddleware（优雅关停）
-     * 3. TextToolCallParserMiddleware（文本工具调用解析）
-     * 4. ContentFilterMiddleware（内容过滤）
-     * 5. ReActSpanMiddleware（可选，链路追踪）
-     * 6. HITL Middleware（可选，人机交互中间件）
+     * 1. GracefulShutdownMiddleware（优雅关停，必须）
+     * 2. ContentFilterMiddleware（内容安全过滤/提示注入检测，必须）
+     * 3. ReActSpanMiddleware（可选，OpenTelemetry 链路追踪）
+     * 4. HITL：通过框架 {@code permissionContext} 注入
+     *    并保留 HumanToolRegistrar（人工协作工具注册）
      * </p>
+     *
+     * <p>工具调用解析交由框架内部机制处理，平台不再单独实现。</p>
      *
      * @param builder Agent Builder
      * @param def     Agent 定义配置
      * @param toolkit 工具集
      */
     private void configureMiddlewares(HarnessAgent.Builder builder, AgentDefinition def, Toolkit toolkit) {
-        // V2.0 Studio 调试已内置，无需手动注入 Studio Hook
+        // Studio 调试已内置，无需手动注入 Studio Hook
 
         // 必须：优雅关停 Middleware
         builder.middleware(new GracefulShutdownMiddleware(GracefulShutdownManager.getInstance()));
-        // 必须：文本格式工具调用解析
-        builder.middleware(new TextToolCallParserMiddleware(toolkit));
-        // 必须：内容安全过滤
+        // 必须：内容安全过滤（提示注入检测）
         builder.middleware(new ContentFilterMiddleware());
 
         // 可选：OpenTelemetry 链路追踪
@@ -560,19 +724,21 @@ public class AgentConfigurer implements SmartLifecycle {
             builder.middleware(reactSpanMiddlewareProvider.getIfAvailable());
         }
 
-        // 可选：HITL（人机交互）Middleware
+        // 可选：HITL（人机交互）—— GA 原生权限上下文 + 人工协作工具
         injectHITLMiddlewares(builder, def);
     }
 
     /**
-     * 注入 HITL（Human-In-The-Loop）Middleware。
+     * 注入 HITL（Human-In-The-Loop）能力。
      *
      * <p>
-     * 根据配置注入三种 HITL Middleware：
-     * - ToolGateMiddleware：工具门控，需要人工确认才能执行指定工具
-     * - ReasoningReviewMiddleware：推理审查，在推理结果执行危险工具前需要人工确认
-     * - HumanToolRegistrar：人工工具注册，提供人工介入的工具
+     * 工具门控（ToolGate）与推理审查（ReasoningReview）的"执行特定工具前需人工确认"语义，
+     * 统一交由框架原生权限引擎处理：
+     * 通过 {@link PermissionConfig} 将 HITL 配置映射为 {@code PermissionContextState}，
+     * 以 {@code builder.permissionContext(...)} 注入（被点名的工具执行前会挂起请求确认）。
      * </p>
+     *
+     * <p>此外保留 {@code HumanToolRegistrar}（人工协作工具注册），它仅注册 ToolSchema，不依赖具体 Toolkit。</p>
      *
      * @param builder Agent Builder
      * @param def     Agent 定义配置
@@ -585,17 +751,10 @@ public class AgentConfigurer implements SmartLifecycle {
             return;
 
         var hitlConfig = extensions.getHitl();
-        // 注入工具门控 Middleware
-        if (hitlConfig.getToolGate() != null && hitlConfig.getToolGate().isEnabled()) {
-            builder.middleware(new ToolGateMiddleware(hitlConfig.getToolGate()));
-        }
-        // 注入推理审查 Middleware，将 ToolGate 中配置的危险工具列表传递给审查 Middleware
-        if (hitlConfig.getReasoningReview() != null && hitlConfig.getReasoningReview().isEnabled()) {
-            var dangerousTools = hitlConfig.getToolGate() != null
-                    ? Set.copyOf(hitlConfig.getToolGate().getTools())
-                    : Set.<String>of();
-            builder.middleware(new ReasoningReviewMiddleware(hitlConfig.getReasoningReview(), dangerousTools));
-        }
+        // 注入权限上下文：将 HITL 配置映射为 PermissionContextState
+        // （含 ASK 规则的工具执行前需人工确认）
+        builder.permissionContext(permissionConfig.build(hitlConfig));
+
         // 注册人工工具（HumanTool 注册当前仅支持 schema 注册，无需绑定具体 Toolkit）
         if (hitlConfig.getHumanTool() != null && hitlConfig.getHumanTool().isEnabled()) {
             // HumanToolRegistrar 仅注册 ToolSchema，可在没有 Toolkit 的情况下工作
@@ -628,22 +787,146 @@ public class AgentConfigurer implements SmartLifecycle {
     }
 
     /**
-     * 配置 Agent 规划功能。
+     * 配置 Agent 规划功能（GA PlanMode）。
      *
      * <p>
-     * 启用后 Agent 会在执行前先制定计划（PlanNotebook），
-     * 将复杂任务分解为子任务。needUserConfirm 控制是否需要用户确认计划。
-     * maxSubtasks 限制最大子任务数量。
+     * 计划能力完全由
+     * GA {@link PlanModeMiddleware} + {@link PlanModeManager} 托管。
+     * 启用条件取二者之一：YAML 的 {@code plan.enabled=true} 或 全局
+     * {@code agentscope.core.plan.enabled=true}。
+     * {@link PlanModeManager} 需要一个 {@link WorkspaceManager}，复用与
+     * {@code .workspace(path)} 相同的绝对路径构造，确保计划文件落在该 Agent 工作区内。
      * </p>
      *
      * @param builder Agent Builder
      * @param def     Agent 定义配置
      */
     private void configurePlan(HarnessAgent.Builder builder, AgentDefinition def) {
-        // V2.0: planNotebook() 已移除，计划功能迁移至 PlanHintMiddleware
-        // TODO: 使用 V2.0 PlanHintMiddleware 替代
-        if (def.getPlan() != null && def.getPlan().isEnabled()) {
-            log.info("Agent '{}' 启用计划模式 (V2.0 PlanHintMiddleware)", def.getName());
+        boolean yamlEnabled = def.getPlan() != null && def.getPlan().isEnabled();
+        boolean globalEnabled = coreProperties.getPlan().isEnabled();
+        if (!yamlEnabled && !globalEnabled) {
+            return;
+        }
+
+        // 复用与 .workspace(path) 一致的绝对路径，构造 GA 原生 WorkspaceManager
+        String workspacePath = coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName();
+        WorkspaceManager workspaceManager = new WorkspaceManager(Path.of(workspacePath));
+        String planDir = coreProperties.getPlan().getPlanDir();
+
+        // 只读解析器：将配置中的只读工具关键字（逗号分隔）编译为 Predicate，
+        // plan 模式下仅允许这些只读工具 + GA 内置 plan 控制工具（如 plan_write）。
+        Predicate<String> readOnlyResolver = buildReadOnlyResolver(coreProperties.getPlan().getReadOnlyTools());
+
+        builder.middleware(new PlanModeMiddleware(
+                new PlanModeManager(workspaceManager, planDir), readOnlyResolver));
+        log.info("Agent '{}' 已启用 GA PlanMode（planDir={}）", def.getName(), planDir);
+    }
+
+    /**
+     * 将配置中的只读工具关键字编译为工具名 Predicate。
+     *
+     * @param readOnlyTools 逗号分隔的工具名关键字（可空）
+     * @return 判定某工具是否只读的谓词（空配置返回始终 false，交由 GA 默认策略）
+     */
+    private Predicate<String> buildReadOnlyResolver(String readOnlyTools) {
+        if (readOnlyTools == null || readOnlyTools.isBlank()) {
+            return name -> false;
+        }
+        Set<String> keywords = new LinkedHashSet<>();
+        for (String kw : readOnlyTools.split("[,，]")) {
+            String t = kw.trim();
+            if (!t.isEmpty()) {
+                keywords.add(t.toLowerCase());
+            }
+        }
+        if (keywords.isEmpty()) {
+            return name -> false;
+        }
+        return name -> {
+            if (name == null) return false;
+            String lower = name.toLowerCase();
+            return keywords.stream().anyMatch(lower::contains);
+        };
+    }
+
+    /**
+     * 配置 GA 原生技能系统（AgentSkillRepository）。
+     *
+     * <p>
+     * 框架未提供 {@code builder.skillSystem(...)} 配置入口，
+     * 改用 GA 原生技能仓库体系。注册任意 {@link AgentSkillRepository} 即可自动装载
+     * {@code DynamicSkillMiddleware}，由框架负责技能加载、可见性过滤与自学习闭环。
+     * 这里优先用文件系统技能目录（{@code agentscope.core.skill.filesystem-dir}），
+     * 可选叠加项目级全局技能目录（{@code projectGlobalSkillsDir}）。
+     * </p>
+     *
+     * @param builder Agent Builder
+     * @param def     Agent 定义配置
+     */
+    private void configureSkills(HarnessAgent.Builder builder, AgentDefinition def) {
+        AgentscopeCoreProperties.SkillProperties skill = coreProperties.getSkill();
+        if (!skill.isEnabled()) {
+            return;
+        }
+
+        int registered = 0;
+        // 1. 文件系统技能仓库（每个子目录含 SKILL.md）
+        if (skill.getFilesystemDir() != null && !skill.getFilesystemDir().isBlank()) {
+            Path dir = Path.of(skill.getFilesystemDir());
+            if (java.nio.file.Files.exists(dir) && java.nio.file.Files.isDirectory(dir)) {
+                builder.skillRepository(new FileSystemSkillRepository(dir, skill.isWriteable()));
+                registered++;
+                log.info("Agent '{}' 注册文件系统技能仓库: {}", def.getName(), dir);
+            } else {
+                log.warn("技能目录不存在或不是目录，跳过: {}", dir);
+            }
+        }
+        // 2. 项目级全局技能目录（与 filesystemDir 并存）
+        if (skill.getProjectGlobalDir() != null && !skill.getProjectGlobalDir().isBlank()) {
+            Path pgDir = Path.of(skill.getProjectGlobalDir());
+            if (java.nio.file.Files.exists(pgDir) && java.nio.file.Files.isDirectory(pgDir)) {
+                builder.projectGlobalSkillsDir(pgDir);
+                registered++;
+                log.info("Agent '{}' 注册项目级全局技能目录: {}", def.getName(), pgDir);
+            } else {
+                log.warn("项目级技能目录不存在或不是目录，跳过: {}", pgDir);
+            }
+        }
+
+        if (registered > 0) {
+            log.info("Agent '{}' 技能系统已启用（GA DynamicSkillMiddleware 自动装载）", def.getName());
+        }
+    }
+
+    /**
+     * 配置 GA 原生韧性能力（重试 / 降级模型 / 拒绝停止 / 超时）。
+     *
+     * <p>
+     * 完全复用 {@link HarnessAgent.Builder} 原生 API，不自建任何重试/降级/超时逻辑：
+     * <ul>
+     *   <li>{@code maxRetries} → 模型调用失败重试次数</li>
+     *   <li>{@code fallbackModel} → 主模型失败时切换的降级模型 ID</li>
+     *   <li>{@code stopOnReject} → 权限被拒时是否停止 Agent</li>
+     *   <li>{@code modelExecutionConfig(ExecutionConfig)} → 注入单次执行超时</li>
+     * </ul>
+     * </p>
+     *
+     * @param builder Agent Builder
+     * @param def     Agent 定义配置
+     */
+    private void configureResilience(HarnessAgent.Builder builder, AgentDefinition def) {
+        AgentscopeCoreProperties.ResilienceProperties r = coreProperties.getResilience();
+        if (r.getMaxRetries() != null) {
+            builder.maxRetries(r.getMaxRetries());
+        }
+        if (r.getFallbackModel() != null && !r.getFallbackModel().isBlank()) {
+            builder.fallbackModel(r.getFallbackModel());
+        }
+        builder.stopOnReject(r.isStopOnReject());
+        if (r.getTimeoutMs() != null && r.getTimeoutMs() > 0) {
+            builder.modelExecutionConfig(ExecutionConfig.builder()
+                    .timeout(java.time.Duration.ofMillis(r.getTimeoutMs()))
+                    .build());
         }
     }
 
@@ -712,6 +995,10 @@ public class AgentConfigurer implements SmartLifecycle {
             if (tgc.getMcpServersToolsGroup() != null)
                 activeGroups.addAll(tgc.getMcpServersToolsGroup());
         }
+        // tools.mcpServers 同样隐含“加载服务器 + 激活对应组”，需并入激活列表
+        if (def.getTools() != null && def.getTools().getMcpServers() != null) {
+            activeGroups.addAll(def.getTools().getMcpServers());
+        }
         // 未配置时默认启用 memory 组
         if (activeGroups.isEmpty())
             activeGroups.add("memory");
@@ -773,31 +1060,4 @@ public class AgentConfigurer implements SmartLifecycle {
         return def.getName();
     }
 
-    /**
-     * 打印工作空间自动发现的结果。
-     *
-     * <p>
-     * 通过 WorkspaceAutoDiscoveryEngine 扫描 Agent 工作空间，
-     * 输出发现的场景规则、知识文件、技能和子 Agent 信息。
-     * </p>
-     *
-     * @param agentName Agent 名称
-     */
-    private void logWorkspaceDiscovery(String agentName) {
-        workspaceDiscoveryEngine.getWorkspaceConfig(agentName).ifPresent(config -> {
-            if (config.getSceneRule() != null) {
-                log.info("[Workspace] 场景规则: {} (关键词: {})",
-                        config.getSceneRule().getSceneName(), config.getSceneRule().getKeywords());
-            }
-            if (config.getKnowledgeFiles() != null && !config.getKnowledgeFiles().isEmpty()) {
-                log.info("[Workspace] 知识文件: {}", config.getKnowledgeFiles());
-            }
-            if (config.getSkillNames() != null && !config.getSkillNames().isEmpty()) {
-                log.info("[Workspace] 技能: {}", config.getSkillNames());
-            }
-            if (config.getSubAgentIds() != null && !config.getSubAgentIds().isEmpty()) {
-                log.info("[Workspace] 子 Agent: {}", config.getSubAgentIds());
-            }
-        });
-    }
 }

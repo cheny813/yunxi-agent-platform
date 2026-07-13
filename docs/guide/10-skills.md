@@ -11,7 +11,7 @@
 | 位置 | 说明 | 框架加载 |
 |------|------|----------|
 | `.agentscope/workspace/skills/` | **主技能目录**，存放所有技能 | ✅ Agent 可访问 |
-| `skills/` | 旧目录，保留参考 | ❌ RC3 不自动加载 |
+| `skills/` | 旧目录，保留参考 | ❌ 旧版不自动加载（已由 GA 原生 `AgentSkillRepository` 接管） |
 | `agent-config/.../skills/` | classpath 参考目录 | ❌ 仅参考 |
 
 > **推荐**：所有技能都放在 `.agentscope/workspace/skills/` 目录。
@@ -61,7 +61,7 @@
         └── users/
 ```
 
-> **设计原则**：`skills/` 目录与 `agents/` 目录同级，所有 Agent 工作空间统一放在 `agents/` 子目录下（遵循底层 agentscope-java 框架约定）。`WorkspaceAutoDiscoveryEngine` 启动时只扫描 `agents/` 子目录。全局技能对所有 Agent 可见，Agent 专属技能存放在各自 `agents/{agentName}/skills/` 下。
+> **设计原则**：`skills/` 目录与 `agents/` 目录同级，所有 Agent 工作空间统一放在 `agents/` 子目录下（遵循底层 agentscope-java 框架约定）。全局技能对所有 Agent 可见，Agent 专属技能存放在各自 `agents/{agentName}/skills/` 下。
 
 ---
 
@@ -179,9 +179,9 @@ agentscope:
 
 ## 框架演进说明
 
-> **RC3 版本**：技能系统仅支持 `skill_manage` 和 `skill_propose` 工具。
+> **当前版本（基于 AgentScope-Java 2.0.0 GA）**：技能系统由框架原生 `AgentSkillRepository` 托管，提供 `skill_manage`（列出、启用、禁用技能）与 `skill_propose`（提案新技能）等内置工具。
 >
-> **未来 RC4+**：将支持 Git/Nacos/MySQL 技能市场、自学习闭环、可见性过滤等高级功能。届时文档将同步更新。
+> **未来规划**：将支持 Git/Nacos/MySQL 技能市场、自学习闭环、可见性过滤等高级功能。届时文档将同步更新。
 
 ---
 

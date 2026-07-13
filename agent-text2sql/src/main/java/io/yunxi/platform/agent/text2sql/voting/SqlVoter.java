@@ -15,7 +15,7 @@ import java.util.*;
  * </p>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Component
 public class SqlVoter {
@@ -30,14 +30,21 @@ public class SqlVoter {
     }
 
     /**
-     * 投票接口
+     * SQL 执行器接口，定义候选 SQL 的执行与结果返回契约。
+     * <p>
+     * 投票机制通过该接口解耦具体的 SQL 执行方式（例如 MCP 执行器或内存执行器），
+     * 调用方只需提供实现并返回统一的 {@link ExecutionResult}。
+     * </p>
      */
     public interface SqlExecutor {
         ExecutionResult execute(String sql);
     }
 
     /**
-     * 执行结果
+     * SQL 执行结果封装，承载单次查询的列结构、数据行、耗时与成功状态。
+     * <p>
+     * 投票阶段通过 {@link #isSuccess()} 判断结果是否可用，并通过数据行进行结果集聚类比较。
+     * </p>
      */
     public static class ExecutionResult {
         private List<String> columns;
@@ -221,7 +228,12 @@ public class SqlVoter {
     }
 
     /**
-     * MCP SQL 执行器
+     * 基于 MCP 数据库客户端的 SQL 执行器实现。
+     * <p>
+     * 通过 {@link io.yunxi.platform.spi.text2sql.DatabaseClient} 执行候选 SQL，
+     * 并将返回的 JSON 结果解析为 {@link ExecutionResult}，其中列名与数据行由
+     * {@code data.columns}/{@code data.rows} 字段映射而来。
+     * </p>
      */
     public static class McpSqlExecutor implements SqlExecutor {
         private final DatabaseClient databaseClient;

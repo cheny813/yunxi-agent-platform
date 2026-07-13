@@ -31,7 +31,11 @@ public class EmbeddingService {
     /** 注册的提供者 */
     private final Map<String, EmbeddingProvider> providers = new ConcurrentHashMap<>();
 
-    /** 自动注入的提供者列表 */
+    /**
+     * 注入并注册所有可用的 Embedding 提供者
+     *
+     * @param providerList 自动装配的提供者列表（可能为 null）
+     */
     @Autowired(required = false)
     public void setProviders(List<EmbeddingProvider> providerList) {
         if (providerList != null) {
@@ -64,7 +68,9 @@ public class EmbeddingService {
     }
 
     /**
-     * 获取提供者名称
+     * 获取当前默认提供者的名称
+     *
+     * @return 默认提供者名称，未注册时返回 "unknown"
      */
     public String getProviderName() {
         EmbeddingProvider provider = providers.get(DEFAULT_PROVIDER);

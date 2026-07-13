@@ -9,24 +9,22 @@ import java.util.*;
 /**
  * 多数据库配置
  * <p>
- * 配置各业务数据库的显示名称和 NL2SQL 表名映射。
- * 数据库连接信息由 mcp-database 服务器统一管理（通过 YAML 配置），
- * Agent 平台通过 db_id 参数路由到对应的数据库。
+ * 配置各业务数据库的显示名称、JDBC 连接和 NL2SQL 表名映射，
+ * 通过 jdbcUrl/username/password 直接 JDBC 连接业务数据库。
  * </p>
  *
  * 使用示例：
- * 
+ *
  * <pre>
  * mcp-databases:
  *   nutrition:
  *     display-name: 营养数据库
+ *     jdbc-url: jdbc:mysql://192.168.10.153:3306/nutrition_db
+ *     username: root
+ *     password: root
  *     table-name-mappings:
  *       菜品: dish
  *       食材: ingredient
- *   finance:
- *     display-name: 经费数据库
- *   foodsafety:
- *     display-name: 食安数据库
  * </pre>
  *
  * @author yunxi-agent-platform
@@ -51,15 +49,20 @@ public class MultiDatabaseConfig {
 
     /**
      * 数据库信息
-     *
-     * @author yunxi-agent-platform
      */
     @Data
     public static class DatabaseInfo {
-        /**
-         * 显示名称
-         */
+        /** 显示名称 */
         private String displayName;
+
+        /** JDBC 连接地址，直接连接业务数据库 */
+        private String jdbcUrl;
+
+        /** 数据库用户名 */
+        private String username;
+
+        /** 数据库密码 */
+        private String password;
 
         /**
          * 表名映射配置
@@ -68,13 +71,10 @@ public class MultiDatabaseConfig {
          */
         private Map<String, String> tableNameMappings = new HashMap<>();
 
-        /**
-         * 操作类型映射
-         */
+        /** 操作类型映射 */
         private Map<String, String> operationMappings = new HashMap<>();
 
         public DatabaseInfo() {
-            // 默认操作类型映射
             operationMappings.put("统计", "statistics");
             operationMappings.put("汇总", "statistics");
             operationMappings.put("总数", "statistics");

@@ -25,7 +25,7 @@ import io.yunxi.platform.shared.mapper.UserFileMapper;
  * 文件上传服务
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Service
 public class FileUploadService {

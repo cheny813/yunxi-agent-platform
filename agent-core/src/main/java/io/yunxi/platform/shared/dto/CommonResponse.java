@@ -21,7 +21,7 @@ import lombok.Data;
  * </pre>
  *
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Data
 public class CommonResponse<T> {

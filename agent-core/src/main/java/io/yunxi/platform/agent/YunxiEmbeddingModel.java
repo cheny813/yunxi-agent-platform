@@ -12,11 +12,10 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 /**
- * 将项目 EmbeddingService 适配为 V2.0 AgentScope EmbeddingModel 接口。
+ * 将项目 EmbeddingService 适配为 AgentScope 的 EmbeddingModel 接口。
  *
  * <p>
- * 替代 V1.1 中使用动态代理的 AgentscopeEmbeddingModelAdapter，直接实现接口。
- * V2.0 的 EmbeddingModel 要求：
+ * 直接实现 EmbeddingModel 接口，提供以下能力：
  * </p>
  * <ul>
  * <li>{@link #embed(ContentBlock)} — 对 TextBlock 类型生成向量</li>
@@ -66,7 +65,7 @@ public class YunxiEmbeddingModel implements EmbeddingModel {
      * </p>
      *
      * <p>
-     * Float → double 转换：底层返回 List&lt;Float&gt;，V2.0 接口要求 double[]，
+     * Float → double 转换：底层返回 List&lt;Float&gt;，接口要求 double[]，
      * 通过流式映射进行类型转换。
      * </p>
      *

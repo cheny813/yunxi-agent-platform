@@ -9,7 +9,7 @@
  * 
  * @example
  * // 基础使用
- * const client = new AgentClient('http://localhost:8080');
+ * const client = new AgentClient('http://localhost:40001');
  * const response = await client.chat('如何使用JavaScript?');
  * 
  * @example
@@ -22,7 +22,7 @@
 class AgentClient {
     /**
      * 创建AgentClient实例
-     * @param {string} baseUrl - 服务基础URL (例如: "http://localhost:8080")
+     * @param {string} baseUrl - 服务基础URL (例如: "http://localhost:40001")
      * @param {Object} options - 可选配置
      * @param {string} options.defaultUserId - 默认用户ID
      * @param {string} options.defaultAgentName - 默认Agent名称

@@ -15,10 +15,13 @@ package io.yunxi.platform.shared.constants;
  * </ul>
  * 
  * @author yunxi-agent-platform
- * @version 1.0.0
+ * @version 2.0.0
  */
 public final class ConfigDefaults {
 
+    /**
+     * 私有构造器，禁止实例化（工具类）。
+     */
     private ConfigDefaults() {
         // 工具类，禁止实例化
     }
