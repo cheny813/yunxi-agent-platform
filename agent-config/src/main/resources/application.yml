@@ -81,6 +81,10 @@ spring:
 logging:
   file:
     path: ${LOG_DIR:logs}
+  # 开启 AgentScope 模型调用层 DEBUG 日志（含请求/响应与 usage 相关信息）。
+  # 注意：DEBUG 级别会打印较完整的模型请求/响应体，生产环境可按需关闭。
+  level:
+    io.agentscope.core.model: DEBUG
 
 # ============================================================
 # 运维端点和健康检查

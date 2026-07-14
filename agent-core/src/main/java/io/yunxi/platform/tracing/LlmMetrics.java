@@ -1,10 +1,13 @@
 package io.yunxi.platform.tracing;
 
+import io.agentscope.core.model.ChatUsage;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -15,6 +18,8 @@ import java.util.List;
  * @see ObservabilityAutoConfiguration
  */
 public class LlmMetrics {
+
+    private static final Logger log = LoggerFactory.getLogger(LlmMetrics.class);
 
     private static final AttributeKey<String> ATTR_MODEL = AttributeKey.stringKey("llm.model");
     private static final AttributeKey<String> ATTR_PROVIDER = AttributeKey.stringKey("llm.provider");
@@ -59,5 +64,25 @@ public class LlmMetrics {
      */
     public void recordDuration(String model, String provider, double durationMs) {
         llmDuration.record(durationMs, Attributes.of(ATTR_MODEL, model, ATTR_PROVIDER, provider));
+    }
+
+    /**
+     * 将一次 LLM 调用的 token 消耗与耗时同时写入日志与 OpenTelemetry 指标。
+     * <p>日志以 INFO 级别打印 input/output/cached/total token 与模型调用耗时（秒）；
+     * 指标分别上报 {@code llm.token.total}（区分 prompt/completion）与 {@code llm.duration}（毫秒）。</p>
+     *
+     * @param model    模型名称（或 agent 名 / 会话 ID，用作指标维度）
+     * @param provider 模型提供方（yunxi 统一标记为 yunxi）
+     * @param usage    GA {@link ChatUsage}，含 input/output/cached token 与耗时；为 null 时直接返回
+     */
+    public void recordAndLogUsage(String model, String provider, ChatUsage usage) {
+        if (usage == null) {
+            return;
+        }
+        log.info("[LLM Usage] model={}, provider={}, inputTokens={}, outputTokens={}, cachedTokens={}, totalTokens={}, time={}s",
+                model, provider, usage.getInputTokens(), usage.getOutputTokens(),
+                usage.getCachedTokens(), usage.getTotalTokens(), usage.getTime());
+        recordTokenUsage(model, provider, usage.getInputTokens(), usage.getOutputTokens());
+        recordDuration(model, provider, usage.getTime() * 1000.0);
     }
 }

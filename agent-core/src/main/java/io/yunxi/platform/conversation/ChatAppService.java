@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
+import io.agentscope.core.model.ChatUsage;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.agent.profile.ProfileRouter;
 import io.yunxi.platform.agent.service.AgentService;
@@ -31,6 +32,7 @@ import io.yunxi.platform.shared.dto.StreamChatRequest;
 import io.yunxi.platform.shared.entity.ConversationEntity;
 import io.yunxi.platform.shared.exception.BadRequestException;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
+import io.yunxi.platform.tracing.LlmMetrics;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
@@ -100,6 +102,9 @@ public class ChatAppService {
     /** 安全上下文 */
     private final SecurityContext securityContext;
 
+    /** LLM 指标与日志收集器（记录 token 消耗与耗时） */
+    private final LlmMetrics llmMetrics;
+
     /**
      * 构造对话应用服务
      *
@@ -118,6 +123,7 @@ public class ChatAppService {
             SceneDetectionService sceneDetectionService,
             FileUploadService fileUploadService,
             SecurityContext securityContext,
+            LlmMetrics llmMetrics,
             ProfileRouter profileRouter) {
         this.agentService = agentService;
         this.profileRouter = profileRouter;
@@ -127,6 +133,7 @@ public class ChatAppService {
         this.sceneDetectionService = sceneDetectionService;
         this.fileUploadService = fileUploadService;
         this.securityContext = securityContext;
+        this.llmMetrics = llmMetrics;
     }
 
     /**
@@ -225,6 +232,8 @@ public class ChatAppService {
             if (responseMsg == null) {
                 throw new RuntimeException("Agent 响应为空");
             }
+
+            llmMetrics.recordAndLogUsage(name, "yunxi", responseMsg.getUsage());
 
             return new ChatResponse(responseMsg.getTextContent());
 
@@ -371,6 +380,8 @@ public class ChatAppService {
             conversationDomainService.saveConversation(conversation);
 
             String reply = responseMsg.getTextContent();
+
+            llmMetrics.recordAndLogUsage(conversation.getAgentName(), "yunxi", responseMsg.getUsage());
 
             ChatResponse response = new ChatResponse(reply);
             response.setConversationId(request.getConversationId());
@@ -786,9 +797,14 @@ public class ChatAppService {
                         return Flux.empty();
                     }
                     if (type == io.agentscope.core.event.AgentEventType.AGENT_RESULT) {
-                        if (event instanceof io.agentscope.core.event.AgentResultEvent resultEvent) {
-                            Msg resultMsg = resultEvent.getResult();
-                            String reasoningText = thinkingAccumulator.toString();
+                    if (event instanceof io.agentscope.core.event.AgentResultEvent resultEvent) {
+                        Msg resultMsg = resultEvent.getResult();
+                        ChatUsage usage = resultMsg != null ? resultMsg.getUsage() : null;
+                        if (usage != null) {
+                            llmMetrics.recordAndLogUsage(
+                                    conversationId != null ? conversationId : "stream", "yunxi", usage);
+                        }
+                        String reasoningText = thinkingAccumulator.toString();
                             if (!reasoningText.isEmpty()) {
                                 Map<String, Object> metadata = new HashMap<>();
                                 if (resultMsg.getMetadata() != null) {
