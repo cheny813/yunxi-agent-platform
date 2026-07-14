@@ -120,6 +120,20 @@
             <artifactId>agentscope-extensions-model-anthropic</artifactId>
             <version>${agentscope.version}</version>
         </dependency>
+
+        <!-- Gemini 模型扩展（GA 2.0.0 已从 core.model 拆分到独立 extension 模块） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-gemini</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+
+        <!-- Ollama 模型扩展（ollama:modelName 由 ModelRegistry 内置工厂托管，需扩展模块在 classpath） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-ollama</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
