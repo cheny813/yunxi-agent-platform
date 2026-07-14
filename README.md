@@ -65,6 +65,8 @@ docker compose up -d
 | MinIO | 9000 | Milvus 对象存储（内部） |
 | etcd | 2379 | Milvus 元数据协调（内部） |
 | OTel Collector | 4318 | 链路追踪收集器（消除 "Failed to connect to 127.0.0.1:4318" 日志错误） |
+| Jaeger UI | 16686 | 链路追踪可视化（http://127.0.0.1:16686，可选） |
+| Attu UI | 8000 | Milvus 向量库 Web 管理界面（http://127.0.0.1:8000，可选） |
 
 首次启动约需 30-60 秒（主要等 Milvus 就绪）。可用 `docker compose ps` 确认所有容器状态。
 

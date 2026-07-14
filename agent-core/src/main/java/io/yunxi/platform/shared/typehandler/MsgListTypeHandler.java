@@ -2,6 +2,7 @@ package io.yunxi.platform.shared.typehandler;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.message.Msg;
 import org.apache.ibatis.type.BaseTypeHandler;
@@ -55,7 +56,22 @@ public class MsgListTypeHandler extends BaseTypeHandler<List<Msg>> {
      * 使用单例模式，避免重复创建对象开销
      * </p>
      */
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    /**
+     * Jackson ObjectMapper，用于JSON序列化和反序列化
+     * <p>
+     * 使用单例模式，避免重复创建对象开销。
+     * </p>
+     * <p>
+     * 关键配置：{@code FAIL_ON_UNKNOWN_PROPERTIES = false}。
+     * AgentScope 框架的 {@code io.agentscope.core.model.ChatUsage} 存在序列化/反序列化不对称：
+     * 其 {@code @JsonCreator} 构造器只声明了 inputTokens/outputTokens/cachedTokens/time 四个参数，
+     * 但同时提供了 {@code getTotalTokens()} 派生 getter，导致序列化时会写出 {@code totalTokens} 字段，
+     * 反序列化时却因构造器不含该参数而被识别为未知属性并抛 {@link com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException}。
+     * 关闭该开关可使读写对框架模型字段演进（含 totalTokens）保持兼容，避免历史会话反序列化失败。
+     * </p>
+     */
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /**
      * List<Msg> 的类型引用

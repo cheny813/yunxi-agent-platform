@@ -8,10 +8,12 @@ import org.slf4j.LoggerFactory;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.ModelCallEndEvent;
 import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.middleware.ModelCallInput;
 import io.agentscope.core.middleware.ReasoningInput;
+import io.agentscope.core.model.ChatUsage;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
@@ -139,12 +141,27 @@ public class ReActSpanMiddleware implements MiddlewareBase {
     @Override
     public Flux<AgentEvent> onModelCall(Agent agent, RuntimeContext ctx, ModelCallInput input,
             Function<ModelCallInput, Flux<AgentEvent>> next) {
-        // 创建最内层 llm.invoke Span，记录调用的模型名称
+        // 创建最内层 llm.invoke Span，记录调用的模型名称与真实的 token 消耗
+        String modelName = input.model() != null ? input.model().getModelName() : "unknown";
         Span span = otelTracer.spanBuilder("llm.invoke")
-                .setAttribute("model.name", "AgentScope")
+                .setAttribute("model.name", modelName)
+                .setAttribute("gen_ai.operation.name", "chat")
+                .setAttribute("gen_ai.request.model", modelName)
+                .setSpanKind(SpanKind.CLIENT)
                 .startSpan();
         try (Scope ignored = span.makeCurrent()) {
             return next.apply(input)
+                    .doOnNext(event -> {
+                        // 监听模型调用结束事件，把 token 消耗写入 Span 属性，
+                        // 使 Jaeger/Zipkin 的 trace 视图可直接看到 input/output/cached/total token。
+                        if (event instanceof ModelCallEndEvent mce && mce.getUsage() != null) {
+                            ChatUsage usage = mce.getUsage();
+                            span.setAttribute("gen_ai.usage.input_tokens", (long) usage.getInputTokens());
+                            span.setAttribute("gen_ai.usage.output_tokens", (long) usage.getOutputTokens());
+                            span.setAttribute("gen_ai.usage.cache_read_input_tokens", (long) usage.getCachedTokens());
+                            span.setAttribute("gen_ai.usage.total_tokens", (long) usage.getTotalTokens());
+                        }
+                    })
                     .doOnComplete(span::end)
                     .doOnError(e -> {
                         span.recordException(e);

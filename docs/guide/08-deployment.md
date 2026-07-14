@@ -154,7 +154,7 @@ java -Xms2g -Xmx2g \
 docker compose up -d
 ```
 
-将启动以下服务（共 6 个容器）：
+将启动以下服务（共 8 个容器，其中 Jaeger / Attu 为可选可视化组件）：
 
 | 容器 | 镜像 | 端口 | 用途 |
 |------|------|------|------|
@@ -163,7 +163,11 @@ docker compose up -d
 | yunxi-milvus | milvusdb/milvus:v2.3.3 | 19530 | 向量数据库 |
 | yunxi-milvus-etcd | etcd:v3.5.5 | 2379 | Milvus 元数据 |
 | yunxi-milvus-minio | minio/minio | 9000 | Milvus 存储 |
-| yunxi-otel-collector | otel/opentelemetry-collector-contrib:0.97.0 | 4318 | 链路追踪 |
+| yunxi-otel-collector | otel/opentelemetry-collector-contrib:0.97.0 | 4318 | 链路追踪收集 |
+| yunxi-jaeger | jaegertracing/all-in-one:1.57 | 16686 | 链路追踪可视化（可选） |
+| yunxi-attu | zilliz/attu:v2.4 | 8000 | Milvus Web 管理界面（可选） |
+
+> Milvus 依赖 etcd 与 minio 先进入 healthy 后才会启动，首次启动约需 30-60 秒。`milvus` 服务的 `command: ["milvus", "run", "standalone"]` 不可省略，否则容器会瞬间 `Exited (1)` 退出（详见 FAQ 安装部署章节）。
 
 OTel Collector 的配置文件位于 `scripts/otel-collector-config.yaml`，默认将 trace 输出到 Docker 日志。
 

@@ -5,7 +5,7 @@
 # 停止： docker compose down
 # 重置： docker compose down -v && docker compose up -d
 #
-# 服务清单（共 6 个容器 + 1 个本地进程）：
+# 服务清单（共 7 个容器 + 1 个本地进程）：
 # ┌──────────────────┬────────┬───────────────────────────────────┐
 # │ 服务              │ 端口    │ 说明                              │
 # ├──────────────────┼────────┼───────────────────────────────────┤
@@ -14,13 +14,16 @@
 # │ Milvus Standalone │ 19530  │ 向量数据库（记忆/食谱语义检索）    │
 # │ MinIO (Milvus)   │ 9000   │ Milvus 对象存储（内部）            │
 # │ etcd (Milvus)    │ 2379   │ Milvus 元数据协调（内部）           │
-# │ OTel Collector   │ 4318   │ 链路追踪收集器（可选）             │
+# │ OTel Collector   │ 4317/4318│ 链路追踪收集器（可选，转发至 Jaeger）│
+# │ Jaeger UI        │ 16686  │ 链路追踪可视化（可选）             │
+# │ Attu UI          │ 8000   │ Milvus 向量库 Web 管理界面（可选）  │
 # ├──────────────────┼────────┼───────────────────────────────────┤
 # │ Ollama (本地进程) │ 11434  │ 向量嵌入（需单独安装 ollama pull） │
 # └──────────────────┴────────┴───────────────────────────────────┘
 #
 # Milvus 首次启动需要 30-60 秒，请耐心等待。
-# OTel Collector 不启动也不影响核心功能，仅追踪丢失。
+# OTel Collector / Jaeger 不启动也不影响核心功能，仅链路追踪丢失。
+# 仅需关闭可视化时：docker compose stop jaeger otel-collector
 #
 # 注意：LLM API Key 请在 start.ps1 或环境变量中配置。
 
@@ -147,6 +150,9 @@ services:
       MINIO_ADDRESS: minio:9000
       MINIO_ACCESS_KEY_ID: minioadmin
       MINIO_SECRET_ACCESS_KEY: minioadmin
+    # 关键：milvusdb/milvus 独立镜像无默认 Cmd（镜像 Config.Cmd=null，entrypoint 仅 ["/tini","--"]）。
+    # 必须显式指定启动命令，否则 /tini 无程序可执行，容器会在 0.x 秒内 Exited(1) 秒退。
+    command: ["milvus", "run", "standalone"]
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -158,6 +164,23 @@ services:
       timeout: 20s
       retries: 3
       start_period: 60s
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Attu — Milvus 向量库 Web 管理界面（可选）
+  #   访问 http://127.0.0.1:8000 ，连接 milvus:19530
+  # ============================================================
+  attu:
+    image: zilliz/attu:v2.4
+    container_name: yunxi-attu
+    restart: unless-stopped
+    environment:
+      - MILVUS_URL=milvus:19530
+    ports:
+      - "8000:3000" # Attu Web UI（容器内 3000）
+    depends_on:
+      - milvus
     networks:
       - yunxi-net
 
@@ -174,6 +197,24 @@ services:
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./scripts/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Jaeger — 链路追踪可视化（可选）
+  #   访问 http://127.0.0.1:16686 查看调用链
+  #   trace 由 otel-collector 通过 otlp/jaeger exporter 转发至此
+  # ============================================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: yunxi-jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger UI
+    depends_on:
+      - otel-collector
     networks:
       - yunxi-net
 

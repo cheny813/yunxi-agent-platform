@@ -113,6 +113,10 @@ public class ConversationDomainService {
             log.warn("Redis 缓存写入失败: {}", e.getMessage());
         }
 
+        // 失效用户会话列表缓存：新建会话会使该用户的列表发生变化，
+        // 否则首屏查询写入的空列表缓存（TTL 5分钟）会掩盖新会话（见 listConversationsByUserId）。
+        invalidateUserConversationList(userId);
+
         log.info("创建会话: id={}, agentName={}, userId={}, title={}", id, agentName, userId, title);
 
         ConversationInfoDto info = new ConversationInfoDto();
@@ -414,12 +418,15 @@ public class ConversationDomainService {
             return info;
         }).toList();
 
-        // 缓存到 Redis（忽略失败）
-        try {
-            cacheProvider.put(CacheNamespaces.USER_CONVERSATIONS, userId, result,
-                    Duration.ofMinutes(5)); // 用户会话列表缓存 TTL: 5 分钟
-        } catch (Exception e) {
-            log.warn("Redis 缓存写入失败: {}", e.getMessage());
+        // 仅对非空结果写缓存：避免把空列表写进 Redis，否则会掩盖之后新增的会话
+        // （空列表不缓存后，下次查询将直接回源数据库，读到最新数据）。
+        if (!result.isEmpty()) {
+            try {
+                cacheProvider.put(CacheNamespaces.USER_CONVERSATIONS, userId, result,
+                        Duration.ofMinutes(5)); // 用户会话列表缓存 TTL: 5 分钟
+            } catch (Exception e) {
+                log.warn("Redis 缓存写入失败: {}", e.getMessage());
+            }
         }
 
         return result;
@@ -468,10 +475,34 @@ public class ConversationDomainService {
             conversationRepository.save(entity);
             // 同步更新缓存
             updateCache(entity);
+            // 失效用户会话列表缓存：标题/最后更新时间/消息数可能变化，
+            // 必须让下次列表查询回源，否则会读到过期的列表缓存。
+            if (entity.getUserId() != null) {
+                invalidateUserConversationList(entity.getUserId());
+            }
             log.debug("会话已保存到数据库: id={}, messages={}", entity.getId(),
                     entity.getMessages() != null ? entity.getMessages().size() : 0);
         } catch (Exception e) {
             log.error("保存会话到数据库失败: id={}", entity.getId(), e);
+        }
+    }
+
+    /**
+     * 失效用户会话列表缓存。
+     *
+     * <p>新增或更新会话后必须调用，否则 {@link #listConversationsByUserId(String)} 可能命中
+     * 过期的 {@code USER_CONVERSATIONS} 缓存而读不到最新数据（典型表现为“对话后历史会话列表为空”）。</p>
+     *
+     * @param userId 用户 ID
+     */
+    private void invalidateUserConversationList(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return;
+        }
+        try {
+            cacheProvider.delete(CacheNamespaces.USER_CONVERSATIONS, userId);
+        } catch (Exception e) {
+            log.warn("清理用户会话列表缓存失败: userId={}, {}", userId, e.getMessage());
         }
     }
 

@@ -819,6 +819,12 @@ public class ChatAppService {
                             }
                             String text = resultMsg != null ? resultMsg.getTextContent() : null;
                             if (text != null && !text.isEmpty()) {
+                                // 持久化会话：用户消息已在前面 addMessage，此处补存助手回复，
+                                // 确保刷新 UI 后能恢复完整对话
+                                if (conversation != null) {
+                                    conversation.addMessage(resultMsg);
+                                    conversationDomainService.saveConversation(conversation);
+                                }
                                 int chunkSize = 200;
                                 return Flux.fromStream(
                                         splitTextIntoChunks(text, chunkSize).stream())

@@ -24,10 +24,15 @@ exporters:
     loglevel: info
     sampling_initial: 5
     sampling_thereafter: 200
+  # 转发 trace 到 Jaeger（docker-compose 中的 yunxi-jaeger 容器）
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [logging, otlp/jaeger]
