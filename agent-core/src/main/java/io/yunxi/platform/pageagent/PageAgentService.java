@@ -12,13 +12,18 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
+import io.agentscope.core.message.DataBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ThinkingBlock;
+import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.model.ChatResponse;
+import io.agentscope.core.model.ChatUsage;
 import io.agentscope.core.model.Model;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import io.yunxi.platform.tracing.LlmMetrics;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -106,6 +111,9 @@ public class PageAgentService {
      */
     private final Model chatModel;
 
+    /** LLM 指标与日志收集器（记录 token 消耗与耗时） */
+    private final LlmMetrics llmMetrics;
+
     /**
      * Page Agent 服务
      *
@@ -114,7 +122,9 @@ public class PageAgentService {
      */
     public PageAgentService(
             AgentscopeCoreProperties properties,
-            ModelFactory modelFactory) {
+            ModelFactory modelFactory,
+            LlmMetrics llmMetrics) {
+        this.llmMetrics = llmMetrics;
         // 根据配置创建模型
         if (properties != null && properties.getApiKey() != null && !properties.getApiKey().isBlank()) {
             this.chatModel = modelFactory.create(null);
@@ -260,11 +270,23 @@ public class PageAgentService {
                 for (ChatResponse resp : responses) {
                     if (resp != null && resp.getContent() != null) {
                         for (var block : resp.getContent()) {
-                            log.info("PageAgent block: type={}", block.getClass().getSimpleName());
-                            if (block instanceof TextBlock) {
-                                sb.append(((TextBlock) block).getText());
+                            if (block instanceof TextBlock tb) {
+                                log.info("PageAgent block: type=TextBlock, text={}", truncate(tb.getText(), 200));
+                                sb.append(tb.getText());
+                            } else if (block instanceof ThinkingBlock tb) {
+                                log.info("PageAgent block: type=ThinkingBlock, thinking={}",
+                                        truncate(tb.getThinking(), 200));
+                            } else if (block instanceof ToolUseBlock tb) {
+                                log.info("PageAgent block: type=ToolUseBlock, tool={}, input={}",
+                                        tb.getName(), truncate(String.valueOf(tb.getInput()), 200));
+                            } else if (block instanceof DataBlock db) {
+                                log.info("PageAgent block: type=DataBlock, name={}, source={}",
+                                        db.getName(), db.getSource());
+                            } else {
+                                log.info("PageAgent block: type={}", block.getClass().getSimpleName());
                             }
                         }
+                        llmMetrics.recordAndLogUsage("page-agent", "yunxi", resp.getUsage());
                     }
                 }
                 assistantMessage = sb.toString();
@@ -540,11 +562,26 @@ public class PageAgentService {
             if (responses != null) {
                 for (ChatResponse resp : responses) {
                     if (resp.getContent() != null) {
-                        resp.getContent().stream()
-                                .filter(block -> block instanceof TextBlock)
-                                .map(block -> ((TextBlock) block).getText())
-                                .forEach(contentBuilder::append);
+                        for (var block : resp.getContent()) {
+                            if (block instanceof TextBlock tb) {
+                                log.info("PageAgent proxy block: type=TextBlock, text={}", truncate(tb.getText(), 200));
+                                contentBuilder.append(tb.getText());
+                            } else if (block instanceof ThinkingBlock tb) {
+                                log.info("PageAgent proxy block: type=ThinkingBlock, thinking={}",
+                                        truncate(tb.getThinking(), 200));
+                            } else if (block instanceof ToolUseBlock tb) {
+                                log.info("PageAgent proxy block: type=ToolUseBlock, tool={}, input={}",
+                                        tb.getName(), truncate(String.valueOf(tb.getInput()), 200));
+                            } else if (block instanceof DataBlock db) {
+                                log.info("PageAgent proxy block: type=DataBlock, name={}, source={}",
+                                        db.getName(), db.getSource());
+                            } else {
+                                log.info("PageAgent proxy block: type={}", block.getClass().getSimpleName());
+                            }
+                        }
                     }
+                    llmMetrics.recordAndLogUsage("page-agent-proxy", "yunxi",
+                            resp != null ? resp.getUsage() : null);
                 }
             }
 
@@ -591,10 +628,26 @@ public class PageAgentService {
             choice.put("message", message);
             choice.put("finish_reason", "stop");
 
-            Map<String, Object> usage = Map.of(
-                    "prompt_tokens", 0,
-                    "completion_tokens", 0,
-                    "total_tokens", 0);
+            // 从模型响应聚合真实 token 用量（取末段非空 usage；缺失时回退 0）
+            ChatUsage aggregatedUsage = null;
+            if (responses != null) {
+                for (int i = responses.size() - 1; i >= 0; i--) {
+                    ChatUsage u = responses.get(i) != null ? responses.get(i).getUsage() : null;
+                    if (u != null) {
+                        aggregatedUsage = u;
+                        break;
+                    }
+                }
+            }
+            Map<String, Object> usage = aggregatedUsage != null
+                    ? Map.of(
+                            "prompt_tokens", aggregatedUsage.getInputTokens(),
+                            "completion_tokens", aggregatedUsage.getOutputTokens(),
+                            "total_tokens", aggregatedUsage.getTotalTokens())
+                    : Map.of(
+                            "prompt_tokens", 0,
+                            "completion_tokens", 0,
+                            "total_tokens", 0);
 
             return Map.of(
                     "id", "chatcmpl-" + UUID.randomUUID().toString().replace("-", "").substring(0, 24),
@@ -684,7 +737,21 @@ public class PageAgentService {
             }
             log.info("Loaded {} page-agent configs: {}", pageAgentConfigs.size(), pageAgentConfigs.keySet());
         } catch (Exception e) {
-            log.error("Failed to load page-agent-config.yml", e);
+                log.error("Failed to load page-agent-config.yml", e);
         }
+    }
+
+    /**
+     * 将文本截断到指定长度，超出部分以"（已截断）"结尾，避免日志过长。
+     *
+     * @param text   待截断文本（可为 null）
+     * @param maxLen 最大长度（字符数）
+     * @return 截断后的文本；为 null 时返回 null
+     */
+    private static String truncate(String text, int maxLen) {
+        if (text == null) {
+            return null;
+        }
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...(已截断)";
     }
 }

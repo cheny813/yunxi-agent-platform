@@ -641,6 +641,51 @@ boolean valid = securityContext.validateJwtToken(token);
 - 性能优化依据
 - 容量规划参考
 
+### LLM 调用 Usage 可观测性
+
+yunxi 业务层现已统一采集每次 LLM 调用的 token 消耗与耗时，并在日志与指标两个维度暴露，便于排查成本、性能与异常。
+
+**采集入口**：`io.yunxi.platform.tracing.LlmMetrics#recordAndLogUsage(model, provider, ChatUsage)`。该方法接收 GA 的 `io.agentscope.core.model.ChatUsage`（含 `inputTokens` / `outputTokens` / `cachedTokens` / `totalTokens` / `time` 秒），`usage` 为 null 时直接返回，不打印也不报错（某些 provider 不回填 usage 属正常）。
+
+**1. 日志（INFO）**
+
+`recordAndLogUsage` 以 INFO 级别打印一行 `[LLM Usage]` 日志，格式如下：
+
+```
+[LLM Usage] model=recipe-agent, provider=yunxi, inputTokens=1234, outputTokens=256, cachedTokens=800, totalTokens=1490, time=2.13s
+```
+
+除汇总 usage 外，各调用点还会按 block 类型打印响应内容摘要（便于排查推理/工具调用过程）：
+
+| 调用点 | 维度 `model` 取值 | `provider` | 额外打印 |
+|--------|------------------|-----------|---------|
+| `ChatAppService.chat()` | agent 名 | `yunxi` | — |
+| `ChatAppService.chatWithConversation()` | conversation 的 agent 名 | `yunxi` | — |
+| `ChatAppService` 流式 `AGENT_RESULT` | `conversationId`（无则 `stream`） | `yunxi` | — |
+| `PageAgentService.execute()` | `page-agent` | `yunxi` | `TextBlock`(文本) / `ThinkingBlock`(推理) / `ToolUseBlock`(工具名+入参) / `DataBlock`(名称+来源)，长文本截断至 200 字 |
+| `PageAgentService` OpenAI 代理 | `page-agent-proxy` | `yunxi` | 同上；且代理返回的 `usage` 由硬编码 0 改为聚合真实 `ChatUsage` |
+
+**2. OpenTelemetry 指标**
+
+指标由 `ObservabilityAutoConfiguration` 创建的 `LlmMetrics` Bean 上报（需在 `yunxi.observability.enabled=true` 默认开启时生效），可通过 `management.metrics.export.prometheus` 暴露给 Prometheus：
+
+| 指标名 | 类型 | 单位 | 维度（attribute） | 说明 |
+|--------|------|------|------------------|------|
+| `llm.token.total` | LongCounter | `{token}` | `llm.model`、`llm.provider`、`llm.token.type`（`prompt` / `completion`） | 累计消耗 token，区分输入/输出 |
+| `llm.duration` | DoubleHistogram | `ms` | `llm.model`、`llm.provider` | 模型调用耗时直方图（桶边界 0.5/1/2/5/10/30 秒） |
+
+**3. 框架级 DEBUG 日志（可选）**
+
+除业务层日志外，可开启 AgentScope 模型调用层的 DEBUG 日志，观察更完整的请求/响应体与框架侧 usage 信息：
+
+```yaml
+logging:
+  level:
+    io.agentscope.core.model: DEBUG
+```
+
+> 注意：DEBUG 级别会打印较完整的模型请求/响应体（可能含 prompt 内容），生产环境建议保持关闭或配合脱敏。
+
 ```yaml
 management:
   endpoints:
