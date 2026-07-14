@@ -46,7 +46,7 @@
 # 进入项目目录
 cd yunxi-agent-platform
 
-# 一键启动全部基础设施（MySQL + Redis + Milvus + OTel Collector）
+# 一键启动全部基础设施（MySQL + Redis + Milvus + MinIO + etcd + OTel Collector；可选 Jaeger / Attu）
 docker compose up -d
 
 # 确认所有容器就绪
@@ -108,6 +108,28 @@ redis-cli ping
 # 如果设置了密码
 redis-cli -a your_password ping
 ```
+
+### Q: Milvus 容器瞬间退出（Exited 1），日志只有 `tini` 的 Usage 信息？
+
+**A:** 这是 milvus 服务缺少启动命令导致的典型现象。milvusdb/milvus 独立镜像本身没有默认 `Cmd`（镜像 `Config.Cmd=null`，`Entrypoint` 仅为 `["/tini","--"]`），必须显式声明启动命令，否则 `/tini` 没有要托管的程序，容器在 0.x 秒内即退出码 1 退出。
+
+**修复**：确认 `docker-compose.yml` 的 `milvus` 服务包含：
+
+```yaml
+command: ["milvus", "run", "standalone"]
+```
+
+该字段已在仓库中配置，请勿删除。修改后重建容器：
+
+```bash
+docker rm -f yunxi-milvus
+docker compose up -d milvus
+docker compose ps   # 确认 yunxi-milvus 进入 Up / Healthy
+```
+
+**排查要点**：
+- 若报 `The container name "/yunxi-milvus-minio" is already in use` 之类冲突，通常是上次启动失败的残留容器导致。执行 `docker rm -f yunxi-milvus yunxi-milvus-minio yunxi-milvus-etcd` 清理后重新 `docker compose up -d` 即可，这不是端口冲突。
+- Milvus 依赖 etcd、minio 先 `healthy` 才会启动，首次约 30-60 秒，请耐心等待健康检查发现 Ready。
 
 ---
 

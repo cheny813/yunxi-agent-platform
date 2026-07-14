@@ -67,6 +67,12 @@
 spring:
   config:
     import: optional:classpath:config/imports.yml
+  # 反序列化时忽略未知属性。AgentScope 的 ChatUsage 序列化会写出 derived 字段 totalTokens，
+  # 但反序列化构造器不含该参数，默认会抛 UnrecognizedPropertyException（导致含 usage 的会话/缓存反序列化失败）。
+  # 关闭该开关使读写对框架模型字段演进保持兼容。
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
 
 # 激活的 profile 列表
 # 注意：config/*.yml 是通过 imports.yml（spring.config.import）加载的，与这里的 profiles 无关。

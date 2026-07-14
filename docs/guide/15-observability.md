@@ -29,8 +29,8 @@
              ┌─────────▼──────────┐
              │   双导出器模式       │
              │                     │
-             │ LoggingExporter     │→ 日志文件 [Trace] 行（始终）
-             │ OtlpHttpSpanExporter│→ Jaeger 4318 端口（按配置）
+│ LoggingExporter     │→ 日志文件 [Trace] 行（始终）
+│ OtlpHttpSpanExporter│→ OTel Collector 4318 端口（按配置，再由 collector 转发至 Jaeger）
              └─────────────────────┘
 ```
 
@@ -71,6 +71,13 @@ agent.call (agent.name="nutrition-assistant")
 |...|...|...|...|
 | `react.iteration` | `react.iteration` | 当前迭代次数 | ReActSpanMiddleware |
 | | `react.stop_requested` | 是否请求停止 | ReActSpanMiddleware |
+| `llm.invoke` | `model.name` | 调用的模型名称（真实模型名，不再写死 AgentScope） | ReActSpanMiddleware |
+| | `gen_ai.operation.name` | 固定值 `chat` | ReActSpanMiddleware |
+| | `gen_ai.request.model` | 调用的模型名称 | ReActSpanMiddleware |
+| | `gen_ai.usage.input_tokens` | 本次模型调用输入 token 数 | ReActSpanMiddleware（监听 ModelCallEndEvent） |
+| | `gen_ai.usage.output_tokens` | 本次模型调用输出 token 数 | ReActSpanMiddleware（监听 ModelCallEndEvent） |
+| | `gen_ai.usage.cache_read_input_tokens` | 命中缓存的输入 token 数 | ReActSpanMiddleware（监听 ModelCallEndEvent） |
+| | `gen_ai.usage.total_tokens` | 输入+输出合计 token 数（派生值） | ReActSpanMiddleware（监听 ModelCallEndEvent） |
 
 ---
 
@@ -119,7 +126,24 @@ yunxi:
 
 ## 接入 Jaeger
 
-### 1. 启动 Jaeger
+Jaeger 与 OTel Collector 已集成进 `docker-compose.yml`，一键启动即可，无需手动 `docker run`。
+
+### 方式一：docker-compose 一键启动（推荐）
+
+```bash
+cd d:\work\code\yunxi-agent-platform
+docker compose up -d
+```
+
+`otel-collector` 会将 trace 同时输出到日志和 Jaeger（`exporters: [logging, otlp/jaeger]`，见 `scripts/otel-collector-config.yaml`）。启动后：
+
+1. 启动应用：`.\start.ps1 -Clean`
+2. 访问 http://127.0.0.1:16686，Service 选择 `yunxi-agent-platform`，点击 "Find Traces" 查看调用链
+
+> 仅需关闭可视化：`docker compose stop jaeger otel-collector`，不影响聊天业务（40001）。
+> 注意：`http://127.0.0.1:4318/` 根路径返回 `404 page not found` 属正常，4318 是 OTLP 接收端口而非网页，只有 `/v1/traces` 等上报路径有效。
+
+### 方式二：手动 docker run（独立部署）
 
 ```bash
 docker run -d --name jaeger \
@@ -127,18 +151,16 @@ docker run -d --name jaeger \
   -p 16686:16686 \
   -p 4317:4317 \
   -p 4318:4318 \
-  jaegertracing/all-in-one:latest
+  jaegertracing/all-in-one:1.57
 ```
 
-### 2. 启动应用
+### 启动应用并查看
 
 ```bash
 .\start.ps1 -Clean
 ```
 
-### 3. 查看
-
-访问 http://localhost:16686，Service 选择 `yunxi-agent-platform`，即可看到完整的 Span 树。
+访问 http://127.0.0.1:16686，Service 选择 `yunxi-agent-platform`，即可看到完整的 Span 树。
 
 ---
 
