@@ -1,5 +1,15 @@
 # 更新日志
 
+## [Unreleased]
+
+### ✨ ModelFactory 支持按 Agent 覆盖 / 轻量多租户
+
+- **多租户开关（无需额外 boolean）**：Agent 定义 YAML 的 `model.apiKey` / `model.baseUrl` / `model.stream` 现在对所有提供商生效。不填 → 回退全局 `agentscope.core.*` 或环境变量（单租户默认）；填写 → 经框架 `ModelCreationContext` 透传，实现每 Agent 独立账号（轻量多租户）。
+- **根因修复**：此前 5 个官方提供商工厂（openai / dashscope / anthropic / claude / deepseek）注册的是 `ModelRegistry.registerFactory` 的 1 参重载（`ModelFactory.create(modelId)`），收不到 `ModelCreationContext`，导致 `apiKey`/`baseUrl` 只对 baidu/huawei 自定义实现生效、对官方提供商是死字段。现改为 `ContextModelFactory` 2 参重载（`create(modelId, context)`），从 context 读取覆盖值，优先级统一为 `AgentModelConfig 显式值 > provider 级配置 > 全局配置 > 环境变量`。
+- **gemini / ollama 自动消费**：无自定义工厂的 gemini / ollama 由 SPI 提供商经 `ModelCreationContext` 自动发现并消费配置，与官方文档用法对齐。
+- **`AgentModelConfig` 新增 `stream` 字段**：支持按 Agent 显式关闭流式输出。
+- **清理死代码**：移除原先仅为 `GenerateOptions` 服务的 `registerModelWithOptions` 命名模型注册，改为 context 的 `component(GenerateOptions.class, …)`。
+
 ## [2.0.0] - 2026-07-12
 
 > **版本策略变更**：自本版本起，yunxi Agent Platform 的版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 保持同步，本版本对应 AgentScope-Java **2.0.0 正式版（GA）**。此前的 1.0.0 / 3.x 为独立版本线（见下方历史记录），不影响其变更内容的有效性。

@@ -191,6 +191,7 @@ yunxi 采用 **Agent 优先** 的目录布局，遵循底层 agentscope-java 框
 - **Agent 优先**：工作空间以 `agents/` 为统一入口，`users/` 嵌套在 Agent 下
 - **用户隔离**：同一 Agent 的不同用户数据完全隔离在 `agents/{agentName}/users/{userId}/` 下
 - **多租户运行时隔离**：由 GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 在调用时按用户/会话命名空间路由到独立工作空间视图，无需自建扫描器（调用点：`ChatAppService`、`DesktopRelayHandler`）
+- **模型级多租户（按需）**：Agent 定义 YAML 的 `model.apiKey` / `model.baseUrl` / `model.stream` 经框架 `ModelCreationContext` 透传，可为单个 Agent 指定独立 LLM 账号；不填则回退全局 `agentscope.core.*`（单租户默认，无需额外开关）
 - **根级共享**：workspace 根目录下的 `AGENTS.md` 和 `skills/` 为全局共享资源
 - API 路由使用 `compositeKey = agentName + "#" + userId` 定位用户专属 Agent 实例
 
@@ -221,7 +222,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 | **工具组管理** | HarnessAgent 内置工具通过 `registerTool(Object)` 注册时不指定组名，已确认这是框架有意设计——内置工具属于 Agent 基础设施，不参与分组 | 应用层工具（Supervisor 子 Agent、MCP 工具）通过 `registration().group("name").apply()` 正确归组，受 YAML 配置管控 | [最佳实践 → 工具组管理](docs/guide/11-best-practices.md#工具组管理理解框架内置工具与应用层工具的分组边界) |
 | **Toolkit 深拷贝后组激活失效** | `applyToolGroupActivation()` 操作原始 Toolkit，非 Agent 内部拷贝 | 通过 `HarnessAgent.getDelegate().getToolkit()` 获取内部 Toolkit | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
 | **MCP 工具组隔离** | 框架 Toolkit 单例模式，所有工具注册在同一实例 | 按 MCP 服务器名分组 + YAML 配置组激活 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
-| ~~**自建 LLM Provider**~~ | ✅ **已修复** — 拆除 `ChatModelProvider` 接口，复用框架 `ModelRegistry` 工厂机制 | 通过 `ModelRegistry.registerFactory()` 注册自定义工厂 | [配置 → 生成参数](docs/guide/06-configuration.md#生成参数配置) |
+| ~~**自建 LLM Provider**~~ | ✅ **已修复** — 拆除 `ChatModelProvider` 接口，复用框架 `ModelRegistry` 工厂机制 | 通过 `ModelRegistry.registerFactory()` 注册 `ContextModelFactory` 两参工厂，按 Agent 透传 `apiKey`/`baseUrl`/`stream` | [配置 → Agent 模型/多租户](docs/guide/06-configuration.md#agent-模型配置按-agent-覆盖--多租户) |
 | ~~**自建 Shell 安全**~~ | ✅ **已修复** — 拆除 `CommandSafetyClassifier`（~200 行），使用框架 `ShellCommandTool` | 白名单+平台验证器+审批回调，含多命令分隔符/路径穿越检测 | [配置 → Shell 安全](docs/guide/06-configuration.md#shell-命令安全配置) |
 | ~~**Session 包删除**~~ | ✅ **已适配** — GA 删除 `io.agentscope.core.session` 包，替换为 `DistributedStore` | 改为注入 `DistributedStore`，通过 `RedisDistributedStore.fromJedis()` 创建 | [配置 → Session](docs/guide/06-configuration.md#session-持久化配置) |
 | ~~**Tracer 弃用**~~ | ✅ **已适配** — GA 废弃 `Tracer`/`TracerRegistry`，改用 OpenTelemetry API | 移除 `OpenTelemetryTracer.java`，直接使用 `OpenTelemetry` 全局实例 | [可观测性](docs/guide/15-observability.md) |

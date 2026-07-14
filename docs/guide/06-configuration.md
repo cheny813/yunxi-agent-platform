@@ -207,6 +207,35 @@ agentscope:
 
 > **注意**：启用缓存时，确保 system prompt 中不包含时间戳、随机数等动态内容，否则会导致缓存频繁失效。
 
+### Agent 模型配置（按 Agent 覆盖 / 多租户）
+
+每个 Agent 定义 YAML 的 `model:` 段可独立指定模型及其参数，由 `ModelFactory.create()` 解析为框架 Model 实例。所有生成参数均可覆盖全局 `agentscope.core.generation` 默认值。
+
+```yaml
+model:
+  provider: dashscope      # 提供商：openai / dashscope / anthropic / claude / deepseek / baidu / huawei / gemini / ollama
+  modelName: qwen-plus     # 模型名
+  temperature: 0.5         # 覆盖全局 generation.temperature
+  maxTokens: 2000          # 覆盖全局 generation.max-tokens
+  topP: 0.9                # 覆盖全局 generation.top-p
+  cacheControl: false      # 覆盖全局 generation.cache-control
+  stream: true             # 是否流式输出（默认 true）；按 Agent 显式 false 时关闭
+  # ── 以下字段实现「按 Agent 覆盖 / 轻量多租户」，不填则回退全局配置 ──
+  apiKey: ${AGENT_API_KEY:}    # 每 Agent 独立账号；不为空时透传给所有提供商
+  baseUrl: https://...     # 自定义接入点（OpenAI 兼容网关等）
+```
+
+**多租户开关（无需额外 boolean）**：
+
+平台的多租户在架构层是工作空间/数据隔离（`RuntimeContext(userId,sessionId)` 共享 Agent 实例），模型在 Agent 创建时构建一次、跨租户复用。因此「同一 Agent 运行时由每个终端用户带各自 LLM Key」这种重多租户不必要，但 `model.apiKey` / `model.baseUrl` 提供轻量多租户能力：
+
+- **单租户（默认）**：不填 `apiKey`/`baseUrl` → 回退到全局 `agentscope.core.*` 或对应环境变量，所有 Agent 共用平台账号。
+- **多租户（按需）**：在 Agent 定义中显式填写 `apiKey`/`baseUrl` → 经框架 `ModelCreationContext` 透传给对应提供商工厂，实现每 Agent 独立账号。openai / dashscope / anthropic / claude / deepseek 此前为死字段，现已修复生效；gemini / ollama 无自定义工厂，由 SPI 提供商经同一 context 自动消费。
+
+**配置优先级（统一）**：`AgentModelConfig` 显式值 > provider 级配置（`agentscope.core.<provider>`）> 全局配置（`agentscope.core.api-key` 等）> 环境变量。
+
+> **实现要点**：`ModelFactory` 注册的是 `ModelRegistry` 的 `ContextModelFactory`（`create(modelId, context)` 两参）重载，而非仅 1 参的 `ModelFactory`；`create()` 通过 `ModelRegistry.resolve(modelId, context)` 解析，把 `apiKey`/`baseUrl`/`stream`/`GenerateOptions` 封装为 `ModelCreationContext` 传递，确保官方提供商也能消费这些覆盖值。
+
 ### Shell 命令安全配置
 
 通过 `agentscope.core.shell` 控制框架 `ShellCommandTool` 的安全策略：

@@ -29,6 +29,12 @@ public class AgentModelConfig {
     /** top_p 采样参数 */
     private Double topP;
 
+    /**
+     * 是否启用流式输出（默认 true）。
+     * 多租户/按 Agent 覆盖场景可显式关闭；为 null 时由提供商/全局默认值决定。
+     */
+    private Boolean stream;
+
     /** 额外框架参数扩展点（如 stop、seed 等） */
     private Map<String, Object> extraOptions;
 
@@ -58,6 +64,8 @@ public class AgentModelConfig {
     public void setCacheControl(Boolean cacheControl) { this.cacheControl = cacheControl; }
     public Double getTopP() { return topP; }
     public void setTopP(Double topP) { this.topP = topP; }
+    public Boolean getStream() { return stream; }
+    public void setStream(Boolean stream) { this.stream = stream; }
     public Map<String, Object> getExtraOptions() { return extraOptions; }
     public void setExtraOptions(Map<String, Object> extraOptions) { this.extraOptions = extraOptions; }
 }
