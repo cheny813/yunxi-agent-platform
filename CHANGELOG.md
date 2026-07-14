@@ -9,6 +9,7 @@
 - **gemini / ollama 自动消费**：无自定义工厂的 gemini / ollama 由 SPI 提供商经 `ModelCreationContext` 自动发现并消费配置，与官方文档用法对齐。
 - **`AgentModelConfig` 新增 `stream` 字段**：支持按 Agent 显式关闭流式输出。
 - **清理死代码**：移除原先仅为 `GenerateOptions` 服务的 `registerModelWithOptions` 命名模型注册，改为 context 的 `component(GenerateOptions.class, …)`。
+- **模型缓存策略（CachePolicy）语义对齐并文档化**：`ModelFactory` 始终走 `ModelRegistry.resolve(modelId, context)`，不显式设置 `CachePolicy`，自动套用框架 `DEFAULT`——单租户（空 `ModelCreationContext`）按 `modelId` 缓存复用实例，多租户（带 `apiKey`/`baseUrl`/`stream`/`GenerateOptions`）默认不缓存，防止不同租户的 Key / BaseURL / stream 复用到同一 Model 实例。`gemini`/`ollama` 经 SPI 提供方解析后同样适用该策略。详见 `docs/guide/06-configuration.md` 新增的「模型缓存策略」小节。
 
 ## [2.0.0] - 2026-07-12
 

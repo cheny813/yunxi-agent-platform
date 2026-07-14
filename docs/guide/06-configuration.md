@@ -236,6 +236,25 @@ model:
 
 > **实现要点**：`ModelFactory` 注册的是 `ModelRegistry` 的 `ContextModelFactory`（`create(modelId, context)` 两参）重载，而非仅 1 参的 `ModelFactory`；`create()` 通过 `ModelRegistry.resolve(modelId, context)` 解析，把 `apiKey`/`baseUrl`/`stream`/`GenerateOptions` 封装为 `ModelCreationContext` 传递，确保官方提供商也能消费这些覆盖值。
 
+### 模型缓存策略（ModelRegistry CachePolicy）
+
+`ModelFactory` 始终通过 `ModelRegistry.resolve(modelId, context)` 解析模型，并且**从不显式设置 `CachePolicy`**，因此自动套用框架的 `DEFAULT` 策略。该策略与上文「按 Agent 覆盖 / 多租户」的安全语义天然对齐：
+
+| 场景 | `ModelCreationContext` 是否为空 | 缓存行为 |
+|------|-------------------------------|---------|
+| 单租户（Agent 不覆盖任何字段，走 `ModelCreationContext.empty()`） | 空 | 按 `modelId` 缓存（legacy 行为），复用同一 Model 实例，避免重复构建 |
+| 多租户（Agent 填了 `apiKey` / `baseUrl` / `stream`，或带了 `GenerateOptions` 组件） | 非空 | `DEFAULT` 下**不缓存**，杜绝不同租户的 Key / BaseURL / stream 复用到同一实例 |
+
+**`CachePolicy` 取值**（框架 `io.agentscope.core.model.CachePolicy`）：
+
+- **`DEFAULT`**：简单解析（`resolve(String)`）保持按 `modelId` 缓存；带非空 `context` 解析（`resolve(String, context)`）默认不缓存。yunxi 当前采用此默认，无需任何额外配置。
+- **`DISABLED`**：永不缓存，每次解析都新建 Model 实例。
+- **`ENABLED`**：显式开启缓存；必须以 `cacheId(...)` 表达租户或配置维度的身份。若搭配 `option(...)` / `component(...)` 使用却未提供 `cacheId`，框架会抛 `IllegalArgumentException`。
+
+**缓存策略对自定义工厂与 SPI 提供方一致生效**：`ModelRegistry` 解析顺序为 named → cache → 用户工厂（最新注册在前）→ SPI 提供方。yunxi 注册的 `openai` / `dashscope` / `anthropic` / `claude` / `deepseek` 五条正则走 `ContextModelFactory`（两参，消费 `ModelCreationContext`）；`gemini` / `ollama` 及任何未注册的提供商由 `ServiceLoader` 从 `META-INF/services/io.agentscope.core.model.spi.ModelProvider` 自动发现并调用 `provider.create(modelId, context)`。SPI 接口为简单提供方保留了 `supports(String)` / `create(String)` 的兼容默认实现（`context` 参数在 `default` 方法中被忽略），因此只实现旧 1 参 API 的厂商也能即开即用。
+
+> **可选优化（非必须）**：若希望「仅带生成参数、但配置完全相同的单租户 Agent」也能命中缓存，可在 `buildContext` 中改用 `.cachePolicy(ENABLED).cacheId(<配置指纹>)`，但必须为 `GenerateOptions` 组件提供显式 `cacheId`，否则会触发框架校验异常。当前保持 `DEFAULT` 是最稳妥的安全默认。
+
 ### Shell 命令安全配置
 
 通过 `agentscope.core.shell` 控制框架 `ShellCommandTool` 的安全策略：
