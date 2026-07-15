@@ -549,36 +549,36 @@ public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
 #### 4. ModelFactory — 统一模型工厂
 
 ```java
-// ModelFactory 直接使用框架的 Model 接口和内置 Provider
+// ModelFactory 统一经框架 ModelRegistry 创建，不复用自建 Provider 接口
 @Component
 public class ModelFactory {
 
+    @PostConstruct
+    public void init() {
+        // 内置 Provider（openai/dashscope/anthropic/claude/deepseek）走 ContextModelFactory，
+        // lambda 内构建对应框架 ChatModel 并消费 ctx 透传的 apiKey/baseUrl/stream/options（此处省略）
+        // baidu / huawei 框架未内置，用自定义 Provider 注册为工厂，路径与内置完全一致：
+        ModelRegistry.registerFactory("baidu:.+", (id, ctx) -> {
+            String name = id.substring("baidu:".length());
+            return new BaiduModelProvider(ctx.getApiKey(), ctx.getApiKey(), name,
+                    ctx.component(GenerateOptions.class)); // 实际含 null → 全局默认 fallback
+        });
+        ModelRegistry.registerFactory("huawei:.+", (id, ctx) -> {
+            String name = id.substring("huawei:".length());
+            return new HuaweiModelProvider(ctx.getApiKey(), ctx.getApiKey(), name,
+                    ctx.component(GenerateOptions.class));
+        });
+    }
+
     public Model create(AgentModelConfig config) {
-        GenerateOptions options = buildGenerateOptions(config);
-        
-        return switch (provider.toLowerCase()) {
-            case "openai" -> OpenAIChatModel.builder()
-                    .apiKey(apiKey).modelName(modelName)
-                    .baseUrl(baseUrl).stream(true)
-                    .generateOptions(options).build();
-            case "claude" -> AnthropicChatModel.builder()
-                    .apiKey(apiKey).modelName(modelName)
-                    .stream(true).defaultOptions(options).build();
-            case "dashscope" -> DashScopeChatModel.builder()
-                    .apiKey(apiKey).modelName(modelName)
-                    .stream(true).defaultOptions(options).build();
-            case "deepseek" -> OpenAIChatModel.builder()
-                    .apiKey(apiKey).modelName(modelName)
-                    .formatter(new DeepSeekFormatter(true))
-                    .generateOptions(options).build();
-            case "baidu" -> new BaiduModelProvider(apiKey, modelName, options);
-            case "huawei" -> new HuaweiModelProvider(apiKey, modelName, options);
-        };
+        // 所有 Provider（含 baidu/huawei）统一走 resolve，由 ModelRegistry 分派工厂
+        ModelCreationContext ctx = buildContext(config);
+        return ModelRegistry.resolve(provider + ":" + modelName, ctx);
     }
 }
 ```
 
-框架的 `Model` 接口负责"发请求、拿响应"，内置了正确的角色映射（`SYSTEM`/`USER`/`ASSISTANT`/`TOOL`）和 Prompt Caching 支持（`cache-control: true` 自动添加 `cache_control: {"type": "ephemeral"}`）。平台层保留百度/华为的自建实现（因认证协议不兼容标准 OpenAI），但已修复角色映射 Bug。
+框架的 `Model` 接口负责"发请求、拿响应"，内置了正确的角色映射（`SYSTEM`/`USER`/`ASSISTANT`/`TOOL`）和 Prompt Caching 支持（`cache-control: true` 自动添加 `cache_control: {"type": "ephemeral"}`）。平台层保留百度/华为的自建实现（因认证协议不兼容标准 OpenAI），但已修复角色映射 Bug，现通过 `ModelRegistry` 工厂注册，与内置 Provider 走完全一致的 `ModelRegistry.resolve` 路径（按 Agent 透传 `apiKey`/`options`）。
 
 **拆除自建 Provider**：原 `ChatModelProvider` 接口 + `OpenAIModelProvider`/`ClaudeModelProvider`/`DashScopeModelProvider` 已删除（约 500 行），全部委托给框架内置实现。详见 [模型层改造说明](#)。
 
