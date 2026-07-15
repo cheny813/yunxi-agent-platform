@@ -44,8 +44,8 @@ import org.springframework.stereotype.Component;
  * <li>openai / deepseek — 通过 OpenAIChatModel（extensions-model-openai）</li>
  * <li>dashscope — 通过 DashScopeChatModel（extensions-model-dashscope）</li>
  * <li>claude / anthropic — 通过 AnthropicChatModel（extensions-model-anthropic）</li>
- * <li>baidu / huawei — 框架未内置，保留自定义 BaiduModelProvider /
- * HuaweiModelProvider（自身已支持按 Agent apiKey）</li>
+ * <li>baidu / huawei — 框架未内置，在 init() 注册为 ModelRegistry 工厂，
+ * 复用自定义 BaiduModelProvider / HuaweiModelProvider（已支持按 Agent apiKey）</li>
  * <li>gemini / ollama — 无自定义工厂，由 SPI 提供商经 {@link ModelCreationContext} 自动发现并消费配置</li>
  * </ul>
  * </p>
@@ -181,8 +181,28 @@ public class ModelFactory {
                                         .build();
                 });
 
-                log.info("ModelFactory: 已注册 openai/dashscope/anthropic/claude/deepseek 工厂到 ModelRegistry"
-                                + "（支持通过 ModelCreationContext 透传按 Agent 覆盖配置）");
+                // 百度千帆工厂（框架未内置，使用自定义 BaiduModelProvider）
+                // 与上方内置 provider 完全一致的 ContextModelFactory 模式：按 Agent 覆盖 apiKey/options
+                ModelRegistry.registerFactory("baidu:.+", (modelId, ctx) -> {
+                        String modelName = modelId.substring("baidu:".length());
+                        String apiKey = firstNonBlank(ctx.getApiKey(), coreProperties.getApiKey());
+                        GenerateOptions options = ctx.component(GenerateOptions.class) != null
+                                        ? ctx.component(GenerateOptions.class) : buildOptions(gen, null);
+                        // 百度千帆以同一凭据同时作为 client_id / client_secret 获取 access_token
+                        return new BaiduModelProvider(apiKey, apiKey, modelName, options);
+                });
+
+                // 华为盘古工厂（框架未内置，使用自定义 HuaweiModelProvider）
+                ModelRegistry.registerFactory("huawei:.+", (modelId, ctx) -> {
+                        String modelName = modelId.substring("huawei:".length());
+                        String apiKey = firstNonBlank(ctx.getApiKey(), coreProperties.getApiKey());
+                        GenerateOptions options = ctx.component(GenerateOptions.class) != null
+                                        ? ctx.component(GenerateOptions.class) : buildOptions(gen, null);
+                        return new HuaweiModelProvider(apiKey, apiKey, modelName, options);
+                });
+
+                log.info("ModelFactory: 已注册 openai/dashscope/anthropic/claude/deepseek/baidu/huawei"
+                                + " 工厂到 ModelRegistry（支持通过 ModelCreationContext 透传按 Agent 覆盖配置）");
         }
 
         /**
@@ -212,22 +232,13 @@ public class ModelFactory {
                                 : coreProperties.getModelName();
                 String modelId = provider + ":" + modelName;
 
-                // 对 baidu/huawei — 框架未内置，保留自定义实现（已支持按 Agent apiKey）
-                if ("baidu".equals(provider)) {
-                        GenerateOptions options = buildGenerateOptions(config);
-                        log.info("创建 Model (自定义): provider=baidu, model={}", modelName);
-                        return new BaiduModelProvider(
-                                        resolveApiKey(config, "baidu"),
-                                        resolveApiKey(config, "baidu"),
-                                        modelName, options);
-                }
-                if ("huawei".equals(provider)) {
-                        GenerateOptions options = buildGenerateOptions(config);
-                        log.info("创建 Model (自定义): provider=huawei, model={}", modelName);
-                        return new HuaweiModelProvider(
-                                        resolveApiKey(config, "huawei"),
-                                        resolveApiKey(config, "huawei"),
-                                        modelName, options);
+                // baidu/huawei 框架未内置，但已在 init() 注册为 ModelRegistry 工厂，
+                // 与 openai/dashscope 等内置 provider 走完全一致的 ModelRegistry.resolve 路径
+                if ("baidu".equals(provider) || "huawei".equals(provider)) {
+                        ModelCreationContext ctx = buildContext(config);
+                        log.info("创建 Model (ModelRegistry): provider={}, model={}, tenantContext={}",
+                                        provider, modelName, !ctx.isEmpty());
+                        return ModelRegistry.resolve(modelId, ctx);
                 }
 
                 // 其余 provider 通过 ModelRegistry + ModelCreationContext 创建（含 gemini/ollama 的 SPI）
@@ -299,36 +310,6 @@ public class ModelFactory {
                 if (Boolean.TRUE.equals(gen.getCacheControl()))
                         builder.cacheControl(true);
                 return builder.build();
-        }
-
-        /**
-         * 按优先级解析指定供应商的 API Key。
-         *
-         * <p>优先级：模型配置显式 Key &gt; 全局配置 Key &gt; 对应环境变量（DASHSCOPE_API_KEY /
-         * OPENAI_API_KEY / ANTHROPIC_API_KEY）。</p>
-         *
-         * @param config   模型配置，可能为 null
-         * @param provider 供应商名称（dashscope/openai/deepseek/claude/anthropic 等）
-         * @return 解析到的 API Key，均无法获取时返回 null
-         */
-        private String resolveApiKey(AgentModelConfig config, String provider) {
-            if (config != null && config.getApiKey() != null)
-                        return config.getApiKey();
-                if (coreProperties.getApiKey() != null && !coreProperties.getApiKey().isBlank())
-                        return coreProperties.getApiKey();
-                // 兜底：环境变量（与框架内置 ModelRegistry 行为一致）
-                String envKey = switch (provider) {
-                        case "dashscope" -> "DASHSCOPE_API_KEY";
-                        case "openai", "deepseek" -> "OPENAI_API_KEY";
-                        case "claude", "anthropic" -> "ANTHROPIC_API_KEY";
-                        default -> null;
-                };
-                if (envKey != null) {
-                        String envVal = System.getenv(envKey);
-                        if (envVal != null && !envVal.isBlank())
-                                return envVal;
-                }
-                return null;
         }
 
         /**

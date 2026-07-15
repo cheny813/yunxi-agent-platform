@@ -251,7 +251,7 @@ model:
 - **`DISABLED`**：永不缓存，每次解析都新建 Model 实例。
 - **`ENABLED`**：显式开启缓存；必须以 `cacheId(...)` 表达租户或配置维度的身份。若搭配 `option(...)` / `component(...)` 使用却未提供 `cacheId`，框架会抛 `IllegalArgumentException`。
 
-**缓存策略对自定义工厂与 SPI 提供方一致生效**：`ModelRegistry` 解析顺序为 named → cache → 用户工厂（最新注册在前）→ SPI 提供方。yunxi 注册的 `openai` / `dashscope` / `anthropic` / `claude` / `deepseek` 五条正则走 `ContextModelFactory`（两参，消费 `ModelCreationContext`）；`gemini` / `ollama` 及任何未注册的提供商由 `ServiceLoader` 从 `META-INF/services/io.agentscope.core.model.spi.ModelProvider` 自动发现并调用 `provider.create(modelId, context)`。SPI 接口为简单提供方保留了 `supports(String)` / `create(String)` 的兼容默认实现（`context` 参数在 `default` 方法中被忽略），因此只实现旧 1 参 API 的厂商也能即开即用。
+**缓存策略对自定义工厂与 SPI 提供方一致生效**：`ModelRegistry` 解析顺序为 named → cache → 用户工厂（最新注册在前）→ SPI 提供方。yunxi 注册的 `openai` / `dashscope` / `anthropic` / `claude` / `deepseek` / `baidu` / `huawei` 七条正则走 `ContextModelFactory`（两参，消费 `ModelCreationContext`）；其中 `baidu` / `huawei` 框架未内置，用自定义 `BaiduModelProvider` / `HuaweiModelProvider` 注册为工厂，路径与内置 Provider 完全一致。`gemini` / `ollama` 及任何未注册的提供商由 `ServiceLoader` 从 `META-INF/services/io.agentscope.core.model.spi.ModelProvider` 自动发现并调用 `provider.create(modelId, context)`。SPI 接口为简单提供方保留了 `supports(String)` / `create(String)` 的兼容默认实现（`context` 参数在 `default` 方法中被忽略），因此只实现旧 1 参 API 的厂商也能即开即用。
 
 > **可选优化（非必须）**：若希望「仅带生成参数、但配置完全相同的单租户 Agent」也能命中缓存，可在 `buildContext` 中改用 `.cachePolicy(ENABLED).cacheId(<配置指纹>)`，但必须为 `GenerateOptions` 组件提供显式 `cacheId`，否则会触发框架校验异常。当前保持 `DEFAULT` 是最稳妥的安全默认。
 
