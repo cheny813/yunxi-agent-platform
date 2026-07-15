@@ -25,7 +25,7 @@ import java.util.List;
  * @author yunxi-agent-platform
  */
 @Component
-@ConditionalOnProperty(name = "agentscope.extensions.embedding.openai.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "agentscope.extensions.embedding.openai.enabled", havingValue = "true", matchIfMissing = false)
 public class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAIEmbeddingProvider.class);

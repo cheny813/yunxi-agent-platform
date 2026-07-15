@@ -304,6 +304,22 @@ public class UnifiedChatRequest {
      */
     private Map<String, Object> schema;
 
+    /**
+     * 结构化流式逐字模式（默认 false）
+     * <p>
+     * 仅在 {@code structured=true} 且 {@code mode=stream} 时生效，用于区分两类页面诉求：
+     * <ul>
+     * <li><b>false（默认，表单模式）</b>：调用 GA 结构化重载
+     * call(List, Class/JsonNode, RuntimeContext)，由框架完成 schema 校验/修复，
+     * 最终一次性返回 {@code structured} 事件（无逐字 token 流）。适合页面表单填写场景。</li>
+     * <li><b>true（流模式）</b>：调用 streamEvents 实时吐出 thinking/content 事件，
+     * 并在 AGENT_RESULT 处把模型文本自行解析为结构化数据后返回 {@code structured} 事件。
+     * 适合需实时观察推理过程的流式场景。注意：此模式绕过框架的 schema 校验/修复，
+     * 要求模型直接输出合规 JSON 文本（请勿在 Agent 注册 generate_response 类工具时使用）。</li>
+     * </ul>
+     */
+    private Boolean structuredStream = false;
+
     // ==================== 异步任务参数（可选） ====================
 
     /**
@@ -621,6 +637,15 @@ public class UnifiedChatRequest {
      */
     public boolean isStructuredOutput() {
         return Boolean.TRUE.equals(structured);
+    }
+
+    /**
+     * 是否为结构化流式逐字模式
+     *
+     * @return true-流模式（streamEvents 逐字 + 末尾自解析），false-表单模式（阻塞 call 一次性返回）
+     */
+    public boolean isStructuredStream() {
+        return Boolean.TRUE.equals(structuredStream);
     }
 
     /**

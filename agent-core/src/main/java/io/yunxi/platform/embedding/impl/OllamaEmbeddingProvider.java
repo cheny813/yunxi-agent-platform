@@ -25,18 +25,21 @@ import java.util.List;
  * @author yunxi-agent-platform
  */
 @Component
-@ConditionalOnProperty(name = "agentscope.extensions.embedding.ollama.enabled", havingValue = "true", matchIfMissing = false)
+@ConditionalOnProperty(name = "agentscope.extensions.embedding.ollama.enabled", havingValue = "true", matchIfMissing = true)
 public class OllamaEmbeddingProvider implements EmbeddingProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OllamaEmbeddingProvider.class);
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${agentscope.extensions.embedding.ollama.base-url:http://localhost:11434}")
+    @Value("${embedding.ollama.base-url:http://localhost:11434}")
     private String baseUrl;
 
-    @Value("${agentscope.extensions.embedding.ollama.model:llama2}")
+    @Value("${embedding.ollama.model:bge-m3}")
     private String modelName;
+
+    @Value("${embedding.default-dimension:1024}")
+    private int dimension;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(java.time.Duration.ofSeconds(60))
@@ -109,11 +112,11 @@ public class OllamaEmbeddingProvider implements EmbeddingProvider {
     /**
      * 返回当前模型的向量维度
      *
-     * @return 固定返回 4096
+     * @return 配置的向量维度（默认 1024，与 bge-m3 / Milvus 集合一致）
      */
     @Override
     public int getDimension() {
-        return 4096;
+        return dimension;
     }
 
     /**

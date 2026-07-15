@@ -3,6 +3,7 @@ package io.yunxi.platform.embedding;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -25,8 +26,9 @@ public class EmbeddingService {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddingService.class);
 
-    /** 默认提供者名称 */
-    private static final String DEFAULT_PROVIDER = "openai";
+    /** 默认提供者名称（读取 embedding.provider 配置，与 embedding.yml 保持一致） */
+    @Value("${embedding.provider:ollama}")
+    private String defaultProviderName;
 
     /** 注册的提供者 */
     private final Map<String, EmbeddingProvider> providers = new ConcurrentHashMap<>();
@@ -44,8 +46,9 @@ public class EmbeddingService {
                 log.info("注册 Embedding 提供者: {}", provider.getProviderName());
             }
         }
-        if (!providers.containsKey(DEFAULT_PROVIDER)) {
-            log.warn("默认 Embedding 提供者 {} 未注册", DEFAULT_PROVIDER);
+        if (!providers.containsKey(defaultProviderName)) {
+            log.warn("默认 Embedding 提供者 [{}] 未注册，已注册的提供者: {}；将尝试回退到任意可用提供者",
+                    defaultProviderName, providers.keySet());
         }
     }
 
@@ -57,14 +60,31 @@ public class EmbeddingService {
      */
     public EmbeddingProvider getProvider(String providerName) {
         if (providerName == null || providerName.isBlank()) {
-            return providers.get(DEFAULT_PROVIDER);
+            return resolveDefaultProvider();
         }
         EmbeddingProvider provider = providers.get(providerName);
         if (provider == null) {
-            log.warn("未找到 Embedding 提供者: {}, 使用默认提供者", providerName);
-            return providers.get(DEFAULT_PROVIDER);
+            log.warn("未找到 Embedding 提供者: {}, 使用默认提供者 [{}]", providerName, defaultProviderName);
+            return resolveDefaultProvider();
         }
         return provider;
+    }
+
+    /**
+     * 解析默认提供者：优先使用 embedding.provider 配置的提供者；若未注册则回退到任一已注册提供者。
+     */
+    private EmbeddingProvider resolveDefaultProvider() {
+        EmbeddingProvider provider = providers.get(defaultProviderName);
+        if (provider != null) {
+            return provider;
+        }
+        if (!providers.isEmpty()) {
+            EmbeddingProvider fallback = providers.values().iterator().next();
+            log.warn("默认 Embedding 提供者 [{}] 未注册，回退使用 [{}]", defaultProviderName, fallback.getProviderName());
+            return fallback;
+        }
+        log.error("没有任何可用的 Embedding 提供者，请检查 embedding.provider 配置或对应 provider 的 enabled 开关");
+        return null;
     }
 
     /**
@@ -73,7 +93,7 @@ public class EmbeddingService {
      * @return 默认提供者名称，未注册时返回 "unknown"
      */
     public String getProviderName() {
-        EmbeddingProvider provider = providers.get(DEFAULT_PROVIDER);
+        EmbeddingProvider provider = providers.get(defaultProviderName);
         return provider != null ? provider.getProviderName() : "unknown";
     }
 
