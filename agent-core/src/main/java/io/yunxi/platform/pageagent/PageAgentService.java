@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import io.agentscope.core.message.DataBlock;
@@ -75,6 +76,10 @@ public class PageAgentService {
     /** 页面 Agent 配置缓存（从 page-agent-config.yml 加载） */
     private volatile Map<String, Map<String, Object>> pageAgentConfigs;
 
+    /** 页面 Agent 执行阻塞超时（秒），可通过 page-agent.block-timeout-seconds 配置覆盖 */
+    @Value("${page-agent.block-timeout-seconds:120}")
+    private int blockTimeoutSeconds = 120;
+
     /**
      * 页面分析 Prompt
      */
@@ -88,7 +93,7 @@ public class PageAgentService {
             请分析页面内容，找出要操作的元素，然后给出操作指令。
             支持的选择器格式：
             - CSS选择器 如:"#btn-submit", ".n-button", "input[name='username']"
-            - :has-text() 选择器 如:"button:has-text('提交')", "div.menu-item:has-text('食谱管理')"
+            - :has-text() 选择器 如:"button:has-text('提交')", "div.menu-item:has-text('订单管理')"
             - :text() 选择器 如:"a:text('登录')"
             - text() 选择器 如:"text('确定')" (按文本找任意元素)
 
@@ -555,7 +560,7 @@ public class PageAgentService {
             // 2. 调用 LLM
             Flux<ChatResponse> responseFlux = chatModel.stream(messages, null, null);
             List<ChatResponse> responses = responseFlux.collectList()
-                    .block(Duration.ofSeconds(120));
+                    .block(Duration.ofSeconds(blockTimeoutSeconds));
 
             // 3. 提取文本内容
             StringBuilder contentBuilder = new StringBuilder();

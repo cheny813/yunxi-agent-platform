@@ -18,8 +18,8 @@ def check_file_existence():
     
     required_files = [
         "pom.xml",
-        "scripts/optimization-verification.sh",
-        "scripts/api-performance-monitor.java",
+        "scripts/verify/optimization-verification.sh",
+        "scripts/perf/api-performance-monitor.java",
         ".comate/specs/performance-optimization/summary.md"
     ]
     
@@ -109,10 +109,10 @@ def verify_monitoring_tools():
     print("\n=== 监控工具验证 ===")
     
     script_files = [
-        ("scripts/api-performance-monitor.java", "API性能监控"),
-        ("scripts/performance-monitor.groovy", "实时性能监控"),
-        ("scripts/performance-test.java", "性能压力测试"),
-        ("scripts/optimization-verification.sh", "优化验证脚本")
+        ("scripts/perf/api-performance-monitor.java", "API性能监控"),
+        ("scripts/perf/performance-monitor.groovy", "实时性能监控"),
+        ("scripts/perf/performance-test.java", "性能压力测试"),
+        ("scripts/verify/optimization-verification.sh", "优化验证脚本")
     ]
     
     all_tools_valid = True

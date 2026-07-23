@@ -4,7 +4,7 @@
  * 提供简洁易用的API来调用Agent Platform服务
  * 支持Node.js和浏览器环境
  * 
- * @version 2.0.0
+ * @version 2.1.0
  * @author yunxi Agent Platform
  * 
  * @example
@@ -63,6 +63,8 @@ class AgentClient {
      * @private
      */
     _buildUrl(endpoint) {
+        // 兼容历史调用：/chat 映射到统一流式入口 /api/conversations/chat/stream
+        if (endpoint === '/chat') endpoint = '/api/conversations/chat/stream';
         return `${this.baseUrl}${endpoint}`;
     }
 
@@ -145,6 +147,71 @@ class AgentClient {
         return response;
     }
 
+    /**
+     * 解析单个 SSE 数据块（data: 行）为事件对象
+     * @private
+     * @returns {{type:string, timestamp?:string, content:string}|null}
+     */
+    _parseSseBlock(block) {
+        const line = block.split('\n').find((l) => l.startsWith('data:'));
+        if (!line) return null;
+        let json = line.slice(5).trim();
+        // 防御：个别网关会在 data 内容里再嵌套一层 data: 前缀，递归剥离直到真正 JSON
+        while (json.startsWith('data:')) {
+            json = json.slice(5).trim();
+        }
+        if (!json) return null;
+        try {
+            return JSON.parse(json);
+        } catch (e) {
+            console.warn('SSE 事件解析失败，已跳过:', json);
+            return null;
+        }
+    }
+
+    /**
+     * 流式对话底层生成器：逐条吐出解析后的 SSE 事件对象。
+     * 事件对象形如 { type, timestamp, content }，
+     * content 为后端下发的内容（友好消息为 JSON 字符串，原生事件为事件 JSON 字符串）。
+     * @private
+     */
+    async *_streamChatEvents(message, options = {}) {
+        const request = this._buildChatRequest(message, {
+            mode: 'stream',
+            ...options
+        });
+
+        const response = await this._request(this._buildUrl('/chat'), {
+            method: 'POST',
+            body: JSON.stringify(request)
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            let idx;
+            while ((idx = buffer.indexOf('\n\n')) !== -1) {
+                const block = buffer.slice(0, idx);
+                buffer = buffer.slice(idx + 2);
+                const evt = this._parseSseBlock(block);
+                if (evt) yield evt;
+            }
+        }
+
+        // 冲刷缓冲区中最后一个（可能未以 \n\n 结尾的）事件
+        if (buffer.trim()) {
+            const evt = this._parseSseBlock(buffer);
+            if (evt) yield evt;
+        }
+    }
+
     // ==================== 同步对话 ====================
 
     /**
@@ -212,6 +279,8 @@ class AgentClient {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let fullResponse = '';
+            let buffer = '';
+            const onEvent = options && options.onEvent;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -220,9 +289,28 @@ class AgentClient {
                 const chunk = decoder.decode(value, { stream: true });
                 fullResponse += chunk;
 
+                // 向后兼容：仍回传原始文本块
                 if (onChunk) {
                     onChunk(chunk);
                 }
+
+                // 可选：解析并分发结构化 SSE 事件
+                if (onEvent) {
+                    buffer += chunk;
+                    let idx;
+                    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+                        const block = buffer.slice(0, idx);
+                        buffer = buffer.slice(idx + 2);
+                        const evt = this._parseSseBlock(block);
+                        if (evt) onEvent(evt);
+                    }
+                }
+            }
+
+            // 冲刷缓冲区中残留的最后一个事件
+            if (onEvent && buffer.trim()) {
+                const evt = this._parseSseBlock(buffer);
+                if (evt) onEvent(evt);
             }
 
             console.debug(`流式对话完成: message=${message}, totalLength=${fullResponse.length}`);
@@ -268,6 +356,109 @@ class AgentClient {
         } catch (error) {
             console.error('流式对话失败:', error);
             throw new Error(`流式对话失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 流式对话 - 结构化事件回调
+     * <p>
+     * 相比 {@link chatStream}（仅回传原始文本块），本方法会把每条 SSE 事件解析为
+     * 结构化对象并分派到对应的 handler，便于最终 UI 渲染工具调用卡片、工具流式进度等。
+     * 后端对 content/thinking 下发纯文本，对其余友好消息（tool_call / tool_result_* 等）
+     * 下发 JSON 字符串，本方法会自动 JSON.parse 后传入对应 handler。
+     * </p>
+     * @param {string} message - 用户消息
+     * @param {Object} handlers - 事件处理器集合（均可选）
+     * @param {function(Object):void} [handlers.onEvent] 每条解析后的事件（{type, timestamp, content}），最后兜底分发
+     * @param {function(string):void} [handlers.onText] 友好文本增量（type=content）
+     * @param {function(string):void} [handlers.onThinking] 思考过程增量（type=thinking）
+     * @param {function(Object):void} [handlers.onToolCall] 工具调用开始（type=tool_call）
+     * @param {function(Object):void} [handlers.onToolCallDone] 工具调用参数就绪（type=tool_call_done）
+     * @param {function(Object):void} [handlers.onToolResult] 工具结果（type=tool_result）
+     * @param {function(Object):void} [handlers.onToolResultStart] 工具流式输出开始（type=tool_result_start）
+     * @param {function(string):void} [handlers.onToolResultDelta] 工具流式输出增量（type=tool_result_delta）
+     * @param {function(Object):void} [handlers.onStatus] 状态提示（type=agent_status）
+     * @param {function(Object):void} [handlers.onError] 错误（type=error）
+     * @param {function():void} [handlers.onDone] 流结束
+     * @param {Object} options - 可选参数（同 chatStream）
+     * @returns {Promise<string>} 拼接后的完整文本回复
+     *
+     * @example
+     * await client.chatStreamEvents('查一下天气', {
+     *     onToolCall: (t) => console.log('调用工具', t.toolCallName),
+     *     onToolResultStart: (t) => console.log('工具开始输出', t.toolCallName),
+     *     onToolResultDelta: (d) => process.stdout.write(d.delta),
+     *     onText: (s) => process.stdout.write(s),
+     * });
+     */
+    async chatStreamEvents(message, handlers = {}, options = {}) {
+        try {
+            let fullText = '';
+
+            for await (const evt of this._streamChatEvents(message, options)) {
+                const { type, content } = evt;
+
+                // content 可能是 JSON 字符串（友好消息/原生事件）或纯文本（content/thinking）
+                let data = content;
+                if (typeof content === 'string') {
+                    try {
+                        data = JSON.parse(content);
+                    } catch (e) {
+                        // 纯文本，保持原样
+                    }
+                }
+
+                if (handlers.onEvent) {
+                    handlers.onEvent(evt);
+                }
+
+                switch (type) {
+                    case 'content':
+                        if (typeof data === 'string') {
+                            fullText += data;
+                            if (handlers.onText) handlers.onText(data);
+                        }
+                        break;
+                    case 'thinking':
+                        if (typeof data === 'string' && handlers.onThinking) handlers.onThinking(data);
+                        break;
+                    case 'tool_call':
+                        if (handlers.onToolCall) handlers.onToolCall(data);
+                        break;
+                    case 'tool_call_done':
+                        if (handlers.onToolCallDone) handlers.onToolCallDone(data);
+                        break;
+                    case 'tool_result':
+                        if (handlers.onToolResult) handlers.onToolResult(data);
+                        break;
+                    case 'tool_result_start':
+                        if (handlers.onToolResultStart) handlers.onToolResultStart(data);
+                        break;
+                    case 'tool_result_delta': {
+                        // 后端 content 为 JSON 对象 {"toolCallId","toolCallName","delta"}，
+                        // 完整透传给 handler（若解析失败则包装为 {delta} 以兼容纯文本）
+                        const payload = (data && typeof data === 'object')
+                            ? data
+                            : { delta: typeof data === 'string' ? data : '' };
+                        if (handlers.onToolResultDelta) handlers.onToolResultDelta(payload);
+                        break;
+                    }
+                    case 'agent_status':
+                        if (handlers.onStatus) handlers.onStatus(data);
+                        break;
+                    case 'error':
+                        if (handlers.onError) handlers.onError(data);
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            if (handlers.onDone) handlers.onDone();
+            return fullText;
+        } catch (error) {
+            console.error('流式事件对话失败:', error);
+            throw new Error(`流式事件对话失败: ${error.message}`);
         }
     }
 

@@ -39,7 +39,7 @@ public class NaturalLanguageQueryParser {
     /**
      * 解析查询意图
      *
-     * @param description 自然语言描述（如 "查看最近10个菜品"）
+     * @param description 自然语言描述（如 "查看最近10条记录"）
      * @return 查询意图
      */
     public QueryIntent parse(String description) {

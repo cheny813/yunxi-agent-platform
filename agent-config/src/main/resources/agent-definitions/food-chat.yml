@@ -29,6 +29,12 @@ agent:
     - 不要查询或修改文件系统，不要读取 MEMORY.md 或 KNOWLEDGE.md
     - 直接基于你的训练知识回答，一次给出完整的最终答案
 
+  # 模型配置：低温度保证食谱一致性，限制输出长度减少 token 消耗，启用 prompt 缓存
+  model:
+    temperature: 0.3
+    maxTokens: 2048
+    cacheControl: true
+
   # 单 Agent 模式，不启用编排
   orchestration:
     pattern: "single"

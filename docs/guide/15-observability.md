@@ -51,13 +51,13 @@
 一个典型的 Agent 对话生成的 Span 树：
 
 ```
-agent.call (agent.name="nutrition-assistant")
+agent.call (agent.name="business-assistant")
 ├── react.iteration (iteration=1)
 │   ├── llm.invoke (model="qwen-plus", messages=3)
-│   └── tool.execute (tool="search_recipe")
+│   └── tool.execute (tool="search_data")
 ├── react.iteration (iteration=2)
 │   ├── llm.invoke (model="qwen-plus", messages=5)
-│   └── tool.execute (tool="get_nutrition_info")
+│   └── tool.execute (tool="get_business_info")
 └── react.iteration (iteration=3)
     └── llm.invoke (model="qwen-plus", messages=2)
 ```
@@ -86,10 +86,10 @@ agent.call (agent.name="nutrition-assistant")
 每次 Span 结束时写入日志文件（`logs/yunxi-agent-platform.log`）：
 
 ```
-[Trace] agent.call [5234ms] {agent.name=nutrition-assistant}
+[Trace] agent.call [5234ms] {agent.name=business-assistant}
 [Trace] react.iteration [0ms] {react.iteration=1}
 [Trace] llm.invoke [2340ms] {llm.model=qwen-plus, llm.message_count=3}
-[Trace] tool.execute [567ms] {tool.name=search_recipe}
+[Trace] tool.execute [567ms] {tool.name=search_data}
 ```
 
 格式：`[Trace] <span名称> [<耗时ms>] <属性>`
@@ -135,7 +135,7 @@ cd d:\work\code\yunxi-agent-platform
 docker compose up -d
 ```
 
-`otel-collector` 会将 trace 同时输出到日志和 Jaeger（`exporters: [logging, otlp/jaeger]`，见 `scripts/otel-collector-config.yaml`）。启动后：
+`otel-collector` 会将 trace 同时输出到日志和 Jaeger（`exporters: [logging, otlp/jaeger]`，见 `scripts/deploy/otel-collector-config.yaml`）。启动后：
 
 1. 启动应用：`.\start.ps1 -Clean`
 2. 访问 http://127.0.0.1:16686，Service 选择 `yunxi-agent-platform`，点击 "Find Traces" 查看调用链

@@ -1,4 +1,4 @@
-package io.yunxi.platform.sync;
+package io.yunxi.platform.shared.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
@@ -8,9 +8,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import lombok.extern.slf4j.Slf4j;
-
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,24 +16,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * 外部数据库查询服务
  * <p>
  * 通过 JDBC 直接连接目标数据库执行查询，避免远程代理开销。
+ * 从原 sync 包提取为框架级通用能力，供 NLQ 等多数据库查询场景复用。
  * </p>
- *
- * <h3>使用方式</h3>
- * <pre>{@code
- * externalDbQueryService.query(
- *     "jdbc:mysql://192.168.10.153:3306/nutrition_db",  // JDBC URL
- *     "root", "password",                                 // 凭证
- *     "SELECT * FROM dishes WHERE id > 100",              // SQL
- *     1000                                                // limit
- * );
- * }</pre>
  *
  * @version 2.0.0
  * @since 2.0.0
  */
-@Slf4j
 @Service
 public class ExternalDbQueryService {
+
+    private static final Logger log = LoggerFactory.getLogger(ExternalDbQueryService.class);
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 

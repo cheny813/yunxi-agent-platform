@@ -5,6 +5,7 @@ import io.yunxi.platform.config.AgentscopeExtensionProperties.A2AConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -33,10 +34,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * 
  * <pre>
  * // 同步调用远程 Agent
- * AgentResponse response = a2aClient.invoke("nutrition-agent", "生成食谱", context);
+ * AgentResponse response = a2aClient.invoke("data-agent", "生成报告", context);
  *
  * // 异步调用
- * Mono&lt;AgentResponse&gt; responseMono = a2aClient.invokeAsync("recipe-agent", request);
+ * Mono&lt;AgentResponse&gt; responseMono = a2aClient.invokeAsync("report-agent", request);
  *
  * // 批量调用多个 Agent
  * List&lt;AgentResponse&gt; responses = a2aClient.invokeAll(agentNames, request);
@@ -76,7 +77,8 @@ public class A2AClient {
     private final Map<String, List<AgentEndpoint>> agentCache = new ConcurrentHashMap<>();
 
     /** 默认超时时间 */
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
+    @Value("${agentscope.extensions.a2a.timeout-seconds:60}")
+    private Duration defaultTimeout = Duration.ofSeconds(60);
 
     /**
      * 构造函数
@@ -195,7 +197,7 @@ public A2AClient(ObjectProvider<A2AConfig> configProvider, @Autowired A2ARegistr
      * @return Agent 响应
      */
     public AgentResponse invoke(String agentName, AgentRequest request) {
-        return invoke(agentName, request, DEFAULT_TIMEOUT);
+        return invoke(agentName, request, defaultTimeout);
     }
 
     /**
@@ -277,7 +279,7 @@ public A2AClient(ObjectProvider<A2AConfig> configProvider, @Autowired A2ARegistr
      * @return 所有 Agent 的响应
      */
     public List<AgentResponse> invokeAll(List<String> agentNames, AgentRequest request) {
-        return invokeAll(agentNames, request, DEFAULT_TIMEOUT);
+        return invokeAll(agentNames, request, defaultTimeout);
     }
 
     /**

@@ -27,7 +27,7 @@ import io.yunxi.platform.shared.dto.ProfileInfo;
  * </p>
  *
  * <p>
- * 组合键格式：agentName#profileName，例如 "nutrition-assistant#dietitian"。
+ * 组合键格式：agentName#profileName，例如 "business-assistant#default"。
  * AgentService 使用组合键注册和查找 Profile Agent 实例。
  * </p>
  *
@@ -61,8 +61,8 @@ public class ProfileRouter {
      *
      * <p>
      * AgentService 使用组合键注册和查找 Profile Agent 实例。
-     * 例如 "nutrition-assistant#dietitian" 表示 nutrition-assistant 的
-     * dietitian Profile 版本。
+     * 例如 "business-assistant#default" 表示 business-assistant 的
+     * default Profile 版本。
      * </p>
      *
      * @param agentName Agent 名称

@@ -52,15 +52,15 @@ public class OpenAIProxyController {
 
     /**
      * 获取 Agent 配置（tool schemas + system prompt）
-     * GET /v1/agent/config?pageType=recipe-make
+     * GET /v1/agent/config?pageType=business-make
      *
      * 前端不需要写任何 LLM 提示词文本，只从此接口获取。
      * 返回格式:
      * {
-     *   "systemPrompt": "你是一个营养助手...",
+     *   "systemPrompt": "你是一个业务助手...",
      *   "tools": {
-     *     "recipe_balance": { "description": "...", "params": { "request": "string", ... } },
-     *     "recipe_extract": { "description": "...", "params": { "format": "string?" } }
+     *     "report_balance": { "description": "...", "params": { "request": "string", ... } },
+     *     "report_extract": { "description": "...", "params": { "format": "string?" } }
      *   }
      * }
      */

@@ -19,7 +19,7 @@ public interface VectorSearchProvider {
     /**
      * 搜索向量数据
      *
-     * @param contextId 上下文ID（如学校ID）
+     * @param contextId 上下文ID（如租户ID）
      * @param query     查询文本
      * @param topK      返回数量
      * @return 搜索结果列表

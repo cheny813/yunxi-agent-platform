@@ -92,12 +92,12 @@ public class MemorySceneRegistry {
      * 注册自定义场景
      *
      * <p>
-     * 业务层在初始化时调用此方法动态注册场景（如校园餐饮场景 SCHOOL_MEAL）。
+     * 业务层在初始化时调用此方法动态注册场景（如租户业务场景 TENANT_BUSINESS）。
      * 自定义场景可以通过关键词匹配触发，与内置场景共享优先级顺序。
      * </p>
      *
-     * @param name          场景标识（如 SCHOOL_MEAL）
-     * @param displayName   展示名称（如"校园餐"）
+     * @param name          场景标识（如 TENANT_BUSINESS）
+     * @param displayName   展示名称（如"租户业务"）
      * @param description   场景描述
      * @param retentionDays 记忆保留天数，-1 永久
      * @param keywords      触发关键词列表（大小写不敏感）

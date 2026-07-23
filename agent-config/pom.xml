@@ -59,6 +59,16 @@
                     <encoding>${project.build.sourceEncoding}</encoding>
                 </configuration>
             </plugin>
+            <!-- 测试阶段将 LOG_DIR 固定到仓库根 logs/，避免日志写到 agent-config/logs -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <LOG_DIR>${maven.multiModuleProjectDirectory}/logs</LOG_DIR>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
             <!-- 启用 JaCoCo 测试覆盖率报告 -->
             <plugin>
                 <groupId>org.jacoco</groupId>

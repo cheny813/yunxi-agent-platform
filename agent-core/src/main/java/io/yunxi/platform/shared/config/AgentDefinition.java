@@ -17,17 +17,17 @@ import io.yunxi.platform.shared.dto.StructuredOutputConfigDto;
  * <pre>
  * 配置示例：
  * agent:
- *   name: "nutrition-assistant"
- *   description: "学校营养配餐助手"
- *   prompt: "你是一位专业的营养顾问..."
+ *   name: "business-assistant"
+ *   description: "通用业务助手"
+ *   prompt: "你是一位专业的业务助手..."
  *   model:
  *     provider: "openai"
  *     name: "gpt-4o"
  *   orchestration:
  *     pattern: "supervisor"
  *     experts:
- *       - name: "dish-searcher"
- *         description: "搜索菜品"
+ *       - name: "data-searcher"
+ *         description: "检索数据"
  * </pre>
  *
  * @author yunxi-agent-platform

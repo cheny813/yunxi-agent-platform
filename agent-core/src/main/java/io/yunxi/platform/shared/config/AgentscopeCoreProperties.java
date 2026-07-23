@@ -254,23 +254,24 @@ public class AgentscopeCoreProperties {
     /**
      * Compaction（消息压缩）配置类
      *
-     * <p>
-     * 控制 HarnessAgent 的消息压缩策略，当消息数量或 token 数超过阈值时自动触发压缩。
-     * </p>
-     *
-     * @author yunxi-agent-platform
+     * <p>控制 HarnessAgent 的消息压缩策略，当消息数量或 token 数超过阈值时自动触发压缩。
+     * 底层框架 GA 的 CompactionConfig.Builder 默认值：
+     * triggerMessages=50, triggerTokens=0(动态=contextWindow-20000),
+     * keepMessages=20, keepTokens=-1(动态=min(8000,max(2000,usable*0.25))),
+     * flushBeforeCompact=true, offloadBeforeCompact=true。
+     * 本平台对 triggerMessages/triggerTokens/keepMessages 进行了调优覆盖。</p>
      */
     @Data
     public static class CompactionProperties {
-        /** 触发压缩的消息数量阈值 */
-        private int triggerMessages = 50;
-        /** 触发压缩的 token 数量阈值 */
-        private int triggerTokens = 80000;
-        /** 压缩后保留的消息数量 */
-        private int keepMessages = 20;
-        /** 压缩前是否刷新记忆 */
+        /** 触发压缩的消息数量阈值（GA 默认 50，此处降为 20 以提前触发压缩） */
+        private int triggerMessages = 20;
+        /** 触发压缩的 token 数量阈值（GA 默认 0=动态模式，此处显式设为 8000 作为保底触发） */
+        private int triggerTokens = 8000;
+        /** 压缩后保留的最近消息数量（GA 默认 20，此处降为 8 以减少 token 消耗） */
+        private int keepMessages = 8;
+        /** 压缩前是否刷新记忆（与 GA 默认 true 一致，保持不变） */
         private boolean flushBeforeCompact = true;
-        /** 压缩前是否卸载记忆 */
+        /** 压缩前是否卸载记忆（与 GA 默认 true 一致，保持不变） */
         private boolean offloadBeforeCompact = true;
     }
 

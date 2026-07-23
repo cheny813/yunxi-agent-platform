@@ -62,7 +62,7 @@ agent:
       - memory
       - general
     mcpServersToolsGroup:
-      - mcp-nutrition
+    #  - mcp-nutrition
 
   # ============================================================
   # 运行时配置

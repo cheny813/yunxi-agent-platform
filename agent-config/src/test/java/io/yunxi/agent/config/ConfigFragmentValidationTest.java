@@ -76,11 +76,6 @@ class ConfigFragmentValidationTest {
     }
 
     @Test
-    void testBusinessConfigFormat() {
-        validateConfigFile("config/business.yml", "yunxi.agent");
-    }
-
-    @Test
     void testMCPServerConfigFormat() {
         validateConfigFile("config/mcp-core.yml", "mcp");
     }

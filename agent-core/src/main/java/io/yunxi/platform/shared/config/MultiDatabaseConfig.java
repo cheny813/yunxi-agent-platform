@@ -17,14 +17,14 @@ import java.util.*;
  *
  * <pre>
  * mcp-databases:
- *   nutrition:
- *     display-name: 营养数据库
- *     jdbc-url: jdbc:mysql://192.168.10.153:3306/nutrition_db
+ *   business:
+ *     display-name: 业务数据库
+ *     jdbc-url: jdbc:mysql://localhost:3306/business_db
  *     username: root
  *     password: root
  *     table-name-mappings:
- *       菜品: dish
- *       食材: ingredient
+ *       实体A: entity_a
+ *       实体B: entity_b
  * </pre>
  *
  * @author yunxi-agent-platform
@@ -37,7 +37,7 @@ public class MultiDatabaseConfig {
 
     /**
      * 数据库配置映射
-     * key: 数据库标识符（如 nutrition, finance, foodsafety）
+     * key: 数据库标识符（如 business, finance, hr）
      * value: 数据库配置
      */
     private Map<String, DatabaseInfo> databases = new HashMap<>();
@@ -45,7 +45,7 @@ public class MultiDatabaseConfig {
     /**
      * 默认数据库标识符
      */
-    private String defaultDatabase = "nutrition";
+    private String defaultDatabase = "default";
 
     /**
      * 数据库信息
@@ -66,7 +66,7 @@ public class MultiDatabaseConfig {
 
         /**
          * 表名映射配置
-         * key: 自然语言关键词（如 "菜品", "食材", "营养素"）
+         * key: 自然语言关键词（如 "实体A", "实体B"）
          * value: 实际表名
          */
         private Map<String, String> tableNameMappings = new HashMap<>();

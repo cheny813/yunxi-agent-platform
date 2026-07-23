@@ -4,7 +4,7 @@ import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.yunxi.platform.embedding.EmbeddingService;
-import io.yunxi.platform.sync.EmbeddingBatchService;
+import io.yunxi.platform.embedding.EmbeddingBatchService;
 import io.yunxi.platform.config.MilvusConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

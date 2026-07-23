@@ -74,8 +74,8 @@ public void method2() {
 ```java
 // 好的设计
 @Component
-public class NutritionAgent {
-    // 只处理营养相关
+public class BusinessAgent {
+    // 只处理业务相关
 }
 
 @Component
@@ -160,13 +160,13 @@ public class MyAgent {
 
 ```java
 String prompt = """
-    你是营养专家助手。
+    你是业务专家助手。
     
-    任务：分析用户提供的食谱，给出营养建议。
+    任务：分析用户提供的业务数据，给出改进建议。
     
     输出格式：
-    1. 热量分析
-    2. 营养成分
+    1. 指标分析
+    2. 数据构成
     3. 改进建议
     """;
 ```
@@ -516,7 +516,7 @@ toolkit.registration()
 ```yaml
 tools:
   groups:
-    - mcp-nutrition    # 只启用营养相关工具
+    - mcp-data       # 只启用业务相关工具
     - database
 ```
 

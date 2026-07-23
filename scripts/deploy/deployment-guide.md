@@ -73,8 +73,9 @@ java -jar target/yunxi-agent-platform-*.jar \
   --server.port=8080 \
   --management.server.port=9090
 
-# 方式2: 使用启动脚本
-./scripts/startup.sh
+# 方式2: 使用启动脚本（仓库根目录）
+./start.ps1        # Windows (PowerShell)
+# ./start.bat      # 或使用 start.bat
 ```
 
 ## 3. 系统配置

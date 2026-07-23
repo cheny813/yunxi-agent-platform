@@ -185,7 +185,7 @@ agent-core
 
 ```
 yunxi-mcp-servers/          ← 独立项目，30+ MCP 服务
-├── mcp-nutrition           # 营养数据查询（端口 40602）
+├── mcp-data                # 业务数据查询（端口 40602）
 ├── mcp-database            # 通用数据库查询（端口 40101）
 ├── mcp-redis               # Redis 操作（端口 40102）
 ├── mcp-milvus              # 向量检索（端口 40103）
@@ -203,7 +203,7 @@ yunxi-mcp-servers/          ← 独立项目，30+ MCP 服务
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | agent-core | 40001 | 核心服务 |
-| mcp-nutrition | 40602 | 营养数据 MCP |
+| mcp-data | 40602 | 业务数据 MCP |
 
 ---
 

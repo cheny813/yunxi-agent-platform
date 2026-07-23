@@ -74,9 +74,9 @@ Agent = LLM + 记忆 + 工具 + 提示词
 
 ```yaml
 agents:
-  nutrition-assistant:
-    name: "营养专家助手"
-    system-prompt: "你是营养专家..."  # 提示词
+  business-assistant:
+    name: "业务助手"
+    system-prompt: "你是业务专家..."  # 提示词
     model: "qwen-max"                  # LLM
     rag-mode: GENERIC                  # 默认 RAG 模式（请求未指定时自动生效）
     memory:                            # 记忆
@@ -84,9 +84,9 @@ agents:
       max-memories: 100
     tools:                             # 工具
       - query_database
-      - calculate_nutrition
+      - calculate_metric
     mcp-servers:                       # MCP 工具
-      - nutrition-knowledge
+      - business-knowledge
 ```
 
 ---
@@ -173,8 +173,8 @@ Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`prod
 **核心问题**：同样的用户输入，在不同场景下需要不同的处理方式。
 
 **示例**：
-- 用户说"苹果"：在营养场景指水果，在科技场景指公司
-- 用户说"分析"：在食谱场景分析营养，在代码场景分析逻辑
+- 用户说"苹果"：在商品场景指水果，在科技场景指公司
+- 用户说"分析"：在报表场景分析指标，在代码场景分析逻辑
 
 ### 场景的定义
 
@@ -214,13 +214,13 @@ Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`prod
 
 ```java
 @Component
-public class RecipeSceneContributor implements SceneContributor {
+public class BusinessSceneContributor implements SceneContributor {
     
     @Override
     public Map<String, List<String>> getSceneKeywords() {
         // 返回 Map Map<场景名称, 关键词列表>
         return Map.of(
-            "RECIPE", List.of("食谱", "配餐", "营养分析"),
+            "BUSINESS_DATA", List.of("业务数据", "报告", "记录"),
             "SCORING", List.of("评分", "评估", "检查")
         );
     }
@@ -229,8 +229,8 @@ public class RecipeSceneContributor implements SceneContributor {
     public String getExtractionPrompt(String sceneName) {
         return """
             请从用户输入中提取以下信息：
-            1. 餐次类型（早餐/午餐/晚餐）
-            2. 就餐人数
+            1. 业务类型
+            2. 关联对象
             3. 特殊要求
             输出格式：JSON
             """;
@@ -239,12 +239,12 @@ public class RecipeSceneContributor implements SceneContributor {
     @Override
     public String assembleContext(String sceneName, String userId, String query) {
         // 查询用户历史偏好
-        List<Dish> favorites = dishRepository.findFavorites(userId);
+        List<Record> favorites = recordRepository.findFavorites(userId);
         
         // 返回格式化后的上下文文本
         return String.format("""
             用户历史偏好：%s
-            营养标准：%s
+            业务标准：%s
             当前查询：%s
             """, favorites, loadStandard(), query);
     }
@@ -267,9 +267,9 @@ Profile 包含以下关键属性：
 
 | 属性 | 说明 | 示例 |
 |------|------|------|
-| **name** | Profile 名称，唯一标识 | `chat`, `recipe-make` |
-| **label** | 展示名称 | `营养咨询`, `食谱生成` |
-| **description** | 描述 | `回答营养健康问题` |
+| **name** | Profile 名称，唯一标识 | `chat`, `business-make` |
+| **label** | 展示名称 | `智能咨询`, `内容生成` |
+| **description** | 描述 | `回答业务咨询问题` |
 | **mode** | 内置模式选择 | `chat`, `expert`, `advanced` |
 | **prompt** | 专用 system prompt | 覆盖 Agent 级别的 prompt |
 | **toolGroups** | 激活的工具组列表 | `[search, database]` |
@@ -306,18 +306,18 @@ Agent 级别默认配置
 
 ```yaml
 agents:
-  - name: nutrition-assistant
+  - name: business-assistant
     mode: expert                    # Agent 级别默认模式
-    prompt: 你是一个专业的营养食谱管理助手...
+    prompt: 你是一个专业的业务数据管理助手...
     
     profiles:
       chat:                         # Profile 1：聊天模式
-        label: 营养咨询
+        label: 智能咨询
         mode: chat                  # 覆盖为聊天模式
-        prompt: 你是一个营养健康顾问...
+        prompt: 你是一个业务顾问...
       
-      recipe-make:                  # Profile 2：专家模式
-        label: 食谱生成
+      business-make:                # Profile 2：专家模式
+        label: 内容生成
         mode: expert                # 继承 Agent 的 expert 模式
 ```
 
@@ -583,7 +583,7 @@ MemoryScene 和 MemorySceneRegistry 提供场景化的记忆管理能力，根�
 **MemoryScene**：定义单个场景的记忆配置
 | 属性 | 说明 | 示例 |
 |------|------|------|
-| **sceneName** | 场景名称 | `recipe-make`, `chat` |
+| **sceneName** | 场景名称 | `business-make`, `chat` |
 | **retentionPolicy** | 保留策略 | `session`, `persistent` |
 | **maxMemories** | 最大记忆条数 | `100` |
 | **ttl** | 过期时间 | `30m`, `24h` |
@@ -774,10 +774,10 @@ public class MyTool implements ToolHandler {
 
 | 扩展点 | 用途 | 实现示例 |
 |--------|------|----------|
-| **DomainContributor** | 定义业务领域 | NutritionDomainContributor |
-| **SceneContributor** | 定义业务场景 | RecipeSceneContributor |
-| **ContextEnricher** | 增强上下文 | NutritionContextEnricher |
-| **VectorSearchProvider** | 向量搜索实现 | DishVectorSearchProvider |
+| **DomainContributor** | 定义业务领域 | BusinessDomainContributor |
+| **SceneContributor** | 定义业务场景 | BusinessSceneContributor |
+| **ContextEnricher** | 增强上下文 | BusinessContextEnricher |
+| **VectorSearchProvider** | 向量搜索实现 | DataVectorSearchProvider |
 
 ### 分层职责
 

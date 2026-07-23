@@ -14,8 +14,8 @@ import java.util.List;
  * orchestration:
  *   pattern: "supervisor"
  *   experts:
- *     - name: "dish-searcher"
- *       description: "搜索符合营养标准的菜品"
+ *     - name: "data-searcher"
+ *       description: "检索符合业务标准的数据"
  * </pre>
  *
  * @author yunxi-agent-platform

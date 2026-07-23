@@ -170,8 +170,8 @@ agentscope:
 | notion-writer | 技术文档 | 写文档, README |
 | uml-designer | UML 图表 | 时序图, 类图, mermaid |
 | logger | 日志分析 | 日志, log error |
-| nutrition-recipe | 食谱规划 | 食谱, 营养配餐 |
-| nutrition-knowledge | 营养知识 | 营养成分, 卡路里 |
+| business-plan | 业务规划 | 业务方案, 计划生成 |
+| business-knowledge | 业务知识 | 业务规则, 标准规范 |
 | page-design | 页面设计 | 设计页面, 生成 UI |
 | skill-creator | 技能创建 | 创建技能, SKILL.md |
 

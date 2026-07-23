@@ -81,22 +81,76 @@ agentscope:
 
       # --------------------- Nutrition MCP 服务器 ---------------------
       # 端口：40602
-      # 协议：HTTP（JSON-RPC over HTTP）
+      # 协议：SSE（与 mcp-common 的 McpServerFactory 一致，仅暴露 /mcp/sse + /mcp/sse/message）
       # 提供工具：searchDishes, evaluateRecipe
       # 源码：D:\work\code\yunxi-mcp-servers\mcp-nutrition
+      # 注意：原 type=http 走 Streamable HTTP 打 /mcp，但服务端未实现该端点（404），
+      #       故统一改为 sse，与其它 MCP 服务保持一致。
       # --------------------------------------------------------------------
       mcp-nutrition:
         enabled: ${MCP_NUTRITION_ENABLED:false}
-        type: http
-        url: ${MCP_NUTRITION_URL:http://localhost:40602/mcp}
+        type: sse
+        url: ${MCP_NUTRITION_URL:http://localhost:40602/mcp/sse}
         timeout: ${MCP_NUTRITION_TIMEOUT:60000}
         description: "营养配餐数据查询 MCP 服务器（菜品搜索、营养评估）【需要单独启动 yunxi-mcp-servers/mcp-nutrition】"
+
+      # --------------------- FormFill 智能表单填写 MCP 服务器 ---------------------
+      # 端口：40601
+      # 协议：SSE + WebSocket (STOMP)
+      # SSE地址：http://localhost:40601/mcp/sse
+      # WebSocket地址：ws://localhost:40601/ws/formfill
+      # 提供工具：formfill_recipe, formfill_weekly_recipe, formfill_safety, formfill_budget, formfill_generic
+      #
+      # 说明：mcp-formfill 与 mcp-pagegen、mcp-playwright 的区别
+      #   - mcp-formfill: 填写【现有】业务系统表单，通过 WebSocket 实时推送指令到前端页面
+      #   - mcp-pagegen: 生成【全新】页面（仪表盘、列表、详情），输出完整 HTML
+      #   - mcp-playwright: 通用浏览器自动化（技术工具，非业务专用）
+      # 默认禁用：需启动 mcp-formfill 服务（端口40601）后，设 MCP_FORMFILL_ENABLED=true 启用
+      # --------------------------------------------------------------------
+      formfill:
+        enabled: ${MCP_FORMFILL_ENABLED:false}
+        type: sse
+        url: ${MCP_FORMFILL_URL:http://localhost:40601/mcp/sse}
+        timeout: ${MCP_FORMFILL_TIMEOUT:60000}
+        description: "智能表单填写 MCP 服务器（支持多种业务场景的表单自动填写，需配合前端 WebSocket 集成）"
+
+      # --------------------- Chart 图表生成 MCP 服务器 ---------------------
+      # 端口：40302
+      # 协议：SSE
+      # 地址：http://localhost:40302/mcp/sse
+      # 提供工具：generate_chart
+      # 默认禁用：需启动 mcp-chart 服务（端口40302）后，设 MCP_CHART_ENABLED=true 启用
+      # --------------------------------------------------------------------
+      chart:
+        enabled: ${MCP_CHART_ENABLED:false}
+        type: sse
+        url: ${MCP_CHART_URL:http://localhost:40302/mcp/sse}
+        timeout: ${MCP_CHART_TIMEOUT:60000}
+        description: "图表生成 MCP 服务器"
+
+      # --------------------- PageGen 页面生成 MCP 服务器 ---------------------
+      # 端口：40303
+      # 协议：SSE
+      # 地址：http://localhost:40303/mcp/sse
+      # 提供工具：pagegen_dashboard, pagegen_list, pagegen_detail
+      # 说明：生成完整 HTML 页面（仪表盘、列表页、详情页、业务表单等）
+      #       与 mcp-formfill 的区别：
+      #         - mcp-pagegen: 生成【全新】页面，输出完整 HTML（适用于新建系统）
+      #         - mcp-formfill: 填写【现有】系统表单，通过 WebSocket 推送（适用于对接旧系统）
+      # 默认禁用：需启动 mcp-pagegen 服务（端口40303）后，设 MCP_PAGEGEN_ENABLED=true 启用
+      # --------------------------------------------------------------------
+      pagegen:
+        enabled: ${MCP_PAGEGEN_ENABLED:false}
+        type: sse
+        url: ${MCP_PAGEGEN_URL:http://localhost:40303/mcp/sse}
+        timeout: ${MCP_PAGEGEN_TIMEOUT:60000}
+        description: "页面生成 MCP 服务器"
 
       # --------------------- Puppeteer 官方 MCP 服务器 ---------------------
       # 官方提供的 Puppeteer MCP 服务器
       # --------------------------------------------------------------------
       puppeteer:
-        enabled: ${MCP_PUPPETEER_ENABLED:true}
+        enabled: ${MCP_PUPPETEER_ENABLED:false}
         type: stdio
         command: npx
         args:

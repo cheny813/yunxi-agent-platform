@@ -475,23 +475,6 @@ public class ChatAppService {
     }
 
     /**
-     * 转义 JSON 字符串中的特殊字符
-     *
-     * @param str 待转义的字符串（允许为 null）
-     * @return 转义后的字符串；输入为 null 时返回空串
-     */
-    private String escapeJson(String str) {
-        if (str == null) {
-            return "";
-        }
-        return str.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    /**
      * 格式化上下文数据为可读文本
      *
      * <p>
@@ -644,7 +627,6 @@ public class ChatAppService {
                                 historyMessages.size(), conversationId);
 
                         // 添加用户消息到记忆（由 HarnessAgent MemoryFlushHook 自动处理）
-                        List<Msg> userMessages = List.of(userMsg);
 
                         // 构建完整上下文：历史消息 + 当前用户消息
                         List<Msg> allHistoryMessages = new ArrayList<>(historyMessages);
@@ -770,14 +752,14 @@ public class ChatAppService {
         // 积累推理文本，最终存入 Msg metadata
         StringBuilder thinkingAccumulator = new StringBuilder();
 
-        // 6. 将 AgentEvent 流转换为 SSE 事件流（透传架构：除内容事件外，全部原生透传给前端）
+        // 6. 将 AgentEvent 流转换为 SSE 事件流（内容事件与块边界事件被消费，其余原生透传）
         Flux<String> contentFlux = eventFlux
                 .timeout(timeout)
                 .flatMapSequential(event -> {
                     io.agentscope.core.event.AgentEventType type = event.getType();
 
-                    // ── 内容事件：需要后端处理（流式输出/保存会话） ──
-                    // 这类事件已被完整消费，不再额外透传（避免重复流量）
+                    // ── 已消费事件：需要后端处理（流式输出/保存会话）或仅作块边界标记 ──
+                    // 这类事件已被完整消费，不再额外透传（避免重复流量与「半截」原生块）
                     if (type == io.agentscope.core.event.AgentEventType.TEXT_BLOCK_DELTA) {
                         String delta = event instanceof io.agentscope.core.event.TextBlockDeltaEvent
                                 ? ((io.agentscope.core.event.TextBlockDeltaEvent) event).getDelta()
@@ -796,6 +778,17 @@ public class ChatAppService {
                         }
                         return Flux.empty();
                     }
+
+                    // 文本/思考块的边界事件（START/END）：块内容已由 *_BLOCK_DELTA 消费并替换为
+                    // 友好 content/thinking 消息，此处直接消费、不再透传原生边界事件，
+                    // 避免前端收到「START 却永远等不到 DELTA」的半截原生块
+                    if (type == io.agentscope.core.event.AgentEventType.TEXT_BLOCK_START
+                            || type == io.agentscope.core.event.AgentEventType.TEXT_BLOCK_END
+                            || type == io.agentscope.core.event.AgentEventType.THINKING_BLOCK_START
+                            || type == io.agentscope.core.event.AgentEventType.THINKING_BLOCK_END) {
+                        return Flux.empty();
+                    }
+
                     if (type == io.agentscope.core.event.AgentEventType.AGENT_RESULT) {
                     if (event instanceof io.agentscope.core.event.AgentResultEvent resultEvent) {
                         Msg resultMsg = resultEvent.getResult();
@@ -805,7 +798,7 @@ public class ChatAppService {
                                     conversationId != null ? conversationId : "stream", "yunxi", usage);
                         }
                         String reasoningText = thinkingAccumulator.toString();
-                            if (!reasoningText.isEmpty()) {
+                            if (resultMsg != null && !reasoningText.isEmpty()) {
                                 Map<String, Object> metadata = new HashMap<>();
                                 if (resultMsg.getMetadata() != null) {
                                     metadata.putAll(resultMsg.getMetadata());
@@ -890,11 +883,11 @@ public class ChatAppService {
                 });
 
         // 组合所有事件流（深度/A2A 模式进度通过工具调用事件驱动，不再使用定时心跳）
-        // finishFlux：流结束前发送 agent_status "处理完成"，更新推理块最终状态
-        Flux<String> finishFlux = thinkingText != null
-                ? Flux.just(sseMessageBuilder.buildAgentStatusMessage("处理完成"))
-                : Flux.empty();
-        return Flux.concat(startFlux, thinkingFlux, contentFlux, finishFlux);
+        // 关键修复：始终发送"处理完成"事件，确保前端能正确退出"正在生成回复..."状态
+        // 修复前：quick 模式下 thinkingText 为 null，不发送完成事件 → 前端永远等待
+        Flux<String> finishFlux = Flux.just(sseMessageBuilder.buildAgentStatusMessage("处理完成"));
+        return Flux.concat(startFlux, thinkingFlux, contentFlux, finishFlux)
+                .timeout(Duration.ofSeconds(properties.getChatTimeoutSeconds() + 30));
     }
 
     /**

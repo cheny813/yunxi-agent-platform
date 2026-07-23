@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -64,6 +65,10 @@ public class A2AServer {
 
     /** Agent 领域服务 —— 查找 Agent 实例 */
     private final AgentService agentDomainService;
+
+    /** A2A 调用阻塞超时（分钟），可通过 a2a.server.block-timeout-minutes 配置覆盖 */
+    @Value("${a2a.server.block-timeout-minutes:5}")
+    private int blockTimeoutMinutes = 5;
 
     /** 本地 Agent 注册表（agentName → AgentInstance） */
     private final Map<String, AgentInstance> localAgents = new ConcurrentHashMap<>();
@@ -247,7 +252,7 @@ public class A2AServer {
 
             // 同步阻塞调用（最多等待 5 分钟）
             Msg msgResponse = agent.call(userMsg)
-                    .block(Duration.ofMinutes(5));
+                    .block(Duration.ofMinutes(blockTimeoutMinutes));
 
             String content = msgResponse != null ? msgResponse.getTextContent() : "Agent 无响应";
 

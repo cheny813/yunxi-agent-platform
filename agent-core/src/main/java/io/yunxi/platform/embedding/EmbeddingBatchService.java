@@ -1,6 +1,5 @@
-package io.yunxi.platform.sync;
+package io.yunxi.platform.embedding;
 
-import io.yunxi.platform.embedding.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,8 +11,9 @@ import java.util.List;
  * 向量嵌入批量服务
  *
  * <p>
- * 封装分批调用 embedding API 的逻辑（带重试），
- * 从 BaseSyncService 中提取，作为独立服务供同步使用。
+ * 封装分批调用 embedding API 的逻辑（带重试）。
+ * 从原 sync 包提取为框架级通用能力，供记忆 / RAG 等模块复用，
+ * 与业务同步逻辑解耦。
  * </p>
  *
  * @author yunxi-agent-platform

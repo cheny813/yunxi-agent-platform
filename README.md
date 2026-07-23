@@ -211,7 +211,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 | **AI 能力** | 浏览器自动化（Playwright）、图表生成、页面生成、知识库、记忆管理 |
 | **文档处理** | PDF、Excel、PPTX |
 | **基础设施** | Docker、K8s、Git、S3、MQTT、日志查询、系统监控 |
-| **其他** | 邮件、Wikipedia、表单填写、营养配餐、API 网关 |
+| **其他** | 邮件、Wikipedia、表单填写、业务处理、API 网关 |
 
 ---
 

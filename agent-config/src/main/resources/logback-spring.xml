@@ -29,7 +29,8 @@
         </encoder>
     </appender>
 
-    <!-- 文件Appender - 写入公共目录 -->
+    <!-- 文件Appender - 默认写入项目根目录下的 logs/（相对路径，运行时工作目录即仓库根）
+         覆盖方式：-DLOG_DIR=xxx 或环境变量 LOG_DIR -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_DIR:-logs}/${LOG_NAME}.log</file>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">

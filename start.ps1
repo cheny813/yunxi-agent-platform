@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     yunxi-agent-platform 统一启动脚本（PowerShell 版）
@@ -9,12 +9,14 @@
     .\启动项目.ps1 -Fast     # 快速启动（已打包）
     .\启动项目.ps1 -Maven    # 使用 Maven spring-boot:run
     .\启动项目.ps1 -Clean    # 清理并重新打包启动
+    .\启动项目.ps1 -NoSync   # 跳过 sdk-js 静态资源同步
 #>
 
 param(
     [switch]$Fast,
     [switch]$Maven,
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$NoSync
 )
 
 # 设置控制台输出编码为 UTF-8，解决 Maven/javac 中文警告乱码
@@ -48,6 +50,38 @@ function Invoke-Pause {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
+# 同步 sdk-js 源码 -> 后端静态资源（演示页 /js/* 副本）
+# 单一真相源：sdk-js/src 是 SDK 唯一源码，静态副本由本步骤生成，请勿手工编辑。
+# 注意：静态副本在打包时（normal/clean 的 mvn package、maven 的 spring-boot:run）
+#       才会进入运行产物；fast 模式使用现成 JAR，本步骤对运行中的演示页无影响。
+function Sync-StaticResources {
+    if ($NoSync) {
+        Write-Host "[INFO] 跳过 sdk-js 静态资源同步（-NoSync）"
+        return
+    }
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        Write-Host "[WARN] 未检测到 node，跳过 sdk-js 静态资源同步。" -ForegroundColor Yellow
+        Write-Host "       如需更新演示页副本，请手动执行：cd sdk-js && npm run sync" -ForegroundColor Yellow
+        return
+    }
+    $syncScript = Join-Path $scriptDir "sdk-js\scripts\sync-static.mjs"
+    if (-not (Test-Path $syncScript)) {
+        Write-Host "[WARN] 未找到同步脚本: $syncScript，跳过" -ForegroundColor Yellow
+        return
+    }
+    Write-Host "[INFO] 同步 sdk-js -> 后端静态资源（演示页副本）..."
+    Push-Location $scriptDir
+    & node $syncScript
+    Pop-Location
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARN] 静态资源同步失败（不影响启动），请检查 sdk-js 目录" -ForegroundColor Yellow
+    } else {
+        Write-Host "[INFO] 静态资源同步完成" -ForegroundColor Green
+    }
+    Write-Host ""
+}
+
 # ===== 开始 =====
 
 # 切换到脚本所在目录
@@ -68,6 +102,9 @@ Write-Host ""
 # 停止旧进程
 Stop-JavaProcess
 
+# 同步 sdk-js 静态资源副本（在打包前执行，确保进入运行产物）
+Sync-StaticResources
+
 # ===== 配置参数（集中管理） =====
 # 【智能体框架 服务端口】
 $SERVER_PORT   = "40001"
@@ -83,7 +120,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32b521ea808a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b5d60d8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -141,7 +178,7 @@ $configArgs = @(
     "-Dspring.data.redis.host=$REDIS_HOST",
     "-Dspring.data.redis.port=$REDIS_PORT",
     "-Dspring.data.redis.password=$REDIS_PASSWORD",
-    "-Dotel.service.name=$OTEL_SERVICE_NAME"
+    "-Dotel.service.name=$OTEL_SERVICE_NAME",
 )
 # OTLP 导出到 Jaeger（取消下方注释启用）
 $otelExtra = @(
@@ -167,6 +204,11 @@ switch ($mode) {
             Invoke-Pause
             exit 1
         }
+
+        Write-Host "[提示] fast 模式直接使用已打包 JAR，启动时已同步的 sdk-js 静态副本"
+        Write-Host "       不会进入运行中的演示页；若改过 SDK 源码并需演示页生效，请改用"
+        Write-Host "       .\启动项目.ps1 -Clean 重新打包。"
+        Write-Host ""
 
         $allArgs = $javaArgs + @("-jar", $jarFile)
         & "java" $allArgs
@@ -248,6 +290,10 @@ switch ($mode) {
             }
             Write-Host ""
             Write-Host "[SUCCESS] Package complete"
+            Write-Host ""
+        } else {
+            Write-Host "[INFO] 已检测到 JAR，跳过打包（已同步的 sdk-js 静态副本未重新打入 JAR）。"
+            Write-Host "       若改过 SDK 源码并需演示页生效，请改用 .\启动项目.ps1 -Clean。"
             Write-Host ""
         }
 

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.yunxi.platform.shared.config.MultiDatabaseConfig;
 import io.yunxi.platform.shared.util.TextParserUtil;
 import io.yunxi.platform.shared.util.nlq.NaturalLanguageQueryParser;
-import io.yunxi.platform.sync.ExternalDbQueryService;
+import io.yunxi.platform.shared.service.ExternalDbQueryService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -8,3 +8,6 @@ export * from './AgentClient';
 
 // Re-export DesktopClient types
 export * from './DesktopClient';
+
+// Re-export AgentBrowserSDK (browser machine-control) types
+export * from './AgentBrowserSDK';

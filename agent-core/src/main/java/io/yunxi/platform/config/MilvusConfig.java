@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Configuration;
  *   database: default
  *   collections:
  *     user-memory: user_memory        # 用户级记忆向量集合
- *     recipe-history: recipe_history  # 食谱历史向量集合
+ *     business-history: business_history  # 业务历史向量集合
  *   embedding:
  *     dimension: 1536                 # 向量维度
  *     model: text-embedding-v3        # 嵌入模型
@@ -79,6 +79,13 @@ public class MilvusConfig {
      * 查询超时时间（秒）
      */
     private int queryTimeout = 30;
+
+    /**
+     * 索引构建等待超时时间（毫秒）
+     * <p>对已存在的非空集合，createIndex 是异步操作，需等待索引构建完成（Finished）后再 load，
+     * 否则 loadCollection 会因索引未就绪而失败。默认 120000ms（2 分钟）。</p>
+     */
+    private long indexBuildTimeoutMs = 120000;
 
     /**
      * 集合配置

@@ -126,7 +126,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 设置静态页面的路由
         registry.addViewController("/chat").setViewName("forward:/chat.html");
         registry.addViewController("/chat-demo").setViewName("forward:/chat-demo.html");
-        registry.addViewController("/recipe-automation-new").setViewName("forward:/recipe-automation-new.html");
     }
 
     /**

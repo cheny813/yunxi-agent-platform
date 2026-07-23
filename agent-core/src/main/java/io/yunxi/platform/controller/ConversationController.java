@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -80,6 +81,10 @@ public class ConversationController {
 
     /** JSON 序列化工具 */
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** 对话接口等待超时时间（秒），可通过 conversation.timeout-seconds 配置覆盖 */
+    @Value("${conversation.timeout-seconds:300}")
+    private int conversationTimeoutSeconds;
 
     /**
      * 获取用户会话列表
@@ -160,7 +165,7 @@ public class ConversationController {
                 .role(MsgRole.USER)
                 .build();
         try {
-            Duration timeout = Duration.ofSeconds(300); // 5分钟超时
+            Duration timeout = Duration.ofSeconds(conversationTimeoutSeconds); // 5分钟超时
             // 路径1：使用内联 JSON Schema（最优先）
             Map<String, Object> schema = request.getSchema();
             if (schema != null && !schema.isEmpty()) {
@@ -326,7 +331,7 @@ public class ConversationController {
                 // 代价是结构化模式下不提供逐字 token 流（框架未公开 stream+structured 组合 API）。
                 log.info("流式结构化输出(表单模式, 阻塞校验): Agent={}, requestId={}", agentName, requestId);
                 RuntimeContext rc = RuntimeContext.empty();
-                Duration timeout = Duration.ofSeconds(300);
+                Duration timeout = Duration.ofSeconds(conversationTimeoutSeconds);
                 Mono<String> structuredFlux = Mono.fromCallable(() -> {
                     Msg result;
                     Object data;
