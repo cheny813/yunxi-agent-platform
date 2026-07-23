@@ -30,12 +30,54 @@ export interface ChatOptions {
     userId?: string;
     /** 对话模式 */
     mode?: 'sync' | 'stream' | 'structured';
+    /** 流式事件回调（chatStream 可选）：每条解析后的 SSE 事件 */
+    onEvent?: (event: SseEvent) => void;
 }
 
 /**
  * 结构化输出Schema
  */
 export type StructuredSchema = Record<string, any>;
+
+/**
+ * 解析后的 SSE 事件对象
+ */
+export interface SseEvent {
+    /** 事件类型（如 content / tool_call / tool_result_delta / TOOL_CALL_START 等） */
+    type: string;
+    /** 事件时间戳（ISO-8601） */
+    timestamp?: string;
+    /** 事件内容：友好消息为 JSON 字符串，原生事件为事件 JSON 字符串，content/thinking 为纯文本 */
+    content: string;
+}
+
+/**
+ * chatStreamEvents 的事件处理器集合（全部可选）
+ */
+export interface ChatEventHandlers {
+    /** 每条解析后的事件，最后兜底分发 */
+    onEvent?: (event: SseEvent) => void;
+    /** 友好文本增量 (type=content) */
+    onText?: (text: string) => void;
+    /** 思考过程增量 (type=thinking) */
+    onThinking?: (text: string) => void;
+    /** 工具调用开始 (type=tool_call)，data: {toolCallId, toolCallName} */
+    onToolCall?: (data: any) => void;
+    /** 工具调用参数就绪 (type=tool_call_done)，data: {toolCallId, toolCallName} */
+    onToolCallDone?: (data: any) => void;
+    /** 工具结果 (type=tool_result) */
+    onToolResult?: (data: any) => void;
+    /** 工具流式输出开始 (type=tool_result_start) */
+    onToolResultStart?: (data: any) => void;
+    /** 工具流式输出增量 (type=tool_result_delta)，data: {toolCallId, toolCallName, delta} */
+    onToolResultDelta?: (data: { toolCallId?: string; toolCallName?: string; delta: string }) => void;
+    /** 状态提示 (type=agent_status) */
+    onStatus?: (data: any) => void;
+    /** 错误 (type=error) */
+    onError?: (data: any) => void;
+    /** 流结束 */
+    onDone?: () => void;
+}
 
 /**
  * AgentClient类
@@ -91,6 +133,15 @@ export class AgentClient {
      * @returns 数据流生成器
      */
     chatStreamIterator(message: string, options?: ChatOptions): AsyncGenerator<string, void, unknown>;
+
+    /**
+     * 流式对话 - 结构化事件回调，便于 UI 渲染工具调用卡片、工具流式进度等
+     * @param message - 用户消息
+     * @param handlers - 事件处理器集合（全部可选）
+     * @param options - 可选参数
+     * @returns 拼接后的完整文本回复
+     */
+    chatStreamEvents(message: string, handlers?: ChatEventHandlers, options?: ChatOptions): Promise<string>;
 
     /**
      * 简化调用 - 默认使用流式模式，返回完整响应

@@ -1,7 +1,7 @@
 # ============================================================
 # Milvus 向量数据库配置
 # ============================================================
-# 用于持久化用户记忆、历史食谱等语义可检索数据
+# 用于持久化用户记忆、历史记录等语义可检索数据
 # 启用方式：设置 milvus.enabled=true 并启动 Milvus 服务
 #
 # 认证说明：
@@ -20,14 +20,14 @@ milvus:
   token: ${MILVUS_TOKEN:}                         # Token（替代用户名密码，优先级更高）
   connect-timeout: 5                              # 连接超时（秒）
   query-timeout: 30                               # 查询超时（秒）
+  index-build-timeout-ms: 120000                  # 索引构建等待超时（毫秒）：非空集合 createIndex 为异步操作，
+                                                  # 建索引后会轮询索引状态直到 Finished 再 load，避免 load 因索引未就绪失败
 
   # 集合配置
   collections:
     user-memory: user_memory                      # 用户级记忆向量集合
-    recipe-history: recipe_history                # 食谱历史向量集合
+    business-history: business_history            # 业务历史向量集合
     conversation-memory: conversation_memory      # 会话记忆向量集合
-    school-common-dishes: school_common_dishes    # 公共菜品向量集合（school_id=0，系统级菜品）
-    school-dishes: school_dishes_                 # 学校专属菜品向量集合（前缀，实际集合名=前缀+schoolId）
 
   # 嵌入向量配置
   # 注意：dimension 需与 embedding.default-dimension 保持一致

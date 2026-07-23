@@ -6,6 +6,7 @@
   "types": "src/index.d.ts",
   "scripts": {
     "build": "echo 'No build step required for JavaScript'",
+    "sync": "node scripts/sync-static.mjs",
     "prepublishOnly": "echo 'Preparing for publication...'"
   },
   "keywords": [
@@ -44,6 +45,7 @@
   },
   "files": [
     "src/",
+    "examples/",
     "README.md",
     "LICENSE"
   ],

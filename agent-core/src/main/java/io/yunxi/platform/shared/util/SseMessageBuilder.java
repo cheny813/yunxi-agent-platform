@@ -36,11 +36,9 @@ public class SseMessageBuilder {
     public String buildMessage(String type, String content) {
         try {
             SseMessage message = new SseMessage(type, Instant.now(), content);
-            String sseMessage = "data: " + objectMapper.writeValueAsString(message) + "\n\n";
-            // 日志打印太频繁，如果查看细节，可以打开
-            // log.info("构建 SSE 消息 - type: {}, content length: {}", type, content != null ?
-            // content.length() : 0);
-            return sseMessage;
+            // 仅返回 JSON 负载；data: 前缀与 \\n\\n 事件分隔符由 Spring 的 text/event-stream
+            // 流式响应自动封装，避免在 Flux<String> 场景下出现双重 data: 前缀导致客户端解析失败。
+            return objectMapper.writeValueAsString(message);
         } catch (Exception e) {
             log.error("构建 SSE 消息失败", e);
             return buildErrorMessage("内部错误");
@@ -58,10 +56,8 @@ public class SseMessageBuilder {
     public String buildMessageWithRequestId(String type, String content, String requestId) {
         try {
             SseMessageWithRequestId message = new SseMessageWithRequestId(type, Instant.now(), content, requestId);
-            String sseMessage = "data: " + objectMapper.writeValueAsString(message) + "\n\n";
-            log.info("构建 SSE 消息（带请求ID） - type: {}, requestId: {}, content length: {}",
-                    type, requestId, content != null ? content.length() : 0);
-            return sseMessage;
+            // 仅返回 JSON 负载；data: 前缀由 Spring 流式响应自动封装
+            return objectMapper.writeValueAsString(message);
         } catch (Exception e) {
             log.error("构建 SSE 消息（带请求ID）失败", e);
             return buildErrorMessage("内部错误");
@@ -119,10 +115,11 @@ public class SseMessageBuilder {
         try {
             SseMessageWithConversationId message = new SseMessageWithConversationId(type, Instant.now(), content,
                     conversationId);
-            String sseMessage = "data: " + objectMapper.writeValueAsString(message) + "\n\n";
+            // 仅返回 JSON 负载；data: 前缀与 \n\n 事件分隔符由 Spring 的 text/event-stream 流式响应自动封装，
+            // 避免在 Flux<String> 场景下出现双重 data: 前缀导致客户端解析失败。
             log.info("构建 SSE 消息（带会话ID） - type: {}, conversationId: {}, content length: {}",
                     type, conversationId, content != null ? content.length() : 0);
-            return sseMessage;
+            return objectMapper.writeValueAsString(message);
         } catch (Exception e) {
             log.error("构建 SSE 消息（带会话ID）失败", e);
             return buildErrorMessage("内部错误");
@@ -269,6 +266,46 @@ public class SseMessageBuilder {
                 "toolCallId", toolCallId,
                 "toolCallName", toolCallName,
                 "state", state != null ? state : "unknown"
+        )));
+    }
+
+    /**
+     * 构建工具流式输出开始事件消息。
+     * <p>
+     * 前端收到 type=tool_result_start 事件后，应在对应工具卡片内打开「输出」区域，
+     * 准备接收后续的流式进度文本（{@code tool_result_delta}）。
+     * 数据透传自 AgentScope 的 {@code ToolResultStartEvent}。
+     * </p>
+     *
+     * @param toolCallId   工具调用唯一标识
+     * @param toolCallName 工具名称
+     * @return SSE 格式的工具流式输出开始消息
+     */
+    public String buildToolResultStartMessage(String toolCallId, String toolCallName) {
+        return buildMessage("tool_result_start", toJsonString(Map.of(
+                "toolCallId", toolCallId,
+                "toolCallName", toolCallName
+        )));
+    }
+
+    /**
+     * 构建工具流式输出进度事件消息。
+     * <p>
+     * 前端收到 type=tool_result_delta 事件后，应将 {@code delta} 追加到对应工具卡片的
+     * 「输出」区域，形成打字机式实时进度。
+     * 数据透传自 AgentScope 的 {@code ToolResultTextDeltaEvent}。
+     * </p>
+     *
+     * @param toolCallId   工具调用唯一标识
+     * @param toolCallName 工具名称
+     * @param delta        增量输出文本
+     * @return SSE 格式的工具流式进度消息
+     */
+    public String buildToolResultDeltaMessage(String toolCallId, String toolCallName, String delta) {
+        return buildMessage("tool_result_delta", toJsonString(Map.of(
+                "toolCallId", toolCallId,
+                "toolCallName", toolCallName,
+                "delta", delta != null ? delta : ""
         )));
     }
 

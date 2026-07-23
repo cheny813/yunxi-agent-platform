@@ -49,9 +49,8 @@
 # │   ├── a2a-pipeline.yml     ← Agent-to-Agent 协议
 # │   ├── agentscope.yml       ← AgentScope 框架
 # │   ├── gateway.yml          ← 消息网关
-# │   ├── business.yml         ← 业务服务
 # │   ├── text2sql.yml         ← 自然语言转 SQL
-# │   └── sync-pipelines.yml   ← 同步管道
+# │   └── (sync-pipelines 已迁移至 mcp-nutrition 模块)
 # ├── agent-definitions/       ← 各 Agent 定义（名称/提示词/工具）
 # ├── prompts/                 ← 提示词模板
 # ├── .agentscope/workspace/skills/  ← 技能目录（框架唯一识别）

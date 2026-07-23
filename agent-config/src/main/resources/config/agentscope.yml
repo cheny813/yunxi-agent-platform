@@ -19,8 +19,31 @@ agentscope:
     # 默认系统提示词（可选）
     default-prompt: ${AGENTSCOPE_DEFAULT_PROMPT:}
 
-    # 对话超时秒数（8分钟，适应复杂食谱配平计算：5天×搜索+食材+评分）
+    # 对话超时秒数（默认 8 分钟）
     chat-timeout-seconds: ${AGENTSCOPE_TIMEOUT:480}
+
+    # ============================================================
+    # 消息压缩配置（控制 HarnessAgent 历史压缩策略）
+    #
+    # GA CompactionConfig.Builder 原始默认值（供参考）：
+    #   triggerMessages=50, triggerTokens=0(动态=contextWindow-20000),
+    #   keepMessages=20, keepTokens=-1(动态=min(8000,max(2000,usable*0.25))),
+    #   flushBeforeCompact=true, offloadBeforeCompact=true
+    #
+    # 本平台对 triggerMessages/triggerTokens/keepMessages 进行了调优覆盖，
+    # flushBeforeCompact/offloadBeforeCompact 与 GA 默认保持一致。
+    # ============================================================
+    compaction:
+      # GA 默认 50 → 降为 20，更早触发压缩，控制 token 消耗
+      trigger-messages: ${COMPACTION_TRIGGER_MSGS:20}
+      # GA 默认 0（动态模式）→ 显式设为 8000，当 token 激增时作为保底触发
+      trigger-tokens: ${COMPACTION_TRIGGER_TOKENS:8000}
+      # GA 默认 20 → 降为 8，压缩后保留更少消息以减少 token 消耗
+      keep-messages: ${COMPACTION_KEEP_MSGS:8}
+      # 与 GA 默认 true 一致
+      flush-before-compact: ${COMPACTION_FLUSH:true}
+      # 与 GA 默认 true 一致
+      offload-before-compact: ${COMPACTION_OFFLOAD:true}
 
     # Studio 可视化调试配置（可选）
     studio:
@@ -116,3 +139,31 @@ agentscope:
       registry-type: ${A2A_REGISTRY_TYPE:nacos}
       registry-addr: ${A2A_REGISTRY_ADDR:localhost:8848}
       namespace: ${A2A_NAMESPACE:agent-platform}
+      # A2A 客户端默认调用超时（秒）
+      timeout-seconds: ${A2A_TIMEOUT_SECONDS:60}
+
+# ============================================================
+# 框架级超时与缓存配置（可运维调优，均带默认值）
+# 以下均为顶层配置键（不隶属于 agentscope 前缀），对应代码中的 @Value 注入
+# ============================================================
+
+# 对话接口等待超时（秒）—— ConversationController
+conversation:
+  timeout-seconds: ${CONVERSATION_TIMEOUT_SECONDS:300}
+  # 会话列表缓存 TTL（分钟）—— ConversationDomainService
+  session-cache-ttl-minutes: ${CONVERSATION_CACHE_TTL_MINUTES:5}
+  # 分布式请求锁 TTL（秒）—— DistributedRequestManager
+  request-lock-seconds: ${CONVERSATION_LOCK_SECONDS:300}
+
+# 页面 Agent 执行阻塞超时（秒）—— PageAgentService
+page-agent:
+  block-timeout-seconds: ${PAGE_AGENT_BLOCK_TIMEOUT:120}
+
+# A2A 服务端调用阻塞超时（分钟）—— A2AServer
+a2a:
+  server:
+    block-timeout-minutes: ${A2A_SERVER_BLOCK_TIMEOUT:5}
+
+# SSE 连接超时（毫秒）—— SseEmitterManager
+sse:
+  timeout-millis: ${SSE_TIMEOUT_MILLIS:1800000}

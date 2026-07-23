@@ -338,12 +338,11 @@ public class FileVectorService {
     }
 
     /**
-     * 初始化集合（由 MilvusSchemaInitializer 统一管理，此方法仅保留日志）
+     * 初始化集合（集合创建由 FileVectorService 内部 ensure 方法负责）
      */
     @jakarta.annotation.PostConstruct
     public void initCollection() {
-        // 集合创建已移至 MilvusSchemaInitializer 统一管理
-        log.info("FileVectorService: 集合创建由 MilvusSchemaInitializer 统一管理");
+        log.info("FileVectorService: 文件内容 / 图片特征集合由本服务自行确保存在");
     }
 
     /**

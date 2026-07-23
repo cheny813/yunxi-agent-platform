@@ -62,8 +62,8 @@ public class MyService {
     // 1. 同步调用
     public AgentResponse callRemoteAgent() {
         return a2aClient.invoke(
-            "nutrition-agent",           // Agent 名称
-            "生成食谱",                   // 请求内容
+            "data-agent",           // Agent 名称
+            "生成报告",                   // 请求内容
             context                      // 上下文
         );
     }
@@ -71,7 +71,7 @@ public class MyService {
     // 2. 异步调用
     public Mono<AgentResponse> callRemoteAgentAsync() {
         return a2aClient.invokeAsync(
-            "recipe-agent",
+            "report-agent",
             request
         );
     }
@@ -234,7 +234,7 @@ agentscope:
             weight: 100
           - url: http://localhost:40009
             weight: 100
-        recipe-agent:
+        report-agent:
           - url: http://localhost:40003
 ```
 
@@ -248,11 +248,11 @@ agentscope:
 
 ```java
 AgentCapability.builder()
-    .name("nutrition-analysis")           // 能力名称
-    .description("营养分析")               // 能力描述
+    .name("data-analysis")           // 能力名称
+    .description("数据分析")               // 能力描述
     .inputSchema(Schema.builder()         // 输入参数 Schema
         .type("object")
-        .property("recipe", Schema.string())
+        .property("data", Schema.string())
         .build())
     .outputSchema(Schema.builder()        // 输出结果 Schema
         .type("object")
@@ -270,10 +270,10 @@ AgentCapability.builder()
 ### 场景 1：多领域协作
 
 ```
-用户："分析这份食谱的营养价值和成本"
+用户："分析这份业务数据的价值和成本"
 
 SupervisorAgent
-    ├── 调用 nutrition-agent (A2A) → 营养分析
+    ├── 调用 data-agent (A2A) → 数据分析
     ├── 调用 cost-agent (A2A) → 成本计算
     └── 聚合结果 → 完整报告
 ```

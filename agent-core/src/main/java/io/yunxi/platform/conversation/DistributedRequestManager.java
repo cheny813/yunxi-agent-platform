@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -55,7 +56,8 @@ public class DistributedRequestManager {
     /**
      * 默认超时时间（5分钟）
      */
-    private static final long DEFAULT_TIMEOUT_SECONDS = 5 * 60;
+    @Value("${conversation.request-lock-seconds:300}")
+    private long defaultTimeoutSeconds = 5 * 60;
 
     /**
      * 请求信息（Redis 存储）
@@ -147,11 +149,11 @@ public class DistributedRequestManager {
 
         // 存储 RequestInfo（带 TTL）
         String requestKey = REQUEST_PREFIX + requestId;
-        redisTemplate.opsForValue().set(requestKey, requestInfo, DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(requestKey, requestInfo, defaultTimeoutSeconds, TimeUnit.SECONDS);
 
         // 存储取消令牌到请求ID的映射（带 TTL）
         String cancelKey = CANCEL_TOKEN_PREFIX + cancelToken;
-        redisTemplate.opsForValue().set(cancelKey, requestId, DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(cancelKey, requestId, defaultTimeoutSeconds, TimeUnit.SECONDS);
 
         // 增加活跃请求计数
         redisTemplate.opsForValue().increment(ACTIVE_COUNT_KEY);
@@ -173,11 +175,11 @@ public class DistributedRequestManager {
 
         // 存储 RequestInfo（带 TTL）
         String requestKey = REQUEST_PREFIX + requestId;
-        redisTemplate.opsForValue().set(requestKey, requestInfo, DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(requestKey, requestInfo, defaultTimeoutSeconds, TimeUnit.SECONDS);
 
         // 存储取消令牌到请求ID的映射（带 TTL）
         String cancelKey = CANCEL_TOKEN_PREFIX + cancelToken;
-        redisTemplate.opsForValue().set(cancelKey, requestId, DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(cancelKey, requestId, defaultTimeoutSeconds, TimeUnit.SECONDS);
 
         // 增加活跃请求计数
         redisTemplate.opsForValue().increment(ACTIVE_COUNT_KEY);
@@ -242,7 +244,7 @@ public class DistributedRequestManager {
 
         // 标记请求为已取消
         requestInfo.setCancelled(true);
-        redisTemplate.opsForValue().set(requestKey, requestInfo, DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().set(requestKey, requestInfo, defaultTimeoutSeconds, TimeUnit.SECONDS);
 
         log.info("取消请求成功: requestId={}, cancelToken={}", requestId, cancelToken);
         return true;

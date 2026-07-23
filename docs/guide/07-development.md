@@ -67,10 +67,10 @@ public class MyDomainContributor implements DomainContributor {
     public Map<String, List List<Pattern>> getDomainPatterns() {
         // 返回 Map Map<领域名称, 关键词模式列表>
         return Map.of(
-            "nutrition",
+            "business",
             List.of(
-                Pattern.compile("营养|食谱|配餐"),
-                Pattern.compile("热量|蛋白质|维生素")
+                Pattern.compile("业务|报告|记录"),
+                Pattern.compile("指标|数值|标准")
             )
         );
     }
@@ -79,8 +79,8 @@ public class MyDomainContributor implements DomainContributor {
     public Map<String, Set<String>> getAgentCapabilities() {
         // 返回 Map Map<Agent名称, 能力集合>
         return Map.of(
-            "nutrition-assistant",
-            Set.of("recipe-analysis", "nutrition-calculation", "scoring")
+            "business-assistant",
+            Set.of("data-analysis", "metric-calculation", "scoring")
         );
     }
 }
@@ -106,7 +106,7 @@ public class MySceneContributor implements SceneContributor {
     public Map<String, List<String>> getSceneKeywords() {
         // 返回 Map Map<场景名称, 关键词列表>
         return Map.of(
-            "RECIPE_ANALYSIS", List.of("食谱", "分析", "营养"),
+            "BUSINESS_ANALYSIS", List.of("业务数据", "分析", "报告"),
             "SCORING", List.of("评分", "评估", "检查")
         );
     }
@@ -297,8 +297,8 @@ public class MyContextEnricher implements ContextEnricher {
     @Override
     public String formatKey(String key, Object value) {
         // 格式化特定 key 的上下文数据
-        if ("calories".equals(key)) {
-            return String.format("热量：%s kcal", value);
+        if ("metric".equals(key)) {
+            return String.format("指标值：%s", value);
         }
         return null; // 不处理该 key
     }
@@ -306,7 +306,7 @@ public class MyContextEnricher implements ContextEnricher {
     @Override
     public String appendPrompt(Map<String, Object> contextData) {
         // 追加提示文本到上下文
-        return "请注意营养均衡搭配。";
+        return "请注意业务规则一致性。";
     }
 }
 ```

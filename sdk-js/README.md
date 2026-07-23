@@ -181,6 +181,44 @@ for await (const chunk of client.chatStreamIterator('写篇文章')) {
 }
 ```
 
+#### 方式3: 结构化事件回调（chatStreamEvents）
+
+`chatStream` 仅回传「原始文本块」，无法区分文本、思考过程与工具调用。`chatStreamEvents` 会把每条 SSE 事件解析为结构化对象，并分派到对应 handler，便于渲染**工具调用卡片**、**工具内流式进度（打字机）**等。
+
+```javascript
+await client.chatStreamEvents('查一下北京天气', {
+    onToolCall:        (t) => ui.addToolCard(t.toolCallName, t.toolCallId),
+    onToolResultStart: (t) => ui.openToolOutput(t.toolCallId),
+    onToolResultDelta: (d) => ui.appendToolOutput(d.toolCallId, d.delta), // 工具内流式进度（打字机式）
+    onToolResult:      (t) => ui.finishTool(t.toolCallId, t.state),
+    onThinking:        (s) => ui.appendThinking(s),
+    onText:            (s) => ui.appendAnswer(s),
+    onError:           (e) => ui.showError(e.message),
+});
+```
+
+**handlers 事件类型（均可选）：**
+
+| handler | 触发时机 | 入参 |
+|---------|----------|------|
+| onText | 文本增量（type=`content`） | string |
+| onThinking | 思考过程增量（type=`thinking`） | string |
+| onToolCall | 工具调用开始（type=`tool_call`） | object `{toolCallId, toolCallName}` |
+| onToolCallDone | 工具参数就绪（type=`tool_call_done`） | object `{toolCallId, toolCallName}` |
+| onToolResult | 工具结果（type=`tool_result`） | object `{toolCallId, toolCallName, state}` |
+| onToolResultStart | 工具流式输出开始（type=`tool_result_start`） | object `{toolCallId, toolCallName}` |
+| onToolResultDelta | 工具流式输出增量（type=`tool_result_delta`） | object `{toolCallId, toolCallName, delta}` |
+| onStatus | 状态提示（type=`agent_status`） | object |
+| onError | 错误（type=`error`） | object |
+| onEvent | 每条解析后的事件兜底分发 | object `{type, timestamp, content}` |
+| onDone | 流结束 | - |
+
+> 后端对 `content`/`thinking` 下发纯文本，对其余友好消息下发 JSON 字符串，`chatStreamEvents` 会自动 `JSON.parse` 后传入对应 handler（`tool_result_delta` 自动提取 `delta` 字符串）。
+
+**其它说明：**
+- `chatStream` 仍向后兼容（继续回传原始文本块），并额外支持 `options.onEvent(evt)` 手动解析每条 SSE 事件。
+- 若前端不走 SDK、直接消费 SSE，可对 `data:` 行做 `JSON.parse(data.content)`，按 `type` 字段自行渲染 `tool_result_delta` 等事件。
+
 ---
 
 ### 4. 简化调用
@@ -491,16 +529,37 @@ const response: string = await client.chatSync('测试');
 
 ## 📚 示例代码
 
-查看 `examples/` 目录获取更多示例：
+仓库 `sdk-js/examples/` 目录下提供了可直接运行的 Node.js 示例：
 
-- `basic-usage.js` - 基础使用示例
-- `advanced-usage.js` - 高级使用示例
+- `examples/basic-usage.js` - 基础对话（`chat`）示例
+- `examples/advanced-usage.js` - 结构化流式事件（`chatStreamEvents`，含工具卡片渲染）示例
 
 运行示例：
 
 ```bash
-npm test
+# 需先启动 yunxi-agent-platform 后端（默认 http://localhost:40001）
+node examples/basic-usage.js
+node examples/advanced-usage.js
 ```
+
+---
+
+## 🖥️ 浏览器演示与静态资源
+
+后端（`agent-config`）把若干演示页作为静态资源对外提供，访问地址：
+
+- `http://localhost:40001/chat.html` - 基础聊天演示
+- `http://localhost:40001/chat-tool-call.html` - 工具调用流式演示
+- `http://localhost:40001/page-agent-recipe.html` - 页面智能体演示
+
+> **单一真相源**：这些演示页引用的 `static/js/AgentClient.js` 与 `static/js/agent-sdk/agent-sdk.js`
+> **不是手工维护的副本**，而是由本包通过 `npm run sync` 从 `sdk-js/src` 自动生成。
+> 修改 SDK 后请在 `sdk-js/` 目录执行 `npm run sync` 重新生成静态资源，**请勿直接编辑** `static/js` 下的文件。
+>
+> ```bash
+> cd sdk-js
+> npm run sync
+> ```
 
 ---
 

@@ -49,7 +49,7 @@ check_project_structure() {
     done
     
     # 检查脚本文件
-    script_files=("performance-test.java" "performance-monitor.groovy" "deployment-guide.md")
+    script_files=("perf/performance-test.java" "perf/performance-monitor.groovy" "deploy/deployment-guide.md")
     for script in "${script_files[@]}"; do
         if [ ! -f "$PROJECT_ROOT/scripts/$script" ]; then
             missing_files+=("scripts/$script")
@@ -142,7 +142,7 @@ check_monitoring_config() {
     fi
     
     # 检查性能监控工具
-    if [ -f "$PROJECT_ROOT/scripts/performance-monitor.groovy" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/perf/performance-monitor.groovy" ]; then
         echo -e "${GREEN}✅ 性能监控脚本已创建${NC}"
     else
         echo -e "${YELLOW}⚠️  性能监控脚本未创建${NC}"
@@ -168,14 +168,14 @@ check_deployment_config() {
     fi
     
     # 检查部署脚本
-    if [ -f "$PROJECT_ROOT/scripts/deployment-guide.md" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/deploy/deployment-guide.md" ]; then
         echo -e "${GREEN}✅ 部署指南已创建${NC}"
     else
         echo -e "${YELLOW}⚠️  部署指南未创建${NC}"
     fi
     
     # 检查启动脚本
-    if [ -f "$PROJECT_ROOT/scripts/startup.sh" ]; then
+    if [ -f "$PROJECT_ROOT/start.ps1" ]; then
         echo -e "${GREEN}✅ 启动脚本已创建${NC}"
     else
         echo -e "${YELLOW}⚠️  启动脚本未创建${NC}"
@@ -210,13 +210,13 @@ yunxi-agent-platform 优化验证报告
 
 4. 监控配置验证:
    - Actuator: $(if grep -q "management" "$PROJECT_ROOT/src/main/resources/application.yml"; then echo "已配置"; else echo "未配置"; fi)
-   - 性能监控: $(if [ -f "$PROJECT_ROOT/scripts/performance-monitor.groovy" ]; then echo "已创建"; else echo "未创建"; fi)
+   - 性能监控: $(if [ -f "$PROJECT_ROOT/scripts/perf/performance-monitor.groovy" ]; then echo "已创建"; else echo "未创建"; fi)
    - 线程池监控: $(if grep -q "ThreadPoolMonitor" "$PROJECT_ROOT" -r; then echo "已创建"; else echo "未创建"; fi)
 
 5. 部署配置验证:
    - Docker配置: $(if [ -f "$PROJECT_ROOT/Dockerfile" ]; then echo "已创建"; else echo "未创建"; fi)
-   - 部署指南: $(if [ -f "$PROJECT_ROOT/scripts/deployment-guide.md" ]; then echo "已创建"; else echo "未创建"; fi)
-   - 启动脚本: $(if [ -f "$PROJECT_ROOT/scripts/startup.sh" ]; then echo "已创建"; else echo "未创建"; fi)
+   - 部署指南: $(if [ -f "$PROJECT_ROOT/scripts/deploy/deployment-guide.md" ]; then echo "已创建"; else echo "未创建"; fi)
+   - 启动脚本: $(if [ -f "$PROJECT_ROOT/start.ps1" ]; then echo "已创建"; else echo "未创建"; fi)
 
 优化建议:
 $(generate_optimization_suggestions)
@@ -285,8 +285,8 @@ main() {
     echo -e "\n${YELLOW}📋 下一步操作建议:${NC}"
     echo -e "${YELLOW}1. 构建项目: mvn clean package${NC}"
     echo -e "${YELLOW}2. 运行测试: mvn test${NC}"
-    echo -e "${YELLOW}3. 部署应用: 参考scripts/deployment-guide.md${NC}"
-    echo -e "${YELLOW}4. 性能监控: 运行scripts/performance-monitor.groovy${NC}"
+    echo -e "${YELLOW}3. 部署应用: 参考scripts/deploy/deployment-guide.md${NC}"
+    echo -e "${YELLOW}4. 性能监控: 运行scripts/perf/performance-monitor.groovy${NC}"
 }
 
 # 异常处理

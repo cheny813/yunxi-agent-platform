@@ -2,6 +2,7 @@ package io.yunxi.platform.gateway;
 
 import io.yunxi.platform.shared.spi.SseNotificationProvider;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -21,14 +22,15 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SseEmitterManager implements SseNotificationProvider {
 
     private final Map<String, SseEmitter> emitters = new ConcurrentHashMap<>();
-    private static final long DEFAULT_TIMEOUT = 30 * 60 * 1000L;
+    @Value("${sse.timeout-millis:1800000}")
+    private long defaultTimeout = 30 * 60 * 1000L;
 
     /** 使用默认超时时间为指定会话创建 SSE 连接。
      * @param sessionId 会话唯一标识
      * @return 新建的 SseEmitter 实例
      */
     @Override
-    public SseEmitter createEmitter(String sessionId) { return createEmitter(sessionId, DEFAULT_TIMEOUT); }
+    public SseEmitter createEmitter(String sessionId) { return createEmitter(sessionId, defaultTimeout); }
 
     /** 为指定会话创建 SSE 连接并注册完成/超时/错误回调。
      * @param sessionId 会话唯一标识

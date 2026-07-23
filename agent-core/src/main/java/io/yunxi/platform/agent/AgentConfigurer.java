@@ -18,6 +18,7 @@ import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
 import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
 import io.agentscope.core.permission.PermissionMode;
+import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.agent.service.AgentService;
@@ -641,13 +642,19 @@ public class AgentConfigurer implements SmartLifecycle {
 
         for (String name : wanted) {
             AgentscopeCoreProperties.McpServerConfig src = all.get(name);
-            if (src == null || !src.isEnabled()) {
-                log.warn("MCP 服务器 '{}' 未配置或已禁用，跳过注册", name);
+            if (src == null) {
+                log.warn("MCP 服务器 '{}' 未配置，跳过注册", name);
+                continue;
+            }
+            if (!src.isEnabled()) {
+                log.debug("MCP 服务器 '{}' 已禁用，跳过注册", name);
                 continue;
             }
             try {
                 // 按服务器名复用已建立的连接，避免每个 Agent 重复建连
-                McpClientWrapper wrapper = mcpClientCache.computeIfAbsent(name, n -> buildMcpClient(n, src));
+                // 用 yunxi 层断线重连包装器包裹底层 wrapper（GA SDK 0.9.0 无原生重连，待 GA 升级后移除）
+                McpClientWrapper wrapper =
+                        mcpClientCache.computeIfAbsent(name, n -> wrapWithReconnect(n, src));
                 // 预建以服务器名命名的工具组（默认不激活，由 applyToolGroupActivation 按配置控制可见性）
                 try {
                     toolkit.createToolGroup(name, "MCP 服务器: " + name, false);
@@ -657,7 +664,11 @@ public class AgentConfigurer implements SmartLifecycle {
                 toolkit.registration().mcpClient(wrapper).group(name).apply();
                 log.info("MCP 服务器 '{}' 工具已注册进工具组 '{}'", name, name);
             } catch (Exception e) {
-                log.error("MCP 服务器 '{}' 注册失败: {}", name, e.getMessage());
+                log.error(
+                        "[MCP] 服务器 '{}'（{} {}）注册失败：{}。"
+                                + " 若是服务未启动，请先启动对应 MCP 服务（配置 agentscope.core.mcp-servers.{}）后再重试；"
+                                + " 该 Agent 的其余工具不受影响。",
+                        name, src.getType(), src.getUrl(), e.getMessage(), name);
             }
         }
     }
@@ -669,9 +680,23 @@ public class AgentConfigurer implements SmartLifecycle {
      * @param src  服务器配置（来自 agentscope.core.mcp-servers）
      * @return 已建立连接的 McpClientWrapper
      */
+    /**
+     * yunxi 层临时适配：将底层 MCP wrapper 包入断线自动重连包装器。
+     * 底层框架（AgentScope GA）升级到内置原生 reconnect 的 MCP SDK（>= 0.10.0）后，
+     * 把 {@code registerMcpServers} 中对本方法的调用还原为直接 {@code buildMcpClient} 即可删除本类。
+     */
+    private McpClientWrapper wrapWithReconnect(String name, AgentscopeCoreProperties.McpServerConfig src) {
+        return new ReconnectingMcpClientWrapper(name, () -> buildMcpClient(name, src));
+    }
+
     private McpClientWrapper buildMcpClient(String name, AgentscopeCoreProperties.McpServerConfig src) {
-        McpClientBuilder builder = McpClientBuilder.create(name);
         String type = src.getType() == null ? "sse" : src.getType();
+        // 连接预检：用最朴素的 TCP 探测目标 host:port 是否可达，使"MCP 服务器未启动"这类问题
+        // 在日志中明确指向具体服务器与地址，而不是被框架内部 reactor 的 onErrorDropped 吞成
+        // 一条无上下文的 ConnectException。返回 false 表示端口明确不可达。
+        boolean reachable = probeConnection(name, type, src.getUrl());
+
+        McpClientBuilder builder = McpClientBuilder.create(name);
         switch (type) {
             case "stdio" -> builder.stdioTransport(src.getCommand(), src.getArgs(), src.getEnv());
             case "sse" -> {
@@ -691,7 +716,64 @@ public class AgentConfigurer implements SmartLifecycle {
         if (src.getTimeout() != null) {
             builder.timeout(Duration.ofMillis(src.getTimeout()));
         }
-        return builder.buildAsync().block();
+        McpClientWrapper wrapper = builder.buildAsync().block();
+        // 仅当端口可达时，主动同步触发一次握手初始化，把握手阶段的连接/协议异常同步捕获
+        // 并记录具体日志（初始化幂等，框架随后再次 initialize 无副作用）。端口不通时不做此
+        // 探测，避免无谓的连接超时等待。无论初始化成败均返回 wrapper，运行时 callTool 失败会
+        // 由 ReconnectingMcpClientWrapper 自动重连。
+        if (reachable) {
+            try {
+                wrapper.initialize().block(java.time.Duration.ofSeconds(3));
+            } catch (Exception e) {
+                log.warn(
+                        "[MCP] 服务器 '{}'（{} {}）握手初始化失败：{}。"
+                                + " 请先启动对应的 MCP 服务（配置 agentscope.core.mcp-servers.{}，地址 {}），"
+                                + " 否则该 Agent 的 MCP 工具暂时不可用，首次调用时将自动重连。",
+                        name, type, src.getUrl(), e.getMessage(), name, src.getUrl());
+            }
+        }
+        return wrapper;
+    }
+
+    /**
+     * 连接预检：对 SSE / HTTP 类 MCP 服务器，用最朴素的 TCP 连接探测目标 host:port 是否可达。
+     * 仅用于诊断——服务器未启动时能明确给出"连不上哪个地址、请先启动哪个服务"的具体日志，
+     * 避免被框架内部 reactor 的 onErrorDropped 吞成无上下文的 ConnectException。
+     *
+     * @return true 表示端口可达（或无需探测的 stdio / 解析异常），false 表示端口明确不可达
+     */
+    private boolean probeConnection(String name, String type, String url) {
+        if (url == null || (!"sse".equals(type) && !"http".equals(type)
+                && !"streamable-http".equals(type) && !"streamablehttp".equals(type))) {
+            return true;
+        }
+        String host;
+        int port;
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            host = uri.getHost();
+            port = uri.getPort();
+            if (port < 0) {
+                port = "https".equals(uri.getScheme()) ? 443 : 80;
+            }
+        } catch (Exception e) {
+            log.warn("[MCP] 服务器 '{}' 的 URL 无法解析，跳过连接预检：{}", name, url);
+            return true;
+        }
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, port), 2000);
+            return true;
+        } catch (java.net.ConnectException ce) {
+            log.warn(
+                    "[MCP] 服务器 '{}' 连接失败：目标 {}:{} 不可达（{}）。"
+                            + " 请先启动对应的 MCP 服务（配置 agentscope.core.mcp-servers.{}，地址 {}），"
+                            + " 否则该 Agent 的 MCP 工具暂时不可用，首次调用时将自动重连。",
+                    name, host, port, ce.getMessage(), name, url);
+            return false;
+        } catch (Exception e) {
+            log.warn("[MCP] 服务器 '{}' 连接预检异常（{}:{}）：{}", name, host, port, e.getMessage());
+            return true;
+        }
     }
 
     // ========== Middleware 配置 ==========

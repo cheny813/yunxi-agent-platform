@@ -227,7 +227,7 @@ public class AdvancedAgentConfigDto {
          * Supervisor 模式：专家 Agent 名称列表
          * <p>
          * 配置后，当前 Agent 将作为 Supervisor，协调这些专家 Agent 完成任务。
-         * 例如：["dish-searcher", "nutrition-evaluator", "recipe-composer"]
+         * 例如：["data-searcher", "report-evaluator", "doc-composer"]
          * </p>
          */
         private List<String> experts;

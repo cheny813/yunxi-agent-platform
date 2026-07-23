@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>yunxi Agent · 工具调用流式示例</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --panel: #171a23;
+            --panel-2: #1f2330;
+            --border: #2a2f3d;
+            --text: #e6e8ee;
+            --muted: #8b93a7;
+            --accent: #39b6ff;
+            --accent-2: #bd45fb;
+            --green: #22c55e;
+            --red: #ef4444;
+            --yellow: #ffd600;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+        header .sub { color: var(--muted); font-size: 12px; }
+        #config { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+        #config input {
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 13px;
+            width: 240px;
+        }
+        #transcript {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+        .turn { display: flex; flex-direction: column; gap: 10px; }
+        .user-bubble {
+            align-self: flex-end;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #fff;
+            padding: 10px 14px;
+            border-radius: 14px 14px 4px 14px;
+            max-width: 70%;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .assistant { display: flex; flex-direction: column; gap: 10px; max-width: 85%; }
+        .thinking {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .thinking summary {
+            cursor: pointer;
+            padding: 8px 12px;
+            color: var(--muted);
+            font-size: 12px;
+            user-select: none;
+        }
+        .thinking .body {
+            padding: 0 12px 10px;
+            color: var(--muted);
+            font-size: 13px;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+        .answer {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .answer:empty::before {
+            content: "（等待回答…）";
+            color: var(--muted);
+        }
+        .tools { display: flex; flex-direction: column; gap: 10px; }
+        .tool-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--yellow);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: border-color .25s ease;
+        }
+        .tool-card.done { border-left-color: var(--green); }
+        .tool-card.error { border-left-color: var(--red); }
+        .tool-card .head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            font-size: 13px;
+        }
+        .tool-card .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--yellow);
+            animation: pulse 1s ease-in-out infinite;
+        }
+        .tool-card.done .dot { background: var(--green); animation: none; }
+        .tool-card.error .dot { background: var(--red); animation: none; }
+        .tool-card .name { font-weight: 600; }
+        .tool-card .state { margin-left: auto; color: var(--muted); font-size: 12px; }
+        .tool-card .output {
+            padding: 0 12px 10px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 12px;
+            color: #c8d0e0;
+            white-space: pre-wrap;
+            line-height: 1.5;
+            max-height: 240px;
+            overflow-y: auto;
+            display: none;
+        }
+        .tool-card.streaming .output { display: block; }
+        .tool-card .output:empty { display: none; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 12px 20px;
+            display: flex;
+            gap: 10px;
+        }
+        footer textarea {
+            flex: 1;
+            resize: none;
+            height: 44px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 14px;
+            line-height: 1.4;
+            font-family: inherit;
+        }
+        footer button {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 0 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        footer button:disabled { opacity: .5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>yunxi Agent · 工具调用流式示例</h1>
+        <span class="sub">基于 SDK 的 chatStreamEvents（工具卡片 + 打字机输出）</span>
+        <div id="config">
+            <input id="baseUrl" value="http://localhost:40001" />
+            <input id="agentName" value="general-assistant" placeholder="agentName" />
+            <input id="userId" value="demo-user" placeholder="userId" />
+        </div>
+    </header>
+
+    <div id="transcript"></div>
+
+    <footer>
+        <textarea id="input" placeholder="输入消息，例如：帮我查一下北京今天的天气…"></textarea>
+        <button id="send">发送</button>
+    </footer>
+
+    <!-- 引入 SDK：本文件由 sdk-js 经 `npm run sync` 自动生成，单一真相源为 sdk-js/src/AgentClient.js，请勿手工编辑 -->
+    <script src="/js/AgentClient.js"></script>
+    <script>
+        const transcript = document.getElementById('transcript');
+        const input = document.getElementById('input');
+        const sendBtn = document.getElementById('send');
+
+        function getClient() {
+            const baseUrl = document.getElementById('baseUrl').value.trim();
+            const agentName = document.getElementById('agentName').value.trim() || 'general-assistant';
+            const userId = document.getElementById('userId').value.trim();
+            return new AgentClient(baseUrl, {
+                defaultUserId: userId || 'demo-user',
+                defaultAgentName: agentName,
+                timeout: 600000
+            });
+        }
+
+        // 创建一轮对话的 UI 骨架
+        function newTurn(userText) {
+            const turn = document.createElement('div');
+            turn.className = 'turn';
+
+            const userBubble = document.createElement('div');
+            userBubble.className = 'user-bubble';
+            userBubble.textContent = userText;
+            turn.appendChild(userBubble);
+
+            const assistant = document.createElement('div');
+            assistant.className = 'assistant';
+
+            const thinking = document.createElement('details');
+            thinking.className = 'thinking';
+            thinking.innerHTML =
+                '<summary>💡 思考过程</summary><div class="body"></div>';
+            assistant.appendChild(thinking);
+
+            const tools = document.createElement('div');
+            tools.className = 'tools';
+            assistant.appendChild(tools);
+
+            const answer = document.createElement('div');
+            answer.className = 'answer';
+            assistant.appendChild(answer);
+
+            turn.appendChild(assistant);
+            transcript.appendChild(turn);
+            transcript.scrollTop = transcript.scrollHeight;
+
+            return { thinking: thinking.querySelector('.body'), tools, answer };
+        }
+
+        // 工具卡片按 toolCallId 管理
+        const toolCards = new Map();
+        function getToolCard(toolsEl, id, name) {
+            if (toolCards.has(id)) return toolCards.get(id);
+            const card = document.createElement('div');
+            card.className = 'tool-card';
+            card.innerHTML =
+                '<div class="head">' +
+                '<span class="dot"></span>' +
+                '<span class="name"></span>' +
+                '<span class="state">运行中</span>' +
+                '</div>' +
+                '<div class="output"></div>';
+            card.querySelector('.name').textContent = name || id;
+            toolsEl.appendChild(card);
+            toolCards.set(id, card);
+            return card;
+        }
+
+        function setToolState(card, state) {
+            const label = { success: '成功', error: '失败', interrupted: '已中断', denied: '已拒绝' }[state] || state;
+            card.querySelector('.state').textContent = label;
+            card.classList.remove('streaming');
+            if (state === 'success') card.classList.add('done');
+            else if (state === 'error' || state === 'interrupted' || state === 'denied') card.classList.add('error');
+        }
+
+        async function send() {
+            const text = input.value.trim();
+            if (!text) return;
+
+            toolCards.clear();
+            input.value = '';
+            sendBtn.disabled = true;
+
+            const client = getClient();
+            const ui = newTurn(text);
+
+            try {
+                await client.chatStreamEvents(text, {
+                    onThinking: (s) => { ui.thinking.textContent += s; },
+                    onToolCall: (t) => {
+                        getToolCard(ui.tools, t.toolCallId, t.toolCallName);
+                    },
+                    onToolResultStart: (t) => {
+                        const card = getToolCard(ui.tools, t.toolCallId, t.toolCallName);
+                        card.classList.add('streaming');
+                    },
+                    onToolResultDelta: (d) => {
+                        // d = {toolCallId, toolCallName, delta}，做打字机式追加到对应卡片
+                        const card = getToolCard(ui.tools, d.toolCallId, d.toolCallName);
+                        card.classList.add('streaming');
+                        card.querySelector('.output').textContent += d.delta;
+                        transcript.scrollTop = transcript.scrollHeight;
+                    },
+                    onToolResult: (t) => {
+                        const card = getToolCard(ui.tools, t.toolCallId, t.toolCallName);
+                        setToolState(card, t.state);
+                    },
+                    onText: (s) => {
+                        ui.answer.textContent += s;
+                        transcript.scrollTop = transcript.scrollHeight;
+                    },
+                    onError: (e) => {
+                        const msg = (e && e.message) ? e.message : (typeof e === 'string' ? e : JSON.stringify(e));
+                        const err = document.createElement('div');
+                        err.className = 'answer';
+                        err.style.borderLeft = '3px solid var(--red)';
+                        err.textContent = '⚠️ ' + msg;
+                        ui.tools.parentNode.appendChild(err);
+                    },
+                    onDone: () => { sendBtn.disabled = false; }
+                }, { userId: document.getElementById('userId').value.trim() });
+            } catch (err) {
+                const e = document.createElement('div');
+                e.className = 'answer';
+                e.style.borderLeft = '3px solid var(--red)';
+                e.textContent = '⚠️ 请求失败：' + err.message;
+                ui.tools.parentNode.appendChild(e);
+                sendBtn.disabled = false;
+            }
+        }
+
+        sendBtn.addEventListener('click', send);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+        });
+    </script>
+</body>
+</html>

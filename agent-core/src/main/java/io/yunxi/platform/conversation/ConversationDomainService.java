@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -55,6 +56,10 @@ public class ConversationDomainService {
     private final ConversationRepository conversationRepository;
     /** 缓存提供器 */
     private final CacheProvider cacheProvider;
+
+    /** 会话列表缓存 TTL（分钟），可通过 conversation.session-cache-ttl-minutes 配置覆盖 */
+    @Value("${conversation.session-cache-ttl-minutes:5}")
+    private long sessionCacheTtlMinutes = 5;
 
     /** 本地缓存，用于快速访问，数据同步到 Redis */
     private final Map<String, ConversationEntity> localCache = new ConcurrentHashMap<>();
@@ -423,7 +428,7 @@ public class ConversationDomainService {
         if (!result.isEmpty()) {
             try {
                 cacheProvider.put(CacheNamespaces.USER_CONVERSATIONS, userId, result,
-                        Duration.ofMinutes(5)); // 用户会话列表缓存 TTL: 5 分钟
+                        Duration.ofMinutes(sessionCacheTtlMinutes)); // 用户会话列表缓存 TTL: 5 分钟
             } catch (Exception e) {
                 log.warn("Redis 缓存写入失败: {}", e.getMessage());
             }

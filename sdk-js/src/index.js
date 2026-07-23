@@ -5,12 +5,15 @@
 
 const AgentClient = require('./AgentClient');
 const DesktopClient = require('./DesktopClient');
+const AgentBrowserSDK = require('./AgentBrowserSDK');
 
 module.exports = {
   AgentClient,
-  DesktopClient
+  DesktopClient,
+  AgentBrowserSDK
 };
 
 // ES Module exports
 module.exports.AgentClient = AgentClient;
 module.exports.DesktopClient = DesktopClient;
+module.exports.AgentBrowserSDK = AgentBrowserSDK;

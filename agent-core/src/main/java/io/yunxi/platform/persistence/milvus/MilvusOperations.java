@@ -26,7 +26,7 @@ import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.request.data.FloatVec;
 import io.milvus.v2.service.vector.response.SearchResp;
 import io.yunxi.platform.embedding.EmbeddingService;
-import io.yunxi.platform.sync.EmbeddingBatchService;
+import io.yunxi.platform.embedding.EmbeddingBatchService;
 import io.yunxi.platform.config.MilvusConfig;
 
 /**

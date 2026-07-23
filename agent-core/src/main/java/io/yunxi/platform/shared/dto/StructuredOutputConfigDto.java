@@ -65,10 +65,10 @@ import java.util.Map;
  *
  * <pre>
  * // 使用默认 Schema
- * {"message": "分析营养", "structured": true}
+ * {"message": "分析业务数据", "structured": true}
  *
  * // 使用命名 Schema
- * {"message": "分析营养", "structured": true, "schemaName": "nutritionAnalysis"}
+ * {"message": "分析业务数据", "structured": true, "schemaName": "businessAnalysis"}
  * </pre>
  * </p>
  */
@@ -77,7 +77,7 @@ public class StructuredOutputConfigDto {
     /**
      * Schema 类名（完整类名，推荐使用）
      * <p>
-     * 例如：io.yunxi.platform.shared.dto.NutritionAnalysisSchema
+     * 例如：io.yunxi.platform.shared.dto.BusinessAnalysisSchema
      * </p>
      * <p>
      * <b>优先级</b>：如果设置了此字段，会优先使用 Schema 类，忽略 {@code schema} 字段
@@ -102,15 +102,15 @@ public class StructuredOutputConfigDto {
      * <b>配置示例</b>:
      * <pre>
      * schemas:
-     *   nutritionAnalysis: "io.yunxi.platform.shared.dto.NutritionAnalysisSchema"
-     *   recipeGeneration: "io.yunxi.platform.shared.dto.RecipeGenerationSchema"
+     *   businessAnalysis: "io.yunxi.platform.shared.dto.BusinessAnalysisSchema"
+     *   documentGeneration: "io.yunxi.platform.shared.dto.DocumentGenerationSchema"
      * </pre>
      * </p>
      * <p>
      * <b>使用示例</b>:
      * <pre>
      * // 请求时指定 schemaName
-     * {"message": "分析营养", "structured": true, "schemaName": "nutritionAnalysis"}
+     * {"message": "分析业务数据", "structured": true, "schemaName": "businessAnalysis"}
      * </pre>
      * </p>
      */

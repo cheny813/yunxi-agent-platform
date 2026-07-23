@@ -12,7 +12,7 @@ import java.util.Map;
  * <pre>
  * 配置示例：
  * extensions:
- *   preProcessor: "nutritionPreProcessor"
+ *   preProcessor: "businessPreProcessor"
  *   postProcessor: "auditPostProcessor"
  * </pre>
  *

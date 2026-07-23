@@ -22,7 +22,6 @@ agent-config/src/main/resources/
 │   ├── mcp-external.yml               #   MCP 外部服务器
 │   ├── resilience.yml                 #   熔断/限流/重试
 │   ├── gateway.yml                    #   API 网关路由
-│   ├── business.yml                   #   业务服务配置
 │   ├── text2sql.yml                   #   Text2SQL 配置
 │   ├── a2a-pipeline.yml               #   A2A Pipeline 配置
 │   └── file-upload.yml                #   文件上传
@@ -35,9 +34,7 @@ agent-config/src/main/resources/
 │   ├── nutrition-experts.yml          #   专家 Agent (dish-searcher 等)
 │   ├── pagegen-assistant.yml          #   页面生成助手
 │   ├── safety-assistant.yml           #   食品安全助手
-│   ├── food-chat.yml                  #   食品聊天助手 (单 Agent，轻量)
-│   ├── code-fix-pipeline.yml          #   示例：Pipeline 模式
-│   └── full-stack-assistant.yml       #   示例：嵌套编排
+│   └── food-chat.yml                  #   食品聊天助手 (单 Agent，轻量)
 │
 ├── page-configs/                      # 【Page Agent 配置】由 PageAgentService 加载
 │   └── page-agent-config.yml          #   页面类型提示词 + 工具定义，非 Agent

@@ -244,7 +244,7 @@ public class UnifiedChatRequest {
      * 
      * <pre>
      * {
-     *   "message": "分析营养数据",
+     *   "message": "分析业务数据",
      *   "mode": "sync",
      *   "structured": true,
      *   "schemaName": "nutritionAnalysis"
@@ -365,7 +365,7 @@ public class UnifiedChatRequest {
      *
      * <p>
      * 用于实现 Context Injection 功能。
-     * 前端在发送消息时自动收集当前页面的关键数据（如当前查看的食谱、营养标准等），
+     * 前端在发送消息时自动收集当前页面的关键数据（如当前查看的业务单据、业务标准等），
      * AI 可以根据这些上下文数据提供更精准的回答。
      * </p>
      *
@@ -374,17 +374,17 @@ public class UnifiedChatRequest {
      * 
      * <pre>
      * {
-     *   "pageType": "recipe-detail",
-     *   "recipeId": 12345,
-     *   "recipeName": "营养均衡周食谱",
-     *   "nutritionData": {
-     *     "calories": 1800,
-     *     "protein": 70,
-     *     "fat": 60,
-     *     "carbs": 200
+     *   "pageType": "business-detail",
+     *   "recordId": 12345,
+     *   "recordName": "示例业务记录",
+     *   "metrics": {
+     *     "fieldA": 1800,
+     *     "fieldB": 70,
+     *     "fieldC": 60,
+     *     "fieldD": 200
      *   },
-     *   "targetGroup": "小学生",
-     *   "mealType": "午餐"
+     *   "targetGroup": "示例用户群体",
+     *   "category": "示例分类"
      * }
      * </pre>
      * </p>
@@ -498,7 +498,7 @@ public class UnifiedChatRequest {
      * 是否启用 A2A (Agent-to-Agent) 模式（默认 false）
      * <p>
      * <b>true</b>：启用 A2A 模式，Supervisor Agent 会协调多个专家 Agent 协作完成任务
-     * - 适合复杂任务，如食谱生成（需要菜品搜索、营养评估、食谱编排等多个专家协作）
+     * - 适合复杂任务，如报告生成（需要数据检索、内容评估、文档编排等多个专家协作）
      * - 响应时间较长，但结果更精准
      * <br>
      * <b>false</b>：禁用 A2A 模式，直接使用单一 Agent 响应

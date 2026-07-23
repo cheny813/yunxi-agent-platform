@@ -394,8 +394,8 @@ AdvancedAgentFactory 运行时使用
 
 ```yaml
 agents:
-  - name: nutrition-assistant      # Agent 名称
-    description: 营养食谱管理助手
+  - name: business-assistant      # Agent 名称
+    description: 业务数据管理助手
     type: react
     enabled: true
     
@@ -407,30 +407,30 @@ agents:
     
     # 默认 prompt（未指定 profile 时使用）
     prompt: |
-      你是一个专业的校园餐营养食谱管理助手...
+      你是一个专业的业务数据管理助手...
     
     # 默认工具和专家配置
     mcpServers: [formfill, database, milvus]
     skillConfig:
-      experts: [dish-searcher, nutrition-evaluator, recipe-composer]
+      experts: [data-searcher, business-evaluator, content-composer]
     
     # Profile 映射：name -> ProfileDefinition
     profiles:
-      # Profile 1：营养咨询 — 聊天模式
+      # Profile 1：智能咨询 — 聊天模式
       chat:
-        label: 营养咨询
-        description: 回答营养健康问题
+        label: 智能咨询
+        description: 回答业务咨询问题
         mode: chat                    # ← 只需改 mode
         prompt: |                     # ← 换一个轻量 prompt
-          你是一个专业的营养健康顾问...
+          你是一个专业的业务顾问...
       
-      # Profile 2：食谱生成 — 专家模式
-      recipe-make:
-        label: 食谱生成
-        description: 生成营养食谱
+      # Profile 2：内容生成 — 专家模式
+      business-make:
+        label: 内容生成
+        description: 生成业务内容
         mode: expert                  # ← 继承 Agent 的 expert 模式
         prompt: |                     # ← 覆盖 prompt
-          你是一个专业的校园餐营养食谱管理助手...
+          你是一个专业的业务数据管理助手...
 ```
 
 ### 模式选择示例
@@ -652,7 +652,7 @@ yunxi 业务层现已统一采集每次 LLM 调用的 token 消耗与耗时，�
 `recordAndLogUsage` 以 INFO 级别打印一行 `[LLM Usage]` 日志，格式如下：
 
 ```
-[LLM Usage] model=recipe-agent, provider=yunxi, inputTokens=1234, outputTokens=256, cachedTokens=800, totalTokens=1490, time=2.13s
+[LLM Usage] model=report-agent, provider=yunxi, inputTokens=1234, outputTokens=256, cachedTokens=800, totalTokens=1490, time=2.13s
 ```
 
 除汇总 usage 外，各调用点还会按 block 类型打印响应内容摘要（便于排查推理/工具调用过程）：

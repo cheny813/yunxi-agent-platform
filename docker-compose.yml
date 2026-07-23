@@ -11,7 +11,7 @@
 # ├──────────────────┼────────┼───────────────────────────────────┤
 # │ MySQL 8.0        │ 3306   │ 主数据库（会话/技能/配置持久化）    │
 # │ Redis 7          │ 6379   │ 缓存/分布式状态/会话               │
-# │ Milvus Standalone │ 19530  │ 向量数据库（记忆/食谱语义检索）    │
+# │ Milvus Standalone │ 19530  │ 向量数据库（记忆/语义检索）      │
 # │ MinIO (Milvus)   │ 9000   │ Milvus 对象存储（内部）            │
 # │ etcd (Milvus)    │ 2379   │ Milvus 元数据协调（内部）           │
 # │ OTel Collector   │ 4317/4318│ 链路追踪收集器（可选，转发至 Jaeger）│
@@ -196,7 +196,7 @@ services:
       - "4318:4318" # OTLP HTTP
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./scripts/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./scripts/deploy/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     networks:
       - yunxi-net
 

@@ -23,10 +23,10 @@ import io.yunxi.platform.shared.dto.AdvancedAgentConfigDto.SkillConfig;
  */
 public class ProfileDefinition {
 
-    /** Profile 名称（业务自定义，如 "chat", "recipe-make", "code-review"） */
+    /** Profile 名称（业务自定义，如 "chat", "business-make", "code-review"） */
     private String name;
 
-    /** 展示名称（如 "营养咨询", "食谱生成"） */
+    /** 展示名称（如 "智能咨询", "内容生成"） */
     private String label;
 
     /** Profile 描述 */
