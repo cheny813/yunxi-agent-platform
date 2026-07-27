@@ -235,7 +235,7 @@ agentscope:
           - url: http://localhost:40009
             weight: 100
         report-agent:
-          - url: http://localhost:40003
+          - url: http://localhost:40001
 ```
 
 ## AgentCapability

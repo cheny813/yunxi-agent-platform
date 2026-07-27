@@ -29,7 +29,6 @@
 
 ```
 .agentscope/workspace/
-├── AGENTS.md                  # 根级共享 Agent 人格（可选）
 ├── skills/                    # 全局共享技能目录（框架唯一识别）
 │   ├── skill-vetter/          # 安全审查（外部技能审查）
 │   ├── java-developer/        # Java 开发
@@ -50,18 +49,15 @@
 │   ├── uml-designer/          # UML 图表
 │   └── logger/                # 日志分析
 └── agents/                    # Agent 工作空间统一目录
-    ├── food-chat/
-    │   ├── AGENTS.md
-    │   ├── knowledge/
-    │   ├── skills/            # Agent 专属技能（与全局 skills/ 独立）
-    │   └── users/             # 用户运行时数据
-    │       └── user-001/
-    └── nutrition-assistant/   # 另一个 Agent 工作空间
-        ├── AGENTS.md
-        └── users/
+    ├── food-chat/             # 饮食问答助手
+    │   ├── agents/            # 子智能体定义
+    │   ├── AGENTS.md          # Agent 身份定义
+    │   └── user-001/          # 用户运行时数据
+    ├── nutrition-assistant/   # 营养助手
+    └── ...（共 8 个 Agent）
 ```
 
-> **设计原则**：`skills/` 目录与 `agents/` 目录同级，所有 Agent 工作空间统一放在 `agents/` 子目录下（遵循底层 agentscope-java 框架约定）。全局技能对所有 Agent 可见，Agent 专属技能存放在各自 `agents/{agentName}/skills/` 下。
+> **设计原则**：`skills/` 目录与 `agents/` 目录同级，所有 Agent 工作空间统一放在 `agents/` 子目录下（遵循底层 agentscope-java 框架约定）。全局技能对所有 Agent 可见。
 
 ---
 

@@ -94,7 +94,7 @@
 # 进入项目根目录
 cd yunxi-agent-platform
 
-# 启动所有基础设施（MySQL + Redis + Milvus + OTel Collector）
+# 启动所有基础设施（MySQL + Redis + Milvus + etcd + MinIO + OTel Collector + Jaeger + Attu）
 docker compose up -d
 
 # 确认所有容器就绪
@@ -111,6 +111,8 @@ docker compose ps
 | yunxi-milvus-etcd | quay.io/coreos/etcd:v3.5.5 | 2379（内部） | Milvus 元数据协调 |
 | yunxi-milvus-minio | minio/minio | 9000 | Milvus 对象存储 |
 | yunxi-otel-collector | otel/opentelemetry-collector-contrib | 4318 | 链路追踪接收器 |
+| yunxi-jaeger | jaegertracing/all-in-one | 16686（WebUI）/ 4317（gRPC） | 链路追踪可视化 |
+| yunxi-attu | zilliz/attu:v2.3.3 | 8000 | Milvus Web 管理界面 |
 
 首次启动约 30-60 秒。Ollama 向量嵌入需在宿主机单独安装：
 
@@ -146,7 +148,7 @@ docker compose ps
 ### 1. 克隆项目
 
 ```bash
-git clone <repository-url>
+git clone https://gitcode.com/chenyao813/yunxi-agent-platform.git
 cd yunxi-agent-platform
 ```
 
@@ -178,7 +180,7 @@ mvn clean install -DskipTests
 # 数据库配置
 export MYSQL_HOST=localhost
 export MYSQL_PORT=3306
-export MYSQL_DATABASE=agent_platform
+export MYSQL_DATABASE=yunxi_agent_platform
 export MYSQL_USERNAME=root
 export MYSQL_PASSWORD=your_password
 
@@ -232,32 +234,19 @@ export RAG_DEFAULT_SCORE_THRESHOLD=0.5
 
 ### 2. 初始化数据库
 
-```bash
-# 执行数据库脚本
-mysql -u root -p < sql/init-database.sql
-```
+数据库表结构由 Spring Boot / agentscope-harness 框架自动管理（JPA/Hibernate DDL Auto），无需手动执行 SQL 脚本。
 
 ---
 
 ## 启动服务
 
-### 微服务启动顺序
+### 启动顺序
 
-**为什么需要按顺序启动**：
-```
-核心服务 (40001)
-       ↓
-   网关 (40003) ←── 对外提供服务
-```
-
-- 网关依赖核心服务
-
-### 方式一：命令行启动
+yunxi Agent Platform 已整合为单体服务（agent-app），一键启动即可：
 
 ```bash
-# 启动核心服务（端口 40001，内置 GA Channel 网关接入）
-cd agent-core
-mvn spring-boot:run
+# 启动 agent-app（整合所有模块，端口 40001）
+mvn spring-boot:run -pl agent-app
 ```
 
 ### 方式二：脚本启动（Windows PowerShell）
@@ -281,9 +270,6 @@ mvn spring-boot:run
 ```bash
 # 检查核心服务
 curl http://localhost:40001/actuator/health
-
-# 检查网关
-curl http://localhost:40003/actuator/health
 ```
 
 ### 2. 查看指标
@@ -300,9 +286,8 @@ curl http://localhost:40001/actuator/prometheus
 ### 通过 Web API 发送消息
 
 ```bash
-curl -X POST http://localhost:40003/api/gateway/webapi/chat \
+curl -X POST http://localhost:40001/api/chat \
   -H "Content-Type: application/json" \
-  -H "X-Gateway-Token: your-token" \
   -d '{
     "userId": "user001",
     "message": "你好"
@@ -316,20 +301,14 @@ curl -X POST http://localhost:40003/api/gateway/webapi/chat \
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ Gateway (端口 40003)                     │  ← yunxi 统一网关层
-│ - 协议适配、认证、限流                    │
+│ Agent App (端口 40001)                    │  ← yunxi 统一入口
+│ - WebSocket · SSE · 飞书 · 钉钉 · 企业微信 │
 └─────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ Agent Core (端口 40001)                  │  ← yunxi 核心层
-│ - 场景路由                               │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ yunxi ChatAppService                       │  ← yunxi 编排层
-│ - 推理、工具调用                         │
+│ ChatAppService                            │  ← yunxi 编排层
+│ - 场景路由、推理、工具调用                  │
 └─────────────────────────────────────────┘
     │
     ▼

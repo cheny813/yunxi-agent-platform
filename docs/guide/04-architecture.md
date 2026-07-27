@@ -158,27 +158,26 @@ tools:
 
 框架自动从配置 + 工作区文件完成 Agent 装配，无需 Java 代码。
 
-**工作空间目录结构**：yunxi 遵循底层 agentscope-java 框架约定，所有 Agent 工作空间汇聚在 `agents/` 子目录下，用户数据嵌套在 `agents/{agentName}/users/{userId}/` 下：
+**工作空间目录结构**：yunxi 遵循底层 agentscope-java 框架约定，所有 Agent 工作空间汇聚在 `agents/` 子目录下：
 
 ```
 .agentscope/workspace/
-├── AGENTS.md                   # 根级共享 Agent 人格（可选）
 ├── agents/                     # Agent 工作空间统一目录（框架官方约定）
-│   ├── nutrition-assistant/    # Agent 工作空间
+│   ├── food-chat/              # 饮食问答助手
+│   │   ├── agents/             # 子智能体定义
 │   │   ├── AGENTS.md           # Agent 身份 + 场景规则
-│   │   ├── knowledge/          # 知识文档
-│   │   ├── memory/             # Harness 文件系统记忆
-│   │   ├── sessions/           # 原始对话日志（永不压缩）
-│   │   └── users/              # 用户隔离运行时数据
-│   │       └── user-001/
-│   ├── food-chat/
-│   │   └── users/
-│   │       └── user-001/
-│   └── dish-searcher/
+│   │   └── user-001/           # 用户运行时数据（按 userId 隔离）
+│   ├── general-assistant/      # 通用助手
+│   ├── nutrition-assistant/    # 营养助手
+│   ├── dish-searcher/          # 菜品搜索
+│   ├── nutrition-evaluator/    # 营养评估
+│   ├── pagegen-assistant/      # 页面生成助手
+│   ├── recipe-composer/        # 食谱编排
+│   └── safety-assistant/       # 安全助手
 └── skills/                     # 全局共享技能（Agent 不可在此创建）
 ```
 
-多租户运行时隔离由 GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 实现：按用户命名空间隔离工作空间与 AgentState 会话槽，`users/` 由框架运行时按需创建。根级 `AGENTS.md` 和 `skills/` 为全局共享资源。
+多租户运行时隔离由 GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 实现：按用户命名空间隔离工作空间与 AgentState 会话槽，用户数据按 `{userId}/` 子目录由框架运行时按需创建。根级 `skills/` 为全局共享资源。
 
 ### 依赖关系图
 
@@ -628,7 +627,7 @@ public class ModelFactory {
 | 记忆 | InMemoryMemory | Harness 内置文件系统记忆 + 5 种持久化策略 + 场景管理 | ~15 |
 | MCP | 基础客户端 → V2.0 McpServerRegistrar | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
 | 多 Agent | A2A 协议 | Supervisor/Routing 编排 + Profile 路由 | ~10 |
-| 网关 | 无 | 4 通道 + 会话 + 限流 + 认证 | ~20 |
+| 接入层 | 无 | 多通道（飞书/钉钉/企微/WebSocket/SSE）+ 会话 + 认证 | ~16 |
 | 生产治理 | 无 | 熔断/审计/监控/HITL/优雅关闭 | ~12 |
 
 ### 诚实的评估：哪些代码可以优化？
@@ -712,7 +711,7 @@ agentscope:
 |------|---------|------|---------|
 | Agent 运行时状态 | Session（workspace/redis） | 崩溃恢复、弹性迁移 | `agent.loadIfExists()` |
 | 会话元数据 | MySQL + Redis（ConversationService） | 前端列表展示、标题搜索 | REST API |
-| 长期记忆 | workspace/agents/{agentName}/MEMORY.md + memory/ 文件 | 跨会话知识积累 | HarnessAgent 内部 Middleware |
+| 长期记忆 | workspace/agents/{agentName}/ 下的记忆文件 | 跨会话知识积累 | HarnessAgent 内部 Middleware |
 
 三个存储层各司其职，不重复。Session 负责运行时恢复，ConversationService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
 
