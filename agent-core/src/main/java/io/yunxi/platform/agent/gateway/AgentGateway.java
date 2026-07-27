@@ -14,7 +14,7 @@ import reactor.core.publisher.Flux;
 import java.util.List;
 
 /**
- * Agent 网关接口：负责将外部请求转化为 GA 原生 Agent 调用，并映射事件流 / 中断信号。
+ * Agent 网关接口：负责将外部请求转化为 AgentScope 原生 Agent 调用，并映射事件流 / 中断信号。
  */
 public interface AgentGateway {
 
@@ -25,12 +25,12 @@ public interface AgentGateway {
      * @param message     用户输入消息
      * @param userId     用户 ID（多租户隔离，注入 RuntimeContext）
      * @param sessionId  会话 ID（多租户隔离，注入 RuntimeContext）
-     * @return GA 原生 {@link AgentEvent} 事件流
+     * @return AgentScope 原生 {@link AgentEvent} 事件流
      */
     Flux<AgentEvent> callStream(String agentName, String message, String userId, String sessionId);
 
     /**
-     * 中断指定 Agent 的当前执行（GA 原生协作式中断，下次调用自动恢复）。
+     * 中断指定 Agent 的当前执行（AgentScope 原生协作式中断，下次调用自动恢复）。
      *
      * @param agentName Agent 名称
      */
@@ -40,14 +40,14 @@ public interface AgentGateway {
 /**
  * Agent 网关默认实现。
  *
- * <p>本网关通过 GA 原生能力实现：
+ * <p>本网关通过 AgentScope 原生能力实现：
  * <ul>
- *   <li>调用入口改用 GA 原生 {@link HarnessAgent#streamEvents(List, RuntimeContext)}
+ *   <li>调用入口改用 AgentScope 原生 {@link HarnessAgent#streamEvents(List, RuntimeContext)}
  *       （细粒度 {@code AgentEvent} 事件流，替代自研 SSE 适配）；
  *       注意 {@code streamEvents} 是 HarnessAgent/ReActAgent 的原生方法，
  *       {@code Agent} 接口未声明，故对 {@link AgentService#getAgentInstance(String)}
  *       返回值做转型后调用。</li>
- *   <li>中断改用 GA 原生 {@link Agent#interrupt()}，无 userId/sessionId 二参重载。</li>
+ *   <li>中断改用 AgentScope 原生 {@link Agent#interrupt()}，无 userId/sessionId 二参重载。</li>
  * </ul>
  * </p>
  */
@@ -69,12 +69,12 @@ class AgentGatewayImpl implements AgentGateway {
         this.agentService = agentService;
     }
 
-    /** 以流式事件方式调用 Agent，将外部请求转化为 GA 原生 {@link HarnessAgent#streamEvents} 调用。
+    /** 以流式事件方式调用 Agent，将外部请求转化为 AgentScope 原生 {@link HarnessAgent#streamEvents} 调用。
      * @param agentName  Agent 名称
      * @param message    用户输入消息
      * @param userId     用户ID（注入 RuntimeContext 实现多租户隔离）
      * @param sessionId  会话ID（注入 RuntimeContext 实现多租户隔离）
-     * @return GA 原生 {@link AgentEvent} 事件流
+     * @return AgentScope 原生 {@link AgentEvent} 事件流
      */
     @Override
     public Flux<AgentEvent> callStream(String agentName, String message, String userId, String sessionId) {
@@ -90,7 +90,7 @@ class AgentGatewayImpl implements AgentGateway {
     /**
      * 中断指定 Agent 的当前执行。
      *
-     * <p>委托给 GA 原生 {@link Agent#interrupt()}，为协作式一次性中断信号，
+     * <p>委托给 AgentScope 原生 {@link Agent#interrupt()}，为协作式一次性中断信号，
      * 下一次调用将自动恢复。</p>
      *
      * @param agentName Agent 名称

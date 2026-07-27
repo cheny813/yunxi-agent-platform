@@ -27,7 +27,7 @@ import java.util.Map;
  * </p>
  *
  * <p>
- * 说明：工作区内容（知识/技能/子 Agent）的发现已完全交由 GA 原生
+ * 说明：工作区内容（知识/技能/子 Agent）的发现已完全交由 AgentScope 原生
  * {@code WorkspaceContextMiddleware} 承载，业务侧不再维护 AGENTS.md 场景规则扫描器。
  * </p>
  *

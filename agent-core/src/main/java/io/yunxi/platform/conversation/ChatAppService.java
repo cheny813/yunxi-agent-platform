@@ -148,21 +148,21 @@ public class ChatAppService {
      * @return Agent 实例
      */
     private Agent resolveAgent(String name, String profile, String userId) {
-        // 多租户工作空间隔离完全复用 GA 原生能力（HarnessAgent.workspaceFor）：
+        // 多租户工作空间隔离完全复用 AgentScope 原生能力（HarnessAgent.workspaceFor）：
         // Agent 为共享实例，调用时通过 RuntimeContext(userId, sessionId) 由框架按用户命名空间隔离，
         // yunxi 不再自建每用户 Bean 与路径。userId 经 RuntimeContext 透传，此处仅用于路由决策。
         // 优先：Profile 路由
         if (profile != null && !profile.isBlank()) {
             return profileRouter.resolve(name, profile);
         }
-        // 默认：全局共享 Agent（多租户由 GA 运行时隔离）
+        // 默认：全局共享 Agent（多租户由 AgentScope 运行时隔离）
         return agentService.getAgentInstance(name);
     }
 
     /**
-     * 构建 GA 原生运行时上下文，携带 userId 与 sessionId。
+     * 构建 AgentScope 原生运行时上下文，携带 userId 与 sessionId。
      *
-     * <p>GA 的 HarnessAgent.workspaceFor(userId, sessionId) 据此按用户命名空间隔离工作空间，
+     * <p>AgentScope 的 HarnessAgent.workspaceFor(userId, sessionId) 据此按用户命名空间隔离工作空间，
      * 并对 AgentState 按 (userId, sessionId) 分会话槽。yunxi 不在此做任何封装。</p>
      *
      * @param userId    用户 ID（可为 null/blank）
@@ -419,7 +419,7 @@ public class ChatAppService {
                 Msg userMsg = buildUserMessage(request.getMessage(), request.getContextData());
 
                 // 构建响应式流（无会话，不使用记忆）
-                // 注：计划模式已交由 GA PlanModeMiddleware 统一处理（见 AgentConfigurer），
+                // 注：计划模式已交由 AgentScope PlanModeMiddleware 统一处理（见 AgentConfigurer），
                 // 此处不再做 yunxi 自建的规划预创建。
                 return buildStreamResponse(agent, userMsg, request, null, null, null, null, null, userId)
                         .doOnNext(chunk -> {
@@ -588,7 +588,7 @@ public class ChatAppService {
                 Msg userMsg = buildUserMessage(request.getMessage(), request.getContextData());
 
                 // ---- 快速模式：跳过 RAG、记忆、场景检测，直接调用 Agent ----
-                // 注：规划模式已交由 GA PlanModeMiddleware 统一处理，此处不再做 yunxi 自建规划预创建。
+                // 注：规划模式已交由 AgentScope PlanModeMiddleware 统一处理，此处不再做 yunxi 自建规划预创建。
                 if (request.isQuickMode()) {
                     log.info("快速模式: ConversationId={}, 跳过 RAG/记忆/场景检测", conversationId);
                     List<Msg> quickMessages = new ArrayList<>();
@@ -689,7 +689,7 @@ public class ChatAppService {
      * 构建统一的 SSE 流式响应。
      *
      * <p>编排流式对话的完整事件链路：开始事件 → 思考事件 → Agent 事件流 → 结束事件。
-     * 通过 GA 的 {@code HarnessAgent.streamEvents} 获取标准化 {@code AgentEvent}，再将内容类事件
+     * 通过 AgentScope 的 {@code HarnessAgent.streamEvents} 获取标准化 {@code AgentEvent}，再将内容类事件
      * （文本/推理增量、最终结果）转换为 SSE 内容消息，其余事件原样透传前端，并附加 UX 友好的状态消息。</p>
      *
      * @param agent          Agent 实例

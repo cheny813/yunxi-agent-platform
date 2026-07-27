@@ -101,9 +101,7 @@ agentscope:
     # ============================================================
     skill:
       enabled: ${SKILL_ENABLED:false}
-      filesystem-dir: ${SKILL_FS_DIR:.agentscope/workspace/skills}
-      writeable: ${SKILL_WRITABLE:false}
-      project-global-dir: ${SKILL_PROJECT_DIR:}
+      project-global-dir: ${SKILL_PROJECT_DIR:.agentscope/workspace/skills}
 
     # ============================================================
     # GA 原生韧性配置（agentscope.core.resilience，由 AgentConfigurer.configureResilience 读取）

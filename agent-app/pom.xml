@@ -28,6 +28,14 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- MUSE 自进化引擎（默认关闭，yunxi.muse.enabled=true 时由 MuseAutoConfiguration 激活） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-muse</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

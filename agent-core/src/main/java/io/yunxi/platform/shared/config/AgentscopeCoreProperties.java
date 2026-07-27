@@ -108,13 +108,13 @@ public class AgentscopeCoreProperties {
     /** Shell 命令安全配置 */
     private ShellConfig shell = new ShellConfig();
 
-    /** 计划模式（PlanMode）配置：由 GA PlanModeMiddleware + PlanModeManager 托管 */
+    /** 计划模式（PlanMode）配置：由 AgentScope PlanModeMiddleware + PlanModeManager 托管 */
     private PlanProperties plan = new PlanProperties();
 
-    /** 技能仓库（Skill）配置：由 GA AgentSkillRepository 体系自动装载 DynamicSkillMiddleware */
+    /** 技能仓库（Skill）配置：由 AgentScope AgentSkillRepository 体系自动装载 DynamicSkillMiddleware */
     private SkillProperties skill = new SkillProperties();
 
-    /** 韧性配置：模型重试 / 降级模型 / 拒绝停止 / 执行超时 —— 完全复用 GA Builder 原生能力 */
+    /** 韧性配置：模型重试 / 降级模型 / 拒绝停止 / 执行超时 —— 完全复用 AgentScope Builder 原生能力 */
     private ResilienceProperties resilience = new ResilienceProperties();
 
     /**
@@ -255,7 +255,7 @@ public class AgentscopeCoreProperties {
      * Compaction（消息压缩）配置类
      *
      * <p>控制 HarnessAgent 的消息压缩策略，当消息数量或 token 数超过阈值时自动触发压缩。
-     * 底层框架 GA 的 CompactionConfig.Builder 默认值：
+     * 底层框架 AgentScope 的 CompactionConfig.Builder 默认值：
      * triggerMessages=50, triggerTokens=0(动态=contextWindow-20000),
      * keepMessages=20, keepTokens=-1(动态=min(8000,max(2000,usable*0.25))),
      * flushBeforeCompact=true, offloadBeforeCompact=true。
@@ -263,15 +263,15 @@ public class AgentscopeCoreProperties {
      */
     @Data
     public static class CompactionProperties {
-        /** 触发压缩的消息数量阈值（GA 默认 50，此处降为 20 以提前触发压缩） */
+        /** 触发压缩的消息数量阈值（AgentScope 默认 50，此处降为 20 以提前触发压缩） */
         private int triggerMessages = 20;
-        /** 触发压缩的 token 数量阈值（GA 默认 0=动态模式，此处显式设为 8000 作为保底触发） */
+        /** 触发压缩的 token 数量阈值（AgentScope 默认 0=动态模式，此处显式设为 8000 作为保底触发） */
         private int triggerTokens = 8000;
-        /** 压缩后保留的最近消息数量（GA 默认 20，此处降为 8 以减少 token 消耗） */
+        /** 压缩后保留的最近消息数量（AgentScope 默认 20，此处降为 8 以减少 token 消耗） */
         private int keepMessages = 8;
-        /** 压缩前是否刷新记忆（与 GA 默认 true 一致，保持不变） */
+        /** 压缩前是否刷新记忆（与 AgentScope 默认 true 一致，保持不变） */
         private boolean flushBeforeCompact = true;
-        /** 压缩前是否卸载记忆（与 GA 默认 true 一致，保持不变） */
+        /** 压缩前是否卸载记忆（与 AgentScope 默认 true 一致，保持不变） */
         private boolean offloadBeforeCompact = true;
     }
 
@@ -361,13 +361,13 @@ public class AgentscopeCoreProperties {
     /**
      * 计划模式（PlanMode）配置
      * <p>
-     * 计划能力完全由 GA {@code PlanModeMiddleware} + {@code PlanModeManager} 托管。
-     * 本配置仅声明式开关与路径，运行时生命周期由 GA 中间件负责。
+     * 计划能力完全由 AgentScope {@code PlanModeMiddleware} + {@code PlanModeManager} 托管。
+     * 本配置仅声明式开关与路径，运行时生命周期由 AgentScope 中间件负责。
      * </p>
      */
     @Data
     public static class PlanProperties {
-        /** 是否启用 GA PlanMode 计划模式（默认 false，避免无感知地进入只读规划态） */
+        /** 是否启用 AgentScope PlanMode 计划模式（默认 false，避免无感知地进入只读规划态） */
         private boolean enabled = false;
 
         /** 计划文件存放目录（相对 workspace 根），默认 plan */
@@ -376,7 +376,7 @@ public class AgentscopeCoreProperties {
         /**
          * 只读解析器：判断某工具是否为只读（plan 模式下仅允许只读工具 + plan 控制工具）。
          * 配置逗号分隔的只读工具名前缀关键字，命中即视为只读。
-         * 留空则使用 GA 默认（仅 plan 控制工具 + agent_spawn 等内部工具）。
+         * 留空则使用 AgentScope 默认（仅 plan 控制工具 + agent_spawn 等内部工具）。
          */
         private String readOnlyTools;
     }
@@ -384,9 +384,14 @@ public class AgentscopeCoreProperties {
     /**
      * 技能仓库（Skill）配置
      * <p>
-     * 技能通过 GA 原生 {@code AgentSkillRepository} 体系装载
-     * （FileSystemSkillRepository / ClasspathSkillRepository / WorkspaceSkillRepository），
-     * 通过 {@code HarnessAgent.Builder.skillRepository(repo)} 自动装载 DynamicSkillMiddleware。
+     * yunxi 不做目录预建、不自建 SkillRepository，完全沿用 AgentScope 原生四层技能链：
+     * Layer 1 (projectGlobalSkillsDir) → Layer 2 (skillRepositories) →
+     * Layer 3 (wsManager.getSkillsDir()) → Layer 4 (WorkspaceSkillRepository)。
+     * </p>
+     * <p>
+     * {@code projectGlobalDir} 映射到 {@code HarnessAgent.Builder.projectGlobalSkillsDir()}，
+     * 被框架 {@code composeSkillRepositories()} 自动装载，配合内置
+     * {@code HarnessSkillMiddleware} 在每次对话时注入技能清单。
      * </p>
      */
     @Data
@@ -394,13 +399,7 @@ public class AgentscopeCoreProperties {
         /** 是否启用技能系统 */
         private boolean enabled = false;
 
-        /** 文件系统技能目录（绝对或相对路径），每个子目录含 SKILL.md */
-        private String filesystemDir;
-
-        /** 是否允许框架向该技能目录回写（自学习闭环），默认 false（只读加载） */
-        private boolean writeable = false;
-
-        /** 项目级全局技能目录（projectGlobalSkillsDir），与 filesystemDir 可并存 */
+        /** 项目级全局技能目录（projectGlobalSkillsDir），框架 Layer 1 */
         private String projectGlobalDir;
     }
 
@@ -414,16 +413,16 @@ public class AgentscopeCoreProperties {
      */
     @Data
     public static class ResilienceProperties {
-        /** 模型调用最大重试次数（GA 原生 ModelConfig.maxRetries） */
+        /** 模型调用最大重试次数（AgentScope 原生 ModelConfig.maxRetries） */
         private Integer maxRetries;
 
-        /** 降级模型 ID（GA 原生 fallbackModel(String)），模型主调用失败时自动切换 */
+        /** 降级模型 ID（AgentScope 原生 fallbackModel(String)），模型主调用失败时自动切换 */
         private String fallbackModel;
 
-        /** 权限被拒时是否停止 Agent（GA 原生 ReactConfig.stopOnReject），默认 false（拒绝后继续） */
+        /** 权限被拒时是否停止 Agent（AgentScope 原生 ReactConfig.stopOnReject），默认 false（拒绝后继续） */
         private boolean stopOnReject = false;
 
-        /** 单次模型调用超时毫秒数（注入 GA ExecutionConfig.timeout） */
+        /** 单次模型调用超时毫秒数（注入 AgentScope ExecutionConfig.timeout） */
         private Integer timeoutMs;
     }
 }

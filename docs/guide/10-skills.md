@@ -1,6 +1,6 @@
 # 10. 技能系统
 
-> **V2.0 技能系统**：本平台技能存放在 `.agentscope/workspace/skills/` 目录，Agent 可通过 `skill_manage` 和 `skill_propose` 工具管理技能。
+> **V2.0 技能系统**：本平台技能存放在 `.agentscope/workspace/skills/` 目录，Agent 可通过 `skill_manage` 和 `skill_propose` 工具管理技能。MUSE 自进化引擎在此基础上提供技能的自动评估、修补与剪枝能力。
 
 ---
 
@@ -11,10 +11,10 @@
 | 位置 | 说明 | 框架加载 |
 |------|------|----------|
 | `.agentscope/workspace/skills/` | **主技能目录**，存放所有技能 | ✅ Agent 可访问 |
-| `skills/` | 旧目录，保留参考 | ❌ 旧版不自动加载（已由 GA 原生 `AgentSkillRepository` 接管） |
+| `skills/` | 旧目录，保留参考 | ❌ 旧版不自动加载（已由 GA 原生四层技能链接管） |
 | `agent-config/.../skills/` | classpath 参考目录 | ❌ 仅参考 |
 
-> **推荐**：所有技能都放在 `.agentscope/workspace/skills/` 目录。
+> **推荐**：所有技能都放在 `.agentscope/workspace/skills/` 目录。该目录作为 `projectGlobalSkillsDir` 被框架 `composeSkillRepositories()` 自动装载到四层技能链的 Layer 1。
 
 ### 内置工具
 
@@ -181,7 +181,9 @@ agentscope:
 
 > **当前版本（基于 AgentScope-Java 2.0.0 GA）**：技能系统由框架原生 `AgentSkillRepository` 托管，提供 `skill_manage`（列出、启用、禁用技能）与 `skill_propose`（提案新技能）等内置工具。
 >
-> **未来规划**：将支持 Git/Nacos/MySQL 技能市场、自学习闭环、可见性过滤等高级功能。届时文档将同步更新。
+> **MUSE 自进化引擎（已实现）**：在框架技能系统之上提供三个闭环能力——`muse_skill_eval`（沙箱评估技能测试）、`muse_skill_evolve`（LLM 修补失败技能）、`muse_skill_prune`（TUI 剪枝与合并）。详见 [MUSE 设计文档](../muse-core-design.md) 和 [agent-muse README](../../agent-muse/README.md)。
+>
+> **未来规划**：将支持 Git/Nacos/MySQL 技能市场、可见性过滤等高级功能。届时文档将同步更新。
 
 ---
 

@@ -1,16 +1,16 @@
 /*
  * yunxi-agent-platform 临时适配层：MCP 客户端断线自动重连包装器。
  *
- * 背景：截至 agentscope-java GA 2.0.0 内置的 MCP Java SDK（io.modelcontextprotocol:sdk:mcp:0.9.0），
+ * 背景：截至 AgentScope 2.0.0 内置的 MCP Java SDK（io.modelcontextprotocol:sdk:mcp:0.9.0），
  * 其 SSE 客户端在连接断开后不会自动重连。MCP 服务器（如 mcp-nutrition）重启会导致 SSE 长连接被服务端
  * 关闭，yunxi 侧工具调用将静默挂起到超时，且仅有 WARN 级日志。为避免"重启任意 MCP 服务后必须重启 yunxi"，
  * 在 yunxi 自有层加一个委托包装器：调用抛连接异常时关闭旧连接、按需重建底层 McpClientWrapper 并重试一次。
  *
- * 删除条件：底层框架（AgentScope GA）升级到内置原生 reconnect 的 MCP SDK（>= 0.10.0）后，
+ * 删除条件：底层框架（AgentScope）升级到内置原生 reconnect 的 MCP SDK（>= 0.10.0）后，
  * 直接删除本类，并把 AgentConfigurer.registerMcpServers 中对 wrapWithReconnect 的调用还原为裸 buildMcpClient 即可。
  *
  * 设计约束（遵循"薄适配壳"原则）：
- * - 不修改 GA 任何代码，不自建 MCP 协议层；仅包装框架原生 McpClientWrapper。
+ * - 不修改 AgentScope 任何代码，不自建 MCP 协议层；仅包装框架原生 McpClientWrapper。
  * - toolkit 注册结构与调用路径完全不变（McpTool 持有的是本包装器引用，运行时只调 callTool）。
  * - 重连只在 callTool 失败且判定为连接级异常时触发，且每个调用至多重试一次，避免重连风暴。
  */

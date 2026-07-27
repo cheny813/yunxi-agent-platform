@@ -15,8 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * {@link PermissionConfig} 单元测试。
  *
- * <p>验证 HITL 配置 → GA 权限上下文的映射逻辑（{@code build(HITLConfig, PermissionMode)}）。
- * yunxi 不封装权限模式，直接透传 GA 原生 {@link PermissionMode}，仅把 HITL 中需人工确认的工具
+ * <p>验证 HITL 配置 → AgentScope 权限上下文的映射逻辑（{@code build(HITLConfig, PermissionMode)}）。
+ * yunxi 不封装权限模式，直接透传 AgentScope 原生 {@link PermissionMode}，仅把 HITL 中需人工确认的工具
  * 注册为 ASK 规则（对应官方"配置 ASK 规则，标记需要人工确认的工具")。Agent 遇到 ASK 工具时挂起，
  * 返回 {@code PERMISSION_ASKING}，调用方提取 ASKING 状态的 ToolUseBlock、构建 ConfirmResult 恢复。</p>
  */
@@ -30,7 +30,7 @@ class PermissionConfigTest {
     class PassthroughScenarios {
 
         @Test
-        @DisplayName("DONT_ASK → 模式透传，且绝不注入 ASK 规则（避免 GA checkAskRules 不看 mode 的无人值守死锁）")
+        @DisplayName("DONT_ASK → 模式透传，且绝不注入 ASK 规则（避免 AgentScope checkAskRules 不看 mode 的无人值守死锁）")
         void dontAskNeverAddsAskRules() {
             HITLConfig hitl = new HITLConfig();
             hitl.getToolGate().setEnabled(true);
@@ -40,11 +40,11 @@ class PermissionConfigTest {
 
             assertThat(state.getMode()).isEqualTo(PermissionMode.DONT_ASK);
             assertThat(state.getAskRules()).isEmpty();
-            // 危险路径保护由 GA 框架层（ToolDangerousPathConstants）自动强制 ASK，无需 yunxi 处理
+            // 危险路径保护由 AgentScope 框架层（ToolDangerousPathConstants）自动强制 ASK，无需 yunxi 处理
         }
 
         @Test
-        @DisplayName("BYPASS → 模式透传；HITL 的 ASK 规则仍生效（与 GA 危险路径强制 ASK 一致）")
+        @DisplayName("BYPASS → 模式透传；HITL 的 ASK 规则仍生效（与 AgentScope 危险路径强制 ASK 一致）")
         void bypassKeepsAskRulesFromHitl() {
             HITLConfig hitl = new HITLConfig();
             hitl.getToolGate().setEnabled(true);
@@ -107,7 +107,7 @@ class PermissionConfigTest {
     }
 
     @Nested
-    @DisplayName("ASK 规则属性校验（HITL → GA 映射）")
+    @DisplayName("ASK 规则属性校验（HITL → AgentScope 映射）")
     class AskRuleProperties {
 
         @Test

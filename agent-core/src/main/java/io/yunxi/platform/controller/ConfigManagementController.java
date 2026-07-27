@@ -33,7 +33,7 @@ public class ConfigManagementController {
 
     private final AgentscopeExtensionProperties extensionProperties;
 
-    /** GA 原生技能仓库配置（agentscope.core.skill），技能状态以此为准 */
+    /** AgentScope 原生技能仓库配置（agentscope.core.skill），技能状态以此为准 */
     private final AgentscopeCoreProperties coreProperties;
 
     /**
@@ -143,7 +143,7 @@ public class ConfigManagementController {
         Map<String, Object> result = new HashMap<>();
         result.put("skills", coreProperties.getSkill());
         result.put("enabled", coreProperties.getSkill() != null && coreProperties.getSkill().isEnabled());
-        result.put("note", "技能由 GA AgentSkillRepository 体系承载，配置见 agentscope.core.skill");
+        result.put("note", "技能由 AgentScope AgentSkillRepository 体系承载，配置见 agentscope.core.skill");
         return result;
     }
 }

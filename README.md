@@ -24,6 +24,7 @@
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
 | **技能系统** | 启用 GA 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
+| **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并的闭环，Agent 技能的自我判断、自我修补与自我进化 |
 | **流式事件** | 使用 `streamEvents()` 替代废弃的 `stream()`，按 `AgentEventType` 过滤事件 |
 | **工具分组** | 按职责隔离工具（memory/filesystem/execute），默认最小权限，YAML 按需开放 |
 | **提示注入防护** | ContentFilterMiddleware 基于框架 Middleware 接口，`onAgent` 拦截点拦截中英文注入模式 |
@@ -110,6 +111,7 @@ curl -X POST http://localhost:8080/api/chat \
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
 | **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全、网关（GA Channel 接入） | Spring Boot, agentscope-harness |
+| **agent-muse** | 自进化引擎：技能沙箱评估→LLM 修补→剪枝合并闭环 | agentscope, Java 子进程沙箱 |
 | **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
 | **agent-spi** | SPI 接口定义 | Java SPI |
 | **agent-config** | 统一配置：YAML、数据库初始化 | Spring Cloud |
@@ -234,14 +236,23 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 
 ---
 
-## 开源路线
+## 已发布
 
-- [x] 重构包名为 `io.yunxi.*`，品牌升级为 **yunxi**
-- [x] 完整重构 Agent 编排与记忆系统
-- [x] 提供 Docker Compose 一键部署（`docker compose up -d`）
-- [ ] 补充英文文档
-- [ ] 发布 Maven Central
-- [ ] 公开 MCP Server 市场
+- 重构包名为 `io.yunxi.*`，品牌升级为 **yunxi**
+- 完整重构 Agent 编排与记忆系统
+- 提供 Docker Compose 一键部署（`docker compose up -d`）
+- MUSE 自进化引擎（agent-muse）：沙箱评估 + LLM 修补 + 闭环进化
+- 多 Agent 协作（Supervisor / Pipeline 编排）
+- MCP 协议完整支持（SSE / STDIO / HTTP，40+ 工具）
+- 记忆系统（双层文件系统 + Redis 跨实例共享）
+- 多通道接入（WebSocket / SSE / 飞书 / 钉钉 / 企业微信）
+- 模型级多租户（按 Agent 覆盖 apiKey / baseUrl）
+
+## 未来计划
+
+- 补充英文文档
+- 发布 Maven Central
+- 公开 MCP Server 市场
 
 ---
 

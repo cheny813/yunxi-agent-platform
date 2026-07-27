@@ -325,7 +325,7 @@ public class ConversationController {
                     return Flux.concat(startFlux, streamFlux, doneFlux);
                 }
 
-                // 表单模式（默认）：使用 GA 提供的结构化重载 call(List, Class/JsonNode, RuntimeContext)。
+                // 表单模式（默认）：使用 AgentScope 提供的结构化重载 call(List, Class/JsonNode, RuntimeContext)。
                 // HarnessAgent.streamEvents 不接受 schema 参数、无法绑定 structured_output 元数据，故不可用。
                 // 该重载内部走 native(json_schema) 或 fallback(generate_response 合成工具) 并自动降级，与官方文档一致；
                 // 代价是结构化模式下不提供逐字 token 流（框架未公开 stream+structured 组合 API）。

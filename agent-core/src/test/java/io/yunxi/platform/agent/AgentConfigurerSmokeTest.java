@@ -62,7 +62,7 @@ class AgentConfigurerSmokeTest {
             ModelFactory factory = mock(ModelFactory.class);
             Model mockModel = mock(Model.class);
 
-            // mock Model 的基本方法（GA Model 接口方法）
+            // mock Model 的基本方法（AgentScope Model 接口方法）
             when(mockModel.getModelName()).thenReturn("mock-model");
 
             when(factory.create(any()))

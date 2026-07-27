@@ -2,8 +2,6 @@
 
 本文件面向使用本项目的最终用户与贡献者，按 [Keep a Changelog](https://keepachangelog.com/) 规范记录**用户可见的能力、破坏性变更、修复与安全相关**内容。
 
-> 历次发布的完整技术细节（内部重构、死代码清理、类名迁移等）保留在 [`CHANGELOG.internal.md`](./CHANGELOG.internal.md)，供团队与贡献者回溯。
-
 版本号自 `2.0.0` 起与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 保持同步；`1.0.0` 与 `3.x` 为早期独立版本线，其变更内容依然有效。
 
 ---
@@ -142,7 +140,7 @@
 
 ## 内部变更（技术细节，供贡献者参考）
 
-以下为各版本的内部重构与实现细节摘要，完整记录见 [`CHANGELOG.internal.md`](./CHANGELOG.internal.md)。
+以下为各版本的内部重构与实现细节摘要：
 
 - **[Unreleased]**：`ModelFactory` 由 1 参 `registerFactory` 改为 2 参 `ContextModelFactory`，各官方提供商统一经 `ModelCreationContext` 透传覆盖值；清理死代码 `registerModelWithOptions`、`resolveApiKey`（baidu/huawei 改走 `ModelRegistry.resolve` 后已无调用）；`baidu` / `huawei` 自定义 Provider 也在 `init()` 注册为 `ModelRegistry` 工厂，与内置 Provider 走完全一致的 `ModelRegistry.resolve` 路径（按 Agent 透传 `apiKey` / `options`）；新增 `BaiduCredential` / `HuaweiCredential`（继承框架 `CredentialBase`，闭合 `getChatModelClass()` 钩子，与内置 Provider 在 Credential 抽象层对齐；`listModels()` 沿用框架默认桩，前端模型发现须走 yunxi 自有目录）；新增 `LlmMetrics.recordAndLogUsage` 统一入口并落地于 `ChatAppService` / `PageAgentService`；`application.yml` 增加 `io.agentscope.core.model: DEBUG` 开关。
 - **[2.0.0]**：删除 7 个自建 MCP 客户端类与 `DatabaseToolkit`，数据同步改直连 JDBC；新增 `PermissionConfig` / `ApplicationRAG`；删除 `ToolGateMiddleware` / `ReasoningReviewMiddleware` / `Knowledge*.java` / `Plan*.java` / `AgentInterruptService` 等屏蔽或重复类；场景检测链整体删除；`agentscope.version` 升至 `2.0.0`。

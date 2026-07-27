@@ -30,4 +30,5 @@ spring:
       optional:classpath:config/resilience.yml,
       optional:classpath:config/file-upload.yml,
       optional:classpath:config/a2a-pipeline.yml,
-      optional:classpath:config/agentscope.yml
+      optional:classpath:config/agentscope.yml,
+      optional:classpath:config/muse.yml

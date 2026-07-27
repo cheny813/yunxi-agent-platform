@@ -178,9 +178,9 @@ $configArgs = @(
     "-Dspring.data.redis.host=$REDIS_HOST",
     "-Dspring.data.redis.port=$REDIS_PORT",
     "-Dspring.data.redis.password=$REDIS_PASSWORD",
-    "-Dotel.service.name=$OTEL_SERVICE_NAME",
+    "-Dotel.service.name=$OTEL_SERVICE_NAME"
 )
-# OTLP 导出到 Jaeger（取消下方注释启用）
+# OTLP 导出到 Jaeger（确保 docker-compose 已启动 collector）
 $otelExtra = @(
     "-Dotel.exporter.otlp.endpoint=$OTEL_OTLP_ENDPOINT",
     "-Dotel.traces.sampler=$OTEL_TRACES_SAMPLER"
