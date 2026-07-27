@@ -1,0 +1,62 @@
+# ============================================================
+# MUSE 自进化引擎配置
+# ============================================================
+# MUSE = Machine Understanding & Self-Evolution（机器理解与自进化）
+# 在 AgentScope-Java 2.0 之上实现技能的自动评估/迭代/合并/剪枝闭环。
+#
+# 【如何使用】
+# 设置 enabled: true 后重启服务即可启用自进化能力。
+# 内建技能（builtin-skills/）会在启动时自动落地到 workspace/skills。
+# HTTP API 路由：/api/muse/skills/*
+# ============================================================
+yunxi:
+  muse:
+    enabled: true
+
+    # 用于评估反馈+修补技能的 LLM（走 yunxi ModelFactory 已注册的模型名）
+    model: qwen-plus
+    # 模型供应商（dashscope/openai/anthropic/...）
+    provider: dashscope
+
+    # 技能测试脚本相对路径（SKILL.md 所在目录下）
+    test-dir: tests
+    # 内建技能落地目录（启动时把 builtin-skills 复制到此处）
+    builtin-export-dir: .agentscope/workspace/skills
+    # 启动时是否落地内建技能
+    builtin-copy-on-start: true
+
+    # ---------- 沙箱（技能评估执行环境）----------
+    sandbox:
+      # local = 本机子进程 / docker = 容器沙箱（推荐）
+      mode: local
+      # docker 模式镜像
+      # image: muse-sandbox:latest
+      # 单次执行超时
+      timeout: 60s
+      # docker 禁网（安全）
+      # network-disabled: true
+      # 内存上限
+      # memory: 256m
+
+    # ---------- 评估器 ----------
+    evaluator:
+      # 测试命令模板（在工作目录 = 技能 markdown 所在目录下执行）
+      test-command: "java tests/SkillStructureTest.java"
+      # 失败重试次数
+      max-retries: 2
+
+    # ---------- 技能修补 ----------
+    refine:
+      # 单技能最大迭代修补次数
+      max-iterations: 3
+      # 连续无改进即停止
+      stop-on-no-progress: true
+
+    # ---------- 技能剪枝/合并 ----------
+    pruner:
+      # 余弦相似度 >= 此值视为重复技能
+      similarity-threshold: 0.85
+      # 使用次数低于此值进入候选
+      min-usage: 1
+      # 技能库上限（超出触发剪枝）
+      max-skills: 200

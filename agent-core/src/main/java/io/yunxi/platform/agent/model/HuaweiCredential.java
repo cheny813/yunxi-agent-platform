@@ -18,7 +18,7 @@ import java.util.Objects;
  * （华为认证协议含 apiKey + secretKey，需走 {@link HuaweiModelProvider} 自建实现）。
  * {@link #listModels()} 沿用 {@link CredentialBase} 默认实现（直接抛
  * {@link UnsupportedOperationException}）—— 这与框架内置的 OpenAI / Anthropic / DashScope 等
- * 完全一致：GA 2.0GA 的模型发现为桩，待 {@code ChatModelBase.listModels} hook 成熟后再接入。
+ * 完全一致：AgentScope 2.0 的模型发现为桩，待 {@code ChatModelBase.listModels} hook 成熟后再接入。
  * 前端模型目录发现应走 yunxi 自有模型清单，而非依赖本 Credential 的 {@code listModels()}。
  */
 @JsonIgnoreProperties(ignoreUnknown = true)

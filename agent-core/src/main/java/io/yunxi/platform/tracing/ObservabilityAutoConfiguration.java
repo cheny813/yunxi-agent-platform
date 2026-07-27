@@ -59,15 +59,39 @@ public class ObservabilityAutoConfiguration {
                 .addSpanProcessor(SimpleSpanProcessor.create(loggingExporter()));
 
         if (otlpEndpoint != null && !otlpEndpoint.isEmpty()) {
-            log.info("[Observability] 启用 OTLP HTTP 导出: {}", otlpEndpoint);
-            OtlpHttpSpanExporter exporter = OtlpHttpSpanExporter.builder()
-                    .setEndpoint(otlpEndpoint).setTimeout(Duration.ofSeconds(10)).build();
-            builder.addSpanProcessor(BatchSpanProcessor.builder(exporter).build());
+            if (isOtlpCollectorReachable(otlpEndpoint)) {
+                log.info("[Observability] OTLP collector 可达，启用 HTTP 导出: {}", otlpEndpoint);
+                OtlpHttpSpanExporter exporter = OtlpHttpSpanExporter.builder()
+                        .setEndpoint(otlpEndpoint).setTimeout(Duration.ofSeconds(10)).build();
+                builder.addSpanProcessor(BatchSpanProcessor.builder(exporter).build());
+            } else {
+                log.warn("[Observability] OTLP collector 不可达 ({}), "
+                        + "降级为仅日志导出。请通过 docker compose up -d otel-collector 启动。", otlpEndpoint);
+            }
         }
 
         OpenTelemetrySdk sdk = OpenTelemetrySdk.builder()
                 .setTracerProvider(builder.build()).buildAndRegisterGlobal();
         return sdk;
+    }
+
+    /**
+     * 启动时检测 OTLP collector 是否可达，避免运行时连接失败消耗连接资源。
+     * <p>从 endpoint URL 中提取 host:port，用 TCP socket 尝试连接，超时 3 秒。</p>
+     */
+    private static boolean isOtlpCollectorReachable(String endpoint) {
+        try {
+            java.net.URI uri = java.net.URI.create(endpoint);
+            String host = uri.getHost();
+            int port = uri.getPort();
+            if (host == null || port < 0) return false;
+            try (java.net.Socket socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress(host, port), 3000);
+                return true;
+            }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

@@ -21,6 +21,7 @@
         <module>agent-config</module>
         <module>agent-spi</module>
         <module>agent-core</module>
+        <module>agent-muse</module>
         <module>agent-app</module>
         <module>agent-text2sql</module>
         <module>agent-integration-test</module>

@@ -193,7 +193,7 @@ public class DesktopRelayHandler extends TextWebSocketHandler {
         log.info("节点注册成功: {}, nodeType={}, userId={}, tags={}, capabilities={}",
                 clientId, info.getNodeType(), info.getUserId(), info.getTags(), info.getCapabilities());
 
-        // 多租户工作空间隔离已由 GA 原生（HarnessAgent.workspaceFor）在运行时按
+        // 多租户工作空间隔离已由 AgentScope 原生（HarnessAgent.workspaceFor）在运行时按
         // RuntimeContext(userId, sessionId) 自动处理，无需在此预初始化用户工作空间。
 
         // 持久化节点画像

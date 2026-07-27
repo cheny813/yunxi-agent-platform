@@ -3,7 +3,7 @@ package io.yunxi.platform.shared.config;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
- * 计划能力配置（计划能力由 GA
+ * 计划能力配置（计划能力由 AgentScope
  * PlanModeMiddleware + PlanModeManager 提供）。
  * <p>
  * 本 DTO 仅保留"是否启用计划模式 / 是否需要用户确认"等声明式开关，
@@ -14,10 +14,10 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PlanConfig {
 
-    /** 是否启用 GA PlanMode 计划模式 */
+    /** 是否启用 AgentScope PlanMode 计划模式 */
     private boolean enabled = false;
 
-    /** 计划是否需要用户确认（GA 通过 readOnlyResolver 控制只读阶段） */
+    /** 计划是否需要用户确认（AgentScope 通过 readOnlyResolver 控制只读阶段） */
     private boolean userConfirm = false;
 
     /** 最大子任务数量 */

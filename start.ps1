@@ -120,7 +120,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32b5d60d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b521ea8d60d8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -178,9 +178,9 @@ $configArgs = @(
     "-Dspring.data.redis.host=$REDIS_HOST",
     "-Dspring.data.redis.port=$REDIS_PORT",
     "-Dspring.data.redis.password=$REDIS_PASSWORD",
-    "-Dotel.service.name=$OTEL_SERVICE_NAME",
+    "-Dotel.service.name=$OTEL_SERVICE_NAME"
 )
-# OTLP 导出到 Jaeger（取消下方注释启用）
+# OTLP 导出到 Jaeger（确保 docker-compose 已启动 collector）
 $otelExtra = @(
     "-Dotel.exporter.otlp.endpoint=$OTEL_OTLP_ENDPOINT",
     "-Dotel.traces.sampler=$OTEL_TRACES_SAMPLER"

@@ -73,7 +73,7 @@ public class LlmMetrics {
      *
      * @param model    模型名称（或 agent 名 / 会话 ID，用作指标维度）
      * @param provider 模型提供方（yunxi 统一标记为 yunxi）
-     * @param usage    GA {@link ChatUsage}，含 input/output/cached token 与耗时；为 null 时直接返回
+     * @param usage    AgentScope {@link ChatUsage}，含 input/output/cached token 与耗时；为 null 时直接返回
      */
     public void recordAndLogUsage(String model, String provider, ChatUsage usage) {
         if (usage == null) {

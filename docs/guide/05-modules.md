@@ -11,6 +11,7 @@ yunxi-agent-platform/
 ├── agent-spi               # SPI 接口定义（最底层抽象）
 ├── agent-config            # 集中化配置管理
 ├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、GA Channel 网关接入）
+├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-text2sql          # 自然语言转 SQL
 ├── agent-app               # 可执行应用打包
 └── agent-integration-test  # 跨模块集成测试
@@ -23,7 +24,7 @@ yunxi-agent-platform/
 ```
 agent-spi → agent-config → agent-core
                                 ↑
-                          agent-text2sql
+                    agent-muse  agent-text2sql
                                 ↓
             agent-app (聚合 + 启动入口)
 ```
@@ -51,6 +52,46 @@ agent-spi → agent-config → agent-core
 ### 设计原则
 
 遵循依赖倒置原则：框架层（agent-core）定义抽象，业务层实现——高层不依赖低层具体实现。
+
+---
+
+## agent-muse（自进化引擎）
+
+### 职责
+
+提供技能自进化闭环：沙箱评估→LLM 修补→剪枝合并。严格遵循"薄适配壳"原则——只实现 AgentScope 没有的能力，其余全部复用框架。
+
+### 核心组件
+
+| 组件 | 说明 |
+|------|------|
+| `SelfEvolutionEngine` | 闭环编排：评估→修补→再评估，首轮全通过立即返回，连续无进展提前停止 |
+| `DefaultSkillEvaluator` | 沙箱评估器：子进程/Docker 跑 Java 自测，退出码判通过 |
+| `SkillRefiner` | LLM 修补器：注入失败用例名+stderr/stdout 到提示词，经 Model.stream 迭代修补 |
+| `DefaultSkillPruner` | 技能剪枝：按使用率归档 + CJK 二元切分 TF-IDF 余弦相似度自动合并重复技能 |
+| `BuiltinSkillLoader` | 内建技能落地：启动时把 classpath 内建技能拷贝到 AgentScope 运行时技能目录 |
+| `SkillEvalTool` / `SkillRefineTool` / `SkillPruneTool` | 元工具：把以上能力挂给 LLM，Agent 自主调用自进化 |
+
+### 启用
+
+```yaml
+yunxi:
+  muse:
+    enabled: true
+    model: qwen-max
+    provider: dashscope
+```
+
+未启用时 MUSE 全部 Bean 不加载（`@ConditionalOnProperty`），编译期零引用。
+
+### 设计原则
+
+- **薄适配壳**：沙箱、评估、修补、剪枝——全部是 AgentScope 没有的能力，不造框架已有的轮子
+- **零侵入**：通过 SPI 接口 + `ObjectProvider` 懒注入，不修改 AgentScope 框架代码
+- **升级友好**：内部调用全部走 AgentScope 公开 API，不依赖框架内部实现类
+- **自包含**：中文分词（CJK 二元切分）+ TF-IDF + 余弦相似度，零外部依赖
+
+详见 [MUSE 设计文档](../muse-core-design.md) 和 [agent-muse README](../../agent-muse/README.md)。
 
 ---
 

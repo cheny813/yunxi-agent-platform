@@ -24,7 +24,7 @@ import java.util.function.Function;
  *
  * <p>原 {@code KnowledgeRetrievalMiddleware} 依赖已废弃（forRemoval）的
  * {@code io.agentscope.core.rag.Knowledge} API。本类改用平台既有的文件级向量检索后端
- * {@link FileVectorService}（Milvus + EmbeddingService）实现应用层 RAG，通过 GA 原生
+ * {@link FileVectorService}（Milvus + EmbeddingService）实现应用层 RAG，通过 AgentScope 原生
  * {@link MiddlewareBase#onAgent} 钩子将检索到的文件上下文注入用户消息，完全脱离框架废弃的 rag 包。</p>
  *
  * <p>检索基于用户查询文本（从输入消息中提取），按 userId 隔离，与 {@code ChatAppService}

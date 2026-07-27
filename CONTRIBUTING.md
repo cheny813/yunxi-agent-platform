@@ -115,19 +115,27 @@ mvn clean install -DskipTests
 mvn test
 
 # 启动应用
-mvn spring-boot:run -pl agent-core
+mvn spring-boot:run -pl agent-app
 ```
 
 ## 项目结构
 
 ```
 yunxi-agent-platform/
-├── agent-core/          # 核心框架
-├── agent-text2sql/     # Text-to-SQL
-├── agent-spi/          # SPI 接口
-├── k8s/                # Kubernetes 部署
-├── helm/               # Helm Chart
-└── docs/               # 文档
+├── agent-app/                # 启动入口
+├── agent-config/             # 统一配置
+├── agent-core/               # 核心框架
+├── agent-muse/               # 自进化引擎（MUSE）
+├── agent-text2sql/           # Text-to-SQL
+├── agent-spi/                # SPI 接口
+├── agent-integration-test/   # 集成测试
+├── sdk-js/                   # JavaScript SDK
+├── scripts/                  # 构建与工具脚本
+├── k8s/                      # Kubernetes 部署
+├── helm/                     # Helm Chart
+├── docs/                     # 文档
+├── docker-compose.yml        # 本地开发基础设施
+└── Dockerfile                # 容器镜像构建
 ```
 
 ## 许可证

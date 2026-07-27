@@ -309,7 +309,7 @@ public class UnifiedChatRequest {
      * <p>
      * 仅在 {@code structured=true} 且 {@code mode=stream} 时生效，用于区分两类页面诉求：
      * <ul>
-     * <li><b>false（默认，表单模式）</b>：调用 GA 结构化重载
+     * <li><b>false（默认，表单模式）</b>：调用 AgentScope 结构化重载
      * call(List, Class/JsonNode, RuntimeContext)，由框架完成 schema 校验/修复，
      * 最终一次性返回 {@code structured} 事件（无逐字 token 流）。适合页面表单填写场景。</li>
      * <li><b>true（流模式）</b>：调用 streamEvents 实时吐出 thinking/content 事件，
