@@ -41,9 +41,7 @@
 │       │                             │
 │  ┌────┴─────────────────────────┐   │
 │  │      yunxi Agent Platform      │   │
-│  │  ┌─────────┐ ┌─────────┐     │   │
-│  │  │  Core   │ │ Gateway │     │   │
-│  │  └─────────┘ └─────────┘     │   │
+│  │      (端口 40001)              │   │
 │  └───────────────────────────────┘   │
 └─────────────────────────────────────┘
 ```
@@ -310,10 +308,10 @@ groups:
 
 ```bash
 # 全量备份
-mysqldump -u agent -p agent_platform > backup_$(date +%Y%m%d).sql
+mysqldump -u agent -p yunxi_agent_platform > backup_$(date +%Y%m%d).sql
 
 # 恢复
-mysql -u agent -p agent_platform < backup_20240101.sql
+mysql -u agent -p yunxi_agent_platform < backup_20240101.sql
 ```
 
 ---

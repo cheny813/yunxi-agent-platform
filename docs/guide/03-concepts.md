@@ -857,7 +857,7 @@ public class MyTool implements ToolHandler {
 ┌─────────────────────────────────────────┐
 │  接入层安全                               │
 │  - HTTPS 传输加密                         │
-│  - Token 认证 (X-Gateway-Token)          │
+│  - 请求头认证 (X-User-Id)                 │
 │  - IP 白名单                              │
 ├─────────────────────────────────────────┤
 │  应用层安全                               │

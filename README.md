@@ -56,7 +56,7 @@
 docker compose up -d
 ```
 
-这将启动以下服务（共 6 个容器）：
+这将启动以下服务（共 8 个容器 + 1 个宿主机进程）：
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
@@ -97,7 +97,7 @@ mvn spring-boot:run -pl agent-app
 ### 发送第一条消息
 
 ```bash
-curl -X POST http://localhost:8080/api/chat \
+curl -X POST http://localhost:40001/api/chat \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [{"role": "user", "content": "你好，请介绍一下自己"}]
@@ -116,8 +116,8 @@ curl -X POST http://localhost:8080/api/chat \
 | **agent-spi** | SPI 接口定义 | Java SPI |
 | **agent-config** | 统一配置：YAML、数据库初始化 | Spring Cloud |
 | **agent-app** | 启动入口：整合所有模块 | Spring Boot |
-
----
+| **agent-integration-test** | 集成测试 | JUnit, Testcontainers |
+| **sdk-js** | JavaScript/TypeScript SDK | TypeScript, Node.js |
 
 ## 架构概览
 
@@ -172,31 +172,27 @@ yunxi 采用 **Agent 优先** 的目录布局，遵循底层 agentscope-java 框
 
 ```
 .agentscope/workspace/
-├── AGENTS.md                 # 根级共享 Agent 人格（可选）
 ├── agents/                   # Agent 工作空间统一目录（框架官方约定）
-│   ├── food-chat/            # Agent 工作空间（agents/{agentName}）
+│   ├── food-chat/            # 饮食问答助手
+│   │   ├── agents/           # 子智能体定义
 │   │   ├── AGENTS.md         # Agent 身份定义与场景规则
-│   │   ├── knowledge/        # 知识文档
-│   │   ├── memory/           # 记忆文件（YYYY-MM-DD.md + MEMORY.md）
-│   │   ├── sessions/         # 原始对话日志（永不压缩）
-│   │   ├── skills/           # Agent 专属技能
-│   │   ├── subagents/        # 子智能体定义
-│   │   └── users/            # 用户运行时数据（agents/{agentName}/users/{userId}/）
-│   │       └── user-001/     # 用户隔离的工作空间
-│   └── nutrition-assistant/  # 另一个 Agent
-│       ├── AGENTS.md
-│       ├── knowledge/
-│       └── users/
-│           └── user-001/
-└── skills/                   # 全局共享技能（框架唯一识别，Agent 不可在此创建）
+│   │   └── user-001/         # 用户运行时数据（按 userId 隔离）
+│   ├── general-assistant/    # 通用助手
+│   ├── nutrition-assistant/  # 营养助手
+│   ├── dish-searcher/        # 菜品搜索
+│   ├── nutrition-evaluator/  # 营养评估
+│   ├── pagegen-assistant/    # 页面生成助手
+│   ├── recipe-composer/      # 食谱编排
+│   └── safety-assistant/     # 安全助手
+└── skills/                   # 全局共享技能（24 个技能目录）
 ```
 
 **设计原则**：
-- **Agent 优先**：工作空间以 `agents/` 为统一入口，`users/` 嵌套在 Agent 下
-- **用户隔离**：同一 Agent 的不同用户数据完全隔离在 `agents/{agentName}/users/{userId}/` 下
-- **多租户运行时隔离**：由 GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 在调用时按用户/会话命名空间路由到独立工作空间视图，无需自建扫描器（调用点：`ChatAppService`、`DesktopRelayHandler`）
+- **Agent 优先**：工作空间以 `agents/` 为统一入口，每个 Agent 用 `agents/` 子目录存放子智能体
+- **用户隔离**：用户运行时数据直接放在 Agent 工作空间下，按 `{userId}/` 子目录隔离
+- **多租户运行时隔离**：由 AgentScope 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 在调用时按用户/会话命名空间路由到独立工作空间视图，无需自建扫描器（调用点：`ChatAppService`、`DesktopRelayHandler`）
 - **模型级多租户（按需）**：Agent 定义 YAML 的 `model.apiKey` / `model.baseUrl` / `model.stream` 经框架 `ModelCreationContext` 透传，可为单个 Agent 指定独立 LLM 账号；不填则回退全局 `agentscope.core.*`（单租户默认，无需额外开关）
-- **根级共享**：workspace 根目录下的 `AGENTS.md` 和 `skills/` 为全局共享资源
+- **根级共享**：workspace 根目录下的 `skills/` 为全局共享资源
 - API 路由使用 `compositeKey = agentName + "#" + userId` 定位用户专属 Agent 实例
 
 ---
@@ -214,25 +210,6 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 | **文档处理** | PDF、Excel、PPTX |
 | **基础设施** | Docker、K8s、Git、S3、MQTT、日志查询、系统监控 |
 | **其他** | 邮件、Wikipedia、表单填写、业务处理、API 网关 |
-
----
-
-## 框架适配
-
-本平台基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。在实际使用中，我们对底层框架的一些设计限制做了适配：
-
-| 问题 | 根因 | 解决方案 | 文档 |
-|------|------|---------|------|
-| **工具组管理** | HarnessAgent 内置工具通过 `registerTool(Object)` 注册时不指定组名，已确认这是框架有意设计——内置工具属于 Agent 基础设施，不参与分组 | 应用层工具（Supervisor 子 Agent、MCP 工具）通过 `registration().group("name").apply()` 正确归组，受 YAML 配置管控 | [最佳实践 → 工具组管理](docs/guide/11-best-practices.md#工具组管理理解框架内置工具与应用层工具的分组边界) |
-| **Toolkit 深拷贝后组激活失效** | `applyToolGroupActivation()` 操作原始 Toolkit，非 Agent 内部拷贝 | 通过 `HarnessAgent.getDelegate().getToolkit()` 获取内部 Toolkit | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
-| **MCP 工具组隔离** | 框架 Toolkit 单例模式，所有工具注册在同一实例 | 按 MCP 服务器名分组 + YAML 配置组激活 | [最佳实践 → 底层框架适配](docs/guide/11-best-practices.md#底层框架适配) |
-| ~~**自建 LLM Provider**~~ | ✅ **已修复** — 拆除 `ChatModelProvider` 接口，复用框架 `ModelRegistry` 工厂机制 | 通过 `ModelRegistry.registerFactory()` 注册 `ContextModelFactory` 两参工厂，按 Agent 透传 `apiKey`/`baseUrl`/`stream` | [配置 → Agent 模型/多租户](docs/guide/06-configuration.md#agent-模型配置按-agent-覆盖--多租户) |
-| ~~**自建 Shell 安全**~~ | ✅ **已修复** — 拆除 `CommandSafetyClassifier`（~200 行），使用框架 `ShellCommandTool` | 白名单+平台验证器+审批回调，含多命令分隔符/路径穿越检测 | [配置 → Shell 安全](docs/guide/06-configuration.md#shell-命令安全配置) |
-| ~~**Session 包删除**~~ | ✅ **已适配** — GA 删除 `io.agentscope.core.session` 包，替换为 `DistributedStore` | 改为注入 `DistributedStore`，通过 `RedisDistributedStore.fromJedis()` 创建 | [配置 → Session](docs/guide/06-configuration.md#session-持久化配置) |
-| ~~**Tracer 弃用**~~ | ✅ **已适配** — GA 废弃 `Tracer`/`TracerRegistry`，改用 OpenTelemetry API | 移除 `OpenTelemetryTracer.java`，直接使用 `OpenTelemetry` 全局实例 | [可观测性](docs/guide/15-observability.md) |
-| ~~**RAG 知识库 API 弃用**~~ | ✅ **已适配** — GA 中 `rag.Knowledge` 标记 `@Deprecated(forRemoval=true)`，官方建议在应用层集成检索 | 迁移到应用层 RAG（`ApplicationRAG`），经 `MiddlewareBase.onSystemPrompt` 注入检索上下文 | [配置 → 知识库](docs/guide/06-configuration.md#知识库rag配置) |
-
-所有适配代码位于项目中，不修改框架源码，框架升级时通过 try-catch 保证容错回退。
 
 ---
 

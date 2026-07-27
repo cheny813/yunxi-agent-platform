@@ -73,10 +73,10 @@ Accept: application/vnd.api.v1+json
      │        返回数据                  │
 ```
 
-### Gateway Token
+### 请求头认证
 
 ```http
-X-Gateway-Token: your-token
+X-User-Id: your-user-id
 ```
 
 ### MCP Token
@@ -93,22 +93,20 @@ Authorization: Bearer your-jwt-token
 
 ---
 
-## Gateway API
+## Chat API
 
 ### 发送消息
 
 **请求**
 
 ```http
-POST /api/gateway/webapi/chat
+POST /api/chat
 Content-Type: application/json
-X-Gateway-Token: your-token
+X-User-Id: user001
 
 {
-  "userId": "user001",
   "sessionId": "session-123",
-  "message": "你好",
-  "platform": "web"
+  "message": "你好"
 }
 ```
 
@@ -250,8 +248,7 @@ X-MCP-Token: your-token
 
 ```java
 AgentClient client = AgentClient.builder()
-    .baseUrl("http://localhost:40003")
-    .token("your-token")
+    .baseUrl("http://localhost:40001")
     .build();
 
 ChatResponse response = client.chat(ChatRequest.builder()
@@ -264,8 +261,7 @@ ChatResponse response = client.chat(ChatRequest.builder()
 
 ```javascript
 const client = new AgentClient({
-  baseUrl: 'http://localhost:40003',
-  token: 'your-token'
+  baseUrl: 'http://localhost:40001'
 });
 
 const response = await client.chat({
