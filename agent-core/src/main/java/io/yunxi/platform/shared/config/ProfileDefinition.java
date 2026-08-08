@@ -2,6 +2,8 @@ package io.yunxi.platform.shared.config;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import io.yunxi.platform.shared.dto.AdvancedAgentConfigDto.ModelConfigDto;
 import io.yunxi.platform.shared.dto.AdvancedAgentConfigDto.SkillConfig;
 
@@ -21,6 +23,7 @@ import io.yunxi.platform.shared.dto.AdvancedAgentConfigDto.SkillConfig;
  *
  * @author yunxi-agent-platform
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ProfileDefinition {
 
     /** Profile 名称（业务自定义，如 "chat", "business-make", "code-review"） */

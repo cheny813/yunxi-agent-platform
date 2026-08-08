@@ -10,6 +10,13 @@
 
 ### 新增
 
+- **居民营养配餐助手（`resident-nutrition-assistant`）**：新增独立 Agent 定义，与既有校园餐助手 `nutrition-assistant` 按服务对象拆分，避免两套人群口径混在同一份配置里。
+  - 人群口径：儿童 / 成人 / 老人 / 孕产 / 慢病，营养标准取《中国居民膳食营养素参考摄入量（2023 版）》DRIs。
+  - 沿用 Supervisor 编排与同一套 MCP 工具（`search_dishes` / `evaluate_recipe` / database / formfill 等），提示词去除 schoolId、民族饮食禁忌、学校类型等校园专属约束。
+  - 保留 `chat` 与 `recipe-make` 两个 Profile，`recipe-make` 的 `microRatings` 键名与前端渲染兼容。
+  - 前端 `recipe-make.html` 的人群选项本就只有居民 5 类，调用目标由 `nutrition-assistant` 修正为 `resident-nutrition-assistant`。
+- **评分引擎支持居民人群标准（`mcp-nutrition`）**：`scoring-rules.yml` 的 `standards` 追加居民 5 类人群的宏量标准（热量/蛋白质/脂肪/碳水），并新增 `micro-rda-resident` 段按人群差异化覆盖微量元素 RDA（老人钙 1000mg、孕产铁 24mg、乳母维 A 1300μgRE 等）。引擎新增 `resolveCrowdRda()`，按人群名命中则使用居民 RDA，未命中回退校园默认 `micro-rda`，校园评分逻辑不受影响。
+  - 修复：此前页面传入居民人群（如"老人""孕产"）时 `findStandard` 匹配落空、回退到"教师/默认"标准，导致微量元素评分失真。
 - **模型按 Agent 覆盖 / 轻量多租户**：Agent 定义 YAML 支持 `model.apiKey` / `model.baseUrl` / `model.stream` 覆盖，可为每个 Agent 配置独立模型账号，不配置时回退全局配置或环境变量。
 - **LLM 调用 Usage 可观测性**：
   - 每次 LLM 调用输出 INFO 日志 `[LLM Usage]`（含输入/输出/缓存 token 与耗时）。

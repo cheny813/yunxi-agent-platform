@@ -120,7 +120,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32b521ea8d60d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b521eaa0d60d8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -252,8 +252,8 @@ switch ($mode) {
             }
         }
 
-        Write-Host "[INFO] Packaging..."
-        & mvn clean package -DskipTests
+        Write-Host "[INFO] Packaging (clean install)..."
+        & mvn clean install -DskipTests
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[ERROR] Package failed!" -ForegroundColor Red
             Invoke-Pause
@@ -282,7 +282,7 @@ switch ($mode) {
         if (-not (Test-Path $jarFile)) {
             Write-Host "[INFO] Not packaged, executing packaging..."
             Write-Host ""
-            & mvn clean package -DskipTests
+            & mvn clean install -DskipTests
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[ERROR] Package failed!" -ForegroundColor Red
                 Invoke-Pause

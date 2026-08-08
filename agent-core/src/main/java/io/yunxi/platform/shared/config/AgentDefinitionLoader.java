@@ -115,8 +115,7 @@ public class AgentDefinitionLoader {
             agentDefinitions.add(def);
             log.info("加载 Agent: {} ({})", def.getName(), def.getDescription());
         } catch (IOException e) {
-            log.error("解析配置文件失败 [{}]: YAML 格式错误或字段不匹配", resource.getFilename());
-            log.debug("详细错误: ", e);
+            log.error("解析配置文件失败 [{}]: YAML 格式错误或字段不匹配", resource.getFilename(), e);
         }
     }
 

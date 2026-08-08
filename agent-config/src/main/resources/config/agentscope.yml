@@ -96,7 +96,7 @@ agentscope:
       read-only-tools: ${PLAN_READONLY_TOOLS:read_file,cat,ls,grep,memory_search,git}
 
     # ============================================================
-    # GA 原生技能系统（agentscope.core.skill，由 AgentConfigurer.configureSkills 读取）
+    # AgentScope-Java 2.0GA 原生技能系统（agentscope.core.skill，由 AgentConfigurer.configureSkills 读取）
     # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core。
     # ============================================================
     skill:
@@ -104,7 +104,7 @@ agentscope:
       project-global-dir: ${SKILL_PROJECT_DIR:.agentscope/workspace/skills}
 
     # ============================================================
-    # GA 原生韧性配置（agentscope.core.resilience，由 AgentConfigurer.configureResilience 读取）
+    # AgentScope-Java 2.0GA 原生韧性配置（agentscope.core.resilience，由 AgentConfigurer.configureResilience 读取）
     # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core。
     # ============================================================
     resilience:

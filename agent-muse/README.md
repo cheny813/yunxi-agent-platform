@@ -115,9 +115,9 @@ agent-muse/
 
 ## 架构设计原则
 
-### 薄适配壳
+### 薄适配层（thin adapter layer）
 
-MUSE 严格遵循 yunxi 的"薄适配壳"原则——只实现 AgentScope 没有的自进化闭环能力，其余全部复用框架：
+MUSE 严格遵循"薄适配层（thin adapter layer）"原则——只实现 AgentScope 没有的自进化闭环能力，其余全部复用框架：
 
 | 能力 | 实现位置 | 说明 |
 |------|----------|------|
@@ -222,7 +222,7 @@ mvn -pl agent-muse test
 
 ## 参考文档
 
-- [MUSE 设计文档](../docs/muse-core-design.md)
+- [MUSE 自进化引擎（用户指南章节）](../docs/guide/10-skills.md#muse-自进化引擎)
 - [yunxi Agent Platform 用户指南](../docs/guide/README.md)
 - [AgentScope-Java 文档](https://github.com/agentscope-ai/agentscope-java)
 

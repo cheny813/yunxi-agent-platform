@@ -15,6 +15,7 @@ import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
 import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
+import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
 import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
@@ -838,8 +839,15 @@ public class AgentConfigurer implements SmartLifecycle {
         if (def == null)
             return;
         ExtensionConfig extensions = def.getExtensions();
-        if (extensions == null || extensions.getHitl() == null)
+        // 未配置 HITL（无人值守安全场景）：AgentScope 框架默认权限模式为 DEFAULT，
+        // 在无任何 ASK 规则时会对所有工具调用返回 PERMISSION_ASKING（挂起等人工确认），
+        // 导致纯查询/评分类 Agent（如营养配餐）在无前端确认弹窗的自动生成路径上永久卡死。
+        // 因此显式注入 DONT_ASK 上下文，确保只读工具不被挂起。危险路径保护由框架层兜底。
+        if (extensions == null || extensions.getHitl() == null) {
+            builder.permissionContext(
+                    PermissionContextState.builder().mode(PermissionMode.DONT_ASK).build());
             return;
+        }
 
         var hitlConfig = extensions.getHitl();
         // 注入权限上下文：将 HITL 配置映射为 PermissionContextState（被点名工具执行前需人工确认）。

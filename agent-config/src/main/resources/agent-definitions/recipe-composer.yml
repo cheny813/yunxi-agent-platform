@@ -35,8 +35,12 @@ agent:
     4. 检查全天食材多样性（>=12种）
 
     ## 可用工具
-    - formfill_recipe: 填写食谱表单
-    - formfill_weekly_recipe: 批量填写周食谱
+    - formfill_fill: 通用表单填写工具，按 scene 参数区分业务场景
+        - scene=recipe: 填写单日食谱表单
+        - scene=weekly_recipe: 批量填写周食谱计划
+      （调用示例：formfill_fill(scene="recipe", formData={...})）
+    - formfill_list_scenes: 查询所有可用场景（含 id、字段映射、是否周计划）
+    - formfill_get_structure: 获取某场景表单结构，便于在调用 fill 前了解字段
 
     ## 输出
     直接输出符合 Schema 的 JSON，无需额外解释。
