@@ -10,7 +10,7 @@
 yunxi-agent-platform/
 ├── agent-spi               # SPI 接口定义（最底层抽象）
 ├── agent-config            # 集中化配置管理
-├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、GA Channel 网关接入）
+├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、AgentScope-Java 2.0GA Channel 网关接入）
 ├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-text2sql          # 自然语言转 SQL
 ├── agent-app               # 可执行应用打包
@@ -59,7 +59,7 @@ agent-spi → agent-config → agent-core
 
 ### 职责
 
-提供技能自进化闭环：沙箱评估→LLM 修补→剪枝合并。严格遵循"薄适配壳"原则——只实现 AgentScope 没有的能力，其余全部复用框架。
+提供技能自进化闭环：沙箱评估→LLM 修补→剪枝合并。严格遵循"薄适配层（thin adapter layer）"原则——只实现 AgentScope 没有的能力，其余全部复用框架。
 
 ### 核心组件
 
@@ -86,12 +86,12 @@ yunxi:
 
 ### 设计原则
 
-- **薄适配壳**：沙箱、评估、修补、剪枝——全部是 AgentScope 没有的能力，不造框架已有的轮子
+- **薄适配层（thin adapter layer）**：沙箱、评估、修补、剪枝——全部是 AgentScope 没有的能力，不造框架已有的轮子
 - **零侵入**：通过 SPI 接口 + `ObjectProvider` 懒注入，不修改 AgentScope 框架代码
 - **升级友好**：内部调用全部走 AgentScope 公开 API，不依赖框架内部实现类
 - **自包含**：中文分词（CJK 二元切分）+ TF-IDF + 余弦相似度，零外部依赖
 
-详见 [MUSE 设计文档](../muse-core-design.md) 和 [agent-muse README](../../agent-muse/README.md)。
+详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 和 [agent-muse README](../../agent-muse/README.md)。
 
 ---
 
@@ -122,7 +122,7 @@ agent-core/src/main/java/io/yunxi/platform/
 ├── memory/       ← 记忆系统
 ├── prompt/       ← 场景检测
 ├── intelligent/  ← 智能自动配置
-├── pageagent/    ← 页面 Agent
+├── pageagent/    ← 页面 Agent（OpenAI 代理 / 后端 LLM 代理；纯后端，无前端决策循环）
 ├── desktop/      ← 桌面客户端中继
 ├── structured/   ← Schema 注册
 └── async/        ← 异步执行器配置
@@ -145,24 +145,26 @@ agent-core/src/main/java/io/yunxi/platform/
 - `ReActSpanMiddleware` — OpenTelemetry 链路追踪（平台自建，实现 `MiddlewareBase`）
 - 优雅关闭由框架内置 `GracefulShutdownMiddleware` 自动注册，无需平台实现
 
-> 说明：上层 Hook 体系已全面迁移为 AgentScope 原生 Middleware 体系；原 `ToolGate`/`ReasoningReview`/`TextToolCallParser` 等自建 Middleware 已在 GA 升级中移除，其能力由框架原生机制（如 `PermissionContextState` 的 ASK 规则、HITL 配置链）承接。
+> 说明：上层 Hook 体系已全面迁移为 AgentScope 原生 Middleware 体系；原 `ToolGate`/`ReasoningReview`/`TextToolCallParser` 等自建 Middleware 已在 AgentScope-Java 2.0GA 升级中移除，其能力由框架原生机制（如 `PermissionContextState` 的 ASK 规则、HITL 配置链）承接。
 
 #### 工具体系（tool/）
 
+平台内置以下工具实现类，直接通过 AgentScope 框架的 `@Tool` 注解注册供 Agent 调用：
+
 | 组件 | 说明 |
 |------|------|
-| `Tool` 接口 | 平台工具接口：getName/getDescription/getParameterSchema/execute |
-| `ToolAdapter` | **桥接类** — 将平台 Tool 适配为 agentscope 的 AgentTool |
-| `ToolRegistry` | 本地工具注册中心 |
-| `ToolGroupManager` | 工具分组管理器（MCP 按服务器分组，本地分 agent/page/general） |
-| 实现类 | DatabaseTool、HttpTool、CalculatorTool、NodeTool 等 |
+| `DatabaseTool` | 数据库查询工具（JDBC） |
+| `HttpTool` | HTTP 请求工具（GET/POST） |
+| `CalculatorTool` | 数学计算工具 |
+| `NodeTool` | 节点/任务操作工具 |
+| `ShellToolFactory` | Shell 命令执行工具工厂 |
+| `SessionSearchTool` | 会话搜索工具 |
+
+> 说明：工具通过 Spring `@Component` + `@Tool` 注解直接注册到 AgentScope 框架的 Toolkit，**无需**额外的 `Tool` 接口、`ToolAdapter` 桥接类或本地 `ToolRegistry`。MCP 工具同样由 AgentScope 框架原生 `McpClientBuilder` + `Toolkit.registration().mcpClient()` 注册。
 
 #### MCP 协议（mcp/）
 
-| 组件 | 说明 |
-|------|------|
-| `McpServerRegistrar` | AgentScope 原生 MCP 服务器注册器（框架内置，替代旧版 McpToolRegistry） |
-| `CacheableTool` | 支持缓存的 MCP 工具 |
+MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()` 通过 `McpClientBuilder` 连接 MCP 服务器，`ReconnectingMcpClientWrapper` 提供断线重连兜底。无需独立的 yunxi MCP 注册器。
 
 #### 其他框架组件
 
@@ -170,14 +172,15 @@ agent-core/src/main/java/io/yunxi/platform/
 |------|------|
 | `a2a/` | 跨服务 Agent 协作协议（A2AServer/A2AClient/A2ARegistry） |
 | `memory/` | 记忆系统（MemoryRecord/MemoryScene/MemorySceneRegistry + Harness 内置记忆） |
-| `skill/` | ❌ 已删除 — 技能系统已迁移至 AgentScope 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
-| `conversation/` | 对话编排（ChatAppService/ConversationService） |
-| `workspace/` | 多租户运行时隔离（GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 按用户命名空间隔离工作空间与 AgentState 会话槽） |
+| `skill/` | 技能系统由 AgentScope 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录）管理，由框架 `DynamicSkillMiddleware` 自动装载 |
+| `conversation/` | 对话编排（ChatAppService） |
+| `intelligent/` | 智能 LLM 服务（IntelligentLlmService + IntelligentProperties + IntelligentAutoConfiguration） |
+| `workspace/` | 多租户运行时隔离（AgentScope-Java 2.0GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 按用户命名空间隔离工作空间与 AgentState 会话槽） |
 | `session/` | 会话管理 |
 | `sync/` | 数据同步引擎（MySQL → Milvus） |
 | `plan/` | PlanNotebook 持久化、计划模板 |
 | `profile/` | 职业画像、概念注册 |
-| `pageagent/` | 页面 Agent（表单、OpenAI 代理） |
+| `pageagent/` | 页面 Agent（OpenAI 代理 / 后端 LLM 代理；前端填表执行已迁移至 `agent-web-sdk` 的 `PageAgentDomEngine`） |
 | `hitl/` | Human-in-the-Loop（工具门控、推理审查） |
 | `security/` | 命令安全分类、节点审计 |
 | `embedding/` | 嵌入模型（DashScopeProvider/OpenAIProvider/BaiduProvider/HuaweiProvider/ClaudeProvider） |

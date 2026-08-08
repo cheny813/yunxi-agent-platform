@@ -252,8 +252,8 @@ switch ($mode) {
             }
         }
 
-        Write-Host "[INFO] Packaging..."
-        & mvn clean package -DskipTests
+        Write-Host "[INFO] Packaging (clean install)..."
+        & mvn clean install -DskipTests
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[ERROR] Package failed!" -ForegroundColor Red
             Invoke-Pause
@@ -282,7 +282,7 @@ switch ($mode) {
         if (-not (Test-Path $jarFile)) {
             Write-Host "[INFO] Not packaged, executing packaging..."
             Write-Host ""
-            & mvn clean package -DskipTests
+            & mvn clean install -DskipTests
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[ERROR] Package failed!" -ForegroundColor Red
                 Invoke-Pause

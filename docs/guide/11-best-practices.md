@@ -104,11 +104,11 @@ Agent 应该是无状态的，依赖外部存储保存状态。
 public class MyAgent {
     
     @Autowired
-    private ConversationService conversationService; // 外部存储
+    private ChatAppService chatAppService; // 外部存储
     
     public AgentResponse handleRequest(AgentRequest request) {
         // 从外部存储获取状态
-        Conversation conv = conversationService.get(request.getSessionId());
+        Conversation conv = chatAppService.getConversation(request.getSessionId());
         // 处理请求...
         // 不保存任何实例变量状态
     }
@@ -443,9 +443,9 @@ public boolean isActiveTool(String toolName) {
 }
 ```
 
-#### 我们的决策：不干预框架内置工具
+#### 升级说明：不干预框架内置工具
 
-早期版本曾通过 `assignUngroupedTools()` 反射 hack 将未分组工具强行分配到 "general" 组。**这个方案已在 2.0.0（GA）中移除**，原因：
+早期版本曾通过 `assignUngroupedTools()` 反射 hack 将未分组工具强行分配到 "general" 组。该方案已在 2.0.0（GA）中移除，原因：
 
 - 底层框架的内置工具属于 Agent 基础设施能力，不参与分组是框架的设计意图
 - 应用框架的职责是管好自己的工具，不应通过反射 hack 干预框架内部状态

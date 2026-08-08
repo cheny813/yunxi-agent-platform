@@ -370,17 +370,19 @@ SimpleKnowledge 复用项目已有的 `EmbeddingService`（支持 Ollama/DashSco
 agentscope.yml knowledge-bases 配置
     ↓ @ConfigurationProperties
 AgentscopeExtensionProperties
-    ↓ KnowledgeAutoConfiguration（@PostConstruct）
-遍历 enabled=true 的配置 → 按 type 匹配 KnowledgeCreator → 创建 Knowledge 实例
+    ↓ KnowledgeAutoConfiguration (@PostConstruct)
+遍历 enabled=true 的配置 → 创建对应类型的 Knowledge 实例
     ↓ registerSingleton
 Spring 容器中的 Knowledge Bean
     ↓ @Autowired Map<String, Knowledge>
-AdvancedAgentFactory 运行时使用
+Agent 运行时使用
 ```
 
 ### 扩展新知识库类型
 
-参考 [07. 开发指南](./07-development.md#创建自定义知识库类型) 中的 `KnowledgeCreator` SPI 说明。
+实现自定义 `Knowledge` 类并通过 `KnowledgeAutoConfiguration` 的 `@PostConstruct` 注册。
+
+参考 [03. 核心概念](./03-concepts.md#知识库-knowledge-base) 中的知识库配置说明。
 
 ---
 
@@ -856,6 +858,36 @@ agent:
 ### 默认行为
 
 **不配 `tools` 字段时，Agent 默认仅激活 `memory` 组**，只能查询记忆，无法读写文件或执行命令。
+
+---
+
+## MUSE 配置
+
+[MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 的配置集中在 `agent-config` 的 `config/muse.yml`（前缀 `yunxi.muse`，默认关闭，需显式 `enabled: true`）：
+
+```yaml
+yunxi:
+  muse:
+    enabled: true                       # 是否启用自进化能力
+    model: qwen-plus                    # 修补用的 LLM 模型名（走 yunxi ModelFactory）
+    provider: dashscope                 # 模型供应商
+    builtin-export-dir: .agentscope/workspace/skills
+    sandbox:
+      mode: local                       # local=本机子进程 / docker=容器沙箱（推荐）
+      timeout: 60s
+    evaluator:
+      test-command: "java tests/SkillStructureTest.java"
+      max-retries: 2
+    refine:
+      max-iterations: 3
+      stop-on-no-progress: true
+    pruner:
+      similarity-threshold: 0.85
+      min-usage: 1
+      max-skills: 200
+```
+
+在 `config/muse.yml` 中设置 `yunxi.muse.enabled: true` 即可全局启用，无需改动 Agent 定义 YAML。
 
 ---
 

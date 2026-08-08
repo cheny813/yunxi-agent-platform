@@ -259,10 +259,10 @@ ReAct 循环：
 | 概念 | 说明 | 在本框架中的体现 |
 |------|------|------------------|
 | **领域 (Domain)** | 业务问题的范围 | 业务域、财务域、运维域 |
-| **限界上下文** | 领域的边界 | 通过 DomainContributor 定义 |
-| **实体 (Entity)** | 有唯一标识的对象 | Agent、Scene、Rule |
+| **限界上下文** | 领域的边界 | 通过域名划分（营养、食谱等） |
+| **实体 (Entity)** | 有唯一标识的对象 | Agent、Session |
 | **值对象** | 无标识的属性集合 | AgentConfigDto、ChatRequest |
-| **领域服务** | 跨实体的业务逻辑 | ConversationService、AgentService |
+| **领域服务** | 跨实体的业务逻辑 | ChatAppService、AgentConfigurer |
 
 **为什么使用 DDD**：
 - 业务逻辑与技术实现分离
@@ -308,19 +308,21 @@ public class MyService {
 **工作流程**：
 ```
 1. 框架定义接口
-   public interface DomainContributor { ... }
+   public interface LlmInvocationService {
+       String invoke(String prompt);
+   }
 
 2. 业务方实现接口
-   @Component
-   public class MyDomainContributor implements DomainContributor { ... }
+   @Service
+   public class MyLlmService implements LlmInvocationService { ... }
 
 3. 框架自动发现并加载
    @Autowired
-   private List List<DomainContributor> contributors;  // 自动注入所有实现
+   private List List<LlmInvocationService> services;  // 自动注入所有实现
 
 4. 框架调用业务实现
-   for (DomainContributor c : contributors) {
-       c.contribute();
+   for (LlmInvocationService s : services) {
+       s.invoke("...");
    }
 ```
 
@@ -350,15 +352,15 @@ public class MyService {
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
 │  │  统一认证    │ │  限流熔断    │ │  路由转发    │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  (由 GA Channel + AgentGatewayImpl 在 agent-core 内承接)      │
+│  (由 AgentScope-Java 2.0GA Channel + AgentGatewayImpl 在 agent-core 内承接)      │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      业务层 (Business Layer)                  │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ agent-app   │ │agent-business│ │ agent-text2sql│           │
-│  │  通用Agent  │ │  业务Agent   │ │  SQL生成     │            │
+│  │ agent-app   │ │ agent-muse  │ │ agent-text2sql│           │
+│  │  通用Agent  │ │  MUSE自进化  │ │  SQL生成     │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -375,8 +377,8 @@ public class MyService {
 ┌─────────────────────────────────────────────────────────────┐
 │                      基础设施层 (Infra Layer)                 │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │agent-rule-  │ │agent-config  │ │   sdk-js    │
-│  │  engine     │ │  配置管理    │ │  JS SDK     │            │
+│  │ agent-spi   │ │agent-config  │ │   sdk-js    │
+│  │  SPI扩展点  │ │  配置管理    │ │  JS SDK     │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -386,10 +388,10 @@ public class MyService {
 | 层级 | 职责 | 主要模块 |
 |------|------|----------|
 | **接入层** | 用户交互界面 | Web、桌面、移动端 |
-| **网关层** | 协议适配、认证、限流 | agent-core（GA Channel + AgentGatewayImpl） |
-| **业务层** | 业务逻辑实现 | agent-business |
+| **网关层** | 协议适配、认证、限流 | agent-core（AgentScope-Java 2.0GA Channel + AgentGatewayImpl） |
+| **业务层** | 业务逻辑实现 | agent-app, agent-muse, agent-text2sql |
 | **核心层** | 框架核心能力 | agent-core |
-| **基础设施层** | 技术实现 | MCP、SDK |
+| **基础设施层** | 技术实现 | agent-config, agent-spi, sdk-js, MCP |
 
 ---
 

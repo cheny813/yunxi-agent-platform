@@ -30,7 +30,8 @@ agent-config/src/main/resources/
 │   └── application.yml
 │
 ├── agent-definitions/                 # 【Agent 定义】由 AgentDefinitionLoader 加载
-│   ├── nutrition-assistant.yml        #   营养助手 (Supervisor + 4 专家)
+│   ├── nutrition-assistant.yml        #   校园餐营养助手 (Supervisor + 4 专家，校园人群口径)
+│   ├── resident-nutrition-assistant.yml #  居民营养配餐助手 (Supervisor + 4 专家，居民人群口径)
 │   ├── nutrition-experts.yml          #   专家 Agent (dish-searcher 等)
 │   ├── pagegen-assistant.yml          #   页面生成助手
 │   ├── safety-assistant.yml           #   食品安全助手

@@ -697,7 +697,7 @@
             const data = await response.json();
             hideThinking();
 
-            const content = data.message || data.content || JSON.stringify(data, null, 2);
+            const content = data.reply || '';
             addMessage('assistant', content);
 
         } catch (error) {

@@ -226,8 +226,10 @@ public class ChatAppService {
                     .build();
 
             // 调用 Agent，设置超时；多租户隔离经 RuntimeContext 透传 userId
+            // 统一复用 streamEvents 的收尾语义（collectResultMsg），避免 agent.call 在 Supervisor
+            // 以 tool-call 父轮结束时丢失子 Agent 最终合成文本（仅拿到 preamble）
             Duration timeout = Duration.ofSeconds(properties.getChatTimeoutSeconds());
-            Msg responseMsg = ((HarnessAgent) agent).call(userMsg, buildRuntimeContext(userId, userId)).block(timeout);
+            Msg responseMsg = collectResultMsg(agent, userMsg, userId, userId, timeout);
 
             if (responseMsg == null) {
                 throw new RuntimeException("Agent 响应为空");
@@ -305,7 +307,7 @@ public class ChatAppService {
             if (memoryConfig.isNone() || !request.isIncludeHistory()) {
                 // 无记忆模式 - 不包含历史，作为新对话
                 log.debug("无记忆模式: ConversationId={}", request.getConversationId());
-                responseMsg = ((HarnessAgent) agent).call(userMsg, buildRuntimeContext(userId, request.getConversationId())).block(timeout);
+                responseMsg = collectResultMsg(agent, userMsg, userId, request.getConversationId(), timeout);
             } else {
                 // 使用智能记忆系统
                 try {
@@ -346,7 +348,7 @@ public class ChatAppService {
                     log.debug("调用 Agent: ConversationId={}, contextCount={}, mode={}, ragFiles={}",
                             request.getConversationId(), contextMessages.size(), memoryConfig.getMemoryMode(),
                             relevantFiles.size());
-                    responseMsg = ((HarnessAgent) agent).call(contextMessages, buildRuntimeContext(userId, request.getConversationId())).block(timeout);
+                    responseMsg = collectResultMsg(agent, contextMessages, userId, request.getConversationId(), timeout);
 
                     // 添加助手回复到记忆（由 HarnessAgent 内部 MemoryFlushHook 自动处理）
                     // 助手回复由 HarnessAgent 内部 MemoryFlushHook 自动写入记忆
@@ -364,7 +366,7 @@ public class ChatAppService {
                     List<Msg> allMessages = new ArrayList<>(history);
                     allMessages.add(userMsg);
 
-                    responseMsg = ((HarnessAgent) agent).call(allMessages, buildRuntimeContext(userId, request.getConversationId())).block(timeout);
+                    responseMsg = collectResultMsg(agent, allMessages, userId, request.getConversationId(), timeout);
                 }
             }
 
@@ -391,6 +393,46 @@ public class ChatAppService {
             log.error("对话执行失败: {}", e.getMessage(), e);
             throw new RuntimeException("对话执行失败", e);
         }
+    }
+
+    /**
+     * 从 Agent 的事件流中收集最终回复消息（同步语义）。
+     *
+     * <p>统一复用 {@link #buildStreamResponse} 流式分支的收尾语义：最终文本取自
+     * {@code AGENT_RESULT} 事件的 {@code resultMsg}，与流式分支完全一致。
+     * 这解决了原先使用 {@code agent.call(...).getReply()} 在 Supervisor 模式下，Agent 把任务
+     * 委派给子 Agent 并以"父轮 tool-call"结束时，只能拿到 preamble（如"我将为您生成…"）而
+     * 丢失子 Agent 最终合成文本的问题。</p>
+     *
+     * <p>入参 {@code inputMsg} 兼容两种形态：单条 {@link Msg} 或 {@link List}{@code <Msg>}，
+     * 分别映射到 {@code streamEvents(Msg, RuntimeContext)} 与
+     * {@code streamEvents(List, RuntimeContext)}。</p>
+     *
+     * @return Agent 最终合成的回复消息；若事件流未产生 AGENT_RESULT 则返回 null
+     */
+    private Msg collectResultMsg(Agent agent, Object inputMsg, String userId,
+            String conversationId, Duration timeout) {
+        HarnessAgent harnessAgent = (HarnessAgent) agent;
+        io.agentscope.core.agent.RuntimeContext rc = buildRuntimeContext(userId, conversationId);
+
+        Flux<io.agentscope.core.event.AgentEvent> eventFlux;
+        if (inputMsg instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<Msg> messages = (List<Msg>) inputMsg;
+            eventFlux = harnessAgent.streamEvents(messages, rc);
+        } else {
+            eventFlux = harnessAgent.streamEvents((Msg) inputMsg, rc);
+        }
+
+        final Msg[] resultHolder = { null };
+        eventFlux
+                .timeout(timeout)
+                .filter(e -> e.getType() == io.agentscope.core.event.AgentEventType.AGENT_RESULT)
+                .ofType(io.agentscope.core.event.AgentResultEvent.class)
+                .doOnNext(resultEvent -> resultHolder[0] = resultEvent.getResult())
+                .blockLast(); // 同步消费整个事件流，等价于"收集完再返回"的非流式
+
+        return resultHolder[0];
     }
 
     /**

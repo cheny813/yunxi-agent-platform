@@ -23,7 +23,7 @@
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
-| **技能系统** | 启用 GA 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
+| **技能系统** | 启用 AgentScope-Java 2.0GA 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
 | **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并的闭环，Agent 技能的自我判断、自我修补与自我进化 |
 | **流式事件** | 使用 `streamEvents()` 替代废弃的 `stream()`，按 `AgentEventType` 过滤事件 |
 | **工具分组** | 按职责隔离工具（memory/filesystem/execute），默认最小权限，YAML 按需开放 |
@@ -110,7 +110,7 @@ curl -X POST http://localhost:40001/api/chat \
 
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
-| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全、网关（GA Channel 接入） | Spring Boot, agentscope-harness |
+| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全、网关（AgentScope-Java 2.0GA Channel 接入） | Spring Boot, agentscope-harness |
 | **agent-muse** | 自进化引擎：技能沙箱评估→LLM 修补→剪枝合并闭环 | agentscope, Java 子进程沙箱 |
 | **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
 | **agent-spi** | SPI 接口定义 | Java SPI |
@@ -178,7 +178,8 @@ yunxi 采用 **Agent 优先** 的目录布局，遵循底层 agentscope-java 框
 │   │   ├── AGENTS.md         # Agent 身份定义与场景规则
 │   │   └── user-001/         # 用户运行时数据（按 userId 隔离）
 │   ├── general-assistant/    # 通用助手
-│   ├── nutrition-assistant/  # 营养助手
+│   ├── nutrition-assistant/  # 校园餐营养助手（校园人群口径）
+│   ├── resident-nutrition-assistant/  # 居民营养配餐助手（居民人群口径）
 │   ├── dish-searcher/        # 菜品搜索
 │   ├── nutrition-evaluator/  # 营养评估
 │   ├── pagegen-assistant/    # 页面生成助手

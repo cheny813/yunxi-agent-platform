@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能配餐 · 云曦营养师</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <!-- 顶部 -->
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="../index.html">
+        <span class="brand-mark">云</span>
+        <span class="brand-name">云曦营养师</span>
+      </a>
+      <nav class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="recipe-make.html" class="active">智能配餐</a>
+        <a href="../index.html#scenes">应用场景</a>
+        <a href="../index.html#about">关于</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 工作台 -->
+  <main class="workbench">
+    <!-- 左栏：目标表单 -->
+    <section class="panel form-panel">
+      <h2 class="panel-title">配餐目标</h2>
+      <form id="recipe-form" class="goal-form">
+        <div class="field">
+          <label for="crowd">适用人群</label>
+          <select id="crowd" name="crowd">
+            <option value="">请选择</option>
+            <option value="儿童">儿童</option>
+            <option value="成人">成人</option>
+            <option value="老人">老人</option>
+            <option value="孕产">孕产</option>
+            <option value="慢病">慢病</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="goal">健康目标</label>
+          <select id="goal" name="goal">
+            <option value="">请选择</option>
+            <option value="减脂">减脂</option>
+            <option value="增肌">增肌</option>
+            <option value="控糖">控糖</option>
+            <option value="均衡">均衡</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="allergy">饮食禁忌（过敏源，可多选）</label>
+          <div id="allergy" class="checkbox-group">
+            <label><input type="checkbox" name="allergy" value="海鲜" /> 海鲜</label>
+            <label><input type="checkbox" name="allergy" value="坚果" /> 坚果</label>
+            <label><input type="checkbox" name="allergy" value="蛋类" /> 蛋类</label>
+            <label><input type="checkbox" name="allergy" value="乳制品" /> 乳制品</label>
+            <label><input type="checkbox" name="allergy" value="麸质" /> 麸质</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="avoid">忌口 / 偏好食材</label>
+          <input type="text" id="avoid" name="avoid" placeholder="如：不吃香菜、偏好鸡肉" />
+        </div>
+
+        <div class="field">
+          <label for="calorie">热量预算（kcal/天）</label>
+          <input type="number" id="calorie" name="calorie" placeholder="如 1500" min="800" max="4000" />
+        </div>
+
+        <button type="submit" id="generate-btn" class="btn btn-primary btn-block">生成方案</button>
+      </form>
+    </section>
+
+    <!-- 右栏：AI 对话助手（自有漂亮 UI，复用底层 pageController 操作左栏表单） -->
+    <section class="panel chat-panel" id="ai-chat">
+      <div class="chat-head">
+        <div class="chat-title">
+          <span class="chat-avatar">AI</span>
+          <div>
+            <h2 class="panel-title" style="margin:0;">AI 营养助手</h2>
+            <span class="chat-status" id="chat-status">已就绪</span>
+          </div>
+        </div>
+        <button class="chat-collapse" id="chat-collapse" title="收起">—</button>
+      </div>
+
+      <div class="chat-body" id="chat-body">
+        <div class="chat-msg ai">
+          你好，我是云曦 AI 营养助手。描述一下需求，例如「帮我配一份 1500kcal 的糖尿病友好午餐」，我会直接填写左侧表单并生成方案。
+        </div>
+      </div>
+
+      <div class="chat-foot">
+        <button class="chat-fill" id="chat-fill" title="让 AI 根据对话自动填写左侧表单">↳ 自动填表</button>
+        <input class="chat-input" id="chat-input" type="text" placeholder="描述你的配餐需求…" />
+        <button class="chat-send" id="chat-send">发送</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 结果区 -->
+  <section class="result-section">
+    <div class="section-head">
+      <h2>营养方案</h2>
+      <p>由云曦营养师生成，含食谱卡片与营养评分</p>
+    </div>
+    <div id="result-area" class="result-area">
+      <p class="result-empty">填写目标或向 AI 助手描述需求后，方案将显示在这里。</p>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>云曦营养师 · 机构级 AI 营养管家</span>
+      <span class="footer-muted">营养评分由后端营养引擎提供，前端不做伪造计算</span>
+    </div>
+  </footer>
+
+  <style>
+    /* AI 对话右栏（自有 UI，复用底层 pageController 操作左栏） */
+    #ai-chat { display:flex; flex-direction:column; min-height:520px; max-height:78vh; }
+    .chat-head { display:flex; align-items:center; justify-content:space-between; padding:4px 2px 12px; border-bottom:1px solid rgba(0,0,0,.06); }
+    .chat-title { display:flex; align-items:center; gap:10px; }
+    .chat-avatar { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,#34d399,#059669); color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+    .chat-status { font-size:12px; color:#10b981; }
+    .chat-collapse { border:none; background:transparent; font-size:20px; cursor:pointer; color:#94a3b8; line-height:1; }
+    .chat-body { flex:1; overflow-y:auto; padding:14px 4px; display:flex; flex-direction:column; gap:12px; }
+    .chat-msg { max-width:88%; padding:10px 13px; border-radius:14px; font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+    .chat-msg.ai { align-self:flex-start; background:#f1f5f9; color:#0f172a; border-bottom-left-radius:4px; }
+    .chat-msg.user { align-self:flex-end; background:#059669; color:#fff; border-bottom-right-radius:4px; }
+    .chat-msg.thinking { opacity:.6; font-style:italic; }
+    .chat-foot { display:flex; gap:8px; padding-top:12px; border-top:1px solid rgba(0,0,0,.06); align-items:center; }
+    .chat-input { flex:1; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:14px; outline:none; }
+    .chat-input:focus { border-color:#34d399; }
+    .chat-send { border:none; background:#059669; color:#fff; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; }
+    .chat-send:disabled { opacity:.5; cursor:default; }
+    .chat-fill { border:1px solid #34d399; background:#ecfdf5; color:#059669; border-radius:10px; padding:10px 10px; font-size:13px; cursor:pointer; white-space:nowrap; }
+    .chat-fill:hover { background:#d1fae5; }
+    .chat-fill:disabled { opacity:.5; cursor:default; }
+    #ai-chat.collapsed .chat-body, #ai-chat.collapsed .chat-foot { display:none; }
+    /* 生成方案按钮 loading 态 */
+    .btn-primary:disabled { opacity:.7; cursor:not-allowed; }
+    .result-area.result-loading { opacity:.6; transition:opacity .2s; }
+
+    /* ── 营养方案卡片（路线 A：结构化 JSON 渲染）── */
+    .result-area { font-size:14px; }
+    .plan-card { display:flex; flex-direction:column; gap:16px; }
+    .plan-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+    .plan-title { font-size:18px; font-weight:700; color:#065f46; }
+    .score-ring { --p:0; width:96px; height:96px; border-radius:50%; flex:0 0 auto;
+      background:conic-gradient(#10b981 calc(var(--p)*1%), #e2e8f0 0);
+      display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; }
+    .score-ring::before { content:""; position:absolute; inset:10px; border-radius:50%; background:#fff; }
+    .score-ring span { position:relative; font-size:26px; font-weight:800; color:#059669; }
+    .score-ring small { position:relative; font-size:11px; color:#64748b; margin-top:2px; }
+    .micro-block, .days-block { background:#f8fafc; border:1px solid #eef2f7; border-radius:14px; padding:14px 16px; }
+    .micro-title { font-size:14px; font-weight:700; color:#0f172a; margin-bottom:12px; }
+    .micro-list { display:flex; flex-direction:column; gap:10px; }
+    .micro-item { display:grid; grid-template-columns:64px 1fr auto; align-items:center; gap:10px; }
+    .micro-name { font-size:13px; color:#334155; }
+    .micro-bar { height:8px; border-radius:6px; background:#e2e8f0; overflow:hidden; }
+    .micro-bar i { display:block; height:100%; border-radius:6px; }
+    .micro-bar i.good, .micro-val em.good { background:#10b981; color:#059669; }
+    .micro-bar i.mid, .micro-val em.mid { background:#f59e0b; color:#b45309; }
+    .micro-bar i.low, .micro-val em.low { background:#ef4444; color:#b91c1c; }
+    .micro-val { font-size:12px; color:#475569; white-space:nowrap; }
+    .micro-val em { font-style:normal; font-weight:700; margin-left:4px; }
+    .day-card { border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin-bottom:12px; background:#fff; }
+    .day-card:last-child { margin-bottom:0; }
+    .day-head { font-weight:700; color:#065f46; margin-bottom:8px; }
+    .meal-list { display:flex; flex-direction:column; gap:6px; }
+    .meal-row { display:grid; grid-template-columns:52px 1fr auto; gap:10px; align-items:center; font-size:13px; }
+    .meal-type { color:#059669; font-weight:600; }
+    .meal-name { color:#1e293b; }
+    .meal-kcal { color:#94a3b8; font-size:12px; }
+    .plan-prose { color:#334155; line-height:1.7; white-space:pre-wrap;
+      background:#fff; border:1px solid #e2e8f0; border-left:4px solid #10b981;
+      border-radius:12px; padding:16px 18px; font-size:15px; box-shadow:0 1px 3px rgba(15,23,42,.04); }
+    .plan-prose h3 { font-size:16px; font-weight:700; color:#065f46; margin:12px 0 6px; }
+    .plan-prose h3:first-child { margin-top:0; }
+    .plan-prose ul { margin:6px 0; padding-left:20px; }
+    .plan-prose li { margin:4px 0; }
+    .plan-prose strong { color:#0f172a; font-weight:700; }
+    .plan-prose .prose-tag { display:inline-block; font-size:12px; color:#059669; background:#ecfdf5;
+      border:1px solid #a7f3d0; border-radius:999px; padding:2px 10px; margin-bottom:10px; font-weight:600; }
+  </style>
+
+  <!-- 公共 SDK 入口（agent-web-sdk 单一源）：
+       PageAgentDomEngine / FormFillClient / FormFillDebug / PageAgentSDK(loader) -->
+  <script type="module" src="/src/entry.js"></script>
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+    let FF = null;  // mcp-formfill 客户端单例（页面级引用，供各处复用）
+
+    // ── 1. 表单实时通道接入 ──
+    // 写页面能力统一收敛到 FormFillClient → PageAgentDomEngine，不再依赖 LLM Agent 循环。
+    (async function initClient() {
+      FF = window.FormFillClient.getClient()
+        .onLog((m) => {
+          if (m.indexOf('⚠') === 0) addMsg('ai', m);
+        });
+      try {
+        await FF.connect({ wsPath: '/ws/formfill' });
+        // 闭环自举：上报真实页面结构，后端 AgentScope 自动注册表单字段
+        FF.reportStructure('recipe', { bootstrap: true }).catch(() => {});
+      } catch (e) {
+        addMsg('ai', '表单实时通道连接失败：' + e.message);
+      }
+    })();
+
+    function addMsg(role, text, extraClass) {
+      const div = document.createElement('div');
+      div.className = 'chat-msg ' + role + (extraClass ? ' ' + extraClass : '');
+      div.textContent = text;
+      $('chat-body').appendChild(div);
+      $('chat-body').scrollTop = $('chat-body').scrollHeight;
+      return div;
+    }
+
+    // ── 2. 右栏对话 UI 交互 ──
+    const chatBody = $('chat-body');
+    const chatInput = $('chat-input');
+    const chatSend = $('chat-send');
+
+    async function sendMessage() {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = '';
+      addMsg('user', text);
+
+      const thinking = addMsg('ai', '思考中…', 'thinking');
+      chatSend.disabled = true;
+
+      try {
+        const res = await fetch(window.location.origin + '/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Agent-Token': 'page-agent' },
+          credentials: 'include',
+          body: JSON.stringify({
+            model: 'qwen-plus',
+            messages: [
+              { role: 'system', content: '你是云曦营养配餐助手。如能从用户需求中提取配餐表单字段，请在回复末尾用 <!--form:{...}--> 包裹 JSON 字段，便于前端自动填表；其余情况正常自然语言回复。\n\n字段取值必须严格从下列选项中选择，不得自造：\n- crowd（适用人群）只能取：儿童 / 成人 / 老人 / 孕产 / 慢病（如"45岁男性"映射到"成人"，"糖尿病人"映射到"慢病"）\n- goal（健康目标）只能取：减脂 / 增肌 / 控糖 / 均衡（如"均衡营养、控制负担"映射到"均衡"）\n- allergy（饮食禁忌/过敏源）只能是数组，元素只能取：海鲜 / 坚果 / 蛋类 / 乳制品 / 麸质\n- avoid（忌口偏好）自由文本\n- calorie（每日热量预算 kcal）必须是单个整数，范围 800–4000；若用户给区间（如"500-600"），取区间上界或中位数作为单个整数' },
+              { role: 'user', content: text }
+            ]
+          })
+        });
+        const data = await res.json();
+        const reply = (data.choices && data.choices[0] && data.choices[0].message.content)
+          || JSON.stringify(data);
+        thinking.remove();
+        addMsg('ai', reply);
+
+        // 若后端返回了 form 标记，经 mcp-formfill 统一写路径填左栏
+        const m = reply.match(/<!--form:([\s\S]*?)-->/);
+        if (m && FF) {
+          try { await FF.fillForm(JSON.parse(m[1]), null, { scene: 'recipe' }); } catch (_) {}
+        }
+      } catch (err) {
+        thinking.remove();
+        addMsg('ai', '请求失败：' + err.message);
+      } finally {
+        chatSend.disabled = false;
+      }
+    }
+
+    chatSend.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+    $('chat-collapse').addEventListener('click', () => $('ai-chat').classList.toggle('collapsed'));
+
+    // ── 3. 自动填表：DomEngine 读取真实页面字段 → LLM 看图说话 → FormFillClient 写回 ──
+    const chatFillBtn = $('chat-fill');
+    chatFillBtn.addEventListener('click', async () => {
+      // 立即禁用并提示，给出明确交互反馈
+      chatFillBtn.disabled = true;
+      const fillOriginal = chatFillBtn.textContent;
+      chatFillBtn.textContent = '填表中…';
+
+      // 优先用 DomEngine.scan() 读真实页面字段（零 SDK 依赖）
+      const engine = window.PageAgentDomEngine;
+      let pageDesc = '';
+      if (engine && typeof engine.scan === 'function') {
+        try {
+          const fields = engine.scan(true);
+          pageDesc = JSON.stringify(fields, null, 2).slice(0, 3000);
+        } catch (_) { pageDesc = '(页面状态读取失败)'; }
+      }
+      const lastUser = [...chatBody.querySelectorAll('.chat-msg.user')].pop();
+      const demand = lastUser ? lastUser.textContent : '';
+      if (!demand) { addMsg('ai', '请先在对话框描述你的需求，再点「自动填表」。'); return; }
+
+      addMsg('ai', '正在根据对话填写左侧表单…', 'thinking').remove();
+      try {
+        const res = await fetch(window.location.origin + '/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Agent-Token': 'page-agent' },
+          credentials: 'include',
+          body: JSON.stringify({
+            model: 'qwen-plus',
+            messages: [
+              { role: 'system', content: '根据用户需求与页面表单字段，输出 JSON：{crowd,goal,allergy[],avoid,calorie}。只输出 JSON，不要解释。' },
+              { role: 'user', content: '需求：' + demand + '\n页面字段：' + pageDesc }
+            ]
+          })
+        });
+        const data = await res.json();
+        const content = (data.choices && data.choices[0] && data.choices[0].message.content) || '';
+        const json = content.match(/\{[\s\S]*\}/);
+        if (json && FF) await FF.fillForm(JSON.parse(json[0]), { scene: 'recipe' });
+      } catch (err) {
+        addMsg('ai', '自动填表失败：' + err.message);
+      } finally {
+        chatFillBtn.disabled = false;
+        chatFillBtn.textContent = fillOriginal;
+      }
+    });
+
+    // ── 4. 表单提交（手动通道，保留）──
+    const generateBtn = $('generate-btn');
+    $('recipe-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = {
+        crowd: fd.get('crowd'), goal: fd.get('goal'),
+        allergy: fd.getAll('allergy'), avoid: fd.get('avoid'), calorie: fd.get('calorie')
+      };
+
+      // 立即给出交互反馈：禁用按钮 + 文案变「生成中…」+ 结果区进入加载态
+      generateBtn.disabled = true;
+      const originalText = generateBtn.textContent;
+      generateBtn.textContent = '生成中…';
+      const area = $('result-area');
+      area.innerHTML = '<p class="result-empty">正在生成方案…</p>';
+      area.classList.add('result-loading');
+
+      try {
+        // 路线 A：走 resident-nutrition-assistant Agent（居民口径，recipe-make profile，含真实营养评分链路 evaluate_recipe）
+        // 注意：不要直接打 /v1/chat/completions（裸 LLM 透传，无评分能力）
+        // 用通用 yunxiChat：mode 决定同步/流式，页面逻辑无需因模式而变。
+        // mode:'stream' 时 onDelta 实时拼字形成打字机；mode:'sync' 时不传 onDelta 即可。
+        await yunxiChat({
+          agentName: 'resident-nutrition-assistant',
+          profile: 'recipe-make',
+          mode: 'stream',
+          autoManageConversation: true,
+          message: '根据以下目标生成营养配餐方案（含食谱卡片与微量营养素评分）：' + JSON.stringify(payload),
+          onDelta: (delta, full) => {
+            // 流式实时渲染：用 prose 容器承载增量，保证过程可读；流结束再由 onDone 定稿为卡片
+            let live = $('prose-live');
+            if (!live) {
+              area.innerHTML = '<div class="plan-prose"><span class="prose-tag">营养方案（生成中…）</span><span id="prose-live"></span></div>';
+              live = $('prose-live');
+            }
+            live.textContent = full;
+          },
+          onDone: (full) => {
+            // 流结束或同步返回：尝试按结构化 JSON 渲染卡片，失败则保留 prose 文本
+            area.innerHTML = renderRecipePlan(full);
+          }
+        });
+      } catch (err) {
+        area.innerHTML = '<p class="result-empty">生成失败：' + err.message + '</p>';
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.textContent = originalText;
+        area.classList.remove('result-loading');
+      }
+    });
+
+    // ── 渲染营养方案：优先解析结构化 JSON，失败降级为文本 ──
+    function renderRecipePlan(content) {
+      if (!content) return '<p class="result-empty">未获取到方案内容。</p>';
+      // 从 content 中提取 ```json 代码块或最后一个 JSON 对象
+      const jsonMatch = content.match(/```json\s*([\s\S]*?)```/) || content.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : null;
+      let plan = null;
+      if (jsonStr) {
+        try { plan = JSON.parse(jsonStr.trim()); } catch (e) { plan = null; }
+      }
+      if (!plan) {
+        return '<div class="plan-prose"><span class="prose-tag">营养方案（文本）</span>' + renderProse(content) + '</div>';
+      }
+      return buildPlanCard(plan, content);
+    }
+
+    function buildPlanCard(plan, rawContent) {
+      const score = plan.nutritionScore ?? plan.score ?? null;
+      const micro = plan.microRatings || plan.micro || (plan.dimensions && plan.dimensions.micro) || {};
+      const days = Array.isArray(plan.days) ? plan.days : [];
+
+      let html = '<div class="plan-card">';
+      html += '<div class="plan-head">';
+      html += '<div class="plan-title">' + escapeHtml(plan.recipeName || plan.title || '营养配餐方案') + '</div>';
+      if (score != null) {
+        const pct = Math.max(0, Math.min(100, Number(score)));
+        html += '<div class="score-ring" style="--p:' + pct + '"><span>' + score + '</span><small>综合营养分</small></div>';
+      }
+      html += '</div>';
+
+      // 微量元素 / 维生素评分条
+      const microKeys = Object.keys(micro);
+      if (microKeys.length) {
+        html += '<div class="micro-block"><div class="micro-title">微量元素 / 维生素评分</div><div class="micro-list">';
+        for (const k of microKeys) {
+          const m = micro[k] || {};
+          const s = Number(m.score ?? m.value ?? 0);
+          const max = Number(m.max ?? m.fullMark ?? 100);
+          const pct = max ? Math.round(s / max * 100) : 0;
+          const status = m.status || (pct >= 80 ? '优' : pct >= 60 ? '良' : '待改善');
+          const cls = pct >= 80 ? 'good' : pct >= 60 ? 'mid' : 'low';
+          html += '<div class="micro-item">'
+            + '<span class="micro-name">' + escapeHtml(k) + '</span>'
+            + '<div class="micro-bar"><i class="' + cls + '" style="width:' + pct + '%"></i></div>'
+            + '<span class="micro-val">' + s + (max && max !== 100 ? '/' + max : '') + ' <em class="' + cls + '">' + status + '</em></span>'
+            + '</div>';
+        }
+        html += '</div></div>';
+      }
+
+      // 食谱卡片（按天/餐）
+      if (days.length) {
+        html += '<div class="days-block"><div class="micro-title">食谱安排</div>';
+        for (const d of days) {
+          html += '<div class="day-card"><div class="day-head">' + escapeHtml(d.day || d.label || '方案') + '</div><div class="meal-list">';
+          const meals = Array.isArray(d.meals) ? d.meals : (d.items || []);
+          for (const meal of meals) {
+            const name = meal.name || meal.dish || meal;
+            const kcal = meal.calorie ?? meal.kcal ?? '';
+            html += '<div class="meal-row"><span class="meal-type">' + escapeHtml(meal.type || meal.meal || '') + '</span>'
+              + '<span class="meal-name">' + escapeHtml(String(name)) + '</span>'
+              + (kcal !== '' ? '<span class="meal-kcal">' + kcal + ' kcal</span>' : '') + '</div>';
+          }
+          html += '</div></div>';
+        }
+        html += '</div>';
+      }
+
+      // 文案说明（去掉 json 后的正文）
+      const prose = stripJson(rawContent);
+      if (prose) {
+        html += '<div class="plan-prose">' + escapeHtml(prose).replace(/\n/g, '<br>') + '</div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function stripJson(text) {
+      return text.replace(/```json[\s\S]*?```/g, '').replace(/\{[\s\S]*\}/, '').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    // 纯文本/Markdown 方案的基础渲染：先转义防 XSS，再识别标题/列表/加粗，保证可读性
+    function renderProse(text) {
+      const lines = escapeHtml(text).split('\n');
+      let html = '';
+      let inList = false;
+      const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+      for (let raw of lines) {
+        const line = raw.replace(/\s+$/, '');
+        if (/^###?\s+/.test(line)) {
+          closeList();
+          html += '<h3>' + line.replace(/^###?\s+/, '') + '</h3>';
+        } else if (/^[-*]\s+/.test(line)) {
+          if (!inList) { html += '<ul>'; inList = true; }
+          html += '<li>' + line.replace(/^[-*]\s+/, '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') + '</li>';
+        } else {
+          closeList();
+          const p = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+          if (p.trim()) html += '<p>' + p + '</p>';
+        }
+      }
+      closeList();
+      return html;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+  </script>
+</body>
+</html>

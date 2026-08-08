@@ -116,7 +116,8 @@
 - **代码仓库**: 各模块代码和详细实现
 - **AI 规则**: `.comate/rules/` 目录下的开发规范
 - **运行时技能**: `agent-core/src/main/resources/skills/` 内置技能
-- **MUSE 自进化引擎**: [设计文档](../muse-core-design.md) | [模块 README](../../agent-muse/README.md)
+- **MUSE 自进化引擎**: 详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)；模块实现见 [agent-muse README](../../agent-muse/README.md)
+- **实战示例：食谱生成智能体**: 完整后端协作、MCP 协议与前端设计见 [07. 开发指南 - 实战示例](./07-development.md#实战示例食谱生成智能体)；官方示例与学习资源见同章 [官方示例与学习资源](./07-development.md#官方示例与学习资源) 小节
 
 ---
 

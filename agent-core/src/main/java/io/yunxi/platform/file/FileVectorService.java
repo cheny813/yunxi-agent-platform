@@ -200,7 +200,14 @@ public class FileVectorService {
             return results;
 
         } catch (Exception e) {
-            log.error("文件检索失败: userId={}, query={}", request.getUserId(), request.getQuery(), e);
+            // Milvus 集合未创建（collection not found）属于可预期的"RAG 未启用"状态，不打 ERROR 堆栈，
+            // 避免误导；仅在 DEBUG 记录细节。上层 ChatAppService 已 catch 并降级为"不影响对话"。
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            if (msg.contains("collection") && msg.contains("not found")) {
+                log.debug("文件检索跳过（Milvus 集合 {} 未创建，RAG 未启用）: {}", COLLECTION_FILE_CONTENT, msg);
+            } else {
+                log.warn("文件检索失败: userId={}, query={}", request.getUserId(), request.getQuery(), msg);
+            }
             return Collections.emptyList();
         }
     }
@@ -338,17 +345,28 @@ public class FileVectorService {
     }
 
     /**
-     * 初始化集合（集合创建由 FileVectorService 内部 ensure 方法负责）
+     * 应用启动时自动确保所需 Milvus 集合存在（不存在则自动创建，与历史集合统一放在同一 Milvus 实例）。
      */
     @jakarta.annotation.PostConstruct
     public void initCollection() {
-        log.info("FileVectorService: 文件内容 / 图片特征集合由本服务自行确保存在");
+        if (milvusClientProvider.getIfAvailable() == null) {
+            log.warn("Milvus 客户端未初始化，跳过集合自动创建（RAG 未启用）");
+            return;
+        }
+        log.info("FileVectorService: 开始自动确保文件内容 / 图片特征集合存在");
+        initFileContentCollection();
+        initImageFeatureCollection();
     }
 
     /**
      * 初始化文件内容集合
      */
     private void initFileContentCollection() {
+        if (milvusClientProvider.getIfAvailable() == null
+                || embeddingServiceProvider.getIfAvailable() == null) {
+            log.warn("文件内容集合自动创建跳过：Milvus 或 Embedding 服务未就绪");
+            return;
+        }
         try {
             io.milvus.v2.service.collection.request.HasCollectionReq hasCollectionReq = io.milvus.v2.service.collection.request.HasCollectionReq
                     .builder()
@@ -477,6 +495,10 @@ public class FileVectorService {
      * 初始化图像特征集合
      */
     private void initImageFeatureCollection() {
+        if (milvusClientProvider.getIfAvailable() == null) {
+            log.warn("图像特征集合自动创建跳过：Milvus 服务未就绪");
+            return;
+        }
         try {
             io.milvus.v2.service.collection.request.HasCollectionReq hasCollectionReq = io.milvus.v2.service.collection.request.HasCollectionReq
                     .builder()

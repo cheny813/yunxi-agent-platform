@@ -319,8 +319,8 @@ curl -X POST http://localhost:40001/api/chat \
 ```
 
 **关键点**：
-- 你的业务代码写在 yunxi 的 Agent 中（实现 DomainContributor 或 SceneContributor 接口）
-- yunxi 负责路由、编排
+- 你的 Agent 业务逻辑通过 `agent-config/src/main/resources/agent-definitions/` 下的 YAML 配置文件定义（角色提示词、工具、MCP 服务器等），由 `AgentConfigurer` 在启动时装配为 Harness Agent
+- yunxi 负责路由、编排（`ProfileRouter` 按用户档案分配 Agent；`ChatAppService` 管理对话生命周期）
 - AgentScope-Java 负责实际的 LLM 交互和工具调用
 
 ---
@@ -330,6 +330,7 @@ curl -X POST http://localhost:40001/api/chat \
 - 了解 [核心概念](./03-concepts.md)
 - 查看 [模块说明](./05-modules.md)
 - 阅读 [配置指南](./06-configuration.md)
+- 想看一个完整落地示例？跳到 [07. 开发指南 - 实战示例：食谱生成智能体](./07-development.md#实战示例食谱生成智能体)，了解如何把多个模块组合成可运行的 Agent 应用
 
 ## 常见问题
 

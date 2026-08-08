@@ -34,7 +34,7 @@ agentscope:
       # 提供工具：query_db, list_tables, describe_table
       # --------------------------------------------------------------------
       database:
-        enabled: ${MCP_DATABASE_ENABLED:false}
+        enabled: ${MCP_DATABASE_ENABLED:true}
         type: sse
         url: ${MCP_DATABASE_URL:http://localhost:40101/mcp/sse}
         timeout: ${MCP_DATABASE_TIMEOUT:60000}
@@ -47,7 +47,7 @@ agentscope:
       # 提供工具：redis_get, redis_set, redis_delete, redis_keys, redis_list_ops, redis_hash_ops
       # --------------------------------------------------------------------
       redis:
-        enabled: ${MCP_REDIS_ENABLED:false}
+        enabled: ${MCP_REDIS_ENABLED:true}
         type: sse
         url: ${MCP_REDIS_URL:http://localhost:40102/mcp/sse}
         timeout: ${MCP_REDIS_TIMEOUT:60000}
@@ -60,7 +60,7 @@ agentscope:
       # 提供工具：search_dishes, get_dish_details（向量搜索学校菜品）
       # --------------------------------------------------------------------
       milvus:
-        enabled: ${MCP_MILVUS_ENABLED:false}
+        enabled: ${MCP_MILVUS_ENABLED:true}
         type: sse
         url: ${MCP_MILVUS_URL:http://localhost:40103/mcp/sse}
         timeout: ${MCP_MILVUS_TIMEOUT:60000}
@@ -88,7 +88,7 @@ agentscope:
       #       故统一改为 sse，与其它 MCP 服务保持一致。
       # --------------------------------------------------------------------
       mcp-nutrition:
-        enabled: ${MCP_NUTRITION_ENABLED:false}
+        enabled: ${MCP_NUTRITION_ENABLED:true}
         type: sse
         url: ${MCP_NUTRITION_URL:http://localhost:40602/mcp/sse}
         timeout: ${MCP_NUTRITION_TIMEOUT:60000}
@@ -99,7 +99,8 @@ agentscope:
       # 协议：SSE + WebSocket (STOMP)
       # SSE地址：http://localhost:40601/mcp/sse
       # WebSocket地址：ws://localhost:40601/ws/formfill
-      # 提供工具：formfill_recipe, formfill_weekly_recipe, formfill_safety, formfill_budget, formfill_generic
+      # 提供工具：formfill_fill（通用填写，按 scene 区分业务场景）、formfill_list_scenes（列出场景）、formfill_get_structure（获取表单结构）
+      #   内置示例场景由 scenarios/*.json 驱动，可按需扩展，配置文件从 classpath 下的 scenarios/ 目录加载
       #
       # 说明：mcp-formfill 与 mcp-pagegen、mcp-playwright 的区别
       #   - mcp-formfill: 填写【现有】业务系统表单，通过 WebSocket 实时推送指令到前端页面
@@ -108,7 +109,7 @@ agentscope:
       # 默认禁用：需启动 mcp-formfill 服务（端口40601）后，设 MCP_FORMFILL_ENABLED=true 启用
       # --------------------------------------------------------------------
       formfill:
-        enabled: ${MCP_FORMFILL_ENABLED:false}
+        enabled: ${MCP_FORMFILL_ENABLED:true}
         type: sse
         url: ${MCP_FORMFILL_URL:http://localhost:40601/mcp/sse}
         timeout: ${MCP_FORMFILL_TIMEOUT:60000}

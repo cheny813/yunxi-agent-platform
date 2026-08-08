@@ -22,18 +22,17 @@
 ## 开发架构理解
 
 ```
-第 4 层: 你的业务代码
-  - 实现 yunxi 的 SPI 接口 (DomainContributor, SceneContributor)
-  - 调用 yunxi 的服务接口 (AgentService, AgentGateway)
+第 4 层: 你的业务配置与工具
+  - 通过 agent-config/agent-definitions/*.yml 定义 Agent 的提示词、工具、MCP 服务器
+  - 业务工具实现为 Spring @Component + @Tool 注解
   - 编写业务逻辑
 
 第 3 层: yunxi Agent Platform
-  - AgentService (Agent 生命周期管理，HarnessAgent 包装)
-  - AgentGateway (统一调用入口，含拦截链)
-  - ChatAppService (对话编排，精简版)
-  - SupervisorService (多 Agent 编排)
-  - SceneDetectionService (场景路由)
-  - A2AServer (跨服务 Agent 调用)
+  - AgentConfigurer (Agent 装配：YAML→HarnessAgent)
+  - ChatAppService (对话管理)
+  - ProfileRouter (用户档案路由)
+  - ModelFactory (模型创建)
+  - A2AServer (跨服务 Agent 调用协议)
 
 第 2 层: AgentScope-Java + Harness
   - HarnessAgent (Agent 运行时包装器，管理记忆/会话/上下文)
@@ -46,122 +45,52 @@
 ```
 
 **开发原则**：
-1. 你的代码只与第 4 层和第 3 层交互
-2. 不要直接调用 AgentScope-Java 的 API
-3. 通过 yunxi 的 SPI 机制扩展功能
-4. 通过 yunxi 的服务接口使用框架能力
+1. Agent 行为通过 YAML 配置文件定义，由 `AgentConfigurer` 在启动时装配
+2. 业务工具直接使用 `@Tool` 注解注册，无需额外的桥接层
+3. 对话管理通过 `ChatAppService` 编排（`agent.call()` / `agent.streamEvents()`），透过 `RuntimeContext` 传递 `userId`/`sessionId`
+4. 模型使用通过 `ModelFactory` 统一创建
 
 ---
 
-## 创建业务领域
+## 创建业务 Agent
 
-### 实现 DomainContributor
+Agent 通过 YAML 配置文件定义，由 `AgentConfigurer` 在启动时装配为 HarnessAgent 实例。
 
-业务领域通过实现 `DomainContributor` 接口定义：
+### Agent 定义示例
 
-```java
-@Component
-public class MyDomainContributor implements DomainContributor {
-    
-    @Override
-    public Map<String, List List<Pattern>> getDomainPatterns() {
-        // 返回 Map Map<领域名称, 关键词模式列表>
-        return Map.of(
-            "business",
-            List.of(
-                Pattern.compile("业务|报告|记录"),
-                Pattern.compile("指标|数值|标准")
-            )
-        );
-    }
-    
-    @Override
-    public Map<String, Set<String>> getAgentCapabilities() {
-        // 返回 Map Map<Agent名称, 能力集合>
-        return Map.of(
-            "business-assistant",
-            Set.of("data-analysis", "metric-calculation", "scoring")
-        );
-    }
-}
+```yaml
+# agent-config/src/main/resources/agent-definitions/my-business-agent.yml
+agentDefinitions:
+  my-business-agent:
+    name: "业务助手"
+    systemPrompt: "你是一个业务分析助手..."
+    model:
+      provider: dashscope
+      name: qwen-plus
+    tools:
+      enabled: true
+    mcp-servers:
+      - database
 ```
 
-**关键概念**：
-- **DomainPattern**：定义领域识别模式
-- **AgentCapability**：定义该领域支持的 Agent 能力
-- **@Component**：Spring 自动扫描注册
+配置文件将被 `AgentConfigurer.createAgent()` 方法读取，生成 `AgentModelConfig`，通过 `ModelFactory.create()` 创建 Model，经由 `HarnessAgent.builder()` 装配 Middleware 和工具后构建可运行的 Agent。
 
-### 实现 SceneContributor
+### Agent 加载流程
 
-定义场景和上下文组装逻辑：
-
-```java
-@Component
-public class MySceneContributor implements SceneContributor {
-    
-    @Autowired
-    private MyDataRepository dataRepository;
-    
-    @Override
-    public Map<String, List<String>> getSceneKeywords() {
-        // 返回 Map Map<场景名称, 关键词列表>
-        return Map.of(
-            "BUSINESS_ANALYSIS", List.of("业务数据", "分析", "报告"),
-            "SCORING", List.of("评分", "评估", "检查")
-        );
-    }
-    
-    @Override
-    public String getExtractionPrompt(String sceneName) {
-        return """
-            请从用户输入中提取以下信息：
-            1. 参数A
-            2. 参数B
-            输出格式：JSON
-            """;
-    }
-    
-    @Override
-    public String assembleContext(String sceneName, String userId, String query) {
-        // 查询业务数据
-        MyData data = dataRepository.findByUserId(userId);
-        
-        // 返回格式化后的上下文文本
-        return String.format("""
-            用户数据：%s
-            当前查询：%s
-            """, data, query);
-    }
-}
+```
+agent-definitions/*.yml
+  → AgentConfigurer 解析 @ConfigurationProperties
+  → 为每个定义调用 createAgent(def)
+  → ModelFactory.create(config) 创建 Model
+  → HarnessAgent.builder()
+      .model(model)
+      .addMiddleware(ContentFilterMiddleware...)
+      .toolComponentSupplier() 注册 @Tool Bean
+    .build()
+  → agentCache.put(name, agent)   // 共享 Agent 实例
 ```
 
-**关键概念**：
-- **SceneKeywords**：场景识别关键词
-- **ExtractionPrompt**：参数提取的 LLM Prompt
-- **assembleContext**：组装上下文数据
-
-### 注册到框架
-
-Spring 会自动扫描并注册所有 SPI 实现。
-
-**原理**：
-```java
-// Spring 的依赖注入机制
-@Service
-public class DomainRouter {
-    // 自动注入所有 DomainContributor 实现
-    @Autowired
-    private List List<DomainContributor> contributors;
-    
-    @PostConstruct
-    public void init() {
-        // 遍历所有实现，构建路由表
-        for (DomainContributor contributor : contributors) {
-            register(contributor);
-        }
-    }
-}
-```
+对于 Supervisor 模式（专家 Agent 编排），在 YAML 中配置 `experts` 列表，由 `createSupervisorAgent()` 设置 `SubAgentConfig.forwardEvents`。
 
 ---
 
@@ -259,133 +188,30 @@ public class MyTool implements Tool {
 
 ---
 
-## 扩展上下文
+## Agent 上下文
 
-### 上下文扩展理论基础
+Agent 上下文由 GA 框架的 `HarnessAgent.workspaceFor(userId, sessionId)` 管理，通过 `RuntimeContext` 透传 `userId`/`sessionId`。yunxi 不提供自定义上下文的 SPI 扩展点——上下文数据经由 AgentScope 框架的 Middleware（如 `WorkspaceContextMiddleware`）和 `AgentStateStore` 管理。
 
-**什么是上下文（Context）**：
-- 上下文是请求执行时的环境信息集合
-- 包含用户、场景、参数、中间结果等
-- 贯穿整个请求处理流程
+如需在 Agent 调用前注入额外上下文信息，可在 YAML 的 `systemPrompt` 中使用变量占位符，由模板引擎在装配时替换。
 
-**为什么需要上下文扩展**：
-- 框架提供的上下文字段有限
-- 业务需要自定义字段传递数据
-- 实现跨组件数据共享
-
-### 实现 ContextEnricher
-
-```java
-@Component
-public class MyContextEnricher implements ContextEnricher {
-
-    @Override
-    public boolean supports(Map<String, Object> contextData) {
-        // 判断是否支持处理该上下文
-        return contextData.containsKey("scene") 
-            && "nutrition".equals(contextData.get("scene"));
-    }
-
-    @Override
-    public String enrich(Map<String, Object> contextData, String userMessage) {
-        // 搜索/补充额外信息，返回格式化的增强文本
-        String userId = (String) contextData.get("userId");
-        UserPreference pref = loadUserPreference(userId);
-        return String.format("用户偏好：%s", pref);
-    }
-    
-    @Override
-    public String formatKey(String key, Object value) {
-        // 格式化特定 key 的上下文数据
-        if ("metric".equals(key)) {
-            return String.format("指标值：%s", value);
-        }
-        return null; // 不处理该 key
-    }
-    
-    @Override
-    public String appendPrompt(Map<String, Object> contextData) {
-        // 追加提示文本到上下文
-        return "请注意业务规则一致性。";
-    }
-}
-```
-
-**关键概念**：
-- **supports**：判断是否支持处理该上下文
-- **enrich**：搜索/补充额外信息
-- **formatKey**：格式化特定 key 的数据
 ---
 
-## 创建自定义知识库类型
+## 实现自定义工具
 
-> **⚠️ V2.0 兼容性说明**：`Knowledge`/`LongTermMemory`/`RetrieveConfig` 在 AgentScope 2.0.0（GA）中标记为 `@Deprecated(forRemoval=true)`。新增知识库类型时请添加 `@SuppressWarnings("removal")` 并标注 `TODO: AgentScope 2.0 新 RAG 模块上线后迁移`。新 RAG 模块上线后本接口将更新签名以对接新的 SDK API。
-
-### 扩展点：KnowledgeCreator
-
-`KnowledgeCreator` SPI 接口用于扩展新的知识库类型。新增类型只需三步，无需修改任何已有代码。
-
-**接口定义**：
-
-```java
-public interface KnowledgeCreator {
-    /** 返回知识库类型标识（如 "elasticsearch"、"pgvector"），与 YAML 中 type 字段对应 */
-    String getType();
-    /** 根据配置创建 Knowledge 实例 */
-    Knowledge create(KnowledgeBaseConfig config);
-    /** 是否默认启用 */
-    default boolean isEnabledByDefault() { return false; }
-}
-```
-
-### 扩展示例：Elasticsearch 知识库
+自定义工具通过 Spring `@Component` + AgentScope `@Tool` 注解注册：
 
 ```java
 @Component
-public class ElasticsearchKnowledgeCreator implements KnowledgeCreator {
-
-    @Override
-    public String getType() {
-        return "elasticsearch";
-    }
-
-    @Override
-    public Knowledge create(KnowledgeBaseConfig config) {
-        // 使用 AgentScope SDK 的 Builder API 创建
-        return ElasticsearchKnowledge.builder()
-                .config(ElasticsearchConfig.builder()
-                        .url(config.getApiUrl())
-                        .apiKey(config.getApiKey())
-                        .indexName(config.getDatasetId())
-                        .build())
-                .build();
+public class MyBusinessTool {
+    @Tool(name = "my_business_query", description = "查询业务数据")
+    public String query(@ToolParam(description = "查询条件") String condition) {
+        // 业务逻辑
+        return result;
     }
 }
 ```
 
-### 配置 YAML
-
-```yaml
-agentscope:
-  extensions:
-    knowledge-bases:
-      my-elastic:
-        enabled: true
-        type: elasticsearch       # ← 与 getType() 返回值一致
-        api-url: http://localhost:9200
-        api-key: ${ES_API_KEY:}
-        dataset-id: my-index
-```
-
-### 自动注册流程
-
-```
-@Component 扫描 → KnowledgeAutoConfiguration 发现 ElasticsearchKnowledgeCreator
-                         ↓ 注册到 creatorMap（type → creator）
-YAML 中配置 type: elasticsearch → 匹配 ElasticsearchKnowledgeCreator
-                         ↓ create(config)
-ElasticsearchKnowledge 实例 → registerSingleton("myElastic")
-```
+无需实现额外的 `Tool` 接口或 `ToolAdapter` 桥接层。`Toolkit` 在 Agent 装配阶段自动扫描所有带 `@Tool` 注解的 Spring Bean 并注册。
 
 ---
 
@@ -418,7 +244,7 @@ ElasticsearchKnowledge 实例 → registerSingleton("myElastic")
 class MyAgentTest {
 
     @Autowired
-    private AgentDomainService agentService;
+    private ChatAppService chatAppService;
 
     @Test
     void testHandleRequest() {
@@ -495,6 +321,112 @@ log.error("处理失败", exception);
 1. 使用条件断点（如只在特定用户时断住）
 2. 使用 Evaluate Expression 查看变量值
 3. 使用 Step Over/Into/Out 控制执行流程
+
+---
+
+## 实战示例：食谱生成智能体
+
+下面通过一个完整示例，演示如何用本平台组合多个模块构建一个可落地的 Agent 应用（自动填表场景）。该示例覆盖后端 MCP 服务、前端 SDK 与页面三部分，可作为"任意需要自动填表的业务场景"的参考模板。
+
+**示例涉及的模块**：
+
+| 模块 | 职责 |
+|------|------|
+| `agent-core` | Agent 装配与中间件编排 |
+| `agent-config` | YAML 场景定义与 MCP 配置 |
+| `mcp-formfill` | 通用表单填写 MCP 服务器（WebSocket 下发填表指令） |
+| `agent-web-sdk` | 前端填表 SDK（`FormFillClient` 桥接层 + `PageAgentDomEngine` 执行引擎） |
+| `agent-nutritionist-web` | 示例前端页面（食谱生成） |
+
+### 后端协作模型
+
+```
+用户 → 前端页面 (agent-nutritionist-web)
+                │ 对话消息
+                ▼
+        ChatAppService (agent-core)
+                │ 路由到 nutrition-assistant
+                ▼
+        HarnessAgent + MCP 工具 (mcp-formfill)
+                │ 调用 fill_form 工具
+                ▼
+        mcp-formfill 将结构化结果映射为填表指令
+                │ WebSocket 下发 (JSON)
+                ▼
+        FormFillClient (agent-web-sdk) 透传指令
+                │ batchFill(formData)
+                ▼
+        PageAgentDomEngine 写入真实页面 DOM（高亮反馈）
+```
+
+- Agent 通过 `tools.mcpServers: [formfill]` 挂载 `mcp-formfill` 工具；
+- `mcp-formfill` 把 Agent 产出的结构化数据（如食谱的食材、步骤）映射为填表指令；
+- 填表指令经 WebSocket 下发到前端，`FormFillClient` 调用 `PageAgentDomEngine` 写入页面 DOM（前端执行引擎零 LLM 依赖，兼容 React/Vue 响应式框架）；
+- 所有填表映射由 `mcp-formfill` 的 `scenarios/*.json` 声明，新增场景无需改动 Java 代码；
+- 前端填表能力统一收敛到 `agent-web-sdk`（单一源），业务页面只导入即可，不重复实现 DOM 操作。
+
+### MCP 消息协议（mcp-formfill）
+
+`fill_form` 工具入参为场景名 + 业务数据，下发到前端的填表指令为结构化 JSON：
+
+```json
+{
+  "scene": "recipe",
+  "data": {
+    "title": "番茄炒蛋",
+    "ingredients": ["鸡蛋 2 个", "番茄 1 个"],
+    "steps": ["打散鸡蛋", "热锅下油"]
+  }
+}
+```
+
+`mcp-formfill` 依据 `scenarios/recipe.json` 中的字段映射，生成填表数据，经 WebSocket 推送到前端，由 `FormFillClient` → `PageAgentDomEngine` 完成页面写入。
+
+### 前端设计（agent-web-sdk + agent-nutritionist-web）
+
+前端采用**单一数据源（Single Source of Truth）**原则：页面状态由 `FormFillClient` 统一管理，用户交互与 Agent 填表都通过同一状态入口，避免双向覆盖冲突。前端执行层 `PageAgentDomEngine` 是纯 DOM 引擎，不持有任何 LLM 决策循环（原 Path A 浏览器端 Agent 循环已退场，决策权统一在后端 AgentScope）。
+
+**两种填表模式**：
+- **自动填表模式**：Agent 产出结构化结果后，由 `mcp-formfill` 推送指令，`FormFillClient` 调用 `PageAgentDomEngine` 自动写入表单字段，用户确认即可提交；
+- **引导填表模式**：Agent 以对话形式逐步询问缺失字段，每轮对话回填一个字段，适合信息不完整或需要用户决策的场景。
+
+**SDK 接入要点**：
+
+```javascript
+// 页面入口（entry.js）导入 agent-web-sdk 各模块，自动挂载全局接口
+import '@web-sdk/page-agent-dom-engine.js'; // window.PageAgentDomEngine
+import '@web-sdk/formfill-client.js';       // window.FormFillClient
+import '@web-sdk/formfill-debug.js';        // window.FormFillDebug（调试用）
+
+// 页面内建立填表通道
+const FF = window.FormFillClient.getClient();
+await FF.connect({ wsPath: '/ws/formfill' });
+FF.reportStructure('recipe', { bootstrap: true }); // 上报真实页面字段给后端
+
+// 可选：按需增强（加载原生 page-agent SDK，DomEngine 自动使用其 getBrowserState）
+// import '@web-sdk/page-agent-sdk.js';
+```
+
+> 说明：原 `new FormFillClient({ wsUrl })` + `client.on('fill', ...)` 手动写 DOM 的方式已废弃；现由 `FormFillClient` 内部直接驱动 `PageAgentDomEngine`，业务页面无需自行操作 DOM。前端不依赖原生 page-agent SDK 即可工作（零外部依赖）。
+
+**复用方式**：业务方只需在 `mcp-formfill/scenarios/` 下新增一份场景 JSON，并在前端页面引入 `agent-web-sdk` 的 `page-agent-dom-engine.js` 与 `formfill-client.js`，即可复用同一套前端执行引擎与 WebSocket 通道，无需改动 Java 或 SDK 代码。
+
+---
+
+## 官方示例与学习资源
+
+AgentScope-Java 框架团队提供了 `agentscope-examples` 模块，包含 49 个教学示例（documentation 子模块）以及 builder / dataagent / codingagent / paw 四个完整应用模块。这些资源是理解 HarnessAgent 用法的优质学习材料。
+
+**与 yunxi 的关系**：
+- yunxi 在 AgentScope-Java 之上构建应用层，examples 中的 Web 层、会话管理、认证等与 yunxi 处于**同一生态位**，因此 yunxi 不整模块移植它们，避免重复造轮子；
+- 真正值得借鉴的是 `documentation` 的 49 个教学示例，它们演示了框架各种能力的最小用法；
+- 当 yunxi 需要某个对应能力（如多 Agent 编排、代码执行）时，examples 中的设计模式可作为有价值的参考。
+
+**学习路径建议**：
+1. 先读本指南第 01–06 章建立整体认知；
+2. 对照 `agentscope-examples/documentation` 的示例逐个跑通，理解框架 API；
+3. 回到本指南第 07 章「实战示例：食谱生成智能体」，理解 yunxi 如何把多个模块组合成落地应用；
+4. 需要技能自进化能力时，参见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎)。
 
 ---
 

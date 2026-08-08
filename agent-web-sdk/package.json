@@ -1,0 +1,10 @@
+{
+  "name": "@yunxi/web-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "云曦 Agent 平台公共前端 SDK 层（PageAgentSDK 透传层），所有 agent-* 产品前端共享",
+  "main": "src/page-agent-sdk.js",
+  "files": [
+    "src/"
+  ]
+}

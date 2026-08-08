@@ -1,0 +1,15 @@
+{
+  "name": "agent-nutritionist-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "云曦营养师前端（旗舰产品）—— 机构级 AI 营养管家网页应用",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

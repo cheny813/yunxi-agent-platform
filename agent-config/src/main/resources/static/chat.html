@@ -1398,7 +1398,7 @@ const requestBody = {
                     const data = await response.json();
                     hideThinking();
                     console.log('API Response:', data);
-                    addMessage('assistant', data.reply || data.message || data.content || JSON.stringify(data, null, 2));
+                    addMessage('assistant', data.reply || '');
                 }
             } catch (error) {
                 hideThinking();

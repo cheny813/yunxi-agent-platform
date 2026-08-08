@@ -42,7 +42,7 @@
 | `ReActSpanMiddleware`（平台自建） | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
 | OpenTelemetry 全局实例 | 直连 API | SDK 内部 | llm.invoke / tool.execute Span |
 
-> V2.0.0（GA）之前：框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。GA 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
+> 升级说明：V2.0.0（GA）之前，框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。GA 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
 
 ---
 

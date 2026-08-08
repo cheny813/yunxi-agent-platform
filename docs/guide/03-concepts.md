@@ -85,8 +85,8 @@ agents:
     tools:                             # 工具
       - query_database
       - calculate_metric
-    mcp-servers:                       # MCP 工具
-      - business-knowledge
+    mcp-servers:                       # MCP 工具（值为 mcp-core.yml 中配置的服务器名）
+      - database
 ```
 
 ---
@@ -140,13 +140,7 @@ agentscope:
         index-id: ${BAILIAN_INDEX_ID}
 ```
 
-自动配置由 `KnowledgeAutoConfiguration` 和 `KnowledgeCreator` SPI 机制实现：
-
-```
-YAML 配置 → KnowledgeAutoConfiguration (调度器)
-              ↓ @Autowired List<KnowledgeCreator>
-    BailianCreator / DifyCreator / RAGFlowCreator / SimpleCreator / HayStackCreator
-              ↓ creator.create(config)
+知识库的注册和装配由 AgentScope 框架的 `LongTermMemory` / `RetrieveConfig` API 管理（GA 2.0 中标记为 `@Deprecated`，后续将迁移至新的 RAG 模块）：
           Knowledge 实例 → registerSingleton(beanName)
               ↓
     AdvancedAgentFactory @Autowired Map<String, Knowledge>
@@ -210,46 +204,7 @@ Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`prod
 
 ### 在本框架中的实现
 
-通过 `SceneContributor` SPI 定义场景：
-
-```java
-@Component
-public class BusinessSceneContributor implements SceneContributor {
-    
-    @Override
-    public Map<String, List<String>> getSceneKeywords() {
-        // 返回 Map Map<场景名称, 关键词列表>
-        return Map.of(
-            "BUSINESS_DATA", List.of("业务数据", "报告", "记录"),
-            "SCORING", List.of("评分", "评估", "检查")
-        );
-    }
-    
-    @Override
-    public String getExtractionPrompt(String sceneName) {
-        return """
-            请从用户输入中提取以下信息：
-            1. 业务类型
-            2. 关联对象
-            3. 特殊要求
-            输出格式：JSON
-            """;
-    }
-    
-    @Override
-    public String assembleContext(String sceneName, String userId, String query) {
-        // 查询用户历史偏好
-        List<Record> favorites = recordRepository.findFavorites(userId);
-        
-        // 返回格式化后的上下文文本
-        return String.format("""
-            用户历史偏好：%s
-            业务标准：%s
-            当前查询：%s
-            """, favorites, loadStandard(), query);
-    }
-}
-```
+`SceneDetectionService` 在请求到达时，通过关键词匹配和置信度排序识别场景，自动路由到对应 Agent。场景配置存储在数据库中，由 `MemorySceneRegistry` 管理，支持热更新无需重启。
 
 ---
 
@@ -276,6 +231,21 @@ Profile 包含以下关键属性：
 | **mcpServers** | MCP 服务器列表 | `[formfill, milvus]` |
 | **maxIters** | 最大迭代次数 | `3`, `25` |
 | **skillConfig** | 专家配置 | 多智能体协作时的专家列表 |
+
+## 前端执行引擎（PageAgentDomEngine）
+
+**核心问题**：后端 Agent 能产出结构化填表数据，但「如何把数据精准写入用户眼前真实渲染的页面」无法在后端完成——后端看不到 React/Vue 的响应式表单、JS 动态渲染的下拉项、条件显示的隐藏输入框。
+
+**解决方案**：前端部署一个纯 DOM 执行引擎（`PageAgentDomEngine`），仅负责读字段（scan）和写字段（fill），不含任何 LLM 决策逻辑。后端 AgentScope 通过 `mcp-formfill` WebSocket 下发结构化指令，`FormFillClient` 桥接层调用 DomEngine 写入页面。
+
+**职责边界**：
+- 后端 Agent 负责「想什么」：多工具编排、业务推理、长任务规划；
+- 前端 DomEngine 负责「怎么操作页面」：真实 DOM 感知、即时视觉反馈、本地失败重试。
+- 前端执行引擎不持有 LLM 决策循环（原 Path A 的浏览器端 Agent 循环已退场），避免形成决策孤岛、无法与后端其他工具协作。
+
+**关键能力**：`scan`（零依赖读取真实页面字段）、`fill` / `batchFill`（兼容 React/Vue 原生事件派发）、`click`、`highlight`（脉冲高亮反馈）。详见 [05. 模块总览 - agent-web-sdk](./05-modules.md) 与 [07. 实战示例](./07-development.md)。
+
+---
 
 ### Profile 的覆盖规则
 
@@ -750,33 +720,35 @@ public class MyTool implements ToolHandler {
 ├─────────────────────────────────────────┤
 │                                         │
 │  1. 框架定义接口                          │
-│     public interface DomainContributor   │
+│     public interface LlmInvocationService│
 │                                         │
 │  2. 业务实现接口                          │
-│     @Component                           │
-│     public class MyContributor           │
-│         implements DomainContributor     │
+│     @Service                             │
+│     public class MyLlmService            │
+│         implements LlmInvocationService  │
 │                                         │
 │  3. Spring 自动扫描                       │
 │     发现并注册所有实现类                   │
 │                                         │
 │  4. 框架使用实现                          │
 │     @Autowired                           │
-│     List<DomainContributor> contributors │
+│     List<LlmInvocationService> services  │
 │                                         │
 │  5. 调用业务逻辑                          │
-│     for (c : contributors) c.contribute()│
+│     for (s : services) s.invoke("...")   │
 │                                         │
 └─────────────────────────────────────────┘
 ```
 
 ### 核心扩展点
 
-| 扩展点 | 用途 | 实现示例 |
-|--------|------|----------|
-| **DomainContributor** | 定义业务领域 | BusinessDomainContributor |
-| **SceneContributor** | 定义业务场景 | BusinessSceneContributor |
-| **ContextEnricher** | 增强上下文 | BusinessContextEnricher |
+| 扩展点 | 用途 | 说明 |
+|--------|------|------|
+| **Agent 定义 YAML** | 配置 Agent 行为 | agent-config/agent-definitions/*.yml |
+| **@Tool 注解** | 注册自定义工具 | Spring @Component + @Tool 注解 |
+| **LlmInvocationService** | 自定义 LLM 调用 | agent-spi 模块 SPI 接口 |
+| **UserProfileEvolver** | 用户画像进化 | agent-spi 模块 SPI 接口 |
+| **IntelligentLlmService** | 简化 LLM 调用封装 | intelligent/ 模块 |
 | **VectorSearchProvider** | 向量搜索实现 | DataVectorSearchProvider |
 
 ### 分层职责

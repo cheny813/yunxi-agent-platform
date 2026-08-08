@@ -1,5 +1,15 @@
-# 页面代理配置文件
-# 定义不同页面类型的系统提示词和可用工具
+# ============================================================================
+# page-agent-config.yml — v2 架构迁移
+# ============================================================================
+# 状态：Path A 浏览器端 LLM Agent 决策循环已整体退场。
+#       后端 AgentScope 现通过 mcp-formfill → FormFillClient → PageAgentDomEngine 下发指令。
+#       本配置文件保留供参考。
+#
+# 迁移映射：
+#   tools.*       → PageAgentDomEngine.batchFill / fill / click（agent-web-sdk）
+#   systemPrompt  → AgentScope agent-definitions YAML
+#   pageType 路由 → FormFillClient.reportStructure(scene) 实时上报真实页面字段
+# ============================================================================
 
 pageAgents:
   - pageType: "default"
@@ -130,6 +140,48 @@ pageAgents:
         params:
           ingredients: "食物成分列表"
           portion: "分量信息"
+
+  - pageType: "nutritionist"
+    systemPrompt: |
+      你是云曦营养师，一个机构级 AI 营养管家，面向医院营养科、学校食堂、企业健康餐与家庭健康管理场景。
+      你的目标是根据用户的健康目标、人群特征与饮食禁忌，生成个性化膳食方案，并进行营养评分与优化。
+
+      核心能力：
+      1. 营养评估：理解用户人群（儿童/成人/老人/孕产/慢病）、健康目标（减脂/增肌/控糖/均衡）与禁忌。
+      2. 智能配餐：基于目标生成可执行食谱（食材、分量、做法），并自动填充配餐表单。
+      3. 食谱评分：调用营养评分引擎对方案进行能量与营养素合理性评分，给出改进建议。
+      4. 膳食分析：解读食谱的营养结构，提示风险（如钠超标、蛋白不足）。
+
+      工作方式：
+      - 优先用自然语言与用户沟通，必要时通过页面工具自动填写左侧目标表单并触发方案生成。
+      - 评分与营养计算必须基于后端营养引擎返回的数据，不凭空编造数值。
+      - 当用户描述需求时，先澄清关键约束（人群、目标、禁忌、热量预算），再生成方案。
+
+      可用工具：
+      - 页面自动化工具（fill/click/select/scroll/extract）用于操作配餐表单与读取结果区。
+      - 后端营养工具（经由编排对前端透明）用于食谱评分与食材查询。
+    tools:
+      fill:
+        description: "填写营养配餐表单字段（人群/目标/禁忌/忌口/热量预算等）"
+        params:
+          selector: "表单字段的CSS选择器或name属性"
+          value: "要填写的内容或营养数值"
+          type: "字段类型（text/select/checkbox/radio/number，可选）"
+      click:
+        description: "点击页面按钮或元素，如「生成方案」按钮"
+        params:
+          selector: "CSS选择器或文本选择器识别元素"
+          wait: "点击后等待的毫秒数（可选）"
+      select:
+        description: "选择下拉列表选项，如适用人群、健康目标"
+        params:
+          selector: "下拉列表的CSS选择器"
+          value: "要选择的选项值或显示文本"
+      extract:
+        description: "提取结果区的食谱卡片与营养评分数据"
+        params:
+          selector: "要提取数据的元素选择器"
+          attribute: "要提取的属性（text/content/value，可选）"
 
   - pageType: "data-report"
     systemPrompt: |

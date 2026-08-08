@@ -41,8 +41,7 @@ A2A 协议允许不同服务中的 Agent 相互调用，实现：
 | A2AClient | 调用远程 Agent |
 | A2AServer | 暴露本地 Agent 为远程服务 |
 | A2ARegistry | 服务注册与发现 |
-| AgentEndpoint | Agent 端点信息 |
-| AgentCapability | Agent 能力描述 |
+| AgentEndpoint | Agent 端点信息（A2AClient 内部 record） |
 
 ## A2AClient
 
@@ -165,20 +164,9 @@ public class MyService {
     private A2AServer a2aServer;
     
     public void registerCustomAgent() {
-        AgentRegistration registration = AgentRegistration.builder()
-            .name("my-custom-agent")
-            .version("1.0.0")
-            .capabilities(List.of(
-                AgentCapability.builder()
-                    .name("text-generation")
-                    .description("文本生成")
-                    .build()
-            ))
-            .endpoint(AgentEndpoint.builder()
-                .url("http://localhost:40001")
-                .healthCheckUrl("/actuator/health")
-                .build())
-            .build();
+        A2ARegistry.AgentRegistration registration = new A2ARegistry.AgentRegistration(
+            "my-custom-agent", "1.0.0", new A2AClient.AgentEndpoint(
+                "my-custom-agent", "localhost", 40001, "http", Map.of()));
         
         a2aServer.register(registration);
     }
@@ -192,7 +180,7 @@ A2AServer 暴露以下 REST API：
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/a2a/register` | POST | 注册 Agent |
-| `/a2a/unregister` | POST | 注销 Agent |
+| `/a2a/deregister` | POST | 注销 Agent |
 | `/a2a/invoke` | POST | 调用 Agent |
 | `/a2a/health` | GET | 健康检查 |
 | `/a2a/agents` | GET | 列出所有 Agent |
@@ -236,33 +224,6 @@ agentscope:
             weight: 100
         report-agent:
           - url: http://localhost:40001
-```
-
-## AgentCapability
-
-### 功能
-
-描述 Agent 的能力，用于服务发现和路由。
-
-### 能力定义
-
-```java
-AgentCapability.builder()
-    .name("data-analysis")           // 能力名称
-    .description("数据分析")               // 能力描述
-    .inputSchema(Schema.builder()         // 输入参数 Schema
-        .type("object")
-        .property("data", Schema.string())
-        .build())
-    .outputSchema(Schema.builder()        // 输出结果 Schema
-        .type("object")
-        .property("nutritionReport", Schema.object())
-        .build())
-    .qos(QosRequirement.builder()         // QoS 要求
-        .maxLatency(5000)
-        .availability(0.99)
-        .build())
-    .build();
 ```
 
 ## 使用场景

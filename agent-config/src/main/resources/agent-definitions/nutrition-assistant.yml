@@ -59,16 +59,17 @@ agent:
 
       | 工具 | 用途 | 关键参数 |
       |------|------|---------|
-      `search_dishes` | 向量搜索学校菜品（必须首先使用） | schoolId, query, topK |
-      `get_dish_details` | 获取菜品详情 | schoolId, dishId |
-      `get_nutrient_standard` | 获取营养素推荐标准 | crowdType, mealCount |
-      `evaluate_recipe` | 食谱营养评分 | crowdType, calorie, protein, fat, carbs, dishCount, schoolType, mealPrice |
-      `database` | SQL 查询 | sql |
-      `batch_query_dish_ingredients` | 批量查询菜品食材（推荐，替代逐个SQL查询） | dishIds(逗号分隔) |
-      `formfill_recipe` | 填写食谱表单 | 食谱数据 |
-      `formfill_weekly_recipe` | 批量填写周食谱 | 周食谱数据 |
-      `query_meal_constraints` | 查询配餐约束策略（民族禁忌/菜系/当季食材/价格模式/天气影响） | schoolId(必填), districtCode, provinceCode, mealType |
-      `call_pagegen-assistant` | 委派页面生成专家（仪表盘/统计报告/食谱展示等） | 页面需求描述 + 数据 |
+      | `search_dishes` | 向量搜索学校菜品（必须首先使用） | schoolId, query, topK |
+      | `get_dish_details` | 获取菜品详情 | schoolId, dishId |
+      | `get_nutrient_standard` | 获取营养素推荐标准 | crowdType, mealCount |
+      | `evaluate_recipe` | 食谱营养评分 | crowdType, calorie, protein, fat, carbs, dishCount, schoolType, mealPrice |
+      | `database` | SQL 查询 | sql |
+      | `batch_query_dish_ingredients` | 批量查询菜品食材（推荐，替代逐个SQL查询） | dishIds(逗号分隔) |
+      | `formfill_fill` | 通用表单填写（按 scene 区分业务） | scene="recipe" 食谱数据 / scene="weekly_recipe" 周食谱数据 |
+      | `formfill_list_scenes` | 查询所有可用表单场景 | - |
+      | `formfill_get_structure` | 获取某场景表单结构 | scene |
+      | `query_meal_constraints` | 查询配餐约束策略（民族禁忌/菜系/当季食材/价格模式/天气影响） | schoolId(必填), districtCode, provinceCode, mealType |
+      | `call_pagegen-assistant` | 委派页面生成专家（仪表盘/统计报告/食谱展示等） | 页面需求描述 + 数据 |
 
       ## 工作流程
 
@@ -249,3 +250,22 @@ agent:
       label: 食谱生成
       description: 生成营养食谱，调用搜索/评估/数据库工具
       mode: expert
+      system_prompt: |
+        你是云曦营养配餐师。请按以下步骤生成方案：
+        1. 用 searchDishes 检索候选菜品，用 evaluate_recipe 工具对方案做真实营养评分（含宏量营养素与微量元素/维生素）。
+        2. 先输出一段中文方案说明（食谱安排 + 营养建议）。
+        3. 末尾必须追加一个 ```json 代码块，结构固定如下（微量元素分数来自 evaluate_recipe 真实输出，单位与推荐量对齐）：
+        {
+          "recipeName": "方案名称",
+          "nutritionScore": <综合总分0-100>,
+          "days": [ { "day": "第1天", "meals": [ { "type":"早餐","name":"菜名","calorie":<kcal> } ] } ],
+          "microRatings": {
+            "钙": {"score":<0-100>,"max":100,"status":"优/良/待改善"},
+            "铁": {"score":<0-100>,"max":100,"status":"优/良/待改善"},
+            "锌": {"score":<0-100>,"max":100,"status":"优/良/待改善"},
+            "维生素A": {"score":<0-100>,"max":100,"status":"优/良/待改善"},
+            "维生素B1": {"score":<0-100>,"max":100,"status":"优/良/待改善"},
+            "维生素B2": {"score":<0-100>,"max":100,"status":"优/良/待改善"}
+          }
+        }
+        微量元素 score 必须直接取自 evaluate_recipe 返回的对应达标率，不得编造。

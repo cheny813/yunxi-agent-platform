@@ -168,7 +168,8 @@ tools:
 │   │   ├── AGENTS.md           # Agent 身份 + 场景规则
 │   │   └── user-001/           # 用户运行时数据（按 userId 隔离）
 │   ├── general-assistant/      # 通用助手
-│   ├── nutrition-assistant/    # 营养助手
+│   ├── nutrition-assistant/    # 校园餐营养助手（校园人群口径）
+│   ├── resident-nutrition-assistant/  # 居民营养配餐助手（居民人群口径）
 │   ├── dish-searcher/          # 菜品搜索
 │   ├── nutrition-evaluator/    # 营养评估
 │   ├── pagegen-assistant/      # 页面生成助手
@@ -177,7 +178,7 @@ tools:
 └── skills/                     # 全局共享技能（Agent 不可在此创建）
 ```
 
-多租户运行时隔离由 GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 实现：按用户命名空间隔离工作空间与 AgentState 会话槽，用户数据按 `{userId}/` 子目录由框架运行时按需创建。根级 `skills/` 为全局共享资源。
+多租户运行时隔离由 AgentScope-Java 2.0GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 实现：按用户命名空间隔离工作空间与 AgentState 会话槽，用户数据按 `{userId}/` 子目录由框架运行时按需创建。根级 `skills/` 为全局共享资源。
 
 ### 依赖关系图
 
@@ -316,23 +317,7 @@ public class WeatherTools {
 
 `@Tool` 注解的方法会被 `Toolkit.registerTool(Object bean)` 自动扫描注册，无需手动维护注册表。框架自动从方法签名生成 JSON Schema。
 
-**McpServerRegistrar 核心功能**（V2.0 内置）：
-
-```java
-@Service
-public class McpServerRegistrar {
-    // V2.0 内置 MCP 服务器注册器
-    // 替代原自定义 McpToolRegistry + McpBatchService + ToolCacheService + McpToolFactory
-    
-    private final Map<String, List<AgentTool>> serverTools = new ConcurrentHashMap<>();
-    
-    // 注册 MCP 服务器工具
-    public void register(String serverName, List<AgentTool> tools) { ... }
-    
-    // 工具查找
-    public AgentTool findTool(String serverName, String toolName) { ... }
-}
-```
+MCP 工具注册同样由 AgentScope 框架原生处理：`AgentConfigurer.buildMcpClient()` 通过 `McpClientBuilder` 连接 MCP 服务器，`Toolkit.registration().mcpClient(wrapper).group(name).apply()` 注册工具分组。
 
 ### Supervisor 多 Agent 协作模式
 
@@ -455,8 +440,8 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 |------|---------|---------|:--:|
 | **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
 | **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl` 8 步拦截链 | 否 |
-| **3. 统一治理层（网关能力内置）** | 接入层认证/限流/路由由 GA Channel + AgentGatewayImpl 承接 | `AgentGatewayImpl`、`agent-core` | 否 |
-| **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | `ContentFilterMiddleware`（提示注入防护）、`ConversationService` | 否 |
+| **3. 统一治理层（网关能力内置）** | 接入层认证/限流/路由由 AgentScope-Java 2.0GA Channel + AgentGatewayImpl 承接 | `AgentGatewayImpl`、`agent-core` | 否 |
+| **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | `ContentFilterMiddleware`（提示注入防护）、`ChatAppService` | 否 |
 | **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
 | **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
 | **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Routing | `AgentConfigurer`（~555行） | 否 |
@@ -514,36 +499,21 @@ public void configureAgents() {
 
 这本质上是一个 **Agent 容器**——读取 YAML、创建 ModelProvider、构建 HarnessAgent、注册工具、注入 Middleware。AgentScope 只提供了 `HarnessAgent.builder()`，但"怎么把几十个 YAML 配置变成可运行的 Agent 实例"这件事，完全是平台层的。
 
-#### 3. ToolAdapter — 平台工具到 agentscope 的桥梁
+#### 3. 工具注册 — @Tool 注解直接接入 AgentScope
 
-```
-我们的 Tool 接口:         agentscope 的 AgentTool 接口:
-  getName()                getName()
-  getDescription()         getDescription()
-  getParameterSchema()     getParameters()
-  execute(ToolInput)       callAsync(ToolCallParam)
-                              ↓
-                         ToolAdapter (桥梁)
-                           集成熔断器保护
-                           统一结果格式转换
-```
+工具通过 Spring `@Component` + AgentScope `@Tool` 注解直接注册：
 
 ```java
-// ToolAdapter.callAsync() — 桥梁核心
-public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
-    // 熔断检查（平台特色）
-    if (circuitBreaker != null && circuitBreaker.isCircuitOpen(tool.getName())) {
-        return Mono.just(ToolResultBlock.error("工具暂时不可用"));
+@Component
+public class DatabaseTool {
+    @Tool(name = "database_query", description = "执行 SQL 查询")
+    public String query(@ToolParam(description = "SQL 语句") String sql) {
+        return jdbcTemplate.queryForList(sql).toString();
     }
-    // 调用平台 Tool 接口
-    ToolInput input = new ToolInput(param.getInput());
-    ToolResult result = tool.execute(input);
-    // 转换为 agentscope 的 ToolResultBlock
-    return Mono.just(ToolResultBlock.text(resultJson));
 }
 ```
 
-业务工具只需实现简单的 `Tool` 接口，不需要直接依赖 agentscope 的 `AgentTool`——这是**解耦**，不是重复。
+`Toolkit` 在 Agent 装配时通过 `registrar.setToolComponentSupplier()` 扫描所有带有 `@Tool` 注解的 Spring Bean 并注册。**无需**定义额外的 `Tool` 接口或 `ToolAdapter` 桥接层——AgentScope 的 `AgentTool` 接口已由框架 `Toolkit.registerTool(Object bean)` 自动处理转换。
 
 #### 4. ModelFactory — 统一模型工厂
 
@@ -554,8 +524,8 @@ public class ModelFactory {
 
     @PostConstruct
     public void init() {
-        // 内置 Provider（openai/dashscope/anthropic/claude/deepseek）走 ContextModelFactory，
-        // lambda 内构建对应框架 ChatModel 并消费 ctx 透传的 apiKey/baseUrl/stream/options（此处省略）
+        // 内置 Provider（openai/dashscope/anthropic/claude/deepseek）通过 ModelRegistry
+        // 内置工厂创建（框架按 provider:modelName 模式自动匹配）
         // baidu / huawei 框架未内置，用自定义 Provider 注册为工厂，路径与内置完全一致：
         ModelRegistry.registerFactory("baidu:.+", (id, ctx) -> {
             String name = id.substring("baidu:".length());
@@ -590,7 +560,7 @@ public class ModelFactory {
 │  第 7 层: 编排与自动装配 (AgentConfigurer)                        │
 │    YAML定义 → 两轮初始化 → Supervisor/Pipeline/Routing            │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 6 层: 持久化与记忆 (PersistenceManager, ConversationService)  │
+│  第 6 层: 持久化与记忆 (PersistenceManager, ChatAppService)  │
 │    5种持久化策略 | Harness 内置记忆 | 分布式会话                            │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 5 层: 模型层 (ModelFactory + 框架 Model 内置 Provider)          │
@@ -599,7 +569,7 @@ public class ModelFactory {
 │  第 4 层: 生产特性 (CircuitBreaker, HITL, Audit, Metrics)        │
 │    熔断器 | 人工审核 | 审计 | 监控 | 多租户 Profile                │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 3 层: 接入层 (GA Channel: 企微/钉钉/飞书/Web API)             │
+│  第 3 层: 接入层 (AgentScope-Java 2.0GA Channel: 企微/钉钉/飞书/Web API)             │
 │    由 agentscope-extensions-channel-* 原生承载                    │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 2 层: 统一治理 (AgentGatewayImpl)                             │
@@ -622,10 +592,10 @@ public class ModelFactory {
 | 功能 | AgentScope 提供 | yunxi 增强 | 增加的文件数 |
 |------|---------------|-----------|:---------:|
 | Agent 创建 | HarnessAgent.builder() | 配置驱动 + HarnessAgent 包装 + 自动装配 + DistributedStore | ~15 |
-| 工具系统 | Tool + AgentTool 接口 | ToolAdapter 桥接 + 熔断器 + 本地/远程/MCP 统一注册 | ~12 |
+| 工具系统 | @Tool 注解 | 内置业务工具 + Spring 自动扫描注册 | ~6 |
 | LLM 集成 | Model (框架接口) + Factory | 复用框架内置 Provider + 百度/华为适配 + 缓存/角色映射支持 | ~3 |
 | 记忆 | InMemoryMemory | Harness 内置文件系统记忆 + 5 种持久化策略 + 场景管理 | ~15 |
-| MCP | 基础客户端 → V2.0 McpServerRegistrar | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
+| MCP | 基础客户端 | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
 | 多 Agent | A2A 协议 | Supervisor/Routing 编排 + Profile 路由 | ~10 |
 | 接入层 | 无 | 多通道（飞书/钉钉/企微/WebSocket/SSE）+ 会话 + 认证 | ~16 |
 | 生产治理 | 无 | 熔断/审计/监控/HITL/优雅关闭 | ~12 |
@@ -637,9 +607,9 @@ public class ModelFactory {
 3. ~~**自建 Shell 命令安全**~~：✅ **已修复** — 拆除 `CommandSafetyClassifier`，使用框架 `ShellCommandTool` 白名单/验证器
 4. ~~**Session 包删除适配**~~：✅ **已适配** — GA 删除 `Session` 包，改用 `DistributedStore` + `RedisDistributedStore.fromJedis()`
 5. ~~**Tracer 废弃适配**~~：✅ **已适配** — 删除 `OpenTelemetryTracer.java`，改用全局 `OpenTelemetry` API
-6. **ToolRegistry 与 agentscope Toolkit 中的 ToolRegistry**：功能有部分重叠，可以考虑直接委托
+6. **工具注册**：业务工具直接使用 `@Tool` 注解注册，无需单独的接口或桥接层。
 
-但**绝大多数代码是合理的**——它们解决的是不同层次的问题。业务工具只需实现简单的 `Tool` 接口就能被 Agent 调用，这才是平台的价值所在。
+但**绝大多数代码是合理的**——它们解决的是不同层次的问题。业务工具只需用 `@Tool` 注解标注就能被 Agent 调用，这才是平台的价值所在。
 
 ---
 
@@ -710,10 +680,10 @@ agentscope:
 | 数据 | 存储后端 | 职责 | 查询方式 |
 |------|---------|------|---------|
 | Agent 运行时状态 | Session（workspace/redis） | 崩溃恢复、弹性迁移 | `agent.loadIfExists()` |
-| 会话元数据 | MySQL + Redis（ConversationService） | 前端列表展示、标题搜索 | REST API |
+| 会话元数据 | MySQL + Redis（ChatAppService） | 前端列表展示、标题搜索 | REST API |
 | 长期记忆 | workspace/agents/{agentName}/ 下的记忆文件 | 跨会话知识积累 | HarnessAgent 内部 Middleware |
 
-三个存储层各司其职，不重复。Session 负责运行时恢复，ConversationService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
+三个存储层各司其职，不重复。Session 负责运行时恢复，ChatAppService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
 
 ---
 
@@ -733,8 +703,8 @@ agentscope:
 **在本框架中的实践**：
 - Domain：通过 YAML Agent 定义 + 工作区 AGENTS.md 声明
 - Bounded Context：通过模块划分
-- Entity：Agent、Scene、Rule
-- Domain Service：SupervisorService
+- Entity：Agent、Session
+- Domain Service：ChatAppService、AgentConfigurer
 
 ### 2. 依赖倒置原则 (DIP)
 
