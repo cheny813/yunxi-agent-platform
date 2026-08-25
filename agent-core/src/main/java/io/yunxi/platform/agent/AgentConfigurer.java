@@ -27,6 +27,7 @@ import io.yunxi.platform.security.hitl.HumanToolRegistrar;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import io.yunxi.platform.shared.config.ProfileDefinition;
 import io.yunxi.platform.shared.config.ExpertConfig;
 import io.yunxi.platform.shared.config.ExtensionConfig;
 import io.yunxi.platform.shared.config.StageConfig;
@@ -372,47 +373,98 @@ public class AgentConfigurer implements SmartLifecycle {
             registerMcpServers(toolkit, def);
             registerMuseTools(toolkit);
 
-            // 配置 HarnessAgent Builder
-            HarnessAgent.Builder builder = HarnessAgent.builder()
-                    .name(def.getName()).sysPrompt(def.getPrompt()).model(model).toolkit(toolkit)
-                    .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName())
-                    .compaction(buildCompactionConfig());
-
-            // 配置 Middleware 链、运行时参数、规划功能
-            configureMiddlewares(builder, def, toolkit);
-            configureRuntime(builder, def);
-            configurePlan(builder, def);
-
-            // 配置分布式后端（可选）：stateStore + baseStore + snapshotSpec 一站式配置
-            if (distributedBackend != null)
-                builder.distributedStore(distributedBackend);
-
-            // 配置 AgentScope 原生能力：计划模式 / 技能系统 / 韧性（重试-降级-超时）
-            // 全部复用 HarnessAgent.Builder 原生 API，不自建任何等价逻辑
-            configurePlan(builder, def);
-            configureSkills(builder, def);
-            configureResilience(builder, def);
-
-            // 应用 AgentCustomizer SPI 扩展（如有）
-            AgentCustomizer customizer = findCustomizer(def);
-            Agent agent = customizer != null ? customizer.customize(def, builder.build()) : builder.build();
-
-            // 激活工具组
+            // 激活工具组（toolkit 共享，仅执行一次）
             applyToolGroupActivation(toolkit, def);
 
-            // 注册 Agent 实例和元信息
-            agentService.registerAgentInstance(def.getName(), agent);
+            // 基础实例：Agent 默认提示词
+            buildAndRegisterAgent(def, def.getName(), def.getPrompt(), model, toolkit);
+
+            // Profile 实例：每个 profile 生成独立 sysPrompt 的 Agent 实例，
+            // 以 组合键(agentName#profileName) 注册，供 ProfileRouter.resolve 精确路由
+            Map<String, ProfileDefinition> profiles = def.getProfiles();
+            if (profiles != null && !profiles.isEmpty()) {
+                for (Map.Entry<String, ProfileDefinition> entry : profiles.entrySet()) {
+                    String profileName = entry.getKey();
+                    ProfileDefinition pd = entry.getValue();
+                    if (pd == null) {
+                        continue;
+                    }
+                    String profilePrompt = resolveProfilePrompt(def, pd);
+                    buildAndRegisterAgent(def, def.getName() + "#" + profileName, profilePrompt, model, toolkit);
+                    log.info("创建 Profile 实例: {}#{} (prompt 覆盖={})", def.getName(), profileName,
+                            pd.getPrompt() != null || pd.getPromptSuffix() != null);
+                }
+            }
+
+            // 注册 Agent 元信息（仅基础实例；Profile 实例为内部路由实体，不进入 Agent 列表）
             agentService.registerAgentInfoDto(def.getName(), description(def), def.getPrompt(),
                     def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName());
             agentService.registerAgentRagMode(def.getName(), def.getRagMode());
 
-            log.info("Agent 创建成功: {}, ragMode={}", def.getName(), def.getRagMode());
+            log.info("Agent 创建成功: {}, ragMode={}, profiles={}", def.getName(), def.getRagMode(),
+                    profiles == null ? 0 : profiles.size());
         } catch (Throwable e) {
             // 捕获 Throwable 而非 Exception：agentscope 框架内部类初始化可能抛出
             // NoClassDefFoundError / ExceptionInInitializerError（均继承 Error），
             // 若不被捕获会冲破 Spring 生命周期导致 stopBeans() 级联失败
             log.error("Agent 创建失败: {}", def.getName(), e);
         }
+    }
+
+    /**
+     * 构建并注册一个 Agent 实例（基础实例与 Profile 实例共用同一构建链路）。
+     *
+     * @param def           Agent 定义配置
+     * @param instanceName  实例名：基础实例为 def.getName()，Profile 实例为 agentName#profileName
+     * @param prompt        实例使用的系统提示词（基础=def.getPrompt()，Profile=resolveProfilePrompt 解析结果）
+     * @param model         共享 LLM 模型实例
+     * @param toolkit       共享工具集
+     */
+    private void buildAndRegisterAgent(AgentDefinition def, String instanceName, String prompt,
+                                       Model model, Toolkit toolkit) {
+        // 配置 HarnessAgent Builder
+        HarnessAgent.Builder builder = HarnessAgent.builder()
+                .name(instanceName).sysPrompt(prompt).model(model).toolkit(toolkit)
+                .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName())
+                .compaction(buildCompactionConfig());
+
+        // 配置 Middleware 链、运行时参数、规划功能
+        configureMiddlewares(builder, def, toolkit);
+        configureRuntime(builder, def);
+        configurePlan(builder, def);
+
+        // 配置分布式后端（可选）：stateStore + baseStore + snapshotSpec 一站式配置
+        if (distributedBackend != null)
+            builder.distributedStore(distributedBackend);
+
+        // 配置 AgentScope 原生能力：计划模式 / 技能系统 / 韧性（重试-降级-超时）
+        // 全部复用 HarnessAgent.Builder 原生 API，不自建任何等价逻辑
+        configurePlan(builder, def);
+        configureSkills(builder, def);
+        configureResilience(builder, def);
+
+        // 应用 AgentCustomizer SPI 扩展（如有）
+        AgentCustomizer customizer = findCustomizer(def);
+        Agent agent = customizer != null ? customizer.customize(def, builder.build()) : builder.build();
+
+        agentService.registerAgentInstance(instanceName, agent);
+    }
+
+    /**
+     * 解析 Profile 实例的系统提示词，优先级：profile.prompt &gt; base + profile.promptSuffix &gt; base。
+     *
+     * @param def  Agent 定义配置
+     * @param pd   Profile 定义
+     * @return Profile 实例使用的系统提示词
+     */
+    private String resolveProfilePrompt(AgentDefinition def, ProfileDefinition pd) {
+        if (pd.getPrompt() != null && !pd.getPrompt().isBlank()) {
+            return pd.getPrompt();
+        }
+        if (pd.getPromptSuffix() != null && !pd.getPromptSuffix().isBlank()) {
+            return def.getPrompt() + "\n\n" + pd.getPromptSuffix();
+        }
+        return def.getPrompt();
     }
 
     // ========== 编排 Agent ==========
@@ -495,9 +547,51 @@ public class AgentConfigurer implements SmartLifecycle {
                     .group("agent").apply();
         }
 
+        // 激活工具组并注册（toolkit 共享，仅执行一次）
+        applyToolGroupActivation(toolkit, def);
+
+        // 基础实例：Supervisor 默认提示词
+        buildSupervisorInstance(def, def.getName(), def.getPrompt(), model, toolkit);
+
+        // Profile 实例：每个 profile 生成独立 sysPrompt 的 Supervisor 实例，
+        // 以 组合键(agentName#profileName) 注册，供 ProfileRouter.resolve 精确路由
+        Map<String, ProfileDefinition> profiles = def.getProfiles();
+        if (profiles != null && !profiles.isEmpty()) {
+            for (Map.Entry<String, ProfileDefinition> entry : profiles.entrySet()) {
+                String profileName = entry.getKey();
+                ProfileDefinition pd = entry.getValue();
+                if (pd == null) {
+                    continue;
+                }
+                String profilePrompt = resolveProfilePrompt(def, pd);
+                buildSupervisorInstance(def, def.getName() + "#" + profileName, profilePrompt, model, toolkit);
+                log.info("创建 Supervisor Profile 实例: {}#{} (prompt 覆盖={})", def.getName(), profileName,
+                        pd.getPrompt() != null || pd.getPromptSuffix() != null);
+            }
+        }
+
+        // 注册元信息（仅基础实例；Profile 实例为内部路由实体，不进入 Agent 列表）
+        agentService.registerAgentInfoDto(def.getName(), description(def), def.getPrompt(),
+                def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName());
+        agentService.registerAgentRagMode(def.getName(), def.getRagMode());
+        log.info("Supervisor Agent 创建完成: {}, 专家数: {}, profiles={}", def.getName(), expertAgents.size(),
+                profiles == null ? 0 : profiles.size());
+    }
+
+    /**
+     * 构建并注册一个 Supervisor 实例（基础实例与 Profile 实例共用同一构建链路）。
+     *
+     * @param def           Agent 定义配置
+     * @param instanceName  实例名：基础实例为 def.getName()，Profile 实例为 agentName#profileName
+     * @param prompt        实例使用的系统提示词
+     * @param model         共享 LLM 模型实例
+     * @param toolkit       共享工具集（含已注册的子 Agent 工具）
+     */
+    private void buildSupervisorInstance(AgentDefinition def, String instanceName, String prompt,
+                                         Model model, Toolkit toolkit) {
         // 配置 Supervisor Agent Builder
         HarnessAgent.Builder builder = HarnessAgent.builder()
-                .name(def.getName()).sysPrompt(def.getPrompt()).model(model).toolkit(toolkit)
+                .name(instanceName).sysPrompt(prompt).model(model).toolkit(toolkit)
                 .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName())
                 .compaction(buildCompactionConfig());
 
@@ -518,13 +612,7 @@ public class AgentConfigurer implements SmartLifecycle {
         AgentCustomizer customizer = findCustomizer(def);
         Agent supervisor = customizer != null ? customizer.customize(def, builder.build()) : builder.build();
 
-        // 激活工具组并注册
-        applyToolGroupActivation(toolkit, def);
-        agentService.registerAgentInstance(def.getName(), supervisor);
-        agentService.registerAgentInfoDto(def.getName(), description(def), def.getPrompt(),
-                def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName());
-        agentService.registerAgentRagMode(def.getName(), def.getRagMode());
-        log.info("Supervisor Agent 创建完成: {}, 专家数: {}", def.getName(), expertAgents.size());
+        agentService.registerAgentInstance(instanceName, supervisor);
     }
 
     /**

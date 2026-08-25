@@ -236,7 +236,7 @@ agent:
       label: 食谱生成
       description: 生成营养食谱，调用搜索/评估/数据库工具
       mode: expert
-      system_prompt: |
+      prompt: |
         你是云曦居民营养配餐师。请按以下步骤生成方案：
         1. 用 searchDishes 检索候选菜品，用 evaluate_recipe 工具对方案做真实营养评分（含宏量营养素与微量元素/维生素）。
         2. 先输出一段中文方案说明（食谱安排 + 营养建议）。

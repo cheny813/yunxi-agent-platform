@@ -1,0 +1,31 @@
+# =============================================================================
+# NER 实体词典（yunxi 默认部署业务数据）
+#
+# 【框架定位】本文件是 yunxi 默认部署的 NER 业务词典（校园餐 / 居民营养领域），
+#   位于 agent-config 配置模块，由 agent-app 打包时带入 classpath。
+#
+# 【与框架的关系】agent-core 意图引擎通过 `yunxi.intent.ner-dictionary` 配置项
+#   指向本文件（config/intent/ner-dictionaries.yml）。框架 jar 自带的
+#   agent-core/src/main/resources/intent/ 下同名文件仅是"最小演示集"，
+#   仅当本配置缺失时才作为兜底，业务部署一律以本文件为准。
+#
+# 【扩展方式】直接追加词条；新增实体类型需先在 entity-types 注册。
+#   如需完全外部化，可将本文件拷到部署目录，并把配置项改为
+#   `yunxi.intent.ner-dictionary: file:/data/yunxi/intent/ner-dictionaries.yml`。
+# =============================================================================
+entity-types:
+  MEAL:       { priority: 10 }
+  CROWD:      { priority: 10 }
+  ALLERGEN:   { priority: 9 }
+  NUTRIENT:   { priority: 8 }
+  DISH:       { priority: 5 }
+dictionaries:
+  MEAL:     [早餐, 午餐, 晚餐, 加餐, 课间餐]
+  CROWD:    [小学生, 初中生, 高中生, 学龄前, 幼儿, 教师, 孕妇, 产妇, 老人, 糖尿病人]
+  ALLERGEN: [花生, 大豆, 麸质, 乳制品, 海鲜, 蛋类, 坚果]
+  NUTRIENT: [蛋白质, 脂肪, 碳水化合物, 膳食纤维, 钙, 铁, 锌, 硒, 维生素A, 维生素B, 维生素C, 维生素D, 维生素E, 钾, 钠]
+  DISH:     [宫保鸡丁, 番茄炒蛋, 清炒时蔬, 红烧肉, 米饭, 馒头, 面条, 牛奶, 豆浆]
+regexes:
+  - { type: QUANTITY,  pattern: '\d+(\.\d+)?\s*(克|g|毫克|mg|千卡|kcal|份|人|ml|毫升)' }
+  - { type: DATE,      pattern: '(今天|明天|后天|下周[一二三四五六日天]?|本?周|上?周|下?个月|\d{1,2}月\d{1,2}日|\d{1,2}号)' }
+  - { type: SCHOOL_ID, pattern: 'school[-_ ]?(id)?[:：]?\s*[A-Za-z0-9-]+' }

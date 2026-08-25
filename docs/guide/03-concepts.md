@@ -204,7 +204,9 @@ Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`prod
 
 ### 在本框架中的实现
 
-`SceneDetectionService` 在请求到达时，通过关键词匹配和置信度排序识别场景，自动路由到对应 Agent。场景配置存储在数据库中，由 `MemorySceneRegistry` 管理，支持热更新无需重启。
+场景识别当前由**意图引擎**（`io.yunxi.platform.intent.IntentEngine`）承载：请求到达时，经四阶段前置管道（NER → 改写 → 分类 → 映射）产出结构化意图结果，其中 `sceneName` 字段由 `RuleIntentClassifier.detectSceneName` 的三级链计算（自定义场景 → 概念域 → 内置关键词 → `GENERAL`），语义与原 `SceneDetectionService` 严格等价。
+
+原 `SceneDetectionService` 已标记 `@Deprecated`，Bean 保留、逻辑不动，供存量引用兼容；禁止新代码注入（规避其 `milvus.enabled` 条件 Bean 启动依赖）。场景配置存储在数据库中，由 `MemorySceneRegistry` 管理，支持热更新无需重启。意图引擎的完整说明见 [16. 意图引擎](./16-intent-engine.md)。
 
 ---
 

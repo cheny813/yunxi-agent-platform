@@ -1,0 +1,21 @@
+# ============================================================
+# 意图引擎配置（四阶段前置管道，M1 规则通道）
+# 关闭方式：enabled: false（行为回退为仅场景检测，等价旧 SceneDetectionService）
+#
+# 数据分级（详见 docs/guide/16-intent-engine.md）：
+#   1) 业务数据（本配置模块）：config/intent/*.yml，yunxi 默认部署的完整业务词典，
+#      随 agent-app 打包进入 classpath。
+#   2) 框架最小演示集：agent-core/src/main/resources/intent/*.yml，仅作兜底，
+#      业务部署一律以本配置为准。
+#   3) 完全外部化：将文件拷到部署目录，配置项改为 file:/data/yunxi/intent/xxx.yml。
+# 任何业务方均可修改指向自己的数据文件，无需改动 Java 代码。
+# ============================================================
+yunxi:
+  intent:
+    enabled: true
+    ner-dictionary: classpath:config/intent/ner-dictionaries.yml
+    rewrite-enabled: true
+    rewrite-processors: [terminology]        # M1 仅 terminology；M2 加 coreference，M3 加 llm
+    terminology-table: classpath:config/intent/terminology.yml
+    intent-tree: classpath:config/intent/intent-tree.yml
+    mapping-table: classpath:config/intent/intent-mapping.yml

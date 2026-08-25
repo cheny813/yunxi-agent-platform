@@ -31,9 +31,18 @@ import java.util.Map;
  * {@code WorkspaceContextMiddleware} 承载，业务侧不再维护 AGENTS.md 场景规则扫描器。
  * </p>
  *
+ * <p>
+ * <b>已弃用</b>：自意图引擎（{@code io.yunxi.platform.intent.IntentEngine}）落地后，
+ * 场景检测由 {@code RuleIntentClassifier.detectSceneName} 三级链承接（行为严格等价），
+ * 调用方已迁移至 {@code ChatAppService} 的意图引擎。本类 Bean 保留、逻辑不动，
+ * 供存量引用兼容；禁止新代码注入本类（规避 {@code milvus.enabled} 条件 Bean 启动依赖）。
+ * 后续版本将整体移除。
+ * </p>
+ *
  * @author yunxi-agent-platform
  * @version 2.0.0
  */
+@Deprecated
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "milvus.enabled", havingValue = "true")

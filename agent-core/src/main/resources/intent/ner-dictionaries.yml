@@ -1,0 +1,28 @@
+# =============================================================================
+# NER 实体词典（框架最小演示集）
+#
+# 【框架定位】本文件是 agent-core 意图引擎的"最小演示集"，仅保留少量中性词条，
+#   用于演示 NER 能力（最长匹配 / 正则 / 优先级）并支撑开箱即用的冒烟验证。
+#   它不是业务数据，也不应被业务方直接修改。
+#
+# 【业务数据在哪】yunxi 默认部署的完整业务词典位于 agent-config 配置模块：
+#   agent-config/src/main/resources/config/intent/ner-dictionaries.yml，
+#   通过 `yunxi.intent.ner-dictionary: config/intent/ner-dictionaries.yml` 覆盖指向。
+#   任何业务方也可通过该配置项指向自己的词典文件（支持 file: 外部路径），
+#   无需改动任何 Java 代码。参考 docs/guide/16-intent-engine.md。
+#
+# 【文件格式】
+#   entity-types:  实体类型 → 优先级（同 span 冲突时保留优先级高者）
+#   dictionaries:  实体类型 → 词条列表（最长匹配，大小写不敏感）
+#   regexes:       正则匹配（priority 视为 0，通常低于词典条目）
+# =============================================================================
+entity-types:
+  CROWD:  { priority: 10 }
+  MEAL:   { priority: 10 }
+  DISH:   { priority: 5 }
+dictionaries:
+  CROWD:  [学生, 老师, 家长]
+  MEAL:   [早餐, 午餐, 晚餐]
+  DISH:   [米饭, 面条, 牛奶]
+regexes:
+  - { type: DATE, pattern: '(今天|明天|后天|下周[一二三四五六日天]?|\d{1,2}月\d{1,2}日)' }
