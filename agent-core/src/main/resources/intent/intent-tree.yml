@@ -1,0 +1,39 @@
+# =============================================================================
+# 意图树（框架最小演示集）
+#
+# 【框架定位】本文件是 agent-core 意图引擎的"最小演示集"，仅保留 4 个中性节点，
+#   覆盖全部匹配语义（allKeywords AND/OR、anyKeywords、entities 加分、sceneName
+#   场景关联），用于演示分类阶段能力并支撑开箱即用的冒烟验证。
+#   它不是业务数据，也不应被业务方直接修改。
+#
+# 【业务数据在哪】yunxi 默认部署的完整意图树位于 agent-config 配置模块：
+#   agent-config/src/main/resources/config/intent/intent-tree.yml，
+#   通过 `yunxi.intent.intent-tree: config/intent/intent-tree.yml` 覆盖指向。
+#   业务方也可通过该配置项指向自己的意图树（支持 file: 外部路径），无需改 Java。
+#
+# 【匹配语义】
+#   allKeywords:  组内多个词须同时命中（AND）；存在多组时，任一组成立即算（OR）
+#   anyKeywords:  命中其中任意一个即算
+#   entities:     纯加分（命中 NER 实体可提高置信度），不参与命中判定
+#   sceneName:    节点可直接关联场景名（命中场景即返回该意图，优先级最高）
+# =============================================================================
+intents:
+  - id: product.recommend
+    label: 商品推荐（演示 allKeywords + entities）
+    match:
+      allKeywords: [[商品, 推荐], [产品, 推荐]]
+      entities: [CROWD]
+
+  - id: service.inquiry
+    label: 服务查询（演示 anyKeywords）
+    match:
+      anyKeywords: [价格, 费用, 多少钱]
+
+  - id: personal.assistant
+    label: 个人助手（演示 sceneName 场景关联）
+    sceneName: PERSONAL_ASSISTANT
+
+  - id: faq.general
+    label: 通用问答（演示兜底意图）
+    match:
+      anyKeywords: [是什么, 什么是, 为什么, 区别]

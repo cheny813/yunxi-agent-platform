@@ -1,0 +1,75 @@
+# =============================================================================
+# 意图树（yunxi 默认部署业务数据）
+#
+# 【框架定位】本文件是 yunxi 默认部署的意图树（校园餐 / 居民营养领域），
+#   位于 agent-config 配置模块，由 agent-app 打包时带入 classpath。
+#
+# 【与框架的关系】agent-core 意图引擎通过 `yunxi.intent.intent-tree` 配置项
+#   指向本文件（config/intent/intent-tree.yml）。框架 jar 自带的
+#   agent-core/src/main/resources/intent/ 下同名文件仅是"最小演示集"。
+#
+# 【匹配语义】
+#   allKeywords:  组内多个词须同时命中（AND）；存在多组时，任一组成立即算（OR）
+#   anyKeywords:  命中其中任意一个即算
+#   entities:     纯加分（命中 NER 实体可提高置信度），不参与命中判定
+#   sceneName:    节点可直接关联场景名（命中场景即返回该意图，优先级最高）
+#
+# 【扩展方式】追加新节点即可；注意 id 全局唯一，label 用于日志/展示。
+# =============================================================================
+intents:
+  - id: recipe.monthly-plan
+    label: 月度食谱规划
+    match:
+      allKeywords: [[食谱, 一个月], [食谱, 30天]]
+      entities: [DATE, CROWD]
+
+  - id: recipe.weekly-plan
+    label: 一周食谱规划
+    match:
+      allKeywords: [[食谱, 一个星期]]
+      entities: [DATE, CROWD]
+
+  - id: recipe.single
+    label: 单餐食谱查询
+    match:
+      anyKeywords: [食谱, 菜谱, 餐单, 配餐]
+      entities: [MEAL, DISH, CROWD]
+
+  - id: recipe.ingredient-substitute
+    label: 食材替换
+    match:
+      anyKeywords: [替换, 替代, 代替, 换掉]
+      entities: [DISH]
+
+  - id: allergen.check
+    label: 过敏原筛查
+    match:
+      anyKeywords: [过敏, 忌口, 不吃, 禁忌]
+      entities: [ALLERGEN]
+
+  - id: nutrition.analysis
+    label: 营养分析
+    match:
+      allKeywords: [[营养, 分析], [营养, 评估], [营养, 报告]]
+      entities: [NUTRIENT]
+
+  - id: nutrition.requirement
+    label: 营养需求查询
+    match:
+      anyKeywords: [需要多少, 摄入量, 推荐摄入, 需求量, 应该吃多少]
+      entities: [NUTRIENT, CROWD]
+
+  - id: nutrition.advice
+    label: 营养建议
+    match:
+      anyKeywords: [建议, 指导, 怎么吃, 吃什么, 注意事项]
+      entities: [NUTRIENT, CROWD]
+
+  - id: personal.assistant
+    label: 个人助手
+    sceneName: PERSONAL_ASSISTANT
+
+  - id: faq.general
+    label: 通用问答
+    match:
+      anyKeywords: [是什么, 什么是, 哪些, 为什么, 区别, 怎么算]

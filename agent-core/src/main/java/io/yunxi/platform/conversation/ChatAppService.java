@@ -21,7 +21,10 @@ import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.file.FileUploadService;
 import io.yunxi.platform.file.dto.FileSearchRequest;
 import io.yunxi.platform.file.dto.FileSearchResult;
-import io.yunxi.platform.prompt.SceneDetectionService;
+import io.yunxi.platform.intent.Entity;
+import io.yunxi.platform.intent.IntentContext;
+import io.yunxi.platform.intent.IntentEngine;
+import io.yunxi.platform.intent.IntentResult;
 import io.yunxi.platform.security.auth.SecurityContext;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.config.MemoryConfig;
@@ -93,8 +96,8 @@ public class ChatAppService {
     /** SSE 消息构建器 */
     private final SseMessageBuilder sseMessageBuilder;
 
-    /** 场景检测服务 */
-    private final SceneDetectionService sceneDetectionService;
+    /** 意图引擎（四阶段前置管道：NER → 改写 → 分类 → 映射） */
+    private final IntentEngine intentEngine;
 
     /** 文件上传服务 */
     private final FileUploadService fileUploadService;
@@ -112,7 +115,7 @@ public class ChatAppService {
      * @param properties                AgentScope 配置属性
      * @param conversationDomainService 会话领域服务
      * @param sseMessageBuilder         SSE 消息构建器
-     * @param sceneDetectionService     场景检测服务
+     * @param intentEngine               意图引擎（四阶段前置管道）
      * @param fileUploadService         文件上传服务
      * @param securityContext           安全上下文
      * @param profileRouter             Profile 路由器
@@ -120,7 +123,7 @@ public class ChatAppService {
     public ChatAppService(AgentService agentService, AgentscopeCoreProperties properties,
             ConversationDomainService conversationDomainService,
             SseMessageBuilder sseMessageBuilder,
-            SceneDetectionService sceneDetectionService,
+            IntentEngine intentEngine,
             FileUploadService fileUploadService,
             SecurityContext securityContext,
             LlmMetrics llmMetrics,
@@ -130,7 +133,7 @@ public class ChatAppService {
         this.properties = properties;
         this.conversationDomainService = conversationDomainService;
         this.sseMessageBuilder = sseMessageBuilder;
-        this.sceneDetectionService = sceneDetectionService;
+        this.intentEngine = intentEngine;
         this.fileUploadService = fileUploadService;
         this.securityContext = securityContext;
         this.llmMetrics = llmMetrics;
@@ -276,9 +279,18 @@ public class ChatAppService {
             Duration timeout = Duration.ofSeconds(properties.getChatTimeoutSeconds());
             Msg responseMsg;
 
-            // 检测场景
-            String sceneName = sceneDetectionService.detectScene(request.getMessage()).sceneName();
-            log.debug("检测到场景: {}", sceneName);
+            // 意图分析（四阶段前置管道，取代场景检测；sceneName 语义不变）
+            IntentResult intentResult = intentEngine.analyze(buildIntentContext(
+                    request.getMessage(), conversation, userId, request.getConversationId()));
+            String sceneName = intentResult.sceneName();
+
+            // 实体注入（K6：重建 userMsg，仅在实体非空时）
+            if (!intentResult.entities().isEmpty()) {
+                userMsg = Msg.builder()
+                        .textContent(userMsg.getTextContent() + "\n\n"
+                                + buildEntityContextBlock(intentResult.entities()))
+                        .build();
+            }
 
             // RAG检索：获取相关文件内容
             List<FileSearchResult> relevantFiles = new ArrayList<>();
@@ -644,9 +656,18 @@ public class ChatAppService {
 
                 // ---- 标准模式 / 深度模式 ----
 
-                // 检测场景
-                String sceneName = sceneDetectionService.detectScene(request.getMessage()).sceneName();
-                log.debug("检测到场景: {}", sceneName);
+                // 意图分析（四阶段前置管道，取代场景检测；quickMode 分支已提前返回，天然零开销）
+                IntentResult intentResult = intentEngine.analyze(buildIntentContext(
+                        request.getMessage(), conversation, userId, conversationId));
+                String sceneName = intentResult.sceneName();
+
+                // 实体注入（K6：重建 userMsg，仅在实体非空时）
+                if (!intentResult.entities().isEmpty()) {
+                    userMsg = Msg.builder()
+                            .textContent(userMsg.getTextContent() + "\n\n"
+                                    + buildEntityContextBlock(intentResult.entities()))
+                            .build();
+                }
 
                 // 获取记忆配置
                 var memoryConfig = request.getMemoryConfig();
@@ -1005,5 +1026,43 @@ public class ChatAppService {
 
         context.append("[请基于以上文件内容回答用户问题]\n");
         return context.toString();
+    }
+
+    /**
+     * 构建意图分析上下文（取最近 3 轮消息供后续指代消解使用，M1 不消费）。
+     *
+     * @param message        用户原始消息
+     * @param conversation   会话实体
+     * @param userId         用户 ID
+     * @param conversationId 会话 ID
+     * @return 意图分析上下文
+     */
+    private IntentContext buildIntentContext(String message, ConversationEntity conversation,
+            String userId, String conversationId) {
+        List<Msg> recent = List.of();
+        List<Msg> all = conversation.getMessages();          // F3：永不 null
+        if (all != null && all.size() > 3) {
+            recent = new ArrayList<>(all.subList(all.size() - 3, all.size()));
+        } else if (all != null) {
+            recent = new ArrayList<>(all);
+        }
+        return new IntentContext(message, conversation.getAgentName(), userId, conversationId, recent);
+    }
+
+    /**
+     * 构建实体上下文注入块。
+     *
+     * @param entities NER 实体列表
+     * @return 注入文本（无实体时为空串）
+     */
+    private String buildEntityContextBlock(List<Entity> entities) {
+        if (entities == null || entities.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("[问题实体]\n注意：以下实体已从问题中识别，AI 应直接使用。\n");
+        for (Entity e : entities) {
+            sb.append("- ").append(e.type()).append(": ").append(e.value()).append("\n");
+        }
+        return sb.toString();
     }
 }

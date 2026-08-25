@@ -889,6 +889,36 @@ yunxi:
 
 在 `config/muse.yml` 中设置 `yunxi.muse.enabled: true` 即可全局启用，无需改动 Agent 定义 YAML。
 
+## 意图引擎配置
+
+[意图引擎](./16-intent-engine.md) 的配置集中在 `agent-config` 的 `config/intent.yml`（前缀 `yunxi.intent`），通过 `imports.yml` 随 Spring 配置自动导入：
+
+```yaml
+yunxi:
+  intent:
+    enabled: true                       # 总开关（false = 仅场景模式，等价旧 SceneDetectionService）
+    ner-dictionary: classpath:config/intent/ner-dictionaries.yml   # NER 实体词典（部署业务数据）
+    rewrite-enabled: true               # 改写阶段是否启用
+    rewrite-processors: [terminology]   # 改写处理器名列表（按序执行；不存在名字 warn 跳过）
+    terminology-table: classpath:config/intent/terminology.yml     # 术语/别名归一表
+    intent-tree: classpath:config/intent/intent-tree.yml           # 意图树（分类规则）
+    mapping-table: classpath:config/intent/intent-mapping.yml      # 意图 → Agent 路由映射表
+```
+
+各配置项说明（默认值 = 框架最小演示集路径；`agent-config` 显式覆盖为部署业务数据；**fat jar 部署下建议统一使用 `classpath:` 前缀**）：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `yunxi.intent.enabled` | `true` | 总开关；`false` 时仅返回场景名，跳过 NER/改写/分类/映射 |
+| `yunxi.intent.ner-dictionary` | `classpath:intent/ner-dictionaries.yml` | NER 词典文件；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.rewrite-enabled` | `true` | 改写阶段开关 |
+| `yunxi.intent.rewrite-processors` | `[terminology]` | 改写处理器链 |
+| `yunxi.intent.terminology-table` | `classpath:intent/terminology.yml` | 术语归一表；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.intent-tree` | `classpath:intent/intent-tree.yml` | 意图树；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.mapping-table` | `classpath:intent/intent-mapping.yml` | 路由映射表；支持 `classpath:` / `file:` / `url:` 前缀 |
+
+> **框架通用性**：意图引擎是框架层通用能力，与具体业务解耦，采用**数据两级模型**——`agent-core` 内置最小演示集（兜底），`agent-config` 的 `config/intent/*.yml` 为部署业务数据，也支持 `file:` 前缀完全外部化。业务方只需修改上表配置项指向自己的文件即可整体替换，无需改动 Java 代码。完整定制指南见 [16. 意图引擎](./16-intent-engine.md#业务定制指南)。
+
 ---
 
 **上一页**: [05. 模块说明](./05-modules.md)  
