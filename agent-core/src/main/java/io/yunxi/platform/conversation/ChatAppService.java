@@ -25,6 +25,8 @@ import io.yunxi.platform.intent.Entity;
 import io.yunxi.platform.intent.IntentContext;
 import io.yunxi.platform.intent.IntentEngine;
 import io.yunxi.platform.intent.IntentResult;
+import io.yunxi.platform.intent.routing.IntentAwareAgentResolver;
+import io.yunxi.platform.intent.routing.RouteDecision;
 import io.yunxi.platform.security.auth.SecurityContext;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.config.MemoryConfig;
@@ -99,6 +101,9 @@ public class ChatAppService {
     /** 意图引擎（四阶段前置管道：NER → 改写 → 分类 → 映射） */
     private final IntentEngine intentEngine;
 
+    /** 意图路由解析器（M2.1：识别→路由闭环，advisory 改道） */
+    private final IntentAwareAgentResolver intentRouter;
+
     /** 文件上传服务 */
     private final FileUploadService fileUploadService;
 
@@ -116,6 +121,7 @@ public class ChatAppService {
      * @param conversationDomainService 会话领域服务
      * @param sseMessageBuilder         SSE 消息构建器
      * @param intentEngine               意图引擎（四阶段前置管道）
+     * @param intentRouter               意图路由解析器（M2.1：advisory 改道）
      * @param fileUploadService         文件上传服务
      * @param securityContext           安全上下文
      * @param profileRouter             Profile 路由器
@@ -124,6 +130,7 @@ public class ChatAppService {
             ConversationDomainService conversationDomainService,
             SseMessageBuilder sseMessageBuilder,
             IntentEngine intentEngine,
+            IntentAwareAgentResolver intentRouter,
             FileUploadService fileUploadService,
             SecurityContext securityContext,
             LlmMetrics llmMetrics,
@@ -134,6 +141,7 @@ public class ChatAppService {
         this.conversationDomainService = conversationDomainService;
         this.sseMessageBuilder = sseMessageBuilder;
         this.intentEngine = intentEngine;
+        this.intentRouter = intentRouter;
         this.fileUploadService = fileUploadService;
         this.securityContext = securityContext;
         this.llmMetrics = llmMetrics;
@@ -283,6 +291,14 @@ public class ChatAppService {
             IntentResult intentResult = intentEngine.analyze(buildIntentContext(
                     request.getMessage(), conversation, userId, request.getConversationId()));
             String sceneName = intentResult.sceneName();
+
+            // M2.1 意图路由：命中且采纳则改道（advisory，未命中/失败保持原 Agent；
+            // ConversationChatRequest 无 profile 字段，意图路由不叠加 Profile）
+            RouteDecision decision = intentRouter.resolve(
+                    conversation.getAgentName(), null, userId, intentResult);
+            if (decision.adopted()) {
+                agent = decision.agent();
+            }
 
             // 实体注入（K6：重建 userMsg，仅在实体非空时）
             if (!intentResult.entities().isEmpty()) {
@@ -660,6 +676,14 @@ public class ChatAppService {
                 IntentResult intentResult = intentEngine.analyze(buildIntentContext(
                         request.getMessage(), conversation, userId, conversationId));
                 String sceneName = intentResult.sceneName();
+
+                // M2.1 意图路由：命中且采纳则改道（advisory，未命中/失败保持原 Agent；
+                // 命中目标 agent 仍尊重 request.profile 的 Profile 路由）
+                RouteDecision decision = intentRouter.resolve(
+                        conversation.getAgentName(), request.getProfile(), userId, intentResult);
+                if (decision.adopted()) {
+                    agent = decision.agent();
+                }
 
                 // 实体注入（K6：重建 userMsg，仅在实体非空时）
                 if (!intentResult.entities().isEmpty()) {

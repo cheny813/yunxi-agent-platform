@@ -59,35 +59,36 @@ Agent 通过 YAML 配置文件定义，由 `AgentConfigurer` 在启动时装配�
 ### Agent 定义示例
 
 ```yaml
-# agent-config/src/main/resources/agent-definitions/my-business-agent.yml
-agentDefinitions:
-  my-business-agent:
-    name: "业务助手"
-    systemPrompt: "你是一个业务分析助手..."
-    model:
-      provider: dashscope
-      name: qwen-plus
-    tools:
-      enabled: true
-    mcp-servers:
-      - database
+# agent-definitions/my-business-agent.yml（顶层键为 agent:，由 AgentDefinitionLoader 从 classpath 加载）
+agent:
+  name: my-business-agent
+  description: 业务分析助手
+  prompt: "你是一个业务分析助手..."
+  orchestration: expert          # supervisor / pipeline / routing / expert
+  model:
+    provider: dashscope          # dashscope / openai / baidu / huawei
+    modelName: qwen-plus
+  ragMode: GENERIC               # NONE / GENERIC / AGENTIC
+  toolsGroup:
+    systemToolsGroup: [memory]
+    mcpServersToolsGroup: [database]
 ```
 
-配置文件将被 `AgentConfigurer.createAgent()` 方法读取，生成 `AgentModelConfig`，通过 `ModelFactory.create()` 创建 Model，经由 `HarnessAgent.builder()` 装配 Middleware 和工具后构建可运行的 Agent。
+配置文件将被 `AgentConfigurer.createAgent()` 方法读取，通过 `ModelFactory.create()` 创建 Model，经由 `HarnessAgent.builder()` 装配 Toolkit（`@Tool` Bean + MCP 工具组）与 Middleware 后构建可运行的 Agent。
 
 ### Agent 加载流程
 
 ```
 agent-definitions/*.yml
-  → AgentConfigurer 解析 @ConfigurationProperties
-  → 为每个定义调用 createAgent(def)
+  → AgentDefinitionLoader 加载定义（AgentDefinition 解析）
+  → AgentConfigurer 为每个定义调用 buildAndRegisterAgent(def)
   → ModelFactory.create(config) 创建 Model
   → HarnessAgent.builder()
       .model(model)
-      .addMiddleware(ContentFilterMiddleware...)
-      .toolComponentSupplier() 注册 @Tool Bean
+      .toolkit(toolkit)                // 注册 @Tool Bean + MCP 工具组
+      .addMiddleware(ApplicationRAG / ContentFilterMiddleware ...)
     .build()
-  → agentCache.put(name, agent)   // 共享 Agent 实例
+  → agentService.registerAgentInstance(name, agent)   // 共享 Agent 实例
 ```
 
 对于 Supervisor 模式（专家 Agent 编排），在 YAML 中配置 `experts` 列表，由 `createSupervisorAgent()` 设置 `SubAgentConfig.forwardEvents`。

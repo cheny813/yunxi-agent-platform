@@ -502,25 +502,24 @@ List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "
 
 #### 解决方案
 
-通过框架原生的 `Toolkit.registration()` API 在每个 Agent 的 `Toolkit` 中按 MCP 服务器名独立分组注册：
+通过框架原生的 `Toolkit.registration()` API 在每个 Agent 的 `Toolkit` 中按 MCP 服务器名独立分组注册（`AgentConfigurer.registerMcpServers()`，使用 `McpClientWrapper` 连接外部 MCP 服务器）：
 
 ```java
 toolkit.registration()
-    .agentTool(agentTool)
-    .group(serverName)  // 按 MCP 服务器名分组
+    .mcpClient(wrapper)   // McpClientWrapper：AgentScope MCP SDK 客户端
+    .group(serverName)    // 按 MCP 服务器名分组
     .apply();
 ```
 
-然后在 Agent YAML 配置中按需启用：
+然后在 Agent YAML 配置中按需激活（`applyToolGroupActivation()` 收集 `toolsGroup.systemToolsGroup` 与 `toolsGroup.mcpServersToolsGroup`，未配置时默认激活 `memory` 组）：
 
 ```yaml
 tools:
-  groups:
-    - mcp-data       # 只启用业务相关工具
-    - database
+  mcpServers: [database]              # 加载并激活 database 服务器
+toolsGroup:
+  systemToolsGroup: [agent, memory]   # 系统内置工具组
+  mcpServersToolsGroup: [database]    # 显式激活的 MCP 工具组
 ```
-
-通过 `applyToolGroupActivation()` 控制哪些组在推理时可见。
 
 ---
 

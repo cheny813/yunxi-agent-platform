@@ -1,6 +1,6 @@
 # 03. 核心概念
 
-> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），Pipeline 已删除，Skill 系统采用框架原生 `AgentSkillRepository`。
+> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 supervisor/pipeline/routing 三种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。
 
 ## 理论基础
 
@@ -73,20 +73,26 @@ Agent = LLM + 记忆 + 工具 + 提示词
 本框架中，Agent 通过 YAML 配置定义：
 
 ```yaml
-agents:
-  business-assistant:
-    name: "业务助手"
-    system-prompt: "你是业务专家..."  # 提示词
-    model: "qwen-max"                  # LLM
-    rag-mode: GENERIC                  # 默认 RAG 模式（请求未指定时自动生效）
-    memory:                            # 记忆
-      type: "smart"
-      max-memories: 100
-    tools:                             # 工具
-      - query_database
-      - calculate_metric
-    mcp-servers:                       # MCP 工具（值为 mcp-core.yml 中配置的服务器名）
-      - database
+agent:
+  name: business-assistant
+  description: "业务数据管理助手"
+  prompt: "你是业务专家..."  # 提示词
+  model:
+    provider: dashscope
+    modelName: qwen-max
+    temperature: 0.7
+  orchestration: supervisor   # 编排模式: supervisor / pipeline / routing
+  runtime:
+    maxIterations: 10
+  toolsGroup:
+    systemToolsGroup: default
+    mcpServersToolsGroup: mcp-nutrition
+  ragMode: GENERIC            # 应用层 RAG: NONE / GENERIC / AGENTIC
+  profiles:
+    api:
+      label: "API 助手"
+      description: "面向开发者的 API 助手"
+      prompt: "你是 API 专家..."
 ```
 
 ---
@@ -112,38 +118,42 @@ RAG（Retrieval-Augmented Generation）是一种将信息检索与文本生成�
 └─────────────────────┘     └─────────────────┘
 ```
 
-### 支持的 5 种知识库类型
+### 应用层 RAG（ApplicationRAG）
 
-| 类型 | 实现 | 依赖 | 文档管理 | 适用场景 |
-|------|------|------|---------|---------|
-| `bailian` | BailianKnowledge | 阿里云百炼 | 百炼控制台 | 企业级、多轮对话、查询重写 |
-| `dify` | DifyKnowledge | Dify 平台 | Dify 控制台 | 多种检索模式、Reranking |
-| `ragflow` | RAGFlowKnowledge | RAGFlow | RAGFlow 控制台 | 强大OCR、知识图谱、多数据集 |
-| `haystack` | HayStackKnowledge | HayStack | HayStack 管道 | 深度学习 RAG 框架 |
-| `simple` | SimpleKnowledge | 内置 | 代码管理 | 开发、测试、完全控制数据 |
+**说明**：V2.0 GA 升级后，原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已删除（框架 `io.agentscope.core.rag` 包整体 `@Deprecated(forRemoval=true)`）。本框架的应用层 RAG 由 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，它复用平台既有的**文件级向量检索后端** `FileVectorService`（Milvus + EmbeddingService），与 `ChatAppService` 共用同一条检索链路。
 
-### 自动配置（推荐方式）
+### 工作模式
 
-当 `agentscope.extensions.autoConfigEnabled=true` 时，框架会根据 `agentscope.yml` 中的 `knowledge-bases` 配置，自动创建对应的 Knowledge 实例并注册为 Spring Bean：
+`ApplicationRAG.createMiddleware(ragMode, userId)` 通过 AgentScope 原生 `MiddlewareBase.onAgent` 钩子将检索结果注入对话：
 
+| 模式 | 行为 | 注入位置 |
+|------|------|---------|
+| `NONE` | 不启用 RAG | — |
+| `GENERIC` | 检索结果注入系统提示前缀，LLM 生成回答时参考（默认） | 消息列表头部 |
+| `AGENTIC` | 检索结果注入用户消息，Agent 自主决定如何使用 | 消息列表头部 |
+
+- 检索基于用户最新查询文本（从输入消息中提取），按 `userId` 隔离
+- 默认 `topK=5`，命中为空时跳过注入
+- **Milvus 未启用时 `FileVectorService` 不可用，中间件自动降级为透传**，不影响 Agent 正常对话
+
+### 开启方式
+
+RAG 模式可在两处设置（请求级优先）：
+
+1. **Agent 定义级**（`agent-definitions/*.yml` 的 `agent.ragMode` 字段，默认 `GENERIC`）：
 ```yaml
-agentscope:
-  extensions:
-    autoConfigEnabled: true
-    knowledge-bases:
-      tech-docs:
-        enabled: true
-        type: bailian
-        access-key-id: ${BAILIAN_ACCESS_KEY_ID}
-        access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET}
-        workspace-id: ${BAILIAN_WORKSPACE_ID}
-        index-id: ${BAILIAN_INDEX_ID}
+agent:
+  name: business-assistant
+  ragMode: AGENTIC   # NONE / GENERIC / AGENTIC
 ```
 
-知识库的注册和装配由 AgentScope 框架的 `LongTermMemory` / `RetrieveConfig` API 管理（GA 2.0 中标记为 `@Deprecated`，后续将迁移至新的 RAG 模块）：
-          Knowledge 实例 → registerSingleton(beanName)
-              ↓
-    AdvancedAgentFactory @Autowired Map<String, Knowledge>
+2. **请求级**（`POST /api/conversations/chat` 请求体的 `ragMode` 字段，覆盖 Agent 默认值）：
+```json
+{
+  "message": "根据知识库回答：...",
+  "agentName": "business-assistant",
+  "ragMode": "GENERIC"
+}
 ```
 
 ### 在 API 请求中使用
@@ -206,7 +216,7 @@ Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`prod
 
 场景识别当前由**意图引擎**（`io.yunxi.platform.intent.IntentEngine`）承载：请求到达时，经四阶段前置管道（NER → 改写 → 分类 → 映射）产出结构化意图结果，其中 `sceneName` 字段由 `RuleIntentClassifier.detectSceneName` 的三级链计算（自定义场景 → 概念域 → 内置关键词 → `GENERAL`），语义与原 `SceneDetectionService` 严格等价。
 
-原 `SceneDetectionService` 已标记 `@Deprecated`，Bean 保留、逻辑不动，供存量引用兼容；禁止新代码注入（规避其 `milvus.enabled` 条件 Bean 启动依赖）。场景配置存储在数据库中，由 `MemorySceneRegistry` 管理，支持热更新无需重启。意图引擎的完整说明见 [16. 意图引擎](./16-intent-engine.md)。
+原 `SceneDetectionService` 仍保留（`io.yunxi.platform.prompt`），Bean 供存量引用兼容。场景配置由 `MemorySceneRegistry` 管理：内置场景通过 `memory.scene.builtins` 配置字符串声明（格式 `name:displayName:description:retentionDays:keywords`），自定义场景通过 `register()` 在运行时注册，无需重启。意图引擎的完整说明见 [16. 意图引擎](./16-intent-engine.md)。
 
 ---
 
@@ -277,20 +287,22 @@ Agent 级别默认配置
 ### 在本框架中的实现
 
 ```yaml
-agents:
-  - name: business-assistant
-    mode: expert                    # Agent 级别默认模式
-    prompt: 你是一个专业的业务数据管理助手...
-    
-    profiles:
-      chat:                         # Profile 1：聊天模式
-        label: 智能咨询
-        mode: chat                  # 覆盖为聊天模式
-        prompt: 你是一个业务顾问...
-      
-      business-make:                # Profile 2：专家模式
-        label: 内容生成
-        mode: expert                # 继承 Agent 的 expert 模式
+agent:
+  name: business-assistant
+  description: 业务数据管理助手
+  prompt: 你是一个专业的业务数据管理助手...
+  orchestration: expert
+
+  profiles:
+    chat:                         # Profile 1：聊天模式
+      label: 智能咨询
+      description: 面向用户的对话模式
+      prompt: 你是一个业务顾问...
+
+    business-make:                # Profile 2：内容生成模式
+      label: 内容生成
+      description: 面向内容生成的专家模式
+      prompt: 你是内容生成专家...
 ```
 
 ---
@@ -380,9 +392,9 @@ public enum BuiltinMode {
 │                                         │
 │  ┌─────────────────────────────────┐    │
 │  │  HarnessAgent（运行时记忆管理）    │    │
-│  │  - MemoryFlushHook              │    │
-│  │  - MemoryMaintenanceHook         │    │
-│  │  - CompactionHook                │    │
+│  │  - MemoryFlushMiddleware        │    │
+│  │  - MemoryMaintenanceMiddleware   │    │
+│  │  - CompactionMiddleware          │    │
 │  └───────────┬─────────────────────┘    │
 │              │                          │
 │     ┌────────┴────────┐                │
@@ -413,7 +425,7 @@ HarnessAgent 通过内置 Middleware 自动管理 Agent 执行过程中的记忆
 | `CompactionMiddleware` | 上下文溢出时通过 LLM 摘要压缩，然后重试调用 |
 | `ToolResultEvictionMiddleware` | 将过大的工具调用结果卸载到文件系统 |
 
-当前集成阶段，这些 Middleware 默认**启用**，无需额外配置。如有特殊需求可通过 HarnessAgent.Builder 的 `disableMemoryMiddleware()` 方法关闭。
+当前集成阶段，这些 Middleware 默认**启用**，无需额外配置。如有特殊需求可通过 HarnessAgent.Builder 的 `disableMemoryTools()` 方法关闭 `memory_search` / `memory_get` / `session_search` 三个内置记忆工具。
 
 #### 记忆管理的两层架构
 
@@ -448,143 +460,35 @@ Agent 最终回复 → 遵循系统提示词，过滤掉 verbose 风格
 
 MemoryScene 和 MemorySceneRegistry 提供场景化的识别能力，根据不同的业务场景关键词自动匹配场景。
 
-**MemoryScene**：定义单个场景的元数据
-| 属性 | 说明 | 示例 |
-|------|------|------|
-| **sceneName** | 场景名称 | `SCHOOL_MEAL`, `chat` |
-| **retentionPolicy** | 保留策略 | `session`, `persistent` |
-| **maxMemories** | 最大记忆条数 | `100` |
-| **ttl** | 过期时间 | `30m`, `24h` |
+**MemoryScene**：是**常量类**（`io.yunxi.platform.memory.MemoryScene`），预置两个标准场景常量：
 
-**MemorySceneRegistry**：管理全局场景注册表
-- 根据用户输入关键词自动匹配场景
-- 支持动态注册和卸载自定义场景
-- 未匹配时回退到 `GENERAL` 场景
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| `PERSONAL_ASSISTANT` | `"personal_assistant"` | 通用个人助手场景 |
+| `GENERAL` | `"general"` | 兜底通用场景（未匹配时返回） |
 
-```java
-@Component
-public class MemorySceneRegistry {
-    private final Map<String, SceneEntry> scenes = new LinkedHashMap<>();
-    
-    /**
-     * 注册自定义场景
-     */
-    public void register(String name, String displayName, String description,
-            int retentionDays, List<String> keywords) {
-        scenes.put(name, new SceneEntry(name, displayName, description, retentionDays, keywords, false));
-    }
-    
-    /**
-     * 通过关键词检测当前对话属于哪个场景
-     */
-    public String detect(String text) {
-        // 遍历场景，关键词匹配（大小写不敏感）
-        // 返回第一个匹配的场景名称，未匹配返回 GENERAL
-    }
-}
-```
-┌─────────────────────────────────────────┐
-│           记忆系统架构                    │
-├─────────────────────────────────────────┤
-│                                         │
-│  ┌─────────────────────────────────┐    │
-│  │  MemoryCoordinatorService       │    │
-│  │  (短期记忆协调器)               │    │
-│  └───────────┬─────────────────────┘    │
-│              │                          │
-│     ┌────────┴────────┐                │
-│     ▼                 ▼                 │
-│  ┌─────────┐   ┌───────────┐           │
-│  │Scene 记忆│   │ ReMe 记忆  │           │
-│  │(场景化)  │   │ (持久化)   │           │
-│  └─────────┘   └─────┬─────┘           │
-│                       │                 │
-│              ┌────────┼────────┐        │
-│              ▼        ▼        ▼        │
-│         ┌────────┐┌────────┐┌────────┐ │
-│         │Working ││ Task   ││ Tool   │ │
-│         │Memory  ││ Memory ││ Memory │ │
-│         └────────┘└────────┘└────────┘ │
-│                                         │
-└─────────────────────────────────────────┘
-```
+并提供 `isLongTerm(String sceneName)` 静态方法判断场景是否为长期记忆场景（`PERSONAL_ASSISTANT` 为 true）。
 
-### MemoryCoordinatorService（短期记忆管理）
-
-MemoryCoordinatorService 是短期记忆的核心协调器，负责 Agent 对话过程中的实时记忆管理。
-
-**核心职责**：
-- 管理 Agent 对话上下文中的短期记忆
-- 协调场景记忆与持久化记忆的读写
-- 提供记忆的增删改查接口
-- 控制记忆容量与过期策略
+**MemorySceneRegistry**：管理全局场景注册表（`io.yunxi.platform.memory.MemorySceneRegistry`）：
+- 内置场景通过配置声明：`memory.scene.builtins`（格式 `name:displayName:description:retentionDays:keywords`）
+- 自定义场景通过 `register()` 在运行时注册，无需重启
+- 根据用户输入关键词自动匹配场景（`detect()`），未匹配时回退到 `GENERAL`
 
 ```java
-@Service
-public class MemoryCoordinatorService {
-    // 短期记忆缓存
-    private final Map<String, List<Memory>> shortTermMemory = new ConcurrentHashMap<>();
-    
-    /**
-     * 写入记忆
-     */
-    public void addMemory(String sessionId, Memory memory) {
-        shortTermMemory.computeIfAbsent(sessionId, k -> new ArrayList<>()).add(memory);
-    }
-    
-    /**
-     * 读取会话记忆
-     */
-    public List<Memory> getMemories(String sessionId) {
-        return shortTermMemory.getOrDefault(sessionId, List.of());
-    }
-    
-    /**
-     * 清除会话记忆
-     */
-    public void clearMemories(String sessionId) {
-        shortTermMemory.remove(sessionId);
-    }
-}
+// 注册自定义场景（5 参数）
+sceneRegistry.register("school_meal", "校园餐", "校园餐业务场景", 90,
+        List.of("校园餐", "营养餐", "菜谱"));
+
+// 检测场景：从用户输入中按关键词匹配
+String scene = sceneRegistry.detect("帮我推荐一份校园营养餐");   // → "school_meal"
+
+// 场景查询
+boolean longTerm = sceneRegistry.isLongTerm(scene);
+int retentionDays = sceneRegistry.getRetentionDays(scene);
+List<SceneEntry> scenes = sceneRegistry.getScenes();             // 全部场景
 ```
 
-### MemoryScene / MemorySceneRegistry（场景化管理）
-
-MemoryScene 和 MemorySceneRegistry 提供场景化的记忆管理能力，根据不同的业务场景自动切换记忆策略。
-
-**MemoryScene**：定义单个场景的记忆配置
-| 属性 | 说明 | 示例 |
-|------|------|------|
-| **sceneName** | 场景名称 | `business-make`, `chat` |
-| **retentionPolicy** | 保留策略 | `session`, `persistent` |
-| **maxMemories** | 最大记忆条数 | `100` |
-| **ttl** | 过期时间 | `30m`, `24h` |
-
-**MemorySceneRegistry**：管理全局场景记忆注册表
-- 根据当前场景自动匹配对应的记忆策略
-- 支持动态注册和卸载场景记忆配置
-- 未匹配场景时使用默认策略
-
-```java
-@Component
-public class MemorySceneRegistry {
-    private final Map<String, MemoryScene> scenes = new ConcurrentHashMap<>();
-    
-    /**
-     * 注册场景记忆配置
-     */
-    public void registerScene(MemoryScene scene) {
-        scenes.put(scene.getSceneName(), scene);
-    }
-    
-    /**
-     * 获取场景对应的记忆配置
-     */
-    public MemoryScene getScene(String sceneName) {
-        return scenes.getOrDefault(sceneName, MemoryScene.defaultScene());
-    }
-}
-```
+> **说明**：场景化识别用于记忆保留策略（不同场景不同保留天数）。框架层记忆由 agentscope-harness 的文件系统记忆（`MEMORY.md` + `memory/*.md`）承载，场景只决定保留策略，不替代框架记忆实现。
 
 ### Harness 内置文件系统记忆
 
@@ -592,9 +496,8 @@ public class MemorySceneRegistry {
 
 - **每日日志**：`memory/YYYY-MM-DD.md`，每次对话后 LLM 提取事实追加写入
 - **精选记忆**：`MEMORY.md`，定期合并去重
-- **检索**：通过 `memory_search` / `memory_get` Agent 工具进行关键词检索
-- 业务层通过 MemoryCoordinatorService 统一接口访问所有记忆类型
-- 框架自动在对话生命周期中同步短期记忆与持久化记忆
+- **检索**：通过 `memory_search` / `memory_get` Agent 工具进行关键词检索（Harness 内置工具）
+- 业务层直接访问工作区文件即可读写记忆，无需中间协调器
 
 ---
 
@@ -663,41 +566,22 @@ public class MemorySceneRegistry {
 
 ### 在本框架中的实现
 
-**MCP 工具注册**：
+**自定义工具注册**：使用 AgentScope 原生 `@Tool` / `@ToolParam` 注解，Spring `@Component` 自动扫描注册：
 
 ```java
 @Component
-public class MyTool implements ToolHandler {
-    
-    @Override
-    public String getName() {
-        return "query_database";
-    }
-    
-    @Override
-    public ToolDefinition getDefinition() {
-        return ToolDefinition.builder()
-            .name(getName())
-            .description("查询数据库")
-            .parameters(List.of(
-                ToolParameter.builder()
-                    .name("sql")
-                    .type("string")
-                    .description("SQL 查询语句")
-                    .required(true)
-                    .build()
-            ))
-            .build();
-    }
-    
-    @Override
-    public ToolResult execute(Map<String, Object> arguments) {
-        String sql = (String) arguments.get("sql");
+public class DatabaseTool {
+    @Tool(name = "database_query", description = "执行只读SQL查询，获取数据库数据")
+    public String query(
+            @ToolParam(name = "sql", description = "SQL查询语句（仅支持SELECT）") String sql,
+            @ToolParam(name = "limit", description = "最大返回行数，默认为500") Integer limit) {
         // 执行查询
-        return ToolResult.success(result);
+        return result;
     }
 }
 ```
+
+> **说明**：注解位于 `io.agentscope.core.tool.Tool` / `io.agentscope.core.tool.ToolParam`，方法需为 `public` 且返回 `String`（或自动转换）。内置业务工具见 `io.yunxi.platform.tool.impl`（`HttpTool`、`DatabaseTool`、`CalculatorTool`、`NodeTool`、`SessionSearchTool` 等）。MCP 服务器工具则通过 `tools.mcpServers` 配置 + `AgentConfigurer.registerMcpServers` 注册为工具组。
 
 ---
 
@@ -721,23 +605,23 @@ public class MyTool implements ToolHandler {
 │              SPI 工作流程                │
 ├─────────────────────────────────────────┤
 │                                         │
-│  1. 框架定义接口                          │
-│     public interface LlmInvocationService│
+│  1. agent-spi 模块定义接口                │
+│     public interface VectorSearchProvider│
 │                                         │
 │  2. 业务实现接口                          │
 │     @Service                             │
-│     public class MyLlmService            │
-│         implements LlmInvocationService  │
+│     public class DataVectorSearchProvider│
+│         implements VectorSearchProvider  │
 │                                         │
 │  3. Spring 自动扫描                       │
 │     发现并注册所有实现类                   │
 │                                         │
 │  4. 框架使用实现                          │
 │     @Autowired                           │
-│     List<LlmInvocationService> services  │
+│     ObjectProvider<VectorSearchProvider> │
 │                                         │
 │  5. 调用业务逻辑                          │
-│     for (s : services) s.invoke("...")   │
+│     provider.search(query, topK)         │
 │                                         │
 └─────────────────────────────────────────┘
 ```
@@ -746,12 +630,13 @@ public class MyTool implements ToolHandler {
 
 | 扩展点 | 用途 | 说明 |
 |--------|------|------|
-| **Agent 定义 YAML** | 配置 Agent 行为 | agent-config/agent-definitions/*.yml |
+| **Agent 定义 YAML** | 配置 Agent 行为 | agent-definitions/*.yml（顶层键 `agent:`） |
 | **@Tool 注解** | 注册自定义工具 | Spring @Component + @Tool 注解 |
-| **LlmInvocationService** | 自定义 LLM 调用 | agent-spi 模块 SPI 接口 |
-| **UserProfileEvolver** | 用户画像进化 | agent-spi 模块 SPI 接口 |
+| **CacheProvider** | 缓存 SPI | agent-spi 模块 `cache` 包 |
+| **UserProfileProvider** | 用户画像 SPI | agent-spi 模块 `profile` 包 |
+| **DatabaseClient / Text2SqlFacade / EmbeddingService** | 数据查询与向量化 SPI | agent-spi 模块 `text2sql` 包 |
+| **VectorPersistenceProvider / VectorSearchProvider** | 向量存储与检索 SPI | agent-spi 模块 `vector` 包 |
 | **IntelligentLlmService** | 简化 LLM 调用封装 | intelligent/ 模块 |
-| **VectorSearchProvider** | 向量搜索实现 | DataVectorSearchProvider |
 
 ### 分层职责
 
@@ -764,7 +649,7 @@ public class MyTool implements ToolHandler {
 │  SPI 接口 ←── 实现                       │
 ├─────────────────────────────────────────┤
 │          Platform 平台层                 │
-│  - 13 个功能包定义业务 SPI                │
+│  - 30+ 个功能包定义业务 SPI              │
 │  - 调用 SPI 实现                         │
 │  - 编排业务流程                          │
 ├─────────────────────────────────────────┤
@@ -785,40 +670,41 @@ public class MyTool implements ToolHandler {
 用户请求
     ↓
 ┌─────────────────────────────────────────┐
-│ 1. Gateway (网关层)                      │
-│    - 协议适配 (HTTP/WebSocket/Webhook)   │
-│    - 统一认证 (Token 校验)               │
-│    - 限流熔断 (Rate Limiting)            │
+│ 1. ConversationController               │
+│    POST /api/conversations/chat         │
+│    - 解析 UnifiedChatRequest            │
+│    - 认证 (SecurityContext)             │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 2. Scene Router (场景路由)               │
-│    - 领域识别 (Domain Detection)         │
-│    - 场景匹配 (Scene Matching)           │
-│    - 上下文组装 (Context Assembly)       │
+│ 2. ChatAppService (对话编排)             │
+│    - 意图路由 (IntentAwareAgentResolver) │
+│    - RAG 模式选择 (ragMode)             │
+│    - 组装 RuntimeContext(userId, sessionId) │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 3. Agent Core (核心层)                   │
-│    - Agent 选择                          │
-│    - 记忆检索                            │
-│    - 提示词组装                          │
+│ 3. AgentGatewayImpl (统一网关)           │
+│    callStream(agentName, message, ...)  │
+│    - 获取 Agent 实例                     │
+│    - 调用 streamEvents(messages, ctx)   │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 4. AgentScope ChatAppService (运行时)        │
-│    - LLM 推理                            │
-│    - 工具调用决策                        │
-│    - 循环执行                            │
+│ 4. HarnessAgent (AgentScope 运行时)      │
+│    - MiddlewareChain 执行                │
+│      (ApplicationRAG / Compaction /     │
+│       MemoryFlush / Tracing ...)        │
+│    - ReAct 推理循环 (LLM + 工具决策)     │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 5. MCP Tool (工具层)                     │
-│    - 工具执行                            │
-│    - 结果返回                            │
+│ 5. 工具层                                │
+│    - 内置 @Tool (HttpTool/DatabaseTool) │
+│    - MCP 服务器工具 (远程转发)           │
 └─────────────┬───────────────────────────┘
               ↓
-         返回结果
+   AgentEvent 流 → SSE 响应 → 返回结果
 ```
 
 ---

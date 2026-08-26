@@ -1,6 +1,6 @@
 # 05. 模块说明
 
-> **⚠️ V2.0 包结构变更**：agent-core 内部包结构已从 `framework/`/`shared/`/`infra/` 三层重构为扁平化的 13 个功能包。以下为更新后的结构。
+> **⚠️ V2.0 包结构变更**：agent-core 内部包结构已从 `framework/`/`shared/`/`infra/` 三层重构为扁平化的 30 个功能包。以下为更新后的结构。
 
 了解 yunxi Agent Platform 各模块的功能和职责。
 
@@ -101,41 +101,45 @@ yunxi:
 
 ```
 agent-core/src/main/java/io/yunxi/platform/
-├── agent/        ← Agent 核心（工厂、网关、Middleware、工作区）
+├── agent/        ← Agent 核心（工厂、网关、装配 AgentConfigurer、工作区）
+├── a2a/          ← 跨服务 Agent 协作（A2AServer/A2AClient/A2ARegistry）
 ├── cache/        ← Redis 缓存
-├── config/       ← 配置类（含 @ComponentScan 扫描）
-├── controller/   ← REST 控制器
-├── embedding/    ← Embedding 提供商
-├── file/         ← 文件处理
-├── gateway/      ← SSE 消息通道
-├── knowledge/    ← 知识库（通过 Middleware 注入）
-├── lifecycle/    ← 生命周期
-├── mcp/          ← MCP 协议层
-├── persistence/  ← 持久化（Milvus + Repository）
-├── security/     ← 安全（HITL、审计、认证）
-├── session/      ← 会话管理
-├── tracing/      ← 可观测性（OpenTelemetry）
-├── a2a/          ← 跨服务 Agent 协作
-├── conversation/ ← 对话编排
-├── sync/         ← 数据同步
-├── tool/         ← 自定义工具
-├── memory/       ← 记忆系统
-├── prompt/       ← 场景检测
-├── intelligent/  ← 智能自动配置
-├── pageagent/    ← 页面 Agent（OpenAI 代理 / 后端 LLM 代理；纯后端，无前端决策循环）
+├── config/       ← 配置类（AgentscopeExtensionProperties、Redis 后端等）
+├── controller/   ← REST 控制器（Agent/Conversation/Tool/Skill/File/Config）
+├── conversation/ ← 对话编排（ChatAppService）
 ├── desktop/      ← 桌面客户端中继
+├── embedding/    ← Embedding 提供商
+├── file/         ← 文件处理（上传、向量化入库）
+├── framework/    ← 框架基础类（@Configuration 装配入口）
+├── gateway/      ← SSE 消息通道
+├── intelligent/  ← 智能 LLM 服务（IntelligentLlmService + IntelligentProperties）
+├── intent/       ← 意图引擎（IntentProperties、路由、场景注册）
+├── knowledge/    ← （空目录，V2.0 已弃用；RAG 由 rag/ 承担）
+├── lifecycle/    ← 生命周期
+├── mcp/          ← （空目录，MCP 客户端由 AgentConfigurer 直接构建）
+├── memory/       ← 记忆系统（MemoryScene/MemorySceneRegistry）
+├── pageagent/    ← 页面 Agent（OpenAI 代理 / 后端 LLM 代理）
+├── persistence/  ← 持久化（Milvus + Repository）
+├── prompt/       ← 场景检测（SceneDetectionService）
+├── rag/          ← 应用层 RAG（ApplicationRAG 中间件工厂）
+├── security/     ← 安全（SecurityContext、审计、认证）
+├── session/      ← 会话管理
+├── shared/       ← 共享 DTO、配置加载（AgentDefinitionLoader）
+├── spi/          ← 平台内 SPI 接口
 ├── structured/   ← Schema 注册
-└── async/        ← 异步执行器配置
+├── sync/         ← 数据同步
+├── tool/         ← 自定义工具（@Tool 注解）
+└── tracing/      ← 可观测性（OpenTelemetry）
 ```
 
 ### agent/ Agent 核心包
 
 | 组件 | 说明 | 代码量 |
 |------|------|:-----:|
-| `AgentGateway` | 业务层唯一需要的接口，定义 call/callStream 方法 | 接口 |
-| `AgentGatewayImpl` | **核心实现** — 8 步拦截链：审计→限流→优雅关闭→超时→Pre→Agent.call→Post→监控 | ~430行 |
+| `AgentGateway` | 业务层唯一需要的接口，定义 callStream/interrupt 方法 | 接口 |
+| `AgentGatewayImpl` | **默认实现** — 包内私有类，仅 callStream（请求→AgentEvent 流）与 interrupt（中断透传）两个方法，薄适配 | ~103行 |
 | `AgentService` | Agent 生命周期管理（创建、缓存、获取），通过 HarnessAgent 包装 | ~320行 |
-| `AgentConfigurer` | **Agent 自动装配引擎** — 启动时两轮初始化：独立 Agent → 编排 Agent | ~555行 |
+| `AgentConfigurer` | **Agent 自动装配引擎** — 启动时两轮初始化：独立 Agent → 编排 Agent（supervisor/pipeline/routing） | 约 1261 行 |
 | `TempAgentFactory` | 临时 Agent 创建工厂（原名 AdvancedAgentFactory） | - |
 | `ProfileRouter` | Profile 路由：agentName + profile → Agent 实例 | - |
 | `ModelFactory` | 统一模型工厂，复用框架内置 Provider | - |
@@ -171,21 +175,21 @@ MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()`
 | 组件 | 说明 |
 |------|------|
 | `a2a/` | 跨服务 Agent 协作协议（A2AServer/A2AClient/A2ARegistry） |
-| `memory/` | 记忆系统（MemoryRecord/MemoryScene/MemorySceneRegistry + Harness 内置记忆） |
-| `skill/` | 技能系统由 AgentScope 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录）管理，由框架 `DynamicSkillMiddleware` 自动装载 |
+| `memory/` | 记忆系统（MemoryScene/MemorySceneRegistry + Harness 内置文件系统记忆） |
+| `skill/`（无独立包） | 技能系统由 AgentScope 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录）管理，由框架 `DynamicSkillMiddleware` 自动装载 |
 | `conversation/` | 对话编排（ChatAppService） |
 | `intelligent/` | 智能 LLM 服务（IntelligentLlmService + IntelligentProperties + IntelligentAutoConfiguration） |
-| `workspace/` | 多租户运行时隔离（AgentScope-Java 2.0GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 按用户命名空间隔离工作空间与 AgentState 会话槽） |
+| `workspace/`（无独立包） | 多租户运行时隔离（AgentScope-Java 2.0GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 按用户命名空间隔离工作空间与 AgentState 会话槽） |
 | `session/` | 会话管理 |
 | `sync/` | 数据同步引擎（MySQL → Milvus） |
-| `plan/` | PlanNotebook 持久化、计划模板 |
-| `profile/` | 职业画像、概念注册 |
+| `rag/` | 应用层 RAG（ApplicationRAG 中间件工厂，FileVectorService 检索） |
 | `pageagent/` | 页面 Agent（OpenAI 代理 / 后端 LLM 代理；前端填表执行已迁移至 `agent-web-sdk` 的 `PageAgentDomEngine`） |
-| `hitl/` | Human-in-the-Loop（工具门控、推理审查） |
-| `security/` | 命令安全分类、节点审计 |
+| `security/` | 安全（SecurityContext 用户认证、审计、HITL 权限配置） |
 | `embedding/` | 嵌入模型（DashScopeProvider/OpenAIProvider/BaiduProvider/HuaweiProvider/ClaudeProvider） |
-| `knowledge/` | 知识库创建器（Bailian/Dify/HayStack/RAGFlow/Simple）。通过 Middleware 注入 Agent 调用链 |
-| `controller/` | REST 控制器（Agent/Conversation/Tool/MCP/Plan/Config） |
+| `intent/` | 意图引擎（IntentProperties + IntentAwareAgentResolver 路由） |
+| `controller/` | REST 控制器（Agent/Conversation/Tool/SkillManagement/FileUpload/ConfigManagement） |
+
+> **说明**：`knowledge/` 与 `mcp/` 目录在 V2.0 已清空（知识库创建器与自建 MCP 客户端已删除），对应能力分别由 `rag/`（ApplicationRAG）与 AgentScope 框架原生 `McpClientBuilder` + `Toolkit.registration().mcpClient()` 承担。
 
 ### 已迁移的功能包（原 shared/infra 层）
 

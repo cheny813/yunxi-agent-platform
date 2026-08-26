@@ -72,7 +72,7 @@ docker compose up -d
 
 首次启动约需 30-60 秒（主要等 Milvus 就绪）。可用 `docker compose ps` 确认所有容器状态。
 
-Ollama 向量嵌入服务建议在宿主机安装（`ollama pull nomic-embed-text`），由应用通过 `localhost:11434` 调用。
+Ollama 向量嵌入服务建议在宿主机安装（`ollama pull bge-m3`），由应用通过 `localhost:11434` 调用。
 
 **关闭服务**：`docker compose down`；**彻底重置**：`docker compose down -v && docker compose up -d`
 
@@ -98,10 +98,12 @@ mvn spring-boot:run -pl agent-app
 ### 发送第一条消息
 
 ```bash
-curl -X POST http://localhost:40001/api/chat \
+curl -X POST http://localhost:40001/api/conversations/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "messages": [{"role": "user", "content": "你好，请介绍一下自己"}]
+    "agentName": "general-assistant",
+    "message": "你好，请介绍一下自己",
+    "mode": "sync"
   }'
 ```
 
@@ -160,8 +162,17 @@ curl -X POST http://localhost:40001/api/chat \
 | [02. 快速开始](docs/guide/02-quickstart.md) | 开发者 |
 | [03. 核心概念](docs/guide/03-concepts.md) | 所有读者 |
 | [04. 架构设计](docs/guide/04-architecture.md) | 架构师、开发者 |
+| [05. 模块说明](docs/guide/05-modules.md) | 架构师、开发者 |
+| [06. 配置指南](docs/guide/06-configuration.md) | 运维工程师、开发者 |
 | [07. 开发指南](docs/guide/07-development.md) | 开发者 |
 | [08. 部署指南](docs/guide/08-deployment.md) | 运维工程师 |
+| [09. API 参考](docs/guide/09-api-reference.md) | 开发者 |
+| [10. 技能系统](docs/guide/10-skills.md) | 开发者 |
+| [11. 最佳实践](docs/guide/11-best-practices.md) | 架构师、开发者 |
+| [12. FAQ](docs/guide/12-faq.md) | 所有读者 |
+| [13. 智能系统](docs/guide/13-intelligent-system.md) | 架构师、开发者 |
+| [14. A2A 协议](docs/guide/14-a2a-protocol.md) | 架构师 |
+| [15. 可观测性](docs/guide/15-observability.md) | 运维工程师 |
 | [16. 意图引擎](docs/guide/16-intent-engine.md) | 架构师、开发者 |
 
 [📖 查看完整文档](docs/guide/README.md)

@@ -35,6 +35,22 @@ public class IntentProperties {
     /** 映射表文件（支持 classpath:/file:/url: 前缀） */
     private String mappingTable = "classpath:intent/intent-mapping.yml";
 
+    /** 意图路由配置（M2.1：识别→路由闭环，默认关闭渐进式上线） */
+    private Routing routing = new Routing();
+
+    /** 意图路由开关（便捷方法，等价 {@code getRouting().isEnabled()}） */
+    public boolean isRoutingEnabled() {
+        return routing != null && routing.isEnabled();
+    }
+
+    public Routing getRouting() {
+        return routing;
+    }
+
+    public void setRouting(Routing routing) {
+        this.routing = routing;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -89,5 +105,36 @@ public class IntentProperties {
 
     public void setMappingTable(String mappingTable) {
         this.mappingTable = mappingTable;
+    }
+
+    /**
+     * 意图路由配置（M2.1）。
+     *
+     * <p>配置前缀 {@code yunxi.intent.routing.*}。默认关闭，开启后 routeHint 参与
+     * 会话入口的路由决策（advisory，失败/未命中保持原路由）。</p>
+     */
+    public static class Routing {
+
+        /** 意图路由开关（默认 false，渐进式上线） */
+        private boolean enabled = false;
+
+        /** 最低采纳分数（RouteHint.score 低于此值不改道，默认 0.5） */
+        private double minRouteScore = 0.5;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public double getMinRouteScore() {
+            return minRouteScore;
+        }
+
+        public void setMinRouteScore(double minRouteScore) {
+            this.minRouteScore = minRouteScore;
+        }
     }
 }

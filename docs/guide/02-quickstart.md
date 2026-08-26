@@ -118,7 +118,7 @@ docker compose ps
 
 ```powershell
 # 安装 Ollama 并拉取嵌入模型
-ollama pull nomic-embed-text
+ollama pull bge-m3
 ```
 
 关闭所有服务：
@@ -193,38 +193,29 @@ export REDIS_PASSWORD=your_password
 export DASHSCOPE_API_KEY=your_api_key
 
 # ============================================
-# 可选：知识库（RAG）配置
+# 可选：向量数据库（Milvus）配置
+# 启用 RAG（知识库检索）时，需要可访问的 Milvus 服务
 # ============================================
-# 启用知识库自动配置后，agentscope.yml 中配置的知识库将自动注册为 Bean
-export AGENTSCOPE_AUTO_CONFIG=true
-
-# 百炼知识库（阿里云 RAG）
-export BAILIAN_ENABLED=false
-export BAILIAN_ACCESS_KEY_ID=
-export BAILIAN_ACCESS_KEY_SECRET=
-export BAILIAN_WORKSPACE_ID=
-export BAILIAN_INDEX_ID=
-
-# Dify 知识库
-export DIFY_ENABLED=false
-export DIFY_API_KEY=
-export DIFY_API_URL=
-export DIFY_DATASET_ID=
-
-# RAGFlow 知识库
-export RAGFLOW_ENABLED=false
-export RAGFLOW_API_KEY=
-export RAGFLOW_API_URL=http://localhost:9380
-export RAGFLOW_DATASET_ID=
-
-# Simple 本地知识库（开发测试用）
-export SIMPLE_KB_ENABLED=false
+export MILVUS_HOST=localhost
+export MILVUS_PORT=19530
+export MILVUS_DATABASE=default
+# Milvus 启用认证时（docker-compose 默认未启用，可不配置）
+export MILVUS_USERNAME=root
+export MILVUS_PASSWORD=root
+export MILVUS_TOKEN=
 
 # ============================================
-# 可选：RAG 检索默认参数
+# 可选：向量嵌入模型（知识库/语义检索需要）
+# 提供商：dashscope / ollama / openai / baidu / huawei
 # ============================================
-export RAG_DEFAULT_LIMIT=5
-export RAG_DEFAULT_SCORE_THRESHOLD=0.5
+# 默认使用本地 Ollama（推荐开发环境，无 API 费用）
+export EMBEDDING_PROVIDER=ollama
+export OLLAMA_BASE_URL=http://localhost:11434
+export OLLAMA_EMBEDDING_MODEL=bge-m3
+
+# 若使用云端嵌入（如阿里云百炼 text-embedding-v3），改用：
+# export EMBEDDING_PROVIDER=dashscope
+# export MILVUS_EMBEDDING_MODEL=text-embedding-v3
 ```
 
 **为什么使用环境变量**：
@@ -286,13 +277,17 @@ curl http://localhost:40001/actuator/prometheus
 ### 通过 Web API 发送消息
 
 ```bash
-curl -X POST http://localhost:40001/api/chat \
+# 同步模式：一次性返回完整回复
+curl -X POST http://localhost:40001/api/conversations/chat \
   -H "Content-Type: application/json" \
   -d '{
-    "userId": "user001",
-    "message": "你好"
+    "agentName": "general-assistant",
+    "message": "你好",
+    "mode": "sync"
   }'
 ```
+
+> 说明：`message` 与 `agentName` 均为必填字段（示例使用 `general-assistant`，可换成任意已配置的 Agent 名）；`mode` 默认 `stream`（SSE 流式输出），设为 `sync` 则等待完整回复后一次性返回。
 
 ### 请求处理流程
 
