@@ -271,6 +271,10 @@
                         <source>${java.version}</source>
                         <target>${java.version}</target>
                         <encoding>UTF-8</encoding>
+                        <!-- 关闭增量编译：compiler 3.11.0 对依赖/注解处理器变更感知不全，
+                             曾误判 testCompile "Nothing to compile" 导致测试类缺失（ClassNotFoundException），
+                             统一走全量编译根治 -->
+                        <useIncrementalCompilation>false</useIncrementalCompilation>
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.projectlombok</groupId>
@@ -298,7 +302,9 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <argLine>-Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8</argLine>
+                        <!-- ${argLine} 由 jacoco prepare-agent 注入（须放在最前），
+                             显式挂载 mockito-core agent 替代运行时 self-attach（JDK 21+ 动态加载警告） -->
+                        <argLine>${argLine} -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
                     </configuration>
                 </plugin>
 

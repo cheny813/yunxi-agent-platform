@@ -208,3 +208,8 @@ agent-core/.../tracing/
 2. Jaeger 不可用时 OTel 导出器会打印错误日志，应用正常运行
 3. `okio-jvm` 已通过 Maven exclusion 排除，避免与 `okio` 主包类冲突
 4. Token 指标需要模型返回 usage 信息，部分模型可能不返回
+
+---
+
+**上一页**: [14. A2A 协议](./14-a2a-protocol.md)  
+**下一页**: [16. 意图引擎 →](./16-intent-engine.md)

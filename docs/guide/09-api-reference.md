@@ -79,46 +79,91 @@ Accept: application/vnd.api.v1+json
 X-User-Id: your-user-id
 ```
 
-### MCP Token
-
-```http
-X-MCP-Token: your-token
-```
-
-### Bearer Token
+### Bearer Token（A2A JWT）
 
 ```http
 Authorization: Bearer your-jwt-token
 ```
 
+> 说明：平台不提供独立的 MCP Token。外部 MCP 服务器（如 yunxi-mcp-servers 各服务）如需鉴权，在其自身配置中设置，与平台 API 调用无关。
+
 ---
 
 ## Chat API
 
-### 发送消息
+统一入口：`POST /api/conversations/chat`（`mode` 决定返回方式）；流式专用入口：`POST /api/conversations/chat/stream`（SSE）。
+
+### 发送消息（同步）
 
 **请求**
 
 ```http
-POST /api/chat
+POST /api/conversations/chat
 Content-Type: application/json
 X-User-Id: user001
 
 {
-  "sessionId": "session-123",
-  "message": "你好"
+  "agentName": "general-assistant",
+  "message": "你好",
+  "mode": "sync"
 }
 ```
 
-**响应**
+**请求字段**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `message` | string | 是 | 用户消息 |
+| `agentName` | string | 是 | Agent 名称（必填，如 `general-assistant`） |
+| `mode` | string | 否 | `stream`（默认，SSE 流式）/ `sync`（完整回复） |
+| `conversationId` | string | 否 | 会话 ID，缺省自动创建新会话 |
+
+**响应（sync）**
 
 ```json
 {
-  "message": "你好！有什么可以帮助你的？",
-  "type": "text",
-  "timestamp": 1704067200000
+  "reply": "你好！有什么可以帮助你的？",
+  "conversationId": "conv-xxx"
 }
 ```
+
+> 说明：同步响应体为 `ChatResponse`，字段为 `reply`（回复文本）与 `conversationId`（会话 ID；非会话模式下为 `null`）。
+
+### 发送消息（流式 SSE）
+
+```http
+POST /api/conversations/chat/stream
+Content-Type: application/json
+X-User-Id: user001
+
+{
+  "message": "你好",
+  "agentName": "general-assistant"
+}
+```
+
+流式响应为 `text/event-stream`，每条 `data:` 行包含 `{type, timestamp, content}` 结构事件，`type` 取值包括 `content`（回复增量）、`thinking`（思考过程）、`tool_call`、`tool_result`、`agent_status`、`error` 等。
+
+### 会话管理
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| POST | `/api/conversations` | 创建会话 |
+| GET | `/api/conversations/list?userId=` | 按用户查询会话列表 |
+| GET | `/api/conversations/{conversationId}` | 查询会话信息 |
+| GET | `/api/conversations/{conversationId}/messages` | 查询会话消息列表 |
+| POST | `/api/conversations/{conversationId}/chat` | 追加会话聊天 |
+| POST | `/api/conversations/{conversationId}/stream` | 追加会话流式聊天 |
+| POST | `/api/conversations/cancel/{cancelToken}` | 取消正在执行的任务 |
+| GET | `/api/conversations/requests/active-count` | 当前活跃请求数 |
+
+### Agent 中断控制
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| POST | `/api/conversations/agent/{name}/interrupt` | 中断 Agent 执行（一次性暂停信号，框架在本次迭代结束后自动消费） |
+| GET | `/api/conversations/agent/{name}/status` | 查询 Agent 执行状态 |
+| POST | `/api/conversations/agent/{name}/resume` | 恢复 Agent（清除中断状态） |
 
 ### 健康检查
 
@@ -140,72 +185,44 @@ GET /actuator/health
 
 ---
 
-## MCP API
+## MCP 工具（外部服务器注册）
 
-### MCP 协议概述
+平台**不对外暴露** HTTP MCP 端点（不存在 `POST /mcp` 或 `X-MCP-Token` 请求头）。MCP 服务器作为独立进程运行（见 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers)，端口 40101+），平台作为 MCP **客户端**连接它们，并把工具注册进 Agent 的 Toolkit。
 
-**MCP（Model Context Protocol）** 是 Anthropic 提出的标准化协议：
-- 基于 JSON-RPC 2.0
-- 支持工具发现、调用、通知
-- 统一的错误处理
+### 注册机制
 
-**协议栈**：
-```
-应用层：MCP 语义（tools/list, tools/call）
-协议层：JSON-RPC 2.0
-传输层：HTTP / SSE
-```
+Agent 启动时由 `AgentConfigurer.registerMcpServers()` 读取 `agentscope.core.mcp-servers` 配置段（见 `agent-config/src/main/resources/config/mcp-core.yml`），使用框架原生 `McpClientBuilder` 以 SSE / stdio / Streamable HTTP 三种传输方式连接服务器，随后通过 `Toolkit.registration().mcpClient(...).group(name).apply()` 把工具按服务器名分组注册进各 Agent。启用/停用由 `enabled` 开关控制（可配环境变量覆盖）。
 
-### 初始化连接
+### 配置示例（SSE 模式）
 
-```http
-POST /mcp
-Content-Type: application/json
-X-MCP-Token: your-token
-
-{
-  "jsonrpc": "2.0",
-  "method": "initialize",
-  "params": {
-    "protocolVersion": "2024-11-05"
-  },
-  "id": 1
-}
+```yaml
+agentscope:
+  core:
+    mcp-servers:
+      database:
+        enabled: true            # 环境变量：MCP_DATABASE_ENABLED
+        type: sse
+        url: http://localhost:40101/mcp/sse
+        timeout: 60000
+        description: "数据库操作 MCP 服务器"
 ```
 
-### 获取工具列表
+### 配置示例（stdio 模式）
 
-```http
-POST /mcp
-Content-Type: application/json
-X-MCP-Token: your-token
-
-{
-  "jsonrpc": "2.0",
-  "method": "tools/list",
-  "id": 2
-}
+```yaml
+agentscope:
+  core:
+    mcp-servers:
+      puppeteer:
+        enabled: false
+        type: stdio
+        command: npx
+        args: ["-y", "@modelcontextprotocol/server-puppeteer"]
 ```
 
-### 调用工具
+### 工具调用方式
 
-```http
-POST /mcp
-Content-Type: application/json
-X-MCP-Token: your-token
-
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "query_database",
-    "arguments": {
-      "sql": "SELECT * FROM users LIMIT 10"
-    }
-  },
-  "id": 3
-}
-```
+注册后的 MCP 工具与普通工具一样，由 Agent 在对话过程中根据任务自主调用（工具名以服务器名前缀区分），客户端无需直接调用 MCP 接口，通过 Chat API 即可触发。
 
 ---
 
@@ -222,7 +239,7 @@ X-MCP-Token: your-token
 | 404 | 资源不存在 |
 | 500 | 服务器内部错误 |
 
-### MCP 错误码
+### MCP 协议错误码（参考，供 MCP 服务器实现使用）
 
 | 错误码 | 名称 | 说明 |
 |--------|------|------|
@@ -236,39 +253,40 @@ X-MCP-Token: your-token
 
 ## SDK 使用
 
-### SDK 设计原则
+平台提供官方 **JavaScript/TypeScript SDK**（`sdk-js`，npm 包 `yunxi-agent-client`），支持 Node.js 与浏览器。当前无官方 Java SDK，Java 侧可直接调用上文 REST 端点。
 
-**SDK（Software Development Kit）** 封装了 API 调用细节：
-- 简化调用流程
-- 统一错误处理
-- 类型安全
-- 自动重试
-
-### Java SDK
-
-```java
-AgentClient client = AgentClient.builder()
-    .baseUrl("http://localhost:40001")
-    .build();
-
-ChatResponse response = client.chat(ChatRequest.builder()
-    .userId("user001")
-    .message("你好")
-    .build());
-```
-
-### JavaScript SDK
+### JavaScript SDK（推荐）
 
 ```javascript
-const client = new AgentClient({
-  baseUrl: 'http://localhost:40001'
+const AgentClient = require('yunxi-agent-client');
+
+// 创建客户端
+const client = new AgentClient('http://localhost:40001', {
+    defaultUserId: 'user001',   // 默认用户 ID（对应 X-User-Id 请求头）
+    defaultAgentName: 'general-assistant'
 });
 
-const response = await client.chat({
-  userId: 'user001',
-  message: '你好'
+// 同步对话：等待完整回复后返回
+const response = await client.chatSync('你好，请介绍一下自己');
+console.log(response);
+
+// 流式对话：逐块输出
+await client.chatStream('写一个冒泡排序', (chunk) => {
+    console.log(chunk);
+});
+
+// 结构化事件：可渲染思考过程、工具调用卡片
+await client.chatStreamEvents('查询今天天气', {
+    onText:     (s) => console.log('[回复]', s),
+    onThinking: (s) => console.log('[思考]', s),
+    onToolCall: (t) => console.log('[工具]', t.toolCallName),
+    onDone:     () => console.log('[结束]')
 });
 ```
+
+**常用方法**：`chatSync(message, options)`、`chatStream(message, onChunk, options)`、`chatStreamIterator`、`chatStreamEvents`、`chatStructured(message, schema)`、`isAvailable()`、`getServiceInfo()`。
+
+浏览器中也可直接使用内置静态资源（`http://localhost:40001/static/js/AgentClient.js`），完整 API 见 [sdk-js/README.md](../../sdk-js/README.md)。
 
 ---
 

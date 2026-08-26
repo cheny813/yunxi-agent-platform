@@ -169,19 +169,30 @@ spring:
 └─────────────────────────────────────────┘
 ```
 
+LLM 提供商的配置键统一挂在 `agentscope.core.<provider>` 前缀下（见 `agent-config/src/main/resources/config/llm.yml`），支持 dashscope / openai / baidu / huawei 等：
+
 ```yaml
-llm:
-  default-provider: dashscope
-  providers:
+agentscope:
+  core:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
       model: qwen-max
       base-url: https://dashscope.aliyuncs.com/api/v1
+      timeout: 30s
     openai:
       api-key: ${OPENAI_API_KEY:}
-      model: gpt-4
+      model: gpt-4o
       base-url: https://api.openai.com/v1
+      timeout: 30s
+    baidu:
+      api-key: ${BAIDU_API_KEY:}
+      model: ernie-4.0
+    huawei:
+      api-key: ${HUAWEI_API_KEY:}
+      model: pangu-ultra
 ```
+
+> **切换默认模型**：Agent 定义 YAML 的 `model.provider` / `model.modelName` 决定实际使用哪个提供商与模型；`agentscope.core.<provider>` 提供该提供商账号级配置。自定义提供商（baidu/huawei）由平台 `BaiduModelProvider` / `HuaweiModelProvider` 注册为模型工厂。
 
 ### 生成参数配置
 
@@ -274,115 +285,57 @@ agentscope:
 
 ## 知识库（RAG）配置
 
-> **⚠️ V2.0 兼容性说明**：`io.agentscope.core.rag.Knowledge` 在 AgentScope 2.0.0（GA）中标记为 `@Deprecated(forRemoval=true)`。官方新 RAG 模块计划在后续 minor 版本上线，届时需要迁移知识库创建逻辑到新的 SPI 接口。当前通过 `@SuppressWarnings("removal")` 保持功能正常，所有相关代码均标记 `TODO: AgentScope 2.0` 方便后续定位。参见 [框架适配](#) 了解更多。
+> **⚠️ V2.0 变更说明**：原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已随 GA 升级整体删除（框架 `io.agentscope.core.rag` 包 `@Deprecated(forRemoval=true)`）。应用层 RAG 由平台自建的 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，检索后端复用 `FileVectorService`（Milvus + EmbeddingService）。
 
 ### 理论基础：检索增强生成
 
-RAG 使 Agent 能够从外部知识库中检索相关信息，弥补 LLM 知识截止日期和领域知识不足的问题。本框架支持 5 种知识库，通过统一的自动配置机制注册为 Spring Bean。
+RAG 使 Agent 能够从外部知识库中检索相关信息，弥补 LLM 知识截止日期和领域知识不足的问题。本框架通过文件级向量检索（Milvus）实现 RAG。
 
-### 检索默认参数
+### 检索默认参数（FileVectorService）
 
-```yaml
-agentscope:
-  extensions:
-    retrieve:
-      default-limit: 5                # 默认检索文档数（可选 3-10）
-      default-score-threshold: 0.5    # 默认相似度阈值（可选 0.3-0.7）
-```
-
-这些参数是全局默认值，API 请求中可通过 `retrieveLimit` / `retrieveScoreThreshold` 按需覆盖。
-
-### 启用自动配置
+文件检索由 `config/milvus.yml` 控制（配置前缀为 `milvus`），默认 `topK=5`：
 
 ```yaml
-agentscope:
-  extensions:
-    autoConfigEnabled: true   # 开启后，YAML 中的知识库配置会自动创建为 Bean
-    knowledge-bases:
-      # ... 知识库配置 ...
+milvus:
+  enabled: true                              # 源码默认启用（无 MILVUS_ENABLED 环境变量，需直接修改配置）
+  host: ${MILVUS_HOST:192.168.11.48}
+  port: ${MILVUS_PORT:19530}
+  database: ${MILVUS_DATABASE:default}
+  username: ${MILVUS_USERNAME:root}
+  password: ${MILVUS_PASSWORD:root}
 ```
 
-### 百炼知识库（阿里云）
+> **降级说明**：Milvus 未启用时 `FileVectorService` 不可用，`ApplicationRAG` 中间件自动降级为透传，Agent 对话不受影响（仅无 RAG 增强）。
+
+### 工作模式
+
+RAG 模式在 Agent 定义 YAML 的 `agent.ragMode` 字段设置（默认 `GENERIC`），请求级 `ragMode` 字段可覆盖：
+
+| 模式 | 行为 | 注入位置 |
+|------|------|---------|
+| `NONE` | 不启用 RAG | — |
+| `GENERIC` | 检索结果注入系统提示前缀（默认） | 消息列表头部 |
+| `AGENTIC` | 检索结果注入用户消息，Agent 自主决定如何使用 | 消息列表头部 |
 
 ```yaml
-knowledge-bases:
-  tech-docs:
-    enabled: ${BAILIAN_ENABLED:false}
-    type: bailian
-    access-key-id: ${BAILIAN_ACCESS_KEY_ID:}
-    access-key-secret: ${BAILIAN_ACCESS_KEY_SECRET:}
-    workspace-id: ${BAILIAN_WORKSPACE_ID:}
-    index-id: ${BAILIAN_INDEX_ID:}
+agent:
+  name: business-assistant
+  ragMode: AGENTIC   # NONE / GENERIC / AGENTIC（请求级 ragMode 可覆盖）
 ```
 
-### Dify 知识库
-
-```yaml
-knowledge-bases:
-  product-manual:
-    enabled: ${DIFY_ENABLED:false}
-    type: dify
-    api-key: ${DIFY_API_KEY:}
-    api-url: ${DIFY_API_URL:}
-    dataset-id: ${DIFY_DATASET_ID:}
-    retrieval-mode: ${DIFY_RETRIEVAL_MODE:HYBRID_SEARCH}  # KEYWORD / SEMANTIC / HYBRID / FULLTEXT
-```
-
-### RAGFlow 知识库
-
-```yaml
-knowledge-bases:
-  company-docs:
-    enabled: ${RAGFLOW_ENABLED:false}
-    type: ragflow
-    api-key: ${RAGFLOW_API_KEY:}
-    api-url: ${RAGFLOW_API_URL:http://localhost:9380}
-    dataset-id: ${RAGFLOW_DATASET_ID:}           # 支持逗号分隔多数据集
-    similarity-threshold: ${RAGFLOW_SIMILARITY_THRESHOLD:0.3}
-    vector-similarity-weight: ${RAGFLOW_VECTOR_WEIGHT:0.3}
-```
-
-### SimpleKnowledge 本地知识库（开发测试）
-
-```yaml
-knowledge-bases:
-  local-docs:
-    enabled: ${SIMPLE_KB_ENABLED:false}
-    type: simple
-    dimension: ${SIMPLE_KB_DIMENSION:1024}    # 向量维度，默认使用 EmbeddingService 的维度
-```
-
-SimpleKnowledge 复用项目已有的 `EmbeddingService`（支持 Ollama/DashScope/OpenAI），无需额外配置嵌入模型。
-
-### 知识库类型对比
-
-| 类型 | 文档管理 | 配置要点 |
-|------|---------|---------|
-| `bailian` | 百炼控制台 | `access-key-id`、`access-key-secret`、`workspace-id`、`index-id` |
-| `dify` | Dify 控制台 | `api-key`、`api-url`、`dataset-id`、`retrieval-mode` |
-| `ragflow` | RAGFlow 控制台 | `api-key`、`api-url`、`dataset-id`（支持多数据集） |
-| `haystack` | HayStack 管道 | 需安装 `agentscope-extensions-rag-haystack` 依赖 |
-| `simple` | 代码管理 | `dimension`（向量维度），复用已有 EmbeddingService |
-
-### 自动配置架构
+### 检索架构
 
 ```
-agentscope.yml knowledge-bases 配置
-    ↓ @ConfigurationProperties
-AgentscopeExtensionProperties
-    ↓ KnowledgeAutoConfiguration (@PostConstruct)
-遍历 enabled=true 的配置 → 创建对应类型的 Knowledge 实例
-    ↓ registerSingleton
-Spring 容器中的 Knowledge Bean
-    ↓ @Autowired Map<String, Knowledge>
-Agent 运行时使用
+用户上传文件（POST /api/files/upload）
+    ↓ FileVectorService（向量化 + 写入 Milvus）
+Milvus 向量库（按 userId 隔离）
+    ↓ 查询时相似度检索（topK=5）
+ApplicationRAG.createMiddleware(ragMode, userId)
+    ↓ 注入消息列表头部
+HarnessAgent MiddlewareChain → LLM 生成
 ```
 
-### 扩展新知识库类型
-
-实现自定义 `Knowledge` 类并通过 `KnowledgeAutoConfiguration` 的 `@PostConstruct` 注册。
-
-参考 [03. 核心概念](./03-concepts.md#知识库-knowledge-base) 中的知识库配置说明。
+参考 [03. 核心概念](./03-concepts.md#应用层-ragapplicationrag) 中的 RAG 说明。
 
 ---
 
@@ -395,44 +348,49 @@ Agent 运行时使用
 ### 配置结构
 
 ```yaml
-agents:
-  - name: business-assistant      # Agent 名称
-    description: 业务数据管理助手
-    type: react
-    enabled: true
-    
-    # Agent 级别默认模式
-    mode: expert
-    
-    # 默认 RAG 模式（请求未指定时使用此值，可选 GNERIC / AGENTIC / NONE）
-    ragMode: GENERIC
-    
-    # 默认 prompt（未指定 profile 时使用）
-    prompt: |
-      你是一个专业的业务数据管理助手...
-    
-    # 默认工具和专家配置
-    mcpServers: [formfill, database, milvus]
-    skillConfig:
-      experts: [data-searcher, business-evaluator, content-composer]
-    
-    # Profile 映射：name -> ProfileDefinition
-    profiles:
-      # Profile 1：智能咨询 — 聊天模式
-      chat:
-        label: 智能咨询
-        description: 回答业务咨询问题
-        mode: chat                    # ← 只需改 mode
-        prompt: |                     # ← 换一个轻量 prompt
-          你是一个专业的业务顾问...
-      
-      # Profile 2：内容生成 — 专家模式
-      business-make:
-        label: 内容生成
-        description: 生成业务内容
-        mode: expert                  # ← 继承 Agent 的 expert 模式
-        prompt: |                     # ← 覆盖 prompt
-          你是一个专业的业务数据管理助手...
+agent:
+  name: business-assistant      # Agent 名称
+  description: 业务数据管理助手
+  enabled: true
+
+  # 编排模式：supervisor / pipeline / routing / expert（或自定义模式名，见 AgentDefinition.modes）
+  orchestration: expert
+
+  # 默认 RAG 模式（请求未指定时使用此值，可选 GENERIC / AGENTIC / NONE）
+  ragMode: GENERIC
+
+  # 默认 prompt（未指定 profile 时使用）
+  prompt: |
+    你是一个专业的业务数据管理助手...
+
+  # 默认工具组配置
+  toolsGroup:
+    systemToolsGroup: default
+    mcpServersToolsGroup: [formfill, database, milvus]
+
+  # 编排为 supervisor 时的专家列表（orchestration: supervisor 时生效）
+  # orchestration:
+  #   experts:
+  #     - name: data-searcher
+  #       prompt: 你是数据检索专家...
+
+  # Profile 映射：name -> ProfileDefinition
+  profiles:
+    # Profile 1：智能咨询 — 聊天模式
+    chat:
+      label: 智能咨询
+      description: 回答业务咨询问题
+      mode: chat                    # ← 工作模式（ProfileDefinition.mode）
+      prompt: |                     # ← 换一个轻量 prompt
+        你是一个专业的业务顾问...
+
+    # Profile 2：内容生成 — 专家模式
+    business-make:
+      label: 内容生成
+      description: 生成业务内容
+      mode: expert                  # ← 专家模式
+      prompt: |                     # ← 覆盖 prompt
+        你是一个专业的业务数据管理助手...
 ```
 
 ### 模式选择示例
@@ -440,40 +398,40 @@ agents:
 #### 简单场景：只需选模式
 
 ```yaml
-agents:
-  - name: coding-assistant
-    description: 代码编写与审查助手
-    mode: expert
-    
-    profiles:
-      chat:
-        label: 编程咨询
-        mode: chat                    # 纯对话，快速响应
-      
-      code-review:
-        label: 代码审查
-        mode: expert                  # 全功能，多专家协作
+agent:
+  name: coding-assistant
+  description: 代码编写与审查助手
+  orchestration: expert
+
+  profiles:
+    chat:
+      label: 编程咨询
+      mode: chat                    # 纯对话，快速响应
+
+    code-review:
+      label: 代码审查
+      mode: expert                  # 全功能，多专家协作
 ```
 
 #### 高级场景：完全自定义
 
 ```yaml
-agents:
-  - name: custom-agent
-    description: 高级自定义智能体
-    mode: advanced                    # ← 高级模式，完全自定义
-    
-    profiles:
-      custom-flow:
-        label: 自定义流程
-        mode: advanced
-        toolGroups: [search, database]
-        mcpServers: [milvus]
-        maxIters: 30
-        enablePlanNotebook: true
-        enableMetaTool: false         # 关闭动态工具，使用固定工具集
-        prompt: |
-          你是一个自定义智能体...
+agent:
+  name: custom-agent
+  description: 高级自定义智能体
+  orchestration: advanced           # 自定义命名模式（AgentDefinition.modes 定义）
+
+  profiles:
+    custom-flow:
+      label: 自定义流程
+      mode: advanced
+      toolGroups: [database]        # 系统内置组（agent/memory/filesystem/execute/page/general）+ MCP 组
+      mcpServers: [milvus]
+      maxIters: 30
+      enablePlanNotebook: true
+      enableMetaTool: false         # 关闭动态工具，使用固定工具集
+      prompt: |
+        你是一个自定义智能体...
 ```
 
 ### 向后兼容性
@@ -481,8 +439,8 @@ agents:
 | 场景 | 行为 |
 |------|------|
 | 旧请求，无 `profile` 字段 | 使用默认 Agent（现有行为不变） |
-| 旧 YAML，无 `mode` 字段 | 默认为 `expert`（现有行为不变） |
-| 新 YAML，`mode: chat` | 应用聊天模式默认参数 |
+| 旧 YAML，无 `orchestration` 字段 | 默认为 `single`（现有行为不变） |
+| Profile 显式 `mode: chat` | 应用聊天模式默认参数 |
 | 新请求，`profile=chat` | 路由到 chat Profile |
 | 请求的 profile 不存在 | 回退到默认 Agent + 日志警告 |
 
@@ -543,24 +501,9 @@ Agent 级别默认配置
      │        返回数据                  │
 ```
 
-### Gateway 鉴权
+### 鉴权与安全模型
 
-```yaml
-agent:
-  gateway:
-    token: ${GATEWAY_TOKEN:}
-    admin-token: ${GATEWAY_ADMIN_TOKEN:}
-```
-
-### MCP 鉴权
-
-```yaml
-mcp:
-  auth:
-    enabled: true
-    type: api-token
-    token: ${MCP_API_TOKEN:}
-```
+> **说明**：本框架不设独立的网关 Token / MCP 网关鉴权配置（`agent.gateway.token`、`mcp.auth` 均不存在）。安全模型由两层构成：**应用层**通过 `SecurityContext` 完成用户认证（见下）；**Agent 执行层**由 AgentScope 原生权限引擎在 `onActing` 阶段强制执行（平台 `PermissionConfig` 将 YAML 中的 HITL / 权限规则映射为框架原生 `PermissionContextState` 的 ASK 规则）。
 
 ### SecurityContext 用户认证
 
@@ -571,13 +514,13 @@ mcp:
 前端请求时携带用户ID：
 
 ```javascript
-fetch('/api/chat/stream', {
+fetch('/api/conversations/chat/stream', {
     method: 'POST',
     headers: {
         'Content-Type': 'application/json',
         'X-User-Id': 'user123'
     },
-    body: JSON.stringify({ message: '你好' })
+    body: JSON.stringify({ agentName: 'business-assistant', message: '你好' })
 });
 ```
 
@@ -606,12 +549,13 @@ jwt:
 前端请求：
 
 ```javascript
-fetch('/api/chat/stream', {
+fetch('/api/conversations/chat/stream', {
     method: 'POST',
     headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIs...'
-    }
+    },
+    body: JSON.stringify({ agentName: 'business-assistant', message: '你好' })
 });
 ```
 
@@ -725,24 +669,18 @@ management:
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | REDIS_PASSWORD | Redis 密码 | 空 |
-| MILVUS_HOST | Milvus 主机 | localhost |
-| GATEWAY_TOKEN | Gateway Token | 空 |
-| GATEWAY_ADMIN_TOKEN | Gateway Admin Token | 空 |
-| AGENTSCOPE_AUTO_CONFIG | 知识库/记忆自动配置开关 | true |
-| BAILIAN_ENABLED | 启用百炼知识库 | false |
-| BAILIAN_ACCESS_KEY_ID | 百炼 Access Key ID | 空 |
-| BAILIAN_ACCESS_KEY_SECRET | 百炼 Access Key Secret | 空 |
-| BAILIAN_WORKSPACE_ID | 百炼工作空间 ID | 空 |
-| BAILIAN_INDEX_ID | 百炼索引 ID | 空 |
-| DIFY_ENABLED | 启用 Dify 知识库 | false |
-| DIFY_API_KEY | Dify API Key | 空 |
-| DIFY_API_URL | Dify 服务地址 | 空 |
-| DIFY_DATASET_ID | Dify 数据集 ID | 空 |
-| DIFY_RETRIEVAL_MODE | Dify 检索模式 | HYBRID_SEARCH |
-| RAGFLOW_ENABLED | 启用 RAGFlow 知识库 | false |
-| RAGFLOW_API_KEY | RAGFlow API Key | 空 |
-| RAGFLOW_API_URL | RAGFlow 服务地址 | http://localhost:9380 |
-| RAGFLOW_DATASET_ID | RAGFlow 数据集 ID | 空 |
+| MILVUS_HOST | Milvus 主机 | 192.168.11.48 |
+| MILVUS_PORT | Milvus 端口 | 19530 |
+| MILVUS_DATABASE | Milvus 数据库 | default |
+| MILVUS_USERNAME | Milvus 用户名 | root |
+| MILVUS_PASSWORD | Milvus 密码 | root |
+| OPENAI_API_KEY | OpenAI API Key | 空 |
+| BAIDU_API_KEY | 百度千帆 API Key | 空 |
+| HUAWEI_API_KEY | 华为盘古 API Key | 空 |
+| OSS_SECRET_KEY / HUAWEI_SECRET_KEY / MINIO_SECRET_KEY | 对象存储密钥 | 空 |
+| ALIYUN_OCR_ACCESS_KEY_SECRET / ALIYUN_ASR_ACCESS_KEY_SECRET | 阿里云 OCR/ASR 密钥 | 空 |
+| MCP_XXX_ENABLED / MCP_XXX_URL | 可选 MCP 服务器开关与地址（如 MCP_PLAYWRIGHT_ENABLED、MCP_GITHUB_URL），见 `config/mcp-external.yml` | false / localhost 占位 |
+| A2A_JWT_SECRET | A2A 安全 JWT 密钥（`a2a.security.authentication.type=jwt` 时使用） | 空 |
 
 ## Session 持久化配置
 
@@ -756,9 +694,6 @@ agentscope:
 ```
 
 `workspace` 模式无需额外依赖，Session 数据按框架设计存储在 `agents/{agentName}/` 工作空间目录下（与 `users/`、`knowledge/` 等同级）。`redis` 模式需 `spring-boot-starter-data-redis`，通过 `RedisTemplateAdapter` 适配。配置文件修改后重启即生效，无需改动 Java 代码。
-| SIMPLE_KB_ENABLED | 启用本地知识库 | false |
-| **RAG_DEFAULT_LIMIT** | **默认检索文档数** | **5** |
-| **RAG_DEFAULT_SCORE_THRESHOLD** | **默认相似度阈值** | **0.5** |
 
 ---
 
@@ -769,7 +704,7 @@ agentscope:
 ```yaml
 spring:
   profiles:
-    active: datasource,llm,skill
+    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,resilience,file-upload
 
 logging:
   level:
@@ -781,12 +716,14 @@ logging:
 ```yaml
 spring:
   profiles:
-    active: datasource,llm,skill,milvus,embedding,persistence
+    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,resilience,file-upload,a2a-pipeline
 
 logging:
   level:
     io.yunxi.platform: warn
 ```
+
+> **说明**：所有 `config/*.yml` 由 `config/imports.yml` 全量加载（`optional`），`spring.profiles.active` 只控制 `@Profile` 注解 Bean 的启用。真实可激活的 profile 名见 `agent-app/src/main/resources/application.yml`（datasource/redis/llm/milvus/embedding/persistence/mcp-core/mcp-external/mcp-business/skill/resilience/file-upload/a2a-pipeline 等）。
 
 ---
 
@@ -839,7 +776,7 @@ agent:
 agent:
   name: nutrition-assistant
   toolsGroup:
-    systemToolsGroup: [agent, search]          # 系统内置组 + @Tool 派生组
+    systemToolsGroup: [agent, memory]          # 系统内置组（agent/memory/filesystem/execute/page/general）
     mcpServersToolsGroup: [formfill, database] # MCP 服务器，自动加载并激活
 ```
 

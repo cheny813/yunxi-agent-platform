@@ -112,8 +112,8 @@
 # 构建项目
 mvn clean package -DskipTests
 
-# 启动服务
-java -jar agent-core-*.jar \
+# 启动服务（可执行模块为 agent-app）
+java -jar agent-app-*.jar \
   --spring.profiles.active=prod \
   --server.port=40001
 ```
@@ -123,7 +123,7 @@ java -jar agent-core-*.jar \
 java -Xms2g -Xmx2g \
   -XX:+UseG1GC \
   -XX:MaxGCPauseMillis=200 \
-  -jar agent-core-*.jar
+  -jar agent-app-*.jar
 ```
 
 | 参数 | 说明 |
@@ -185,15 +185,15 @@ docker compose down -v        # 停止并清除所有数据（彻底重置）
 #### 应用容器构建
 
 ```bash
-# 构建镜像
-docker build -t yunxi-agent-core:latest ./agent-core
+# 构建镜像（Dockerfile 位于项目根目录，多阶段构建，产物为 agent-app 的 Spring Boot 可执行 jar）
+docker build -t yunxi-agent-platform:latest .
 
 # 运行容器
 docker run -d \
-  --name agent-core \
+  --name yunxi-agent \
   -p 40001:40001 \
   -e MYSQL_HOST=mysql \
-  yunxi-agent-core:latest
+  yunxi-agent-platform:latest
 ```
 
 ### Kubernetes 部署
@@ -211,17 +211,23 @@ docker run -d \
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: agent-core
+  name: yunxi-agent-platform
+  namespace: yunxi-agent-platform
 spec:
-  replicas: 3
+  replicas: 2
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: yunxi-agent-platform
     spec:
       containers:
-      - name: agent-core
-        image: yunxi-agent-core:latest
+      - name: agent-platform
+        image: yunxi/agent-platform:2.0.0
         ports:
         - containerPort: 40001
 ```
+
+> 以上为最小示例，与仓库 `k8s/deployment.yaml` 保持一致；完整生产清单（滚动更新策略、探针、资源限制、反亲和、Prometheus 注解等）以 `k8s/` 目录为准。
 
 ---
 

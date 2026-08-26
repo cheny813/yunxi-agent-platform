@@ -1,4 +1,4 @@
-# 15. A2A 协议
+# 14. A2A 协议
 
 A2A (Agent-to-Agent) 协议实现 Agent 跨服务协作，支持分布式 Agent 架构。
 
@@ -54,123 +54,94 @@ A2A 客户端负责调用部署在其他服务中的 Agent。
 ```java
 @Service
 public class MyService {
-    
+
     @Autowired
     private A2AClient a2aClient;
-    
-    // 1. 同步调用
-    public AgentResponse callRemoteAgent() {
+
+    // 1. 同步调用（AgentRequest 由 A2AClient.AgentRequest.of(message) 构造）
+    public A2AClient.AgentResponse callRemoteAgent() {
         return a2aClient.invoke(
-            "data-agent",           // Agent 名称
-            "生成报告",                   // 请求内容
-            context                      // 上下文
+            "data-agent",                                  // Agent 名称
+            A2AClient.AgentRequest.of("生成报告")          // 请求内容
         );
     }
-    
-    // 2. 异步调用
-    public Mono<AgentResponse> callRemoteAgentAsync() {
+
+    // 2. 同步调用并携带上下文（Map<String,Object>）
+    public A2AClient.AgentResponse callRemoteAgentWithContext() {
+        Map<String, Object> context = Map.of("userId", "u1", "region", "cn");
+        return a2aClient.invoke("data-agent", "生成报告", context);
+    }
+
+    // 3. 异步调用
+    public Mono<A2AClient.AgentResponse> callRemoteAgentAsync() {
         return a2aClient.invokeAsync(
             "report-agent",
-            request
+            A2AClient.AgentRequest.of("生成周报")
         );
     }
-    
-    // 3. 批量调用
-    public List<AgentResponse> callMultipleAgents() {
+
+    // 4. 批量调用（并行发起，等待全部返回）
+    public List<A2AClient.AgentResponse> callMultipleAgents() {
         List<String> agentNames = List.of(
             "nutrition-agent",
             "cost-agent",
             "compliance-agent"
         );
-        
-        return a2aClient.invokeAll(agentNames, request);
+        return a2aClient.invokeAll(agentNames, A2AClient.AgentRequest.of("评估方案"));
     }
-    
-    // 4. 并行调用并聚合
-    public AggregatedResponse parallelCall() {
-        List<AgentResponse> responses = a2aClient.invokeParallel(
-            agentNames,
-            request,
-            Duration.ofSeconds(30)  // 超时时间
+
+    // 5. 批量调用并聚合（自动汇总成功/失败，返回 AggregatedResponse）
+    public A2AClient.AggregatedResponse aggregatedCall() {
+        return a2aClient.invokeAndAggregate(
+            List.of("nutrition-agent", "cost-agent"),
+            A2AClient.AgentRequest.of("评估方案")
         );
-        
-        return aggregate(responses);
     }
 }
 ```
 
-### 负载均衡
+> **说明**：`AgentRequest` 是 record `(conversationId, message, context, options)`，可通过 `AgentRequest.of(String)`（仅消息）或 `AgentRequest.of(String, Map)`（消息 + 上下文）构造。`AgentResponse` 是 record `(agentName, endpoint, success, content, metadata, durationMs)`，始终通过 `success()` 判断是否成功。
 
-A2AClient 支持多种负载均衡策略：
+### 调用发现与端点选择
 
-```yaml
-agentscope:
-  extensions:
-    a2a:
-      load-balancer:
-        strategy: round-robin  # round-robin | random | least-connections | weighted
-        health-check:
-          enabled: true
-          interval: 30s
-```
+`A2AClient` 通过 `A2ARegistry` 发现 Agent 端点（`AgentEndpoint` record：`name/host/port/protocol/metadata`，`getUrl()` 生成 `<protocol>://<host>:<port>/a2a/invoke`）。**同一 Agent 名对应多个端点时，客户端内部采用简单轮询**（`System.currentTimeMillis() % size`）选择端点——不提供可配置的负载均衡策略，也不需要。
 
-| 策略 | 说明 |
-|------|------|
-| round-robin | 轮询，依次选择 |
-| random | 随机选择 |
-| least-connections | 最少连接数 |
-| weighted | 加权轮询 |
+### 超时控制
 
-### 故障转移
+超时通过 `invoke` 的 `Duration` 参数指定（默认 60 秒）：
 
 ```java
-// 配置重试策略
-A2AConfig config = A2AConfig.builder()
-    .retryTimes(3)                    // 重试次数
-    .retryInterval(Duration.ofSeconds(1))  // 重试间隔
-    .failoverEnabled(true)            // 启用故障转移
-    .build();
-
-// 调用时会自动重试和故障转移
-AgentResponse response = a2aClient.invoke(
+A2AClient.AgentResponse response = a2aClient.invoke(
     "nutrition-agent",
-    request,
-    config
+    A2AClient.AgentRequest.of("评估方案"),
+    Duration.ofSeconds(30)   // 本次调用 30 秒超时
 );
 ```
+
+> **说明**：`A2AConfig` 是普通 POJO（`enabled/registryType/registryAddr/namespace`），**无 Builder、无重试/故障转移配置**。调用失败不重试，由调用方根据 `AgentResponse.success()` 自行决定处理策略。
 
 ## A2AServer
 
 ### 功能
 
-A2A 服务端负责将本地 Agent 暴露为远程可调用的服务。
+A2A 服务端负责将本地 Agent 暴露为远程可调用的服务，同时提供 `invoke` / `health` / `agents` 等 REST 端点。
 
-### 自动暴露
+### 注册本地 Agent
 
-默认情况下，所有 Agent 会自动注册到 A2AServer：
-
-```java
-// 框架自动完成，无需手动配置
-// AgentInitializationService 会自动注册
-```
-
-### 手动注册
+**通过 A2AServer 编程式 API**（`@ConditionalOnProperty(name="agentscope.extensions.a2a.enabled", havingValue="true")` 启用，A2A 默认关闭）：
 
 ```java
-@Service
-public class MyService {
-    
-    @Autowired
-    private A2AServer a2aServer;
-    
-    public void registerCustomAgent() {
-        A2ARegistry.AgentRegistration registration = new A2ARegistry.AgentRegistration(
-            "my-custom-agent", "1.0.0", new A2AClient.AgentEndpoint(
-                "my-custom-agent", "localhost", 40001, "http", Map.of()));
-        
-        a2aServer.register(registration);
-    }
-}
+@Autowired
+private A2AServer a2aServer;
+
+// 注册：将本地 Agent 实例暴露为远程可调用服务
+a2aServer.registerAgent(agent, List.of("nutrition", "cost"));
+
+// 注销
+a2aServer.deregisterAgent("nutrition-agent");
+
+// 设置对外服务地址（默认读取 a2a.server.host / a2a.server.port 配置）
+a2aServer.setServerInfo("10.0.0.5", 8080);
 ```
 
 ### API 端点
@@ -179,11 +150,13 @@ A2AServer 暴露以下 REST API：
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/a2a/register` | POST | 注册 Agent |
-| `/a2a/deregister` | POST | 注销 Agent |
-| `/a2a/invoke` | POST | 调用 Agent |
+| `/a2a/register` | POST | 注册 Agent（body: `{agentName, capabilities}`） |
+| `/a2a/deregister` | POST | 注销 Agent（body: `{agentName}`） |
+| `/a2a/invoke` | POST | 调用 Agent（body: `{agentName, conversationId, message, context, options}`） |
 | `/a2a/health` | GET | 健康检查 |
+| `/a2a/health/detail` | GET | 详细健康信息（注册中心类型、端点数等） |
 | `/a2a/agents` | GET | 列出所有 Agent |
+| `/a2a/agents/{agentName}` | GET | 查询单个 Agent 详情 |
 
 ## A2ARegistry
 
@@ -197,34 +170,18 @@ A2AServer 暴露以下 REST API：
 agentscope:
   extensions:
     a2a:
-      registry-type: nacos  # nacos | consul | eureka | static
+      registry-type: nacos  # nacos | consul | static
       registry-addr: localhost:8848
       namespace: agent-platform
 ```
 
 | 类型 | 说明 | 适用场景 |
 |------|------|----------|
-| nacos | 阿里巴巴 Nacos | 云原生环境 |
-| consul | HashiCorp Consul | 微服务架构 |
-| eureka | Netflix Eureka | Spring Cloud |
-| static | 静态配置 | 开发测试 |
+| nacos | 阿里巴巴 Nacos（反射加载，依赖缺失自动降级 static） | 云原生环境 |
+| consul | HashiCorp Consul（当前版本仅完成初始化，注册降级 static） | 微服务架构 |
+| static | 本地注册表（通过 `A2ARegistry.register()` / `A2AServer.registerAgent()` 编程式注册） | 开发测试 |
 
-### 静态配置示例
-
-```yaml
-agentscope:
-  extensions:
-    a2a:
-      registry-type: static
-      agents:
-        nutrition-agent:
-          - url: http://localhost:40001
-            weight: 100
-          - url: http://localhost:40009
-            weight: 100
-        report-agent:
-          - url: http://localhost:40001
-```
+> **说明**：`static` 模式**没有** YAML 静态端点配置段（`a2a.agents` 配置不存在），端点一律通过编程式 API 注册（见上文"注册本地 Agent"）。
 
 ## 使用场景
 
@@ -280,74 +237,63 @@ SupervisorAgent
 agentscope:
   extensions:
     a2a:
-      enabled: true
-      
-      # 客户端配置
-      client:
-        timeout: 30s
-        retry-times: 3
-        retry-interval: 1s
-        
-      # 服务端配置
-      server:
-        enabled: true
-        port: 40001
-        
-      # 注册中心
-      registry-type: nacos
-      registry-addr: localhost:8848
-      namespace: agent-platform
-      
-      # 负载均衡
-      load-balancer:
-        strategy: round-robin
-        health-check:
-          enabled: true
-          interval: 30s
-          timeout: 5s
+      enabled: true            # A2A 总开关（默认 false；A2AServer/A2AClient 均以此为准）
+      registry-type: nacos     # 注册中心类型：nacos / consul / static（依赖缺失自动降级 static）
+      registry-addr: localhost:8848   # 注册中心地址（nacos/consul）
+      namespace: agent-platform       # Nacos 命名空间（可选）
+      timeout-seconds: 60             # 客户端默认调用超时（秒）
 ```
+
+> **说明**：仅以上 5 个配置键有效。`client` / `server` / `load-balancer` 等配置段均不存在；服务端阻塞超时另由 `a2a.server.block-timeout-minutes`（默认 5 分钟）控制。
 
 ## 最佳实践
 
 ### 1. 超时设置
 
 ```java
-// 根据任务复杂度设置合理超时
-a2aClient.invoke(agentName, request, A2AConfig.builder()
-    .timeout(Duration.ofSeconds(10))  // 简单任务
-    .build());
+// 根据任务复杂度设置合理超时（Duration 参数）
+A2AClient.AgentResponse resp = a2aClient.invoke(
+    agentName,
+    A2AClient.AgentRequest.of(message),
+    Duration.ofSeconds(10));   // 简单任务
 
-a2aClient.invoke(agentName, request, A2AConfig.builder()
-    .timeout(Duration.ofMinutes(5))   // 复杂任务
-    .build());
+A2AClient.AgentResponse resp2 = a2aClient.invoke(
+    agentName,
+    A2AClient.AgentRequest.of(message),
+    Duration.ofMinutes(5));    // 复杂任务
 ```
 
-### 2. 错误处理
+### 2. 错误处理（无异常设计）
+
+A2A 调用**不抛业务异常**——错误通过 `AgentResponse.success()` / `AggregatedResponse` 返回，调用方据此降级：
 
 ```java
-try {
-    AgentResponse response = a2aClient.invoke(agentName, request);
-} catch (AgentNotFoundException e) {
-    // Agent 未注册
-    log.error("Agent not found: {}", agentName);
-} catch (AgentUnavailableException e) {
-    // Agent 不可用，触发降级
+A2AClient.AgentResponse response = a2aClient.invoke(agentName, request);
+if (!response.success()) {
+    // Agent 未注册 / 不可用 / 超时 → response 的 content 含错误描述，durationMs 记录耗时
     return fallbackService.execute(request);
-} catch (TimeoutException e) {
-    // 超时，重试或降级
-    return retryOrFallback(agentName, request);
 }
+String result = response.content();
+
+// 批量场景：AggregatedResponse 提供失败清单与成功数
+A2AClient.AggregatedResponse agg = a2aClient.invokeAndAggregate(agentNames, request);
+if (agg.successCount() > 0) { /* 部分成功 */ }
+for (A2AClient.AgentResponse failed : agg.failedAgents()) { /* 逐个降级 */ }
 ```
 
-### 3. 监控指标
+### 3. 可用性检查与统计
 
 ```java
-// A2A 调用指标
-a2a_call_total{agent="nutrition-agent", status="success"}
-a2a_call_duration_seconds{agent="nutrition-agent", quantile="0.99"}
-a2a_call_errors_total{agent="nutrition-agent", error="timeout"}
+// 探测远端 Agent 是否健康
+boolean healthy = a2aClient.isHealthy("nutrition-agent");
+
+// 发现 Agent 端点（刷新本地缓存）
+List<A2AClient.AgentEndpoint> endpoints = a2aClient.discoverAgent("nutrition-agent");
+
+// 失败统计通过 AggregatedResponse 的 successCount() / failureCount() 计算，无需额外监控指标
 ```
 
 ---
 
-**上一页**: [13. 智能子系统](./13-intelligent-system.md)
+**上一页**: [13. 智能系统](./13-intelligent-system.md)  
+**下一页**: [15. 可观测性 →](./15-observability.md)

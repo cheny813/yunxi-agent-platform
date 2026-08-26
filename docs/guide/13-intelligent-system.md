@@ -1,4 +1,4 @@
-# 14. 智能服务
+# 13. 智能系统
 
 Intelligent 模块是 yunxi Agent Platform 的基础 LLM 调用服务，提供简化的模型调用接口，封装 AgentScope 框架的 Model API。
 
@@ -64,4 +64,5 @@ intelligent:
 
 ---
 
-**上一页**: [12. 常见问题](./12-faq.md)
+**上一页**: [12. 常见问题](./12-faq.md)  
+**下一页**: [14. A2A 协议 →](./14-a2a-protocol.md)

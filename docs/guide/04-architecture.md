@@ -1,6 +1,6 @@
 # 04. 架构设计
 
-> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等 13 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，Pipeline 已移除，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包已删除（替换为 `DistributedStore`），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`）。
+> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 supervisor/pipeline/routing 三种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`）。
 
 ## 软件架构理论基础
 
@@ -82,7 +82,7 @@
 │  - 领域模型                                                  │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 2: Platform 平台层                                    │
-│  - Agent 编排、MCP、记忆（13 个功能包）               │
+│  - Agent 编排、MCP、记忆（30+ 个功能包）             │
 │  - SPI 接口定义                                              │
 │  - 配置驱动自动装配                                            │
 ├─────────────────────────────────────────────────────────────┤
@@ -115,19 +115,25 @@
 
 **核心包**（`io.yunxi.platform`）：
 ```
-agent/       ← Agent 核心（工厂、网关、Middleware、工作区）
-config/      ← 配置类
-gateway/     ← SSE 消息通道
-knowledge/   ← 知识库（⚠️ V2.0 弃用，待迁移）
-mcp/         ← MCP 协议层
-persistence/ ← 持久化（Milvus、Repository）
-security/    ← 安全（HITL、审计、认证）
-session/     ← 会话管理
-tracing/     ← 可观测性（OpenTelemetry）
-lifecycle/   ← 生命周期管理
-file/        ← 文件处理
-embedding/   ← Embedding 提供商
-cache/       ← Redis 缓存
+agent/        ← Agent 核心（工厂、网关、装配 AgentConfigurer、工作区）
+a2a/          ← A2A 跨服务 Agent 调用（客户端、服务器、注册中心）
+config/       ← 配置类（AgentscopeExtensionProperties、Redis 后端等）
+conversation/ ← 对话编排（ChatAppService、会话管理）
+controller/   ← REST 控制器（对话、Agent、技能、文件、配置管理）
+file/         ← 文件处理（上传、向量化入库）
+gateway/      ← Agent 网关（AgentGateway 接口 + 默认实现）
+intent/       ← 意图引擎（IntentProperties、路由、场景注册）
+lifecycle/    ← 生命周期管理
+memory/       ← 记忆场景管理（MemoryScene、MemorySceneRegistry）
+persistence/  ← 持久化（Milvus 向量库、Repository）
+rag/          ← 应用层 RAG（ApplicationRAG 中间件工厂）
+security/     ← 安全（SecurityContext、认证、审计）
+session/      ← 会话管理（多租户会话）
+shared/       ← 共享 DTO、配置加载（AgentDefinitionLoader）
+tool/         ← 内置业务工具（HttpTool、DatabaseTool 等）
+tracing/      ← 可观测性（OpenTelemetry）
+embedding/    ← Embedding 提供商
+cache/        ← Redis 缓存
 ```
 
 #### Business 业务层
@@ -192,8 +198,8 @@ tools:
               ▼
 ┌─────────────────────────────────────────┐
 │          Platform 平台层                 │
-│  13 个功能包：agent/config/gateway/       │
-│  knowledge/mcp/persistence/security/...  │
+│  30+ 个功能包：agent/config/gateway/      │
+│  conversation/intent/memory/rag/...      │
 └─────────────┬───────────────────────────┘
               │ 依赖
               ▼
@@ -380,7 +386,7 @@ A2A（Agent-to-Agent）协议支持跨服务的 Agent 调用，实现分布式 A
 - **负载均衡**：多实例自动负载均衡
 - **故障转移**：实例故障时自动切换
 
-**详细内容请参考**：[15. A2A 协议](./15-a2a-protocol.md)
+**详细内容请参考**：[14. A2A 协议](./14-a2a-protocol.md)
 
 ### ProfileRouter — Profile 路由服务
 
@@ -394,29 +400,43 @@ ProfileRouter 是框架层的核心路由服务，负责根据 `agentName + prof
 ```java
 @Component
 public class ProfileRouter {
-    
-    public ChatAppService resolve(String agentName, String profile) {
+    // 组合键格式：agentName#profileName
+    public String buildCompositeKey(String agentName, String profile) {
+        return agentName + "#" + profile;
+    }
+
+    // 路由逻辑：profile 为空 → 原始 Agent；非空 → 查找/创建 Profile Agent；不存在 → 降级
+    public Agent resolve(String agentName, String profile) {
         if (profile == null || profile.isBlank()) {
             return agentService.getAgentInstance(agentName);
         }
         String compositeKey = buildCompositeKey(agentName, profile);
-        return agentService.getAgentInstance(compositeKey);
+        try {
+            return agentService.getAgentInstance(compositeKey);
+        } catch (Exception e) {
+            // Profile Agent 不存在，降级返回原始 Agent
+            log.warn("Profile '{}' 未找到对应 Agent '{}'，降级返回原始 Agent", profile, agentName);
+            return agentService.getAgentInstance(agentName);
+        }
     }
-    
+
     public List<ProfileInfo> getAvailableProfiles(String agentName) {
-        AgentDefinition def = agentDefinitionRepository.findByName(agentName);
-        if (def == null || def.getProfiles() == null) return List.of();
+        AgentDefinition def = definitionLoader.getAgentDefinition(agentName);
+        if (def == null || def.getProfiles() == null || def.getProfiles().isEmpty()) {
+            return Collections.emptyList();
+        }
         return def.getProfiles().entrySet().stream()
-            .map(e -> new ProfileInfo(
-                e.getKey(), 
-                e.getValue().getLabel(), 
-                e.getValue().getDescription(),
-                e.getValue().getMode() != null ? e.getValue().getMode() : def.getMode()
-            ))
-            .toList();
+                .map(entry -> new ProfileInfo(
+                        entry.getKey(),
+                        entry.getValue().getLabel(),
+                        entry.getValue().getDescription(),
+                        null))
+                .toList();
     }
 }
 ```
+
+> **说明**：`resolve()` 返回的是 AgentScope 框架的 `Agent` 接口实例（`io.agentscope.core.agent.Agent`），而非业务服务。Profile 定义来自 `agent-definitions/*.yml` 的 `profiles` 节点，由 `AgentDefinitionLoader` 加载。
 
 ---
 ## 与 AgentScope V2.0 的集成
@@ -439,44 +459,51 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 | 层次 | 能力范畴 | 关键代码 | agentscope 内置？ |
 |------|---------|---------|:--:|
 | **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
-| **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl` 8 步拦截链 | 否 |
+| **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl`（网关统一入口） | 否 |
 | **3. 统一治理层（网关能力内置）** | 接入层认证/限流/路由由 AgentScope-Java 2.0GA Channel + AgentGatewayImpl 承接 | `AgentGatewayImpl`、`agent-core` | 否 |
 | **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | `ContentFilterMiddleware`（提示注入防护）、`ChatAppService` | 否 |
 | **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
 | **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
-| **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Routing | `AgentConfigurer`（~555行） | 否 |
+| **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Routing | `AgentConfigurer`（约 1261 行） | 否 |
 
 ### 关键接线：具体桥接代码解读
 
 #### 1. AgentGatewayImpl — 统一调用入口
 
-`AgentGatewayImpl` 是**所有 Agent 调用必须经过的唯一入口**，它自动插入的 8 步拦截链：
+`AgentGatewayImpl` 是**所有 Agent 调用必须经过的唯一入口**，它将外部请求转化为 AgentScope 原生调用并映射事件流 / 中断信号：
 
 ```java
-// AgentGatewayImpl.java (核心: callWithChain 方法)
-private Mono<String> callWithChain(String agentName, AgentInvokeInfo info,
-        String message, CallOptions options) {
-    return Mono.just(message)
-        // 2.限流检查
-        .transformDeferred(this::rateLimit)
-        // 3.优雅关闭检查
-        .doOnSubscribe(s -> GracefulShutdownManager.getInstance().ensureAcceptingRequests())
-        // 4.超时控制 + 实际 Agent 调用（这里才用到 agentscope 的 Agent.call()）
-        .flatMap(m -> {
-            Duration timeout = resolveTimeout(info.definition(), options);
-            Msg userMsg = Msg.builder().textContent(m).build();  // ← agentscope Msg
-            return info.agent().call(userMsg).timeout(timeout);   // ← agentscope Agent
-        })
-        .map(Msg::getTextContent)        // ← agentscope Msg
-        // 5.PreProcessor → 7.PostProcessor → 8.监控
-        .flatMap(text -> applyPreProcessorsOnMono(agentName, text))
-        .flatMap(result -> applyPostProcessors(agentName, message, result))
-        .doOnSubscribe(s -> metricsStart(agentName))
-        .doOnError(e -> metricsError(agentName, e));
+// AgentGateway.java (接口) → AgentGatewayImpl.java (默认实现，包内私有类)
+public interface AgentGateway {
+    // 以流式事件方式调用 Agent（注入 RuntimeContext 实现多租户隔离）
+    Flux<AgentEvent> callStream(String agentName, String message, String userId, String sessionId);
+
+    // 中断指定 Agent 的当前执行（AgentScope 原生协作式中断，下次调用自动恢复）
+    void interrupt(String agentName);
 }
 ```
 
-**关键点**：实际调用 agentscope 的 `Agent.call()` 只占其中一步（第4步），其余7步都是平台治理能力。如果不用 AgentGateway，每个调用方都要自己写限流、超时、监控——这正是"平台代码多"的原因。
+```java
+// AgentGatewayImpl.java (核心实现)
+@Override
+public Flux<AgentEvent> callStream(String agentName, String message, String userId, String sessionId) {
+    Agent agent = agentService.getAgentInstance(agentName);
+    RuntimeContext ctx = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
+    // streamEvents 是 HarnessAgent/ReActAgent 的原生方法（Agent 接口未声明），需转型调用；
+    // 重载签名为 streamEvents(List<Msg>, RuntimeContext)（非单 Msg）。
+    HarnessAgent harnessAgent = (HarnessAgent) agent;
+    return harnessAgent.streamEvents(
+            List.of(Msg.builder().textContent(message).build()), ctx);
+}
+
+@Override
+public void interrupt(String agentName) {
+    log.info("中断 Agent: {}", agentName);
+    agentService.getAgentInstance(agentName).interrupt();   // 委托给 AgentScope 原生 Agent.interrupt()
+}
+```
+
+**关键点**：网关自身不实现限流/超时/审计等治理逻辑——这些由 AgentScope 框架的 Middleware 体系（`GracefulShutdownMiddleware`、`OtelTracingMiddleware` 等）在 Agent 执行链路中承载，网关只做"请求转换 + 事件透出 + 中断透传"三件事，保持薄适配。
 
 #### 2. AgentConfigurer — 配置驱动的自动装配
 
@@ -572,8 +599,8 @@ public class ModelFactory {
 │  第 3 层: 接入层 (AgentScope-Java 2.0GA Channel: 企微/钉钉/飞书/Web API)             │
 │    由 agentscope-extensions-channel-* 原生承载                    │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 2 层: 统一治理 (AgentGatewayImpl)                             │
-│    审计→限流→优雅关闭→超时→Pre→Agent.call→Post→监控               │
+│  第 2 层: 统一治理 (AgentGatewayImpl + 框架 Middleware)           │
+│    网关薄适配 | GracefulShutdown/Tracing 由框架中间件承载          │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 1 层: Spring Boot 集成 (AutoConfiguration)                    │
 │    @ConditionalOnProperty | Bean注册 | YAML加载                   │
@@ -605,7 +632,7 @@ public class ModelFactory {
 1. **YAML 配置 → DTO 的转换链**：`AgentDefinition` → `AgentConfigDto` → `AgentInfoDto` 有多层映射，部分可以合并
 2. ~~**自建 LLM Provider**~~：✅ **已修复** — 拆除 `ChatModelProvider` 接口及 3 个自建 Provider，复用框架 `ModelRegistry` 工厂机制
 3. ~~**自建 Shell 命令安全**~~：✅ **已修复** — 拆除 `CommandSafetyClassifier`，使用框架 `ShellCommandTool` 白名单/验证器
-4. ~~**Session 包删除适配**~~：✅ **已适配** — GA 删除 `Session` 包，改用 `DistributedStore` + `RedisDistributedStore.fromJedis()`
+4. **Session 会话管理**：`session/` 包保留（多租户会话管理），分布式协调能力由 GA 原生 `DistributedStore` + `RedisDistributedStore.fromJedis()` 承载，二者职责分离、各司其职
 5. ~~**Tracer 废弃适配**~~：✅ **已适配** — 删除 `OpenTelemetryTracer.java`，改用全局 `OpenTelemetry` API
 6. **工具注册**：业务工具直接使用 `@Tool` 注解注册，无需单独的接口或桥接层。
 

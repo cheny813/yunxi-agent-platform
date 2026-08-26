@@ -29,7 +29,7 @@
 
 | 工具 | 用途 | 示例 |
 |------|------|------|
-| `curl` | 测试 API | `curl http://localhost:40001/health` |
+| `curl` | 测试 API | `curl http://localhost:40001/actuator/health` |
 | `netstat` | 查看端口 | `netstat -ano \| findstr 40001` |
 | `telnet` | 测试连接 | `telnet localhost 3306` |
 | `logs` | 查看日志 | `tail -f logs/app.log` |
@@ -157,18 +157,20 @@ logging:
 
 ### Q: 如何配置多个 LLM 提供商？
 
-**A:**
+**A:** 提供商账号级配置挂在 `agentscope.core.<provider>` 前缀下（见 `config/llm.yml`）：
 
 ```yaml
-llm:
-  providers:
+agentscope:
+  core:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY}
       model: qwen-turbo
     openai:
       api-key: ${OPENAI_API_KEY}
-      model: gpt-4
+      model: gpt-4o
 ```
+
+Agent 定义 YAML 的 `model.provider` / `model.modelName` 决定实际使用哪个提供商。
 
 ---
 
@@ -216,11 +218,11 @@ mvn test -Dtest=MyAgentTest
 3. 优化 LLM 调用
 
 ```yaml
-llm:
-  providers:
+agentscope:
+  core:
     dashscope:
       model: qwen-turbo  # 使用更快的模型
-      timeout: 10000
+      timeout: 30s
 ```
 
 **性能优化层次**：
@@ -254,21 +256,15 @@ java -Xms2g -Xmx4g -jar app.jar
 
 ```bash
 export MYSQL_PASSWORD=your_strong_password
-export GATEWAY_TOKEN=your_random_token
-export MCP_API_TOKEN=your_secure_token
+export REDIS_PASSWORD=your_strong_password
+export A2A_JWT_SECRET=your_secure_token   # 启用 a2a.security.authentication.type=jwt 时使用
 ```
 
 ### Q: 如何限制 API 访问？
 
 **A:**
 
-```yaml
-agent:
-  gateway:
-    whitelist:
-      - 10.0.0.0/8
-      - 192.168.0.0/16
-```
+> **说明**：框架**不提供** IP 白名单配置（`agent.gateway.whitelist` 不存在）。网络层白名单请通过反向代理（Nginx/网关）实现；应用层安全模型见 [06. 配置](./06-configuration.md#鉴权与安全模型)。
 
 ---
 
@@ -301,4 +297,4 @@ groups:
 ---
 
 **上一页**: [11. 最佳实践](./11-best-practices.md)  
-**下一页**: [13. 智能子系统 →](./13-intelligent-system.md)
+**下一页**: [13. 智能系统 →](./13-intelligent-system.md)
