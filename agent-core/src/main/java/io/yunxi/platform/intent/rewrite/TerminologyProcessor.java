@@ -2,29 +2,24 @@ package io.yunxi.platform.intent.rewrite;
 
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-
-import io.yunxi.platform.intent.config.IntentProperties;
+import io.yunxi.platform.intent.snapshot.TermSnapshot;
+import io.yunxi.platform.intent.util.IntentYaml;
 
 /**
- * 术语归一化改写处理器（M1）。
+ * 术语归一化改写处理器。
  *
  * <p>把 query 中出现的术语按术语表替换为统一说法
  * （如 "一周"→"一个星期"、"荤菜"→"畜禽肉类"）。按 key 长度降序处理，长词优先。
- * 通过 {@link ResourceLoader} 加载 YAML，支持 {@code classpath:} / {@code file:} 前缀，
- * 业务方可将术语表外部化到部署目录。</p>
+ * 数据自 {@link RewriteContext#runtime()} 的术语快照读取；快照由
+ * {@link #parse(Resource)} 从 YAML 解析，支持 {@code classpath:} / {@code file:} 前缀。</p>
  *
  * @author yunxi-agent-platform
  * @version 2.0.0
@@ -34,44 +29,32 @@ public class TerminologyProcessor implements RewriteProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(TerminologyProcessor.class);
 
-    private final IntentProperties properties;
-    private final ResourceLoader resourceLoader;
-    private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
-
-    private Map<String, String> terms = Map.of();
-    private List<String> sortedKeys = List.of();
-
-    public TerminologyProcessor(IntentProperties properties, ResourceLoader resourceLoader) {
-        this.properties = properties;
-        this.resourceLoader = resourceLoader;
-    }
-
-    @PostConstruct
-    void init() {
-        try {
-            Resource resource = resourceLoader.getResource(properties.getTerminologyTable());
-            if (!resource.exists()) {
-                log.warn("[INTENT] 术语表资源不存在，使用空术语表: {}（可按需配置 yunxi.intent.terminology-table 指向外部文件）", properties.getTerminologyTable());
-                return;
+    /**
+     * 解析术语表资源为不可变快照（失败降级为空快照）。
+     *
+     * @param resource YAML 资源
+     * @return 术语表快照（永不 null）
+     */
+    public TermSnapshot parse(Resource resource) {
+        if (resource == null || !resource.exists()) {
+            log.warn("[INTENT] 术语表资源不存在，使用空术语表: {}", resource);
+            return TermSnapshot.empty();
+        }
+        try (InputStream in = resource.getInputStream()) {
+            TermDoc doc = IntentYaml.mapper().readValue(in, TermDoc.class);
+            if (doc == null || doc.terms == null) {
+                log.error("[INTENT] 术语表加载失败: 文档为空");
+                return TermSnapshot.empty();
             }
-            try (InputStream in = resource.getInputStream()) {
-                TermDoc doc = yamlMapper.readValue(in, TermDoc.class);
-                if (doc == null || doc.terms == null) {
-                    log.error("[INTENT] 术语表加载失败: 文档为空");
-                    return;
-                }
-                Map<String, String> loaded = new HashMap<>(doc.terms);
-                List<String> keys = new ArrayList<>(loaded.keySet());
-                // 按 key 长度降序（长词优先防子串误替换）
-                keys.sort((a, b) -> Integer.compare(b.length(), a.length()));
-                this.terms = Map.copyOf(loaded);
-                this.sortedKeys = List.copyOf(keys);
-                log.info("[INTENT] 术语表加载成功: {} 条", loaded.size());
-            }
+            Map<String, String> loaded = Map.copyOf(doc.terms);
+            List<String> keys = new ArrayList<>(loaded.keySet());
+            // 按 key 长度降序（长词优先防子串误替换）
+            keys.sort((a, b) -> Integer.compare(b.length(), a.length()));
+            log.info("[INTENT] 术语表解析成功: {} 条", loaded.size());
+            return new TermSnapshot(loaded, List.copyOf(keys));
         } catch (Exception e) {
-            log.error("[INTENT] 术语表加载失败，改写降级为空: {}", e.getMessage());
-            this.terms = Map.of();
-            this.sortedKeys = List.of();
+            log.error("[INTENT] 术语表解析失败，改写降级为空: {}", e.getMessage());
+            return TermSnapshot.empty();
         }
     }
 
@@ -82,9 +65,14 @@ public class TerminologyProcessor implements RewriteProcessor {
 
     @Override
     public String process(String query, RewriteContext ctx) {
-        if (query == null || sortedKeys.isEmpty()) {
+        if (query == null || ctx.runtime() == null) {
             return null;
         }
+        List<String> sortedKeys = ctx.runtime().terms().sortedKeys();
+        if (sortedKeys.isEmpty()) {
+            return null;
+        }
+        Map<String, String> terms = ctx.runtime().terms().terms();
         String result = query;
         boolean changed = false;
         for (String key : sortedKeys) {

@@ -113,7 +113,7 @@ agent-core/src/main/java/io/yunxi/platform/
 ├── framework/    ← 框架基础类（@Configuration 装配入口）
 ├── gateway/      ← SSE 消息通道
 ├── intelligent/  ← 智能 LLM 服务（IntelligentLlmService + IntelligentProperties）
-├── intent/       ← 意图引擎（IntentProperties、路由、场景注册）
+├── intent/       ← 意图引擎（IntentProperties、多域 DomainRegistry、rule/llm/hybrid 分类、热更新 reload）
 ├── knowledge/    ← （空目录，V2.0 已弃用；RAG 由 rag/ 承担）
 ├── lifecycle/    ← 生命周期
 ├── mcp/          ← （空目录，MCP 客户端由 AgentConfigurer 直接构建）
@@ -186,7 +186,7 @@ MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()`
 | `pageagent/` | 页面 Agent（OpenAI 代理 / 后端 LLM 代理；前端填表执行已迁移至 `agent-web-sdk` 的 `PageAgentDomEngine`） |
 | `security/` | 安全（SecurityContext 用户认证、审计、HITL 权限配置） |
 | `embedding/` | 嵌入模型（DashScopeProvider/OpenAIProvider/BaiduProvider/HuaweiProvider/ClaudeProvider） |
-| `intent/` | 意图引擎（IntentProperties + IntentAwareAgentResolver 路由） |
+| `intent/` | 意图引擎（多域 DomainRegistry + rule/llm/hybrid 分类 + reload 热更新，IntentProperties + IntentAwareAgentResolver 路由） |
 | `controller/` | REST 控制器（Agent/Conversation/Tool/SkillManagement/FileUpload/ConfigManagement） |
 
 > **说明**：`knowledge/` 与 `mcp/` 目录在 V2.0 已清空（知识库创建器与自建 MCP 客户端已删除），对应能力分别由 `rag/`（ApplicationRAG）与 AgentScope 框架原生 `McpClientBuilder` + `Toolkit.registration().mcpClient()` 承担。

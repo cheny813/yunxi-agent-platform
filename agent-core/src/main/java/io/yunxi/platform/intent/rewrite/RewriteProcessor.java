@@ -4,6 +4,7 @@ import java.util.List;
 
 import io.agentscope.core.message.Msg;
 import io.yunxi.platform.intent.Entity;
+import io.yunxi.platform.intent.domain.DomainRuntime;
 
 /**
  * 问题改写处理器 SPI。实现注册为 Spring Bean 后，
@@ -26,7 +27,7 @@ public interface RewriteProcessor {
      */
     String process(String query, RewriteContext ctx);
 
-    /** 改写上下文 */
-    record RewriteContext(List<Msg> recentMessages, List<Entity> entities) {
+    /** 改写上下文（携带当前域运行时，处理器从快照取数据） */
+    record RewriteContext(List<Msg> recentMessages, List<Entity> entities, DomainRuntime runtime) {
     }
 }

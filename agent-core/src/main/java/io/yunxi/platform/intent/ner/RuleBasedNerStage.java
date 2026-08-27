@@ -9,12 +9,17 @@ import java.util.regex.Matcher;
 import org.springframework.stereotype.Component;
 
 import io.yunxi.platform.intent.Entity;
+import io.yunxi.platform.intent.domain.DomainRuntime;
+import io.yunxi.platform.intent.ner.EntityDictionaryLoader.CompiledRegex;
+import io.yunxi.platform.intent.ner.EntityDictionaryLoader.DictEntry;
+import io.yunxi.platform.intent.snapshot.EntityDictSnapshot;
 
 /**
- * 规则版 NER 阶段（M1）。
+ * 规则版 NER 阶段。
  *
  * <p>算法：1) 词典最长匹配（词条按长度降序，大小写不敏感）；2) 正则匹配；
- * 3) 同 span 去重（保留优先级高者，词典条目 priority 来自 entity-types，正则视为 0）。</p>
+ * 3) 同 span 去重（保留优先级高者，词典条目 priority 来自 entity-types，正则视为 0）。
+ * 数据自 {@link DomainRuntime#ner()} 快照读取（多域隔离）。</p>
  *
  * @author yunxi-agent-platform
  * @version 2.0.0
@@ -22,22 +27,20 @@ import io.yunxi.platform.intent.Entity;
 @Component
 public class RuleBasedNerStage implements NerStage {
 
-    private final EntityDictionaryLoader loader;
-
-    public RuleBasedNerStage(EntityDictionaryLoader loader) {
-        this.loader = loader;
-    }
-
     @Override
-    public List<Entity> extract(String query) {
-        if (query == null || query.isBlank()) {
+    public List<Entity> extract(String query, DomainRuntime runtime) {
+        if (query == null || query.isBlank() || runtime == null) {
+            return List.of();
+        }
+        EntityDictSnapshot snapshot = runtime.ner();
+        if (snapshot == null) {
             return List.of();
         }
         String lower = query.toLowerCase();
         List<Entity> results = new ArrayList<>();
 
         // 1) 词典最长匹配（词条已按长度降序，长词优先）
-        for (EntityDictionaryLoader.DictEntry entry : loader.getDictEntries()) {
+        for (DictEntry entry : snapshot.entries()) {
             String lowerValue = entry.value().toLowerCase();
             int idx = lower.indexOf(lowerValue);
             if (idx >= 0) {
@@ -49,7 +52,7 @@ public class RuleBasedNerStage implements NerStage {
         }
 
         // 2) 正则匹配
-        for (EntityDictionaryLoader.CompiledRegex cr : loader.getRegexes()) {
+        for (CompiledRegex cr : snapshot.regexes()) {
             Matcher m = cr.pattern().matcher(query);
             while (m.find()) {
                 results.add(new Entity(cr.type(), m.group(), normalize(m.group()),
@@ -65,8 +68,8 @@ public class RuleBasedNerStage implements NerStage {
             if (existing == null) {
                 bySpan.put(key, e);
             } else {
-                int newPrio = priorityOf(e);
-                int oldPrio = priorityOf(existing);
+                int newPrio = priorityOf(e, snapshot);
+                int oldPrio = priorityOf(existing, snapshot);
                 if (newPrio > oldPrio) {
                     bySpan.put(key, e);
                 }
@@ -75,8 +78,11 @@ public class RuleBasedNerStage implements NerStage {
         return List.copyOf(bySpan.values());
     }
 
-    private int priorityOf(Entity e) {
-        return "DICT".equals(e.source()) ? loader.getPriority(e.type()) : 0;
+    private int priorityOf(Entity e, EntityDictSnapshot snapshot) {
+        if (!"DICT".equals(e.source())) {
+            return 0;
+        }
+        return snapshot.typePriorities().getOrDefault(e.type(), 0);
     }
 
     /** trim → 全角转半角 → toLowerCase */

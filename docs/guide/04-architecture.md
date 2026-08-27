@@ -122,7 +122,7 @@ conversation/ ← 对话编排（ChatAppService、会话管理）
 controller/   ← REST 控制器（对话、Agent、技能、文件、配置管理）
 file/         ← 文件处理（上传、向量化入库）
 gateway/      ← Agent 网关（AgentGateway 接口 + 默认实现）
-intent/       ← 意图引擎（IntentProperties、路由、场景注册）
+intent/       ← 意图引擎（多域 DomainRegistry、rule/llm/hybrid 分类、reload 热更新）
 lifecycle/    ← 生命周期管理
 memory/       ← 记忆场景管理（MemoryScene、MemorySceneRegistry）
 persistence/  ← 持久化（Milvus 向量库、Repository）

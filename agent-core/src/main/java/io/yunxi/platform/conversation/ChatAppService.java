@@ -101,7 +101,7 @@ public class ChatAppService {
     /** 意图引擎（四阶段前置管道：NER → 改写 → 分类 → 映射） */
     private final IntentEngine intentEngine;
 
-    /** 意图路由解析器（M2.1：识别→路由闭环，advisory 改道） */
+    /** 意图路由解析器（识别→路由闭环，advisory 改道） */
     private final IntentAwareAgentResolver intentRouter;
 
     /** 文件上传服务 */
@@ -121,7 +121,7 @@ public class ChatAppService {
      * @param conversationDomainService 会话领域服务
      * @param sseMessageBuilder         SSE 消息构建器
      * @param intentEngine               意图引擎（四阶段前置管道）
-     * @param intentRouter               意图路由解析器（M2.1：advisory 改道）
+     * @param intentRouter               意图路由解析器（advisory 改道）
      * @param fileUploadService         文件上传服务
      * @param securityContext           安全上下文
      * @param profileRouter             Profile 路由器
@@ -288,11 +288,12 @@ public class ChatAppService {
             Msg responseMsg;
 
             // 意图分析（四阶段前置管道，取代场景检测；sceneName 语义不变）
+            // ConversationChatRequest 无 profile 字段，非流式入口 profile 传 null
             IntentResult intentResult = intentEngine.analyze(buildIntentContext(
-                    request.getMessage(), conversation, userId, request.getConversationId()));
+                    request.getMessage(), conversation, userId, request.getConversationId(), null));
             String sceneName = intentResult.sceneName();
 
-            // M2.1 意图路由：命中且采纳则改道（advisory，未命中/失败保持原 Agent；
+            // 意图路由：命中且采纳则改道（advisory，未命中/失败保持原 Agent；
             // ConversationChatRequest 无 profile 字段，意图路由不叠加 Profile）
             RouteDecision decision = intentRouter.resolve(
                     conversation.getAgentName(), null, userId, intentResult);
@@ -673,11 +674,12 @@ public class ChatAppService {
                 // ---- 标准模式 / 深度模式 ----
 
                 // 意图分析（四阶段前置管道，取代场景检测；quickMode 分支已提前返回，天然零开销）
+                // 流式入口传 request.getProfile() 参与域规则匹配
                 IntentResult intentResult = intentEngine.analyze(buildIntentContext(
-                        request.getMessage(), conversation, userId, conversationId));
+                        request.getMessage(), conversation, userId, conversationId, request.getProfile()));
                 String sceneName = intentResult.sceneName();
 
-                // M2.1 意图路由：命中且采纳则改道（advisory，未命中/失败保持原 Agent；
+                // 意图路由：命中且采纳则改道（advisory，未命中/失败保持原 Agent；
                 // 命中目标 agent 仍尊重 request.profile 的 Profile 路由）
                 RouteDecision decision = intentRouter.resolve(
                         conversation.getAgentName(), request.getProfile(), userId, intentResult);
@@ -1053,16 +1055,21 @@ public class ChatAppService {
     }
 
     /**
-     * 构建意图分析上下文（取最近 3 轮消息供后续指代消解使用，M1 不消费）。
+     * 构建意图分析上下文（取最近 3 轮消息供后续指代消解使用）。
+     *
+     * <p>加 profile 组件参与域规则匹配（流式入口传 {@code request.getProfile()}，
+     * 非流式入口 ConversationChatRequest 无 profile 字段传 null）；domain 默认 null，
+     * 由 DomainResolver 按规则链解析。</p>
      *
      * @param message        用户原始消息
      * @param conversation   会话实体
      * @param userId         用户 ID
      * @param conversationId 会话 ID
+     * @param profile        Profile 名称（可 null）
      * @return 意图分析上下文
      */
     private IntentContext buildIntentContext(String message, ConversationEntity conversation,
-            String userId, String conversationId) {
+            String userId, String conversationId, String profile) {
         List<Msg> recent = List.of();
         List<Msg> all = conversation.getMessages();          // F3：永不 null
         if (all != null && all.size() > 3) {
@@ -1070,7 +1077,7 @@ public class ChatAppService {
         } else if (all != null) {
             recent = new ArrayList<>(all);
         }
-        return new IntentContext(message, conversation.getAgentName(), userId, conversationId, recent);
+        return new IntentContext(message, conversation.getAgentName(), userId, conversationId, recent, null, profile);
     }
 
     /**

@@ -14,6 +14,7 @@ import java.util.List;
  * @param intent         意图（未命中为 Intent.unknown()）
  * @param routeHint      路由建议（可为 RouteHint.empty()）
  * @param sceneName      三级链场景名（兼容 MemoryScene 体系）
+ * @param domain         解析出的领域名（sceneOnly 工厂为 null）
  * @param timings        阶段耗时
  * @param degraded       任一阶段降级为 true
  * @author yunxi-agent-platform
@@ -26,12 +27,13 @@ public record IntentResult(
         Intent intent,
         RouteHint routeHint,
         String sceneName,
+        String domain,
         StageTimings timings,
         boolean degraded) {
 
     /** 开关关闭/全降级时的"仅场景"结果（K2） */
     public static IntentResult sceneOnly(String query, String sceneName) {
         return new IntentResult(query, query, List.of(), Intent.unknown(),
-                RouteHint.empty(), sceneName, new StageTimings(0, 0, 0, 0, 0), true);
+                RouteHint.empty(), sceneName, null, new StageTimings(0, 0, 0, 0, 0), true);
     }
 }

@@ -1,5 +1,6 @@
 # ============================================================
-# 意图引擎配置（四阶段前置管道，M1 规则通道 + M2.1 意图路由）
+# 意图引擎配置（四阶段前置管道，M1 规则通道 + M2.1 意图路由 + M2.2 多域
+# + M2.3 分类通道 + M2.4 热更新）
 # 关闭方式：enabled: false（行为回退为仅场景检测，等价旧 SceneDetectionService）
 #
 # 数据分级（详见 docs/guide/16-intent-engine.md）：
@@ -14,6 +15,13 @@
 #   routing.enabled: true 后，会话入口（chatWithConversation / chatStreamWithConversation）
 #   将消费映射表产出的 routeHint 参与路由决策（advisory：目标 agent 不存在 / 分数不足
 #   一律保持原路由）。min-route-score 为最低采纳分数，低于该值的建议不改道。
+#
+# M2.3 分类通道：mode=rule（默认，M1 冻结行为）/ llm（跳过规则直连 LLM）/
+#   hybrid（规则优先、LLM 兜底）。mode≠rule 时 HybridIntentClassifier 装配生效，
+#   llm.enabled=false 则退化为纯规则通道（不调 LLM、不读缓存）。
+#
+# M2.4 热更新：reload.enabled 控制 reload 能力（actuator 端点 /actuator/intent/*）；
+#   poll-seconds > 0 时轮询 file: 前缀资源 mtime（默认 -1 关闭，仅端点触发）。
 # ============================================================
 yunxi:
   intent:
@@ -27,3 +35,26 @@ yunxi:
     routing:
       enabled: false                         # M2.1 意图路由开关（默认关闭，渐进式上线）
       min-route-score: 0.5                   # 最低采纳分数（RouteHint.score 低于此值不改道）
+    # M2.3 分类通道（默认 rule = M1 冻结行为；hybrid / llm 需显式开启下方 llm）
+    classification:
+      mode: rule                             # rule | llm | hybrid
+      rule-confidence-threshold: 0.6         # hybrid 模式规则高分直出阈值
+      llm:
+        enabled: false                       # LLM 通道总开关（true 才发模型调用）
+        model: qwen-turbo                    # 低成本快模型
+        timeout-ms: 2000                     # 超时（resilience4j TimeLimiter）
+        min-confidence: 0.5                  # LLM 输出最低采纳置信度
+        max-intents: 30                      # 白名单上限，超限按查询关键词粗筛 Top-N
+        cache:
+          ttl-days: 7                        # 缓存 TTL（惰性失效，reload 后按版本跳过）
+          max-size: 10000                    # LRU 上限
+    # M2.2 多域（单域部署保持空，base 由顶层字段构造；
+    #  多域示例见 docs/intent-engine-m2-m234-design.md §3）
+    resolver:
+      default: base                          # 未命中规则的默认域
+      rules: []                              # 按 agent 前缀 / 画像的多域路由规则
+      domains: {}                            # 业务域数据源（示例：{nutrition: {intent-tree: "..."}}）
+    # M2.4 热更新
+    reload:
+      enabled: true                          # reload 开关（actuator 端点受控）
+      poll-seconds: -1                       # >0 时轮询 file: 前缀资源 mtime（默认关闭）

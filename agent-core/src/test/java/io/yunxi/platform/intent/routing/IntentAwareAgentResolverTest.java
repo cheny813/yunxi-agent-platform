@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 /**
  * {@link IntentAwareAgentResolver} 单元测试。
  *
- * <p>覆盖 M2.1 路由决策全部分支：命中改道 / 阈值拒绝 / 目标不存在回落 /
+ * <p>覆盖路由决策全部分支：命中改道 / 阈值拒绝 / 目标不存在回落 /
  * 开关关闭回落 / 无 hint 回落 / Profile 叠加。核心断言：advisory 原则——
  * 任何未满足条件的情况一律返回未改道，由调用方走默认解析链。</p>
  */
@@ -66,6 +66,7 @@ class IntentAwareAgentResolverTest {
                 Intent.unknown(),
                 new RouteHint(suggestedAgent, List.of("订单专家"), List.of("order"), List.of(), score),
                 "GENERAL",
+                null,
                 new StageTimings(0, 0, 0, 0, 0),
                 false);
     }
@@ -78,6 +79,7 @@ class IntentAwareAgentResolverTest {
                 Intent.unknown(),
                 RouteHint.empty(),
                 "GENERAL",
+                null,
                 new StageTimings(0, 0, 0, 0, 0),
                 false);
     }
@@ -123,7 +125,8 @@ class IntentAwareAgentResolverTest {
         void nullHintInResultShouldNotAdopt() {
             enableRouting();
             IntentResult noHint = new IntentResult(
-                    "你好", "你好", List.of(), Intent.unknown(), null, "GENERAL",
+                    "你好", "你好", List.of(), Intent.unknown(), null,                     "GENERAL",
+                    null,
                     new StageTimings(0, 0, 0, 0, 0), false);
 
             RouteDecision decision = resolver.resolve(BASE_AGENT, null, "u1", noHint);
