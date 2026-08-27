@@ -840,6 +840,30 @@ yunxi:
     terminology-table: classpath:config/intent/terminology.yml     # 术语/别名归一表
     intent-tree: classpath:config/intent/intent-tree.yml           # 意图树（分类规则）
     mapping-table: classpath:config/intent/intent-mapping.yml      # 意图 → Agent 路由映射表
+    # ── M2.1 意图路由（默认关闭，渐进式上线）──
+    routing:
+      enabled: false                    # 开启后 routeHint 参与会话入口路由决策（advisory）
+      min-route-score: 0.5              # 最低采纳分数（低于此值不改道）
+    # ── M2.3 分类通道 ──
+    classification:
+      mode: rule                        # rule | llm | hybrid
+      rule-confidence-threshold: 0.6    # hybrid 模式规则高分直出阈值
+      llm:
+        enabled: false                  # LLM 通道总开关（false 时 llm/hybrid 退化为纯规则）
+        model: qwen-turbo               # 低成本快模型
+        timeout-ms: 2000                # 超时（resilience4j TimeLimiter）
+        min-confidence: 0.5             # LLM 输出最低采纳置信度
+        max-intents: 30                 # 白名单上限
+        cache: { ttl-days: 7, max-size: 10000 }   # LLM 结果缓存
+    # ── M2.2 多域（单域部署保持默认即可）──
+    resolver:
+      default: base                     # 未命中规则的默认域
+      rules: []                         # 多域路由规则（agent 前缀 / profile 归属）
+      domains: {}                       # 业务域数据源（缺省项继承 base）
+    # ── M2.4 热更新 ──
+    reload:
+      enabled: true                     # reload 开关（actuator 端点受控）
+      poll-seconds: -1                  # >0 时轮询 file: 前缀资源 mtime（默认关闭）
 ```
 
 各配置项说明（默认值 = 框架最小演示集路径；`agent-config` 显式覆盖为部署业务数据；**fat jar 部署下建议统一使用 `classpath:` 前缀**）：
@@ -847,14 +871,30 @@ yunxi:
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `yunxi.intent.enabled` | `true` | 总开关；`false` 时仅返回场景名，跳过 NER/改写/分类/映射 |
-| `yunxi.intent.ner-dictionary` | `classpath:intent/ner-dictionaries.yml` | NER 词典文件；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.ner-dictionary` | `classpath:intent/ner-dictionaries.yml` | NER 词典文件（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
 | `yunxi.intent.rewrite-enabled` | `true` | 改写阶段开关 |
 | `yunxi.intent.rewrite-processors` | `[terminology]` | 改写处理器链 |
-| `yunxi.intent.terminology-table` | `classpath:intent/terminology.yml` | 术语归一表；支持 `classpath:` / `file:` / `url:` 前缀 |
-| `yunxi.intent.intent-tree` | `classpath:intent/intent-tree.yml` | 意图树；支持 `classpath:` / `file:` / `url:` 前缀 |
-| `yunxi.intent.mapping-table` | `classpath:intent/intent-mapping.yml` | 路由映射表；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.terminology-table` | `classpath:intent/terminology.yml` | 术语归一表（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.intent-tree` | `classpath:intent/intent-tree.yml` | 意图树（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.mapping-table` | `classpath:intent/intent-mapping.yml` | 路由映射表（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
+| `yunxi.intent.routing.enabled` | `false` | M2.1 意图路由开关；开启后 `routeHint` 参与会话入口路由（advisory，目标缺失或分低不改道） |
+| `yunxi.intent.routing.min-route-score` | `0.5` | 路由建议最低采纳分数 |
+| `yunxi.intent.classification.mode` | `rule` | M2.3 分类模式：`rule` / `llm` / `hybrid` |
+| `yunxi.intent.classification.rule-confidence-threshold` | `0.6` | hybrid 模式规则高分直出阈值 |
+| `yunxi.intent.classification.llm.enabled` | `false`（部署默认；代码字段默认 `true`，但 `mode=rule` 时不装配） | LLM 通道总开关（false 时 llm/hybrid 退化为纯规则兜底） |
+| `yunxi.intent.classification.llm.model` | `qwen-turbo` | 低成本快模型 |
+| `yunxi.intent.classification.llm.timeout-ms` | `2000` | 模型调用超时（resilience4j TimeLimiter） |
+| `yunxi.intent.classification.llm.min-confidence` | `0.5` | LLM 输出最低采纳置信度 |
+| `yunxi.intent.classification.llm.max-intents` | `30` | 白名单上限，超限按查询关键词粗筛 Top-N |
+| `yunxi.intent.classification.llm.cache.ttl-days` | `7` | LLM 结果缓存 TTL |
+| `yunxi.intent.classification.llm.cache.max-size` | `10000` | 缓存 LRU 上限 |
+| `yunxi.intent.resolver.default` | `base` | M2.2 默认域；未命中规则时回落 |
+| `yunxi.intent.resolver.rules` | `[]` | 多域路由规则（agent 名前缀 / profile 归属） |
+| `yunxi.intent.resolver.domains` | `{}` | 业务域数据源映射，缺省项继承 `base` |
+| `yunxi.intent.reload.enabled` | `true` | M2.4 热更新总开关（actuator 端点前置条件） |
+| `yunxi.intent.reload.poll-seconds` | `-1` | 文件轮询间隔秒；`>0` 时对 `file:` 前缀资源按 mtime 自动 reload |
 
-> **框架通用性**：意图引擎是框架层通用能力，与具体业务解耦，采用**数据两级模型**——`agent-core` 内置最小演示集（兜底），`agent-config` 的 `config/intent/*.yml` 为部署业务数据，也支持 `file:` 前缀完全外部化。业务方只需修改上表配置项指向自己的文件即可整体替换，无需改动 Java 代码。完整定制指南见 [16. 意图引擎](./16-intent-engine.md#业务定制指南)。
+> **框架通用性**：意图引擎是框架层通用能力，与具体业务解耦，采用**数据两级模型**——`agent-core` 内置最小演示集（兜底），`agent-config` 的 `config/intent/*.yml` 为部署业务数据，也支持 `file:` 前缀完全外部化。业务方只需修改上表配置项指向自己的文件即可整体替换，无需改动 Java 代码。热更新端点见 [16. 意图引擎](./16-intent-engine.md#热更新与运维)，完整定制指南见 [16. 意图引擎](./16-intent-engine.md#业务定制指南)。
 
 ---
 

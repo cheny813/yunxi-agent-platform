@@ -84,7 +84,7 @@
 | [13. 智能子系统](./13-intelligent-system.md) | 自适应策略、自我改进、智能监控 | 40 分钟 |
 | [14. A2A 协议](./14-a2a-protocol.md) | 跨服务 Agent 协作、分布式架构 | 30 分钟 |
 | [15. 可观测性](./15-observability.md) | 追踪、指标、日志与 OpenTelemetry 集成 | 20 分钟 |
-| [16. 意图引擎](./16-intent-engine.md) | 意图识别、实体抽取、Agent 路由 | 20 分钟 |
+| [16. 意图引擎](./16-intent-engine.md) | 意图识别、实体抽取、多域模型、分类通道与热更新 | 20 分钟 |
 
 ---
 

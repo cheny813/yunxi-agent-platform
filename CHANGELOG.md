@@ -24,10 +24,17 @@
   - `PageAgentService` 打印响应内容摘要（文本 / 推理 / 工具调用 / 数据块）。
   - 修复 OpenAI 兼容代理 `usage` 被硬编码为 0 的问题，现聚合真实 token 消耗。
 - **权限模式全面透传 GA 原生枚举（弃兼容、拥抱底层框架）**：`PermissionConfig` 只保留 `build(hitl, PermissionMode)` 一种形态，把 GA 的 5 种模式（`DEFAULT` / `ACCEPT_EDITS` / `EXPLORE` / `BYPASS` / `DONT_ASK`）完整透传，已删除上一版的 `build(HITLConfig)` 单参兼容入口与 `PermissionRunMode` 封装枚举。yunxi 不封装、不裁剪，调用方（如 `AgentConfigurer`）直接决定要用的 GA 模式——HITL 配了需确认工具即透传 `DEFAULT`（被点名工具执行前挂起返回 `PERMISSION_ASKING`），未配则透传 `BYPASS`。yunxi 仅负责把 HITL（ToolGate / ReasoningReview）配置映射为 ASK 规则；`DONT_ASK` 下不注入 ASK 规则以规避 GA `checkAskRules` 不看 mode 的无人值守死锁；危险路径保护由 GA `ToolBase` / `ToolDangerousPathConstants` 在框架层自动强制 ASK（即便 `BYPASS` 也生效），yunxi 不重复实现。
+- **意图引擎 M2 系列（M2.1-M2.4）**：在 M1 四阶段规则管道（NER → 改写 → 分类 → 映射）基础上补齐识别到路由的完整闭环：
+  - **M2.1 意图路由**（默认关闭，渐进式上线）：`routeHint` 参与会话入口路由决策（advisory——目标 Agent 不存在或分数低于 `min-route-score` 时保持原路由不改道），新增 `routing.enabled` / `routing.min-route-score` 配置。
+  - **M2.2 多域模型**：业务数据按领域隔离（`resolver.domains` + `resolver.rules`），`DomainResolver` 四层判定链（显式 domain → 规则匹配 → default → base 兜底）；旧顶层四文件保留为 `base` 域快捷方式，零迁移。
+  - **M2.3 分类通道**：`classification.mode` 支持 `rule` / `llm` / `hybrid` 三模式，新增 `HybridIntentClassifier`（规则优先、LLM 兜底）与 `LlmIntentClassifier` + `LlmResultCache`（按 `domain|normalizedQuery|whitelistVersion` 缓存，TTL 7 天）；`llm.enabled=false` 时退化纯规则，规则兜底永不失效。
+  - **M2.4 热更新**：actuator 端点 `/actuator/intent/status` / `/actuator/intent/reload` / `/actuator/intent/suggest-words`（LLM 热度建议词，按域过滤）；`IntentFilePoller` 支持 `file:` 前缀资源 mtime 轮询（默认关闭）；reload 全程审计日志，单域失败不阻断其他域。
+  - 重构：`TreeSnapshot.build()` 统一两遍扫描工厂、`IntentKeywordMatcher` / `IntentYaml` 共享工具消除跨类重复、reload 监听器 SPI（`IntentReloadListener`）预留。
 
 ### 变更
 
 - 模型缓存策略文档化：单租户按 `modelId` 复用实例，多租户默认不复用，避免不同账号的 Key / BaseURL 串用。
+- 意图引擎配置项扩展（`routing` / `classification` / `resolver` / `reload`），详见 [16. 意图引擎](./docs/guide/16-intent-engine.md)。
 
 ---
 

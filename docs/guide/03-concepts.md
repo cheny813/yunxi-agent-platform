@@ -214,7 +214,7 @@ Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`prod
 
 ### 在本框架中的实现
 
-场景识别当前由**意图引擎**（`io.yunxi.platform.intent.IntentEngine`）承载：请求到达时，经四阶段前置管道（NER → 改写 → 分类 → 映射）产出结构化意图结果，其中 `sceneName` 字段由 `RuleIntentClassifier.detectSceneName` 的三级链计算（自定义场景 → 概念域 → 内置关键词 → `GENERAL`），语义与原 `SceneDetectionService` 严格等价。
+场景识别当前由**意图引擎**（`io.yunxi.platform.intent.IntentEngine`）承载：请求到达时，先经 `DomainResolver` 解析领域（M2.2 多域模型，显式 domain → 规则 → default → base），再走四阶段前置管道（NER → 改写 → 分类 → 映射）产出结构化意图结果，其中 `sceneName` 字段由 `RuleIntentClassifier.detectSceneName` 的三级链计算（自定义场景 → 概念域 → 内置关键词 → `GENERAL`），语义与原 `SceneDetectionService` 严格等价。
 
 原 `SceneDetectionService` 仍保留（`io.yunxi.platform.prompt`），Bean 供存量引用兼容。场景配置由 `MemorySceneRegistry` 管理：内置场景通过 `memory.scene.builtins` 配置字符串声明（格式 `name:displayName:description:retentionDays:keywords`），自定义场景通过 `register()` 在运行时注册，无需重启。意图引擎的完整说明见 [16. 意图引擎](./16-intent-engine.md)。
 

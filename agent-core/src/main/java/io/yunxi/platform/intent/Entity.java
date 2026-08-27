@@ -9,7 +9,7 @@ package io.yunxi.platform.intent;
  *
  * @param type       实体类型（如 DATE/CROWD/QUANTITY 等，由词典定义）
  * @param value      原文
- * @param normalized 归一化值（M1 = value 的 trim+全角转半角+小写；不做语义归一）
+ * @param normalized 归一化值（value 的 trim+全角转半角+小写；不做语义归一）
  * @param start      起始字符偏移（含）
  * @param end        结束字符偏移（不含）
  * @param source     来源：DICT（词典）| REGEX（正则）

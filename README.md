@@ -19,7 +19,7 @@
 | 特性 | 说明 |
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
-| **意图引擎** | NER → 改写 → 分类 → 映射四阶段前置管道，实体抽取、场景识别与 Agent 路由（业务数据可配置替换） |
+| **意图引擎** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型（M2.2）、rule/llm/hybrid 分类通道（M2.3）、actuator 热更新（M2.4）、意图路由（M2.1），业务数据可配置替换 |
 | **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.0 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
@@ -238,7 +238,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 - 记忆系统（双层文件系统 + Redis 跨实例共享）
 - 多通道接入（WebSocket / SSE / 飞书 / 钉钉 / 企业微信）
 - 模型级多租户（按 Agent 覆盖 apiKey / baseUrl）
-- 意图引擎（NER → 改写 → 分类 → 映射，业务数据可配置替换，开箱即用）
+- 意图引擎（M1 四阶段规则管道 → M2.1 意图路由 / M2.2 多域模型 / M2.3 分类通道 / M2.4 热更新，业务数据可配置替换，开箱即用）
 
 ## 未来计划
 

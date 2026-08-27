@@ -10,12 +10,19 @@ import org.springframework.stereotype.Service;
 
 import io.yunxi.platform.intent.classify.IntentClassifier;
 import io.yunxi.platform.intent.config.IntentProperties;
+import io.yunxi.platform.intent.domain.DomainRegistry;
+import io.yunxi.platform.intent.domain.DomainResolver;
+import io.yunxi.platform.intent.domain.DomainRuntime;
 import io.yunxi.platform.intent.mapping.IntentMappingTable;
 import io.yunxi.platform.intent.ner.NerStage;
 import io.yunxi.platform.intent.rewrite.RewriteProcessor;
 
 /**
- * 意图引擎门面（M1 规则通道）：Stage 1 NER → Stage 2 改写 → Stage 3 分类 → Stage 4 映射。
+ * 意图引擎门面。
+ *
+ * <p>Stage 0 领域选择 → Stage 1 NER → Stage 2 改写 → Stage 3 分类 → Stage 4 映射。
+ * Stage 0 由 {@link DomainResolver} 解析目标域，{@link DomainRegistry} 取合并后
+ * {@link DomainRuntime} 传入各 Stage（快照是唯一数据源）。</p>
  *
  * <p>安全原则：任何阶段异常均捕获降级，永不向上抛出；总开关关闭时退化为仅场景模式
  * （行为等价旧 SceneDetectionService）。</p>
@@ -29,17 +36,23 @@ public class DefaultIntentEngine implements IntentEngine {
     private static final Logger log = LoggerFactory.getLogger(DefaultIntentEngine.class);
 
     private final IntentProperties props;
+    private final DomainResolver domainResolver;
+    private final DomainRegistry domainRegistry;
     private final NerStage nerStage;
     private final IntentClassifier classifier;
     private final IntentMappingTable mappingTable;
     private final Map<String, RewriteProcessor> processorsByName;
 
     public DefaultIntentEngine(IntentProperties props,
+            DomainResolver domainResolver,
+            DomainRegistry domainRegistry,
             NerStage nerStage,
             IntentClassifier classifier,
             IntentMappingTable mappingTable,
             List<RewriteProcessor> processors) {
         this.props = props;
+        this.domainResolver = domainResolver;
+        this.domainRegistry = domainRegistry;
         this.nerStage = nerStage;
         this.classifier = classifier;
         this.mappingTable = mappingTable;
@@ -64,11 +77,26 @@ public class DefaultIntentEngine implements IntentEngine {
 
             boolean degraded = false;
 
+            // Stage 0 领域选择
+            long s0 = System.nanoTime();
+            String domain;
+            DomainRuntime runtime;
+            try {
+                domain = domainResolver.resolve(ctx);
+                runtime = domainRegistry.runtime(domain);
+            } catch (Exception e) {
+                log.warn("[INTENT] 领域解析异常，回落 base: {}", e.getMessage());
+                domain = "base";
+                runtime = domainRegistry.runtime("base");
+                degraded = true;
+            }
+            long resolveMs = ms(s0);
+
             // Stage 1 NER
             long s1 = System.nanoTime();
             List<Entity> entities;
             try {
-                entities = nerStage.extract(ctx.query());
+                entities = nerStage.extract(ctx.query(), runtime);
             } catch (Exception e) {
                 log.warn("[INTENT] NER 阶段异常，降级为空: {}", e.getMessage());
                 entities = List.of();
@@ -76,7 +104,7 @@ public class DefaultIntentEngine implements IntentEngine {
             }
             long nerMs = ms(s1);
 
-            // Stage 2 改写（M1 仅 terminology）
+            // Stage 2 改写（仅 terminology）
             long s2 = System.nanoTime();
             String rewritten = ctx.query();
             if (props.isRewriteEnabled()) {
@@ -88,7 +116,7 @@ public class DefaultIntentEngine implements IntentEngine {
                     }
                     try {
                         String r = p.process(rewritten,
-                                new RewriteProcessor.RewriteContext(ctx.recentMessages(), entities));
+                                new RewriteProcessor.RewriteContext(ctx.recentMessages(), entities, runtime));
                         if (r != null) {
                             rewritten = r;
                         }
@@ -108,7 +136,7 @@ public class DefaultIntentEngine implements IntentEngine {
             String sceneName;
             try {
                 sceneName = classifier.detectSceneName(rewritten);
-                intent = classifier.classify(rewritten, entities, sceneName);
+                intent = classifier.classify(rewritten, entities, sceneName, runtime);
             } catch (Exception e) {
                 log.warn("[INTENT] 分类阶段异常，降级 unknown: {}", e.getMessage());
                 intent = Intent.unknown();
@@ -121,7 +149,7 @@ public class DefaultIntentEngine implements IntentEngine {
             long s4 = System.nanoTime();
             RouteHint hint;
             try {
-                hint = mappingTable.routeFor(intent.intentId());
+                hint = mappingTable.routeFor(intent.intentId(), intent.confidence(), runtime);
             } catch (Exception e) {
                 log.warn("[INTENT] 映射阶段异常，降级空路由: {}", e.getMessage());
                 hint = RouteHint.empty();
@@ -130,14 +158,14 @@ public class DefaultIntentEngine implements IntentEngine {
             long mappingMs = ms(s4);
 
             IntentResult result = new IntentResult(ctx.query(), rewritten, entities, intent,
-                    hint, sceneName, new StageTimings(nerMs, rewriteMs, classifyMs, mappingMs,
-                    ms(t0)), degraded);
-            log.info("[INTENT] agent={}, intent={}({} via {}), scene={}, entities={}, rewritten={}, "
-                            + "routeHint={}, degraded={}, timings=ner={}ms rewrite={}ms classify={}ms "
-                            + "mapping={}ms total={}ms",
-                    ctx.agentName(), intent.intentId(), intent.label(), intent.matchedBy(),
+                    hint, sceneName, domain,
+                    new StageTimings(nerMs, rewriteMs, classifyMs, mappingMs, ms(t0)), degraded);
+            log.info("[INTENT] domain={}, agent={}, intent={}({} via {}), scene={}, entities={}, "
+                            + "rewritten={}, routeHint={}, degraded={}, timings=resolve={}ms ner={}ms "
+                            + "rewrite={}ms classify={}ms mapping={}ms total={}ms",
+                    domain, ctx.agentName(), intent.intentId(), intent.label(), intent.matchedBy(),
                     sceneName, entities.size(), rewritten, hint.isEmpty() ? "-" : hint.suggestedAgent(),
-                    degraded, nerMs, rewriteMs, classifyMs, mappingMs, ms(t0));
+                    degraded, resolveMs, nerMs, rewriteMs, classifyMs, mappingMs, ms(t0));
             return result;
         } catch (Exception e) {
             log.warn("[INTENT] 意图分析整体异常，降级: {}", e.getMessage());

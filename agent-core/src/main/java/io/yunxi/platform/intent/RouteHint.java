@@ -3,7 +3,7 @@ package io.yunxi.platform.intent;
 import java.util.List;
 
 /**
- * 路由建议（advisory，非强制）。M1 仅进观测日志，不参与路由决策。
+ * 路由建议（advisory，非强制）。仅进观测日志，不参与路由决策。
  *
  * @author yunxi-agent-platform
  * @version 2.0.0

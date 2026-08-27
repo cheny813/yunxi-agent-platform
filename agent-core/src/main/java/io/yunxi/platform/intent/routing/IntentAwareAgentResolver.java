@@ -12,14 +12,14 @@ import io.yunxi.platform.intent.RouteHint;
 import io.yunxi.platform.intent.config.IntentProperties;
 
 /**
- * 意图路由解析器（M2.1：识别→路由闭环）。
+ * 意图路由解析器（识别→路由闭环）。
  *
  * <p>在 Profile 路由之后、默认 Agent 之前消费 {@link RouteHint}，决定是否改道。
  * 永远 advisory：开关关闭 / 无 hint / 分数不足 / 目标 agent 不存在，一律返回未改道，
  * 由调用方走默认解析链。采纳率全量日志（{@code route.adopted=0/1 reason=...}）
  * 便于观测、误判可回滚。</p>
  *
- * <p>路由优先级链（M2.1 落位）：显式 agent → Profile 路由 →【意图路由】→ 默认 agent。</p>
+ * <p>路由优先级链：显式 agent → Profile 路由 →【意图路由】→ 默认 agent。</p>
  *
  * @author yunxi-agent-platform
  * @version 2.0.0
@@ -45,7 +45,7 @@ public class IntentAwareAgentResolver {
      *
      * @param baseName     当前会话绑定的 Agent 名（原路由，仅用于日志）
      * @param profile      Profile 名（可 null；非空时命中目标 agent 仍尊重 Profile 路由）
-     * @param userId       用户 ID（预留：M2.2 领域解析用）
+     * @param userId       用户 ID（预留：领域解析用）
      * @param intentResult 意图分析结果（routeHint 为 null / empty 时视为无路由建议）
      * @return 路由决策（adopted=false 时调用方保持原路由）
      */
