@@ -72,12 +72,12 @@ public class LlmProperties {
     private Map<String, ProviderConfig> providers;
 }
 
-// 2. YAML 配置
+// 2. YAML 配置（密钥推荐用环境变量注入，勿硬编码）
 llm:
   default-provider: dashscope
   providers:
     dashscope:
-      api-key: xxx
+      api-key: ${DASHSCOPE_API_KEY}
 
 // 3. 自动绑定
 @Autowired
@@ -353,8 +353,8 @@ agent:
   description: 业务数据管理助手
   enabled: true
 
-  # 编排模式：supervisor / pipeline / routing / expert（或自定义模式名，见 AgentDefinition.modes）
-  orchestration: expert
+  # 编排模式：single / supervisor / pipeline / routing
+  orchestration: single
 
   # 默认 RAG 模式（请求未指定时使用此值，可选 GENERIC / AGENTIC / NONE）
   ragMode: GENERIC

@@ -19,14 +19,15 @@
 | 特性 | 说明 |
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
-| **意图引擎** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型（M2.2）、rule/llm/hybrid 分类通道（M2.3）、actuator 热更新（M2.4）、意图路由（M2.1），业务数据可配置替换 |
+| **意图引擎（智能大脑中枢）** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型（M2.2）、rule/llm/hybrid 分类通道（M2.3）、actuator 热更新（M2.4）、意图路由（M2.1），业务数据可配置替换 |
+| **执行引擎（智能手脚协调器）** | `AgentExecutionEngine` 门面统一收口所有调用形态（同步/流式/结构化/取消），6 拦截器可插拔链（AuthResolve→Memory→IntentPipeline→RagRetrieval→PermissionContext→Audit）+ 3 执行策略自动路由（Blocking/Streaming/StructuredBlocking）+ 事件算子链（Metrics/PhaseTracker）→ 协议适配器，接入新协议仅需新增 `AgentEventAdapter` 实现 |
 | **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.0 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
-| **MCP 协议** | 完整支持 Model Context Protocol，30+ 内置 MCP 工具 |
+| **MCP 协议** | 完整支持 Model Context Protocol，34 个 MCP 服务器可按需接入（sse/stdio/http 三种传输，核心 9 个默认启用） |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
 | **技能系统** | 启用 AgentScope-Java 2.0GA 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
 | **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并的闭环，Agent 技能的自我判断、自我修补与自我进化 |
-| **流式事件** | 使用 `streamEvents()` 替代废弃的 `stream()`，按 `AgentEventType` 过滤事件 |
+| **流式事件** | `Model.stream()`（Model 层现役调用）与 `Agent.streamEvents()`（Agent 层事件流，按 `AgentEventType` 过滤）双通道，均为 GA 2.0 现役 API |
 | **工具分组** | 按职责隔离工具（memory/filesystem/execute），默认最小权限，YAML 按需开放 |
 | **提示注入防护** | ContentFilterMiddleware 基于框架 Middleware 接口，`onAgent` 拦截点拦截中英文注入模式 |
 | **Shell 安全** | 复用框架 ShellCommandTool 白名单+平台验证器+审批回调，替代自建分级系统 |
@@ -118,9 +119,11 @@ curl -X POST http://localhost:40001/api/conversations/chat \
 | **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
 | **agent-spi** | SPI 接口定义 | Java SPI |
 | **agent-config** | 统一配置：YAML、数据库初始化 | Spring Cloud |
-| **agent-app** | 启动入口：整合所有模块 | Spring Boot |
+| **agent-app** | 启动入口：整合所有模块（统一服务，端口 40001） | Spring Boot |
 | **agent-integration-test** | 集成测试 | JUnit, Testcontainers |
 | **sdk-js** | JavaScript/TypeScript SDK | TypeScript, Node.js |
+| **agent-web-sdk** | 浏览器端 JS SDK（WebSocket 接入） | JavaScript, WebSocket |
+| **agent-nutritionist-web** | 营养师助手前端演示 | 静态 HTML + JS |
 
 ## 架构概览
 

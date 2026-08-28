@@ -1,6 +1,7 @@
 package io.yunxi.platform.file;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -41,9 +42,9 @@ public class FileUploadService {
     @Autowired
     private FileContentExtractionService contentExtractionService;
 
-    /** 文件向量化服务 */
+    /** 文件向量化服务（milvus.enabled=true 时激活，可选注入） */
     @Autowired
-    private FileVectorService vectorService;
+    private ObjectProvider<FileVectorService> vectorServiceProvider;
 
     /** 用户文件 Mapper */
     @Autowired
@@ -241,13 +242,17 @@ public class FileUploadService {
             file.setUpdatedAt(java.time.LocalDateTime.now());
             userFileMapper.update(file);
 
-            // 4. 向量化内容
-            vectorService.saveFileVector(file, content);
-
-            // 5. 更新向量化状态
-            file.setVectorized(true);
-            file.setUpdatedAt(java.time.LocalDateTime.now());
-            userFileMapper.update(file);
+            // 4. 向量化内容（Milvus 未启用时跳过，仅记录）
+            FileVectorService vectorService = vectorServiceProvider.getIfAvailable();
+            if (vectorService == null) {
+                log.warn("向量化服务未启用（milvus.enabled=false），跳过向量化: fileId={}", file.getId());
+            } else {
+                vectorService.saveFileVector(file, content);
+                // 5. 更新向量化状态
+                file.setVectorized(true);
+                file.setUpdatedAt(java.time.LocalDateTime.now());
+                userFileMapper.update(file);
+            }
 
             log.info("OCR内容提取和向量化完成: fileId={}, contentLength={}",
                     file.getId(), content.length());
@@ -283,13 +288,17 @@ public class FileUploadService {
             file.setUpdatedAt(java.time.LocalDateTime.now());
             userFileMapper.update(file);
 
-            // 4. 向量化内容
-            vectorService.saveFileVector(file, content);
-
-            // 5. 更新向量化状态
-            file.setVectorized(true);
-            file.setUpdatedAt(java.time.LocalDateTime.now());
-            userFileMapper.update(file);
+            // 4. 向量化内容（Milvus 未启用时跳过，仅记录）
+            FileVectorService vectorService = vectorServiceProvider.getIfAvailable();
+            if (vectorService == null) {
+                log.warn("向量化服务未启用（milvus.enabled=false），跳过向量化: fileId={}", file.getId());
+            } else {
+                vectorService.saveFileVector(file, content);
+                // 5. 更新向量化状态
+                file.setVectorized(true);
+                file.setUpdatedAt(java.time.LocalDateTime.now());
+                userFileMapper.update(file);
+            }
 
             log.info("文件内容提取和向量化完成: fileId={}, contentLength={}",
                     file.getId(), content.length());
@@ -350,8 +359,11 @@ public class FileUploadService {
                 return;
             }
 
-            // 2. 删除向量
-            vectorService.deleteFileVector(fileId);
+            // 2. 删除向量（Milvus 未启用时跳过）
+            FileVectorService vectorService = vectorServiceProvider.getIfAvailable();
+            if (vectorService != null) {
+                vectorService.deleteFileVector(fileId);
+            }
 
             // 3. 删除数据库记录
             userFileMapper.deleteById(fileId);
@@ -374,6 +386,11 @@ public class FileUploadService {
      * @return 检索结果列表
      */
     public List<FileSearchResult> searchRelevantFiles(FileSearchRequest request) {
+        FileVectorService vectorService = vectorServiceProvider.getIfAvailable();
+        if (vectorService == null) {
+            log.warn("向量化服务未启用（milvus.enabled=false），返回空检索结果");
+            return Collections.emptyList();
+        }
         return vectorService.searchRelevantFiles(request);
     }
 

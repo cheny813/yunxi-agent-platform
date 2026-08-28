@@ -13,8 +13,11 @@ yunxi-agent-platform/
 ├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、AgentScope-Java 2.0GA Channel 网关接入）
 ├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-text2sql          # 自然语言转 SQL
-├── agent-app               # 可执行应用打包
-└── agent-integration-test  # 跨模块集成测试
+├── agent-app               # 可执行应用打包（统一入口）
+├── agent-integration-test  # 跨模块集成测试
+├── agent-nutritionist-web  # 营养师前端演示（静态页 + 对话 SDK 调用）
+├── agent-web-sdk           # 浏览器端 JS SDK（WebSocket 接入）
+└── sdk-js                  # JavaScript/TypeScript SDK（Node.js 接入）
 ```
 
 > 桌面客户端（`agent-desktop` → `yunxi-claw`）和远程节点（`agent-node` → `yunxi-agent-node`）已拆分为独立工程，详见对应仓库。
@@ -250,7 +253,7 @@ yunxi-mcp-servers/          ← 独立项目，30+ MCP 服务
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| agent-core | 40001 | 核心服务 |
+| agent-app | 40001 | 统一入口（可执行服务，内含 agent-core 核心框架） |
 | mcp-data | 40602 | 业务数据 MCP |
 
 ---

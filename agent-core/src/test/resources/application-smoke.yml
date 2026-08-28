@@ -9,6 +9,9 @@ spring:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration
+      - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
+      - org.springframework.ai.autoconfigure.anthropic.AnthropicAutoConfiguration
+      - org.springframework.ai.autoconfigure.ollama.OllamaAutoConfiguration
 
 agentscope:
   core:

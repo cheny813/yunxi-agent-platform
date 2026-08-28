@@ -163,7 +163,7 @@ X-User-Id: user001
 |------|------|------|
 | POST | `/api/conversations/agent/{name}/interrupt` | 中断 Agent 执行（一次性暂停信号，框架在本次迭代结束后自动消费） |
 | GET | `/api/conversations/agent/{name}/status` | 查询 Agent 执行状态 |
-| POST | `/api/conversations/agent/{name}/resume` | 恢复 Agent（清除中断状态） |
+| POST | `/api/conversations/agent/{name}/resume` | 恢复 Agent（清除中断状态；框架采用协作式中断、执行会自动继续，此端点兼容保留） |
 
 ### 健康检查
 

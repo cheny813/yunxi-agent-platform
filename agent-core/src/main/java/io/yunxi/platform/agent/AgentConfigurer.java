@@ -32,8 +32,7 @@ import io.yunxi.platform.shared.config.ExpertConfig;
 import io.yunxi.platform.shared.config.ExtensionConfig;
 import io.yunxi.platform.shared.config.StageConfig;
 import io.yunxi.platform.shared.config.ToolsGroupConfig;
-import io.yunxi.platform.shared.config.HITLConfig;
-import io.yunxi.platform.shared.config.ToolGateConfig;
+
 import io.yunxi.platform.tracing.middleware.ReActSpanMiddleware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -941,7 +940,8 @@ public class AgentConfigurer implements SmartLifecycle {
         // 注入权限上下文：将 HITL 配置映射为 PermissionContextState（被点名工具执行前需人工确认）。
         // 模式直接透传 AgentScope 原生枚举：配了需确认工具 → DEFAULT（挂起向用户确认）；
         // 未配任何人工介入 → BYPASS（全放行）。如需无人值守，调用方可显式传 DONT_ASK。
-        PermissionMode mode = hasAskTools(hitlConfig) ? PermissionMode.DEFAULT : PermissionMode.BYPASS;
+        // hasAskTools 收敛在 PermissionConfig，与请求期 PermissionContextInterceptor 复用同一判定。
+        PermissionMode mode = PermissionConfig.hasAskTools(hitlConfig) ? PermissionMode.DEFAULT : PermissionMode.BYPASS;
         builder.permissionContext(permissionConfig.build(hitlConfig, mode));
 
         // 注册人工工具（HumanTool 注册当前仅支持 schema 注册，无需绑定具体 Toolkit）
@@ -950,31 +950,6 @@ public class AgentConfigurer implements SmartLifecycle {
             // registerTools(null) 会跳过注册（registerTools 内有 null guard）
             new HumanToolRegistrar(hitlConfig.getHumanTool()).registerTools(null);
         }
-    }
-
-    /**
-     * 判断 HITL 配置是否包含需要人工确认（ASK）的工具。
-     *
-     * <p>ToolGate 启用且工具列表非空，或 ReasoningReview 启用且 ToolGate 含工具，均视为有 ASK 工具。
-     * 用于决定透传的 AgentScope 权限模式：有 → {@code DEFAULT}（挂起向用户确认），无 → {@code BYPASS}（全放行）。</p>
-     *
-     * @param hitl HITL 配置（可为 null）
-     * @return 是否配置了需人工确认的工具
-     */
-    private boolean hasAskTools(HITLConfig hitl) {
-        if (hitl == null)
-            return false;
-        ToolGateConfig toolGate = hitl.getToolGate();
-        if (toolGate != null && toolGate.isEnabled()
-                && toolGate.getTools() != null && !toolGate.getTools().isEmpty()) {
-            return true;
-        }
-        var reasoningReview = hitl.getReasoningReview();
-        if (reasoningReview != null && reasoningReview.isEnabled()
-                && toolGate != null && toolGate.getTools() != null && !toolGate.getTools().isEmpty()) {
-            return true;
-        }
-        return false;
     }
 
     // ========== Runtime / Plan 配置 ==========
