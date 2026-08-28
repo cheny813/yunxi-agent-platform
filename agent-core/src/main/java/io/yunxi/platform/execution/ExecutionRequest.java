@@ -5,6 +5,7 @@ import java.util.Map;
 
 import io.agentscope.core.message.Msg;
 import io.yunxi.platform.shared.config.MemoryConfig;
+import io.yunxi.platform.shared.dto.ConfirmResultRequest;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -60,6 +61,14 @@ public class ExecutionRequest {
     private final Map<String, Object> structuredSchema;
     /** 结构化输出命名 Schema（可为 null；按 agentName+schemaName 查 SchemaClassRegistry） */
     private final String structuredSchemaName;
+    /**
+     * 人机确认（HITL）结果回传列表（可为 null/空）。
+     *
+     * <p>非空表示本次请求用于恢复因权限确认而挂起的对话：拦截器会将其转换为
+     * AgentScope 的 {@code ConfirmResult} 并写入输入消息元数据
+     * （{@code Msg.METADATA_CONFIRM_RESULTS}），由框架继续或终止对应工具调用。</p>
+     */
+    private final List<ConfirmResultRequest> confirmResults;
 
     /**
      * 是否包含历史消息：未显式设置（null）时视为 true（与历史会话入口语义一致）。

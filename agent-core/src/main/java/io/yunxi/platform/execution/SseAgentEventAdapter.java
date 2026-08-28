@@ -8,6 +8,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 
+import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.Agent;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentEventType;
 import io.agentscope.core.event.AgentResultEvent;
@@ -17,6 +19,8 @@ import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.event.ToolCallEndEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
+import io.agentscope.core.state.AgentState;
+import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.model.ChatUsage;
 import io.yunxi.platform.conversation.ConversationDomainService;
@@ -46,6 +50,8 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
     private static final int RESULT_CHUNK_SIZE = 200;
     /** 推理累积器在 ExecutionContext.attributes 中的键 */
     private static final String ATTR_THINKING_ACCUMULATOR = "thinkingAccumulator";
+    /** AgentScope 内置任务清单工具名（由 ReActAgent.Builder.enableTaskList(true) 注册） */
+    private static final String TODO_WRITE_TOOL = "todo_write";
 
     private final SseMessageBuilder sseMessageBuilder;
     private final LlmMetrics llmMetrics;
@@ -61,9 +67,17 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
 
     @Override
     public List<String> onStart(ExecutionContext ctx) {
-        return List.of(ctx.getConversationId() != null
+        List<String> messages = new ArrayList<>();
+        messages.add(ctx.getConversationId() != null
                 ? sseMessageBuilder.buildStartMessageWithConversationId(ctx.getConversationId())
                 : sseMessageBuilder.buildStartMessage());
+        // 会话恢复：任务清单持久化于 AgentState.tasksContext（随 AgentState 按会话槽保存），
+        // 流开始时若已有历史清单则补发一次全量 todo_update，使前端可立即还原上次进度。
+        List<?> existingTasks = resolveTaskList(ctx);
+        if (!existingTasks.isEmpty()) {
+            messages.add(sseMessageBuilder.buildTodoUpdateMessage(existingTasks, ctx.getConversationId()));
+        }
+        return messages;
     }
 
     @Override
@@ -163,6 +177,12 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
                         tr.getToolCallId(), tr.getToolCallName(), stateValue));
                 messages.add(sseMessageBuilder.buildAgentStatusMessage(
                         friendlyToolName(tr.getToolCallName()) + stateLabel));
+                // 任务清单：todo_write 执行后广播最新全量清单（AgentScope 全量替换语义，
+                // 故透出整表而非增量；状态源为 AgentState.tasksContext，yunxi 不自建存储）
+                if (TODO_WRITE_TOOL.equals(tr.getToolCallName())) {
+                    messages.add(sseMessageBuilder.buildTodoUpdateMessage(
+                            resolveTaskList(ctx), ctx.getConversationId()));
+                }
                 break;
             }
             default:
@@ -215,6 +235,36 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
         return List.of();
     }
 
+    /**
+     * 读取当前会话最新任务清单。
+     *
+     * <p><b>必须按 (userId, sessionId) 槽位显式取 state</b>：Agent 为跨会话共享实例，
+     * 无参 {@code getAgentState()} 内部返回 {@code getAgentState(null, defaultSessionId)}
+     * （默认槽位），多会话并发时会读到其他会话的任务清单（静默串号）；该方法在
+     * AgentScope-Java 2.0 中已标记 {@code @Deprecated}，Javadoc 明确要求改用带显式会话身份
+     * 的重载（{@code getAgentState(String userId, String sessionId)}）。
+     * </p>
+     *
+     * <p>槽位键与执行策略保持一致——{@code StreamingStrategy} 以
+     * {@code conversationId} 作为 {@code sessionId} 构造 RuntimeContext，
+     * 故此处同样使用 {@code (userId, conversationId)}，确保与工具执行时写入的
+     * tasksContext 落在同一槽位。任一环节缺失（agent 未解析 / 类型不匹配 / state 为空）
+     * 均降级为空列表，不中断事件流。</p>
+     */
+    private List<?> resolveTaskList(ExecutionContext ctx) {
+        Agent agent = ctx.getResolvedAgent();
+        if (agent == null) {
+            return List.of();
+        }
+        ReActAgent react = agent instanceof HarnessAgent ha ? ha.getDelegate()
+                : agent instanceof ReActAgent ra ? ra : null;
+        if (react == null) {
+            return List.of();
+        }
+        AgentState state = react.getAgentState(ctx.getUserId(), ctx.getConversationId());
+        return state == null ? List.of() : state.getTasksContext().getTasks();
+    }
+
     private StringBuilder thinkingAccumulator(ExecutionContext ctx) {
         Object existing = ctx.getAttribute(ATTR_THINKING_ACCUMULATOR);
         if (existing instanceof StringBuilder sb) {
@@ -260,6 +310,7 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
             case "session_list":        return "列出会话";
             case "session_search":      return "搜索会话";
             case "load_skill_through_path": return "加载技能";
+            case "todo_write":             return "更新任务清单";
             default:                    return toolName;
         }
     }

@@ -37,6 +37,7 @@ yunxi Agent Platform 的前端 SDK 单一源（Single Source of Truth）。所�
 | `src/formfill-client.js` | **桥接层**：WebSocket 通信 + 指令执行。自动连接、幂等去重、重试、结构上报 |
 | `src/formfill-debug.js` | **调试面板**：浏览器控制台可视化查看/编辑填表数据、手动触发 fill |
 | `src/page-agent-sdk.js` | **可选 SDK 加载器**：按需加载原生 page-agent SDK（加载后 DomEngine 使用其增强状态）。不再包含任何 LLM 决策循环 |
+| `src/yunxi-chat.js` | **对话客户端**：封装 `/api/conversations/chat`（同步）与 `/api/conversations/chat/stream`（SSE 流式），提供 `window.yunxiChat`；支持文本增量、任务清单、人机确认结果回传 |
 
 ## 快速接入
 
@@ -65,6 +66,55 @@ client.reportStructure('recipe', { bootstrap: true }); // 上报真实页面字�
   - `.onLog(fn)` / `.onFill(fn)` — 事件回调
   - `.reportStructure(scene, opts?)` — 上报页面结构（供后端 `getFormStructure` 工具使用）
   - `.fillForm(formData, opts?)` — 本地直接触发填表（不经过 WebSocket，调试用）
+- `window.yunxiChat(opts)` — 发起对话，返回完整文本（也会在 `onDone` 回调）
+  - `opts.mode` — `sync`（默认，一次性返回）/ `stream`（SSE 流式）
+  - 其余 `opts` 字段作为请求体透传：`agentName`、`message`、`conversationId`、`userId`、`confirmResults` 等
+  - `onDelta(delta, fullSoFar)` — 流式文本增量（仅 `stream` 模式）
+  - `onDone(fullText)` — 完成回调（两种模式都会调用）
+  - `onTodo(todos, evt)` — 任务清单全量更新（仅 `stream` 模式；需 Agent 启用任务清单）
+  - `confirmResults` — 人机确认结果回传，用于恢复因权限确认而挂起的对话
+
+**任务清单示例**（需 Agent 配置 `plan.taskList: true`）：
+
+```javascript
+yunxiChat({
+  mode: 'stream',
+  agentName: 'general-assistant',
+  message: '帮我规划一次团建活动',
+  onDelta: (delta) => { /* 追加文本 */ },
+  onTodo: (todos) => {
+    // todos 为全量列表：[{ id, subject, state, created_at, ... }]
+    // state: pending / in_progress / completed
+    renderTodoCard(todos); // 整体替换渲染，不做增量合并
+  },
+  onDone: (full) => { /* 完成 */ }
+});
+```
+
+**人机确认回传**（Agent 调用需确认的工具时会收到 `REQUIRE_USER_CONFIRM` 事件并挂起，
+需携带 `confirmResults` 用同一会话重新请求才会继续）：
+
+```javascript
+const confirmEvt = JSON.parse(evt.content);  // content 为 JSON 字符串，需先解析
+const call = confirmEvt.toolCalls[0];
+
+yunxiChat({
+  mode: 'stream',
+  agentName: 'general-assistant',
+  conversationId: evt.conversationId,   // 必须是同一会话
+  message: '确认执行',
+  confirmResults: [{
+    toolCallId: call.id,      // 取自待确认事件
+    approved: true,           // 默认 false（拒绝）
+    toolName:  call.name,
+    input:     call.input     // 也可修改入参后再执行
+  }]
+});
+```
+
+> 说明：SSE 结构化事件的 `content` 均为 **JSON 字符串**（与 `tool_result` 等同一编码惯例），
+> 需 `JSON.parse` 后使用；`onTodo` 回调的 `todos` 已由 SDK 内部解析，可直接使用。
+> 事件与字段详见 [docs/guide/09-api-reference.md](../docs/guide/09-api-reference.md)。
 
 ## 现有页面
 

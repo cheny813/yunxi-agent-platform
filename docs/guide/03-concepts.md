@@ -1,6 +1,6 @@
 # 03. 核心概念
 
-> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。说明：`Model.stream()` 为 Model 层现役调用方式（GA 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
+> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
 
 ## 理论基础
 
@@ -120,7 +120,7 @@ RAG（Retrieval-Augmented Generation）是一种将信息检索与文本生成�
 
 ### 应用层 RAG（ApplicationRAG）
 
-**说明**：V2.0 GA 升级后，原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已删除（框架 `io.agentscope.core.rag` 包整体 `@Deprecated(forRemoval=true)`）。本框架的应用层 RAG 由 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，它复用平台既有的**文件级向量检索后端** `FileVectorService`（Milvus + EmbeddingService），与 `ChatAppService` 共用同一条检索链路。
+**说明**：V2.0（AgentScope-Java 2.0）升级后，原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已删除（框架 `io.agentscope.core.rag` 包整体 `@Deprecated(forRemoval=true)`）。本框架的应用层 RAG 由 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，它复用平台既有的**文件级向量检索后端** `FileVectorService`（Milvus + EmbeddingService），与 `ChatAppService` 共用同一条检索链路。
 
 ### 工作模式
 
@@ -214,7 +214,7 @@ agent:
 
 ### 在本框架中的实现
 
-场景识别当前由**意图引擎**（`io.yunxi.platform.intent.IntentEngine`）承载：请求到达时，先经 `DomainResolver` 解析领域（M2.2 多域模型，显式 domain → 规则 → default → base），再走四阶段前置管道（NER → 改写 → 分类 → 映射）产出结构化意图结果，其中 `sceneName` 字段由 `RuleIntentClassifier.detectSceneName` 的三级链计算（自定义场景 → 概念域 → 内置关键词 → `GENERAL`），语义与原 `SceneDetectionService` 严格等价。
+场景识别当前由**意图引擎**（`io.yunxi.platform.intent.IntentEngine`）承载：请求到达时，先经 `DomainResolver` 解析领域（多域模型，显式 domain → 规则 → default → base），再走四阶段前置管道（NER → 改写 → 分类 → 映射）产出结构化意图结果，其中 `sceneName` 字段由 `RuleIntentClassifier.detectSceneName` 的三级链计算（自定义场景 → 概念域 → 内置关键词 → `GENERAL`），语义与原 `SceneDetectionService` 严格等价。
 
 原 `SceneDetectionService` 仍保留（`io.yunxi.platform.prompt`），Bean 供存量引用兼容。场景配置由 `MemorySceneRegistry` 管理：内置场景通过 `memory.scene.builtins` 配置字符串声明（格式 `name:displayName:description:retentionDays:keywords`），自定义场景通过 `register()` 在运行时注册，无需重启。意图引擎的完整说明见 [16. 意图引擎](./16-intent-engine.md)。
 

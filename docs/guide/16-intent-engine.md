@@ -4,15 +4,15 @@
 
 意图引擎是**框架层通用能力**，与具体业务解耦。它采用**数据两级模型**：框架 jar（`agent-core`）只内置一份"最小演示集"用于演示与冒烟验证，真正的业务数据由部署方通过配置指向自己的数据文件（yunxi 默认部署的业务数据在 `agent-config/config/intent/`）。任何业务方均可通过配置替换数据，无需改动 Java 代码。
 
-经过 M2 系列迭代，引擎已从 M1 的单域规则通道演进为**多域（M2.2）+ 分类通道（M2.3）+ 热更新（M2.4）+ 意图路由（M2.1）**的完整形态：
+引擎由单域规则通道起步，已演进为**多域 + 分类通道 + 热更新 + 意图路由**的完整形态：
 
-| 里程碑 | 能力 | 状态 |
-|--------|------|------|
-| M1 | 单域四阶段规则管道（NER → 改写 → 分类 → 映射） | 已上线（冻结基线） |
-| M2.1 | 意图路由（routeHint 参与会话入口路由决策，默认关闭渐进式上线） | 已上线 |
-| M2.2 | 多域数据模型（`domains` + `resolver` 领域解析） | 已上线 |
-| M2.3 | 分类通道（`rule` / `llm` / `hybrid` 三模式 + LLM 结果缓存） | 已上线 |
-| M2.4 | 热更新（actuator 端点 + 文件轮询 + 监听器 + 审计） | 已上线 |
+| 能力 | 说明 | 状态 |
+|------|------|------|
+| 单域四阶段规则管道 | NER → 改写 → 分类 → 映射 | 已上线（冻结基线） |
+| 意图路由 | routeHint 参与会话入口路由决策，默认关闭渐进式上线 | 已上线 |
+| 多域数据模型 | `domains` + `resolver` 领域解析 | 已上线 |
+| 分类通道 | `rule` / `llm` / `hybrid` 三模式 + LLM 结果缓存 | 已上线 |
+| 热更新 | actuator 端点 + 文件轮询 + 监听器 + 审计 | 已上线 |
 
 ## 为什么需要意图引擎
 
@@ -31,7 +31,7 @@
     │
     ▼
 ┌────────────────────────────────────────────────────────────┐
-│  DomainResolver（M2.2 领域解析）                              │
+│  DomainResolver（领域解析）                            │
 │  显式 domain → 规则匹配（agent 前缀 / profile）→ default → base │
 └───────────────────────────┬────────────────────────────────┘
                             ▼
@@ -44,15 +44,15 @@
 │  └──────────┘  └──────────┘  └──────────────┘  └─────────┘ │
 │    RuleBased     Terminology   HybridIntent     Intent     │
 │    NerStage      Processor     Classifier       Mapping    │
-│                                (M2.3 分类通道)              │
+│                                (分类通道)                   │
 └────────────────────────────────────────────────────────────┘
     │ 产出 IntentResult（含 domain）
     ▼
-场景名（MemoryScene 体系） + 实体注入（K6） + 路由建议（M2.1）
+场景名（MemoryScene 体系） + 实体注入（K6） + 路由建议
     │
     ▼
 ┌────────────────────────────────────────────────────────────┐
-│  M2.4 热更新（reload 能力）                                  │
+│  热更新（reload 能力）                                       │
 │  actuator 端点 /actuator/intent/* │ IntentFilePoller 轮询    │
 │  IntentReloader（门面+审计） → IntentReloadListener 广播      │
 └────────────────────────────────────────────────────────────┘
@@ -67,7 +67,7 @@
 | ③ 分类 | `RuleIntentClassifier` / `HybridIntentClassifier` | 命中意图节点 + 计算场景名；`hybrid`/`llm` 模式叠加 LLM 通道 | `config/intent/intent-tree.yml` + 内置三级链 |
 | ④ 映射 | `IntentMappingTable` | 意图 → Agent/专家/工具组 | `config/intent/intent-mapping.yml` |
 
-四个阶段均为**可插拔**实现。M1 规则通道为冻结基线（`classification.mode=rule` 时行为不变）；M2.3 起可按需切换 `llm` / `hybrid` 分类通道，见[分类通道](#分类通道rule--llm--hybrid)。
+四个阶段均为**可插拔**实现。规则通道为冻结基线（`classification.mode=rule` 时行为不变）；可按需切换 `llm` / `hybrid` 分类通道，见[分类通道](#分类通道rule--llm--hybrid)。
 
 ## 核心概念
 
@@ -83,7 +83,7 @@
 | `intent` | 命中的意图（未命中为 `Intent.unknown()`） |
 | `routeHint` | 路由建议（Agent / 专家 / 工具组 / 技能） |
 | `sceneName` | 三级链场景名（兼容 MemoryScene 体系） |
-| `domain` | 解析出的领域名（M2.2；仅场景模式为 null） |
+| `domain` | 解析出的领域名（仅场景模式为 null） |
 | `timings` | 各阶段耗时 |
 | `degraded` | 任一阶段降级为 `true` |
 
@@ -95,13 +95,13 @@
 
 ### RouteHint（路由建议）
 
-`routeHint` 携带四个可选分量：`agent`（主 Agent）、`experts`（子专家）、`toolGroups`（工具分组）、`skills`（技能分组），以及 `score`（建议分）。请求方（如 `ChatAppService`）据此决定如何路由；开启 M2.1 意图路由（`yunxi.intent.routing.enabled=true`）后，会话入口消费 `routeHint` 参与路由决策——**advisory 语义**：目标 agent 不存在或 `score < min-route-score` 时保持原路由，不改道。
+`routeHint` 携带四个可选分量：`agent`（主 Agent）、`experts`（子专家）、`toolGroups`（工具分组）、`skills`（技能分组），以及 `score`（建议分）。请求方（如 `ChatAppService`）据此决定如何路由；开启意图路由（`yunxi.intent.routing.enabled=true`）后，会话入口消费 `routeHint` 参与路由决策——**advisory 语义**：目标 agent 不存在或 `score < min-route-score` 时保持原路由，不改道。
 
-### 多域模型（M2.2）
+### 多域模型
 
 业务数据从"单套全局"升级为"按领域隔离"：
 
-- **域**：每个域是一套独立的 NER 词典 / 术语表 / 意图树 / 映射表。`base` 域恒存在（由 M1 顶层字段 `ner-dictionary` 等快捷构造，零迁移）；其他业务域只列差异文件，缺省项继承 `base`。
+- **域**：每个域是一套独立的 NER 词典 / 术语表 / 意图树 / 映射表。`base` 域恒存在（由顶层字段 `ner-dictionary` 等快捷构造，零迁移）；其他业务域只列差异文件，缺省项继承 `base`。
 - **领域解析**（`DomainResolver`）：四层判定链——显式 `IntentContext.domain` → 规则匹配（`resolver.rules`，按 agent 名前缀 / profile 归属）→ `resolver.default` → `base` 兜底。规则命中但域未注册时 warn 并继续下一层，防误配。
 - **运行时隔离**：每域一个 `DomainRuntime`（含版本号、加载时间、不可变 `TreeSnapshot` 三索引、NER/术语/映射视图）。`analyze()` 只访问当前解析域的运行时，跨域互不干扰。
 - **配置切换**：`domains` 是一个 `Map<域名, 数据源>`；`base` 缺省由顶层字段构造，`resolver` 负责把请求路由到正确域。
@@ -112,7 +112,7 @@
 
 | mode | 行为 | 装配 |
 |------|------|------|
-| `rule`（默认） | M1 冻结规则通道，不调 LLM、不读缓存 | 直连 `RuleIntentClassifier`，`HybridIntentClassifier` 不装配 |
+| `rule`（默认） | 冻结规则通道，不调 LLM、不读缓存 | 直连 `RuleIntentClassifier`，`HybridIntentClassifier` 不装配 |
 | `llm` | 跳过规则，白名单内直连 LLM 分类 | `HybridIntentClassifier`（`@Primary`） |
 | `hybrid` | 规则优先：规则命中且 `confidence ≥ rule-confidence-threshold` 直出；否则 LLM 兜底 | `HybridIntentClassifier`（`@Primary`） |
 
@@ -144,11 +144,11 @@
 | `intent-tree.yml` | 意图树 | `yunxi.intent.intent-tree` |
 | `intent-mapping.yml` | 路由映射表 | `yunxi.intent.mapping-table` |
 
-M2.2 多域下，以上四项成为 `base` 域的快捷方式，等价 `domains.base.*`；二者同时配置时以 `domains.base.*` 为准。
+多域模式下，以上四项成为 `base` 域的快捷方式，等价 `domains.base.*`；二者同时配置时以 `domains.base.*` 为准。
 
 ### 原则二：配置驱动，开箱可替换
 
-每个数据文件都可通过 `yunxi.intent.*` 配置项指向自己的资源，支持 `classpath:` / `file:` / `url:` 三种前缀：`classpath:config/intent/x.yml`（打包资源）、`file:/data/yunxi/intent/x.yml`（部署目录外部化）、`url:https://...`（配置中心）。替换业务数据**不需要修改任何 Java 代码、不需要重新编译**，重启即生效；M2.4 起支持运行期热更新，见[热更新与运维](#热更新与运维)。
+每个数据文件都可通过 `yunxi.intent.*` 配置项指向自己的资源，支持 `classpath:` / `file:` / `url:` 三种前缀：`classpath:config/intent/x.yml`（打包资源）、`file:/data/yunxi/intent/x.yml`（部署目录外部化）、`url:https://...`（配置中心）。替换业务数据**不需要修改任何 Java 代码、不需要重新编译**，重启即生效；当前版本支持运行期热更新，见[热更新与运维](#热更新与运维)。
 
 ### 原则三：降级安全（fail-safe）
 
@@ -162,18 +162,18 @@ M2.2 多域下，以上四项成为 `base` 域的快捷方式，等价 `domains.
 yunxi:
   intent:
     enabled: true                 # 总开关（false = 仅场景模式，等价旧 SceneDetectionService）
-    # ── M1 四阶段数据源（base 域快捷方式；domains.base.* 优先级更高）──
+    # ── 四阶段数据源（base 域快捷方式；domains.base.* 优先级更高）──
     ner-dictionary: classpath:config/intent/ner-dictionaries.yml
     rewrite-enabled: true
     rewrite-processors: [terminology]            # 改写处理器名列表（按序执行）
     terminology-table: classpath:config/intent/terminology.yml
     intent-tree: classpath:config/intent/intent-tree.yml
     mapping-table: classpath:config/intent/intent-mapping.yml
-    # ── M2.1 意图路由（默认关闭，渐进式上线）──
+    # ── 意图路由（默认关闭，渐进式上线）──
     routing:
       enabled: false               # 开启后 routeHint 参与会话入口路由决策（advisory）
       min-route-score: 0.5         # 最低采纳分数（低于此值不改道）
-    # ── M2.3 分类通道 ──
+    # ── 分类通道 ──
     classification:
       mode: rule                   # rule | llm | hybrid
       rule-confidence-threshold: 0.6    # hybrid 模式规则高分直出阈值
@@ -186,18 +186,18 @@ yunxi:
         cache:
           ttl-days: 7              # 缓存 TTL（惰性失效，reload 后按版本跳过）
           max-size: 10000          # LRU 上限
-    # ── M2.2 多域（单域部署保持默认即可）──
+    # ── 多域（单域部署保持默认即可）──
     resolver:
       default: base                # 未命中规则的默认域
       rules: []                    # 多域路由规则（agent 前缀 / profile 归属）
       domains: {}                  # 业务域数据源（见下"多域配置"示例）
-    # ── M2.4 热更新 ──
+    # ── 热更新 ──
     reload:
       enabled: true                # reload 开关（actuator 端点受控）
       poll-seconds: -1             # >0 时轮询 file: 前缀资源 mtime（默认关闭）
 ```
 
-### 基础配置项（M1，base 域）
+### 基础配置项（base 域）
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -239,7 +239,7 @@ yunxi:
 
 判定链（`DomainResolver.resolve`）：显式 `IntentContext.domain`（信任调用方，未注册则 warn 回落）→ `resolver.rules` 按序匹配（`agent-prefixes` 前缀 / `profile-in` 归属，命中但域未注册则 warn 继续）→ `resolver.default`（缺省 `base`）→ `base` 兜底。域解析永不返回 null。
 
-### 分类通道配置（M2.3）
+### 分类通道配置
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -253,7 +253,7 @@ yunxi:
 | `yunxi.intent.classification.llm.cache.ttl-days` | `7` | LLM 结果缓存 TTL |
 | `yunxi.intent.classification.llm.cache.max-size` | `10000` | 缓存 LRU 上限 |
 
-### 热更新配置（M2.4）
+### 热更新配置
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -262,7 +262,7 @@ yunxi:
 
 ## 热更新与运维
 
-M2.4 提供运行期热更新能力，业务数据文件变更后**无需重启应用**：
+引擎提供运行期热更新能力，业务数据文件变更后**无需重启应用**：
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
@@ -333,7 +333,7 @@ intent-mappings:
     skills: [recommendation]
 ```
 
-开启 M2.1 意图路由后，该映射会自动参与会话入口路由；未开启时 `routeHint` 仅作为分析结果旁路输出，不改变既有路由。
+开启意图路由后，该映射会自动参与会话入口路由；未开启时 `routeHint` 仅作为分析结果旁路输出，不改变既有路由。
 
 ### 场景四：整表替换业务数据（外部化部署）
 
@@ -380,10 +380,10 @@ yunxi:
 |--------|----------|------|
 | NER | `NerStage` | 实现 `extract(query, entityTypes)` 返回实体列表 |
 | 改写 | `RewriteProcessor` | 实现 `rewrite(query)` 返回改写后文本；通过 `rewrite-processors` 按名装配 |
-| 分类 | `IntentClassifier` | 实现 `classify` 返回意图 + 场景名；M2.3 内置 `rule`/`llm`/`hybrid` 三种实现 |
+| 分类 | `IntentClassifier` | 实现 `classify` 返回意图 + 场景名；内置 `rule`/`llm`/`hybrid` 三种实现 |
 | 映射 | `IntentMappingTable` | 实现 `route(intent)` 返回 `RouteHint` |
 
-> M2.3 已内置 LLM 分类通道（`LlmIntentClassifier` + `HybridIntentClassifier`），无需自行实现即可获得"规则优先、LLM 兜底"的混合分类。若业务需要自定义分类模型，可实现 `IntentClassifier` 并注册为 `@Primary` 覆盖默认装配（注意 `HybridIntentClassifier` 在 `mode≠rule` 时以 `@Primary` 注册，二者需择一）。
+> 已内置 LLM 分类通道（`LlmIntentClassifier` + `HybridIntentClassifier`），无需自行实现即可获得"规则优先、LLM 兜底"的混合分类。若业务需要自定义分类模型，可实现 `IntentClassifier` 并注册为 `@Primary` 覆盖默认装配（注意 `HybridIntentClassifier` 在 `mode≠rule` 时以 `@Primary` 注册，二者需择一）。
 
 ## 与旧场景检测的关系
 
@@ -396,11 +396,13 @@ yunxi:
 
 > 迁移说明：`SceneDetectionService` 已标记 `@Deprecated`，调用方已迁移至 `ChatAppService` 的意图引擎；禁止新代码注入旧服务（规避 `milvus.enabled` 条件 Bean 启动依赖），后续版本将整体移除。
 
-## 设计文档
+## 设计文档（内部资料，未随开源发布）
 
-- [意图引擎设计](../../docs/intent-engine-design.md)：整体架构、降级原则、扩展路线。
-- [意图引擎 M1 实施](../../docs/intent-engine-m1-implementation.md)：四阶段落地明细与验证清单。
-- [意图引擎 M2.2-M2.4 设计](../../docs/intent-engine-m2-m234-design.md)：多域模型、分类通道、热更新、意图路由的设计与验证清单。
+以下资料为项目内部设计与实施记录，未随本开源仓库发布，如需查阅请联系项目维护者：
+
+- 意图引擎设计：整体架构、降级原则、扩展路线。
+- 意图引擎实施记录：四阶段落地明细与验证清单。
+- 意图引擎设计记录：多域模型、分类通道、热更新、意图路由的设计与验证清单。
 
 ---
 

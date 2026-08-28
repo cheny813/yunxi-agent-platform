@@ -29,6 +29,17 @@ public class PlanConfig {
     /** 是否启用 Plan 可视化监控 */
     private boolean enableMonitor = false;
 
+    /**
+     * 是否启用任务清单（AgentScope 原生 todo_write 工具 + TaskReminderMiddleware）。
+     * <p>
+     * 启用后由 {@code ReActAgent.Builder.enableTaskList(true)} 在 build 阶段注册
+     * {@code todo_write} 工具与提醒中间件；任务状态持久化于
+     * {@code AgentState.tasksContext}，随 AgentState 一同落盘/续传。
+     * 默认 false（与 AgentScope 默认一致，避免对所有 Agent 无差别增加工具面）。
+     * </p>
+     */
+    private boolean taskList = false;
+
     public PlanConfig() {
     }
 
@@ -70,5 +81,13 @@ public class PlanConfig {
 
     public void setEnableMonitor(boolean enableMonitor) {
         this.enableMonitor = enableMonitor;
+    }
+
+    public boolean isTaskList() {
+        return taskList;
+    }
+
+    public void setTaskList(boolean taskList) {
+        this.taskList = taskList;
     }
 }

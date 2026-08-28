@@ -142,7 +142,130 @@ X-User-Id: user001
 }
 ```
 
-流式响应为 `text/event-stream`，每条 `data:` 行包含 `{type, timestamp, content}` 结构事件，`type` 取值包括 `content`（回复增量）、`thinking`（思考过程）、`tool_call`、`tool_result`、`agent_status`、`error` 等。
+流式响应为 `text/event-stream`，每条 `data:` 行包含 `{type, timestamp, content}` 结构事件，`type` 取值包括 `content`（回复增量）、`thinking`（思考过程）、`tool_call`、`tool_result`、`agent_status`、`todo_update`（任务清单，需启用）、`error` 等。
+
+#### todo_update 事件（任务清单）
+
+Agent 执行长任务时，可通过内置 `todo_write` 工具维护结构化任务清单，服务端在任务状态变化后推送该事件。
+
+**启用条件**：Agent 定义 YAML 的 `plan.taskList: true`，或全局 `agentscope.core.plan.task-list: true`（默认关闭）。
+
+**触发时机**：Agent 调用 `todo_write` 工具后（每次提交完整列表）；进入已有会话时，若该会话存在历史任务清单，流开始即补发一次。
+
+**事件负载**（与 `tool_result` 等结构化事件同一编码惯例：**`content` 为 JSON 字符串**，需二次解析后取 `todos` 数组；元素为 AgentScope `Task` 序列化结果）：
+
+```json
+{
+  "type": "todo_update",
+  "timestamp": "2026-08-28T10:00:00Z",
+  "conversationId": "conv-123",
+  "content": "{\"todos\":[{\"id\":\"a1b2c3…\",\"subject\":\"查询营养成分\",\"description\":\"查询营养成分\",\"state\":\"completed\",\"metadata\":{\"priority\":\"high\"},\"created_at\":\"2026-08-28T09:59:01+08:00\",\"owner\":null,\"blocks\":[],\"blocked_by\":[]},{\"id\":\"d4e5f6…\",\"subject\":\"生成配餐方案\",\"state\":\"in_progress\",…}]}"
+}
+```
+
+`content` 解析后的结构：
+
+```json
+{
+  "todos": [
+    { "id": "a1b2c3…", "subject": "查询营养成分", "description": "查询营养成分",
+      "state": "completed", "metadata": { "priority": "high" },
+      "created_at": "2026-08-28T09:59:01+08:00", "owner": null,
+      "blocks": [], "blocked_by": [] },
+    { "id": "d4e5f6…", "subject": "生成配餐方案", "description": "生成配餐方案",
+      "state": "in_progress", "metadata": {}, "created_at": "…", "owner": null,
+      "blocks": [], "blocked_by": [] }
+  ]
+}
+```
+
+前端取数示意：
+
+```javascript
+const payload = JSON.parse(evt.content);   // content 为 JSON 字符串
+renderTodoCard(payload.todos);
+```
+
+**说明**：
+
+- `state` 取值：`pending`（待执行）/ `in_progress`（执行中）/ `completed`（已完成）；同一时刻至多一个 `in_progress`（模型违反约束时工具返回错误，清单不被破坏）
+- **全量透出**：AgentScope 采用 full-list-replace 语义，前端应**整体替换**任务列表渲染，不做增量合并
+- 注意 `created_at` 与 `blocked_by` 为下划线命名（与 Java 字段名 camelCase 不同）
+- 任务状态持久化于 `AgentState.tasksContext`，默认即有文件存储（`~/.agentscope/state/<agentId>/`），跨会话续传开箱可用；仅多副本部署时需配置 Redis 会话存储
+
+#### REQUIRE_USER_CONFIRM 事件（人机确认）
+
+Agent 调用需人工确认的工具时（由 Agent 配置的 `extensions.hitl.toolGate` 指定），
+服务端推送该事件并**挂起 Agent**，需由调用方携带确认结果重新发起请求才会继续执行。
+
+**事件负载**（与 `tool_result` 等结构化事件同一编码惯例：**`content` 为 JSON 字符串**，
+需二次解析；解析后即事件对象本身）：
+
+```json
+{
+  "type": "REQUIRE_USER_CONFIRM",
+  "timestamp": "2026-08-29T10:00:00Z",
+  "conversationId": "conv-123",
+  "content": "{\"type\":\"REQUIRE_USER_CONFIRM\",\"id\":\"evt-001\",\"createdAt\":\"2026-08-29T10:00:00+08:00\",\"replyId\":\"reply-1\",\"toolCalls\":[{\"type\":\"tool_use\",\"id\":\"call_b96c5668e76847468992f1\",\"name\":\"write_file\",\"input\":{\"path\":\"notes.txt\",\"content\":\"hello\"}}]}"
+}
+```
+
+`content` 解析后的结构：
+
+```json
+{
+  "type": "REQUIRE_USER_CONFIRM",
+  "id": "evt-001",
+  "createdAt": "2026-08-29T10:00:00+08:00",
+  "replyId": "reply-1",
+  "toolCalls": [
+    { "type": "tool_use",
+      "id": "call_b96c5668e76847468992f1",
+      "name": "write_file",
+      "input": { "path": "notes.txt", "content": "hello" } }
+  ]
+}
+```
+
+> 回传确认结果时需要的 `toolCallId` / `toolName` / `input`，即取自 `toolCalls[]` 中的
+> `id` / `name` / `input`。
+
+**恢复方式**：使用**相同的 `conversationId`** 重新调用流式接口，并在请求体中携带
+`confirmResults`（每项对应一个待确认工具调用，字段取自事件中的 `toolCalls[]`）：
+
+```http
+POST /api/conversations/chat/stream
+Content-Type: application/json
+X-User-Id: user001
+
+{
+  "agentName": "general-assistant",
+  "conversationId": "conv-123",
+  "message": "确认执行",
+  "confirmResults": [
+    { "toolCallId": "call_b96c5668e76847468992f1",
+      "approved": true,
+      "toolName": "write_file",
+      "input": { "path": "notes.txt", "content": "hello" } }
+  ]
+}
+```
+
+**请求字段（`confirmResults[]`）**：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `toolCallId` | string | 是 | 待确认的工具调用 ID，取自事件 `toolCalls[].id`。必须对应当前处于待确认状态的调用，否则框架会拒绝 |
+| `approved` | boolean | 否 | 是否批准执行，**默认 `false`（拒绝）**——采用安全默认 |
+| `toolName` | string | 否 | 工具名，取自事件 `toolCalls[].name`，建议回传 |
+| `input` | object | 否 | 工具入参，取自事件 `toolCalls[].input`。用户也可修改入参后再执行 |
+
+**说明**：
+
+- 不携带 `confirmResults` 时即普通对话，行为不变；携带后仅用于恢复挂起的调用
+- 拒绝（`approved: false`）时该工具调用被终止，Agent 会收到拒绝结果并继续生成回复
+- 若前端始终不回传，会话会停在挂起点——生产环境应确保前端实现确认交互，或将相关工具从确认清单中移除
+- 框架负责校验（ID 有效性、重复、是否处于待确认状态），平台仅做参数转换
 
 ### 会话管理
 

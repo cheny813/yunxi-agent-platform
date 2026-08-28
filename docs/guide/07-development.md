@@ -99,7 +99,7 @@ agent-definitions/*.yml
 
 ### 工具注册机制（@Tool 注解）
 
-AgentScope-Java 2.0 GA 中 `@Tool` 是**方法级注解**（`io.agentscope.core.tool.Tool`），而非需实现的接口。`Toolkit` 在 Agent 装配阶段自动扫描所有带 `@Tool` 注解的 Spring Bean 并注册，**无需实现额外的 `Tool` 接口或桥接层**。
+AgentScope-Java 2.0 中 `@Tool` 是**方法级注解**（`io.agentscope.core.tool.Tool`），而非需实现的接口。`Toolkit` 在 Agent 装配阶段自动扫描所有带 `@Tool` 注解的 Spring Bean 并注册，**无需实现额外的 `Tool` 接口或桥接层**。
 
 **工具生命周期**：定义 → 注册 → 发现 → 调用 → 返回
 
@@ -160,9 +160,90 @@ agent:
 
 ---
 
+## 为 Agent 启用任务清单（TodoList）
+
+面对耗时数十秒至数分钟的长任务，可让 Agent 维护结构化任务清单，实现**进度可见**（前端实时看到 x/y）、
+**规划可校验**（任务拆解透明）、**中断可恢复**（状态随会话持久化，可从断点继续）。
+
+能力由 AgentScope-Java 2.0 **原生提供**（`todo_write` 工具 + `TaskReminderMiddleware`），
+yunxi 仅负责启用与事件透出——**无需自建工具、存储或状态机**。
+
+### 1. 启用开关
+
+```yaml
+# agent-definitions/<name>.yml
+agent:
+  name: business-assistant
+  plan:
+    taskList: true          # 默认 false
+```
+
+也可全局开启（`agentscope.yml`）：
+
+```yaml
+agentscope:
+  core:
+    plan:
+      task-list: true
+```
+
+启用条件与计划模式（`plan.enabled`）一致，取 **YAML 级 或 全局级** 二者之一。
+
+### 2. 引导模型使用
+
+`todo_write` 依赖模型主动调用。可在 `systemPrompt` 中追加领域化引导（框架已内建通用引导，此为可选增强）：
+
+```yaml
+  systemPrompt: |
+    处理多步骤任务（预计 3 步以上）时，先调用 todo_write 拆解任务清单，
+    每个步骤一个任务；执行过程中及时更新任务状态，同一时刻仅保持一个任务为 in_progress。
+```
+
+### 3. 语义与约束
+
+| 项 | 说明 |
+|------|------|
+| 写入语义 | **全量替换**（full-list-replace）——模型每次提交完整列表，不做增量合并 |
+| 状态 | `pending` / `in_progress` / `completed` |
+| 唯一性约束 | 同一时刻至多一个 `in_progress`；违反时工具返回错误文本，清单不被破坏 |
+| 任务标识 | 模型无需传 id；工具按任务内容（subject）匹配原任务以保留 id 与创建时间 |
+| 删除任务 | 从列表中省略即可（无独立删除工具） |
+
+### 4. 前端对接
+
+服务端经 SSE `todo_update` 事件推送全量清单，前端应**整体替换**渲染：
+
+```javascript
+yunxiChat({
+  mode: 'stream',
+  message: '生成一份营养配餐方案',
+  onDelta: (delta, full) => { /* 文本增量 */ },
+  onTodo: (todos, evt) => {
+    // todos: [{ id, subject, state, created_at, ... }]，全量列表
+    renderTodoCard(todos);
+  },
+  onDone: (full) => { /* 完成 */ }
+});
+```
+
+> SDK 的 `onTodo` 回调仅在 `mode: 'stream'` 下触发。事件负载与字段说明见
+> [09. API 参考](./09-api-reference.md#todo_update-事件任务清单)，启用配置见
+> [06. 配置参考](./06-configuration.md#任务清单todolist配置)。
+
+### 5. 与计划模式（PlanMode）的关系
+
+两者相互独立：任务清单不要求先进入计划模式；计划模式侧重"先规划后执行"的只读阶段，
+任务清单侧重执行过程中的进度跟踪。可按需单独或同时启用。
+
+> 若还需对命令执行、文件写入等**高危工具**加人工确认，见
+> [06. 配置参考 - 人机确认（HITL）配置](./06-configuration.md#人机确认hitl配置)；
+> 确认结果的回传接口见 [09. API 参考](./09-api-reference.md#require_user_confirm-事件人机确认)。
+
+---
+
 ## Agent 上下文
 
-Agent 上下文由 GA 框架的 `HarnessAgent.workspaceFor(userId, sessionId)` 管理，通过 `RuntimeContext` 透传 `userId`/`sessionId`。yunxi 不提供自定义上下文的 SPI 扩展点——上下文数据经由 AgentScope 框架的 Middleware（如 `WorkspaceContextMiddleware`）和 `AgentStateStore` 管理。
+Agent 上下文由 AgentScope 框架的 `HarnessAgent.workspaceFor(userId, sessionId)` 管理，通过 `RuntimeContext` 透传 `userId`/`sessionId`。yunxi 不提供自定义上下文的 SPI 扩展点——上下文数据经由 AgentScope 框架的 Middleware（如 `WorkspaceContextMiddleware`）和 `AgentStateStore` 管理。
 
 如需在 Agent 调用前注入额外上下文信息，可在 YAML 的 `systemPrompt` 中使用变量占位符，由模板引擎在装配时替换。
 

@@ -385,6 +385,15 @@ public class AgentscopeCoreProperties {
          * 留空则使用 AgentScope 默认（仅 plan 控制工具 + agent_spawn 等内部工具）。
          */
         private String readOnlyTools;
+
+        /**
+         * 是否全局启用任务清单（AgentScope 原生 todo_write 工具 + TaskReminderMiddleware）。
+         * <p>
+         * 与 YAML 级 {@code plan.taskList} 为"二者之一"生效关系（同 {@link #enabled}），
+         * 默认 false。启用后任务状态持久化于 {@code AgentState.tasksContext}。
+         * </p>
+         */
+        private boolean taskList = false;
     }
 
     /**

@@ -40,6 +40,11 @@ public class PermissionConfig {
     private static final String RULE_SOURCE = "yunxi-hitl";
 
     /**
+     * AgentScope 内置任务清单工具名（由 {@code HarnessAgent.Builder.enableTaskList(true)} 注册）。
+     */
+    private static final String TODO_WRITE_TOOL = "todo_write";
+
+    /**
      * 判断 HITL 配置是否包含需要人工确认（ASK）的工具。
      *
      * <p>ToolGate 启用且工具列表非空，或 ReasoningReview 启用且 ToolGate 含工具，均视为有 ASK 工具。
@@ -81,10 +86,87 @@ public class PermissionConfig {
     public PermissionContextState build(HITLConfig hitl, PermissionMode mode) {
         PermissionContextState.Builder builder = PermissionContextState.builder();
         builder.mode(mode);
+        addTodoWriteAllowRule(builder);
         if (mode != PermissionMode.DONT_ASK) {
             addAskRules(builder, hitl);
         }
         return builder.build();
+    }
+
+    /**
+     * 构建无人值守（{@code DONT_ASK}）权限上下文。
+     *
+     * <p>用于未配置 HITL 的 Agent：该模式下 AgentScope 兜底判定会把未命中规则的工具调用
+     * 从 ASK 降级为 DENY（避免无人值守场景挂起等待）。因此任务清单工具同样必须显式放行，
+     * 否则 {@code todo_write} 会被直接拒绝、任务清单完全不可用。
+     * 本方法与 {@link #build} 保持一致的放行策略，仅模式固定为 {@code DONT_ASK}。
+     *
+     * <p>构建期（{@code AgentConfigurer.injectHITLMiddlewares}）与请求期
+     * （{@code PermissionContextInterceptor}）两条注入路径均复用本方法，
+     * 避免各自构造上下文导致放行策略漏配。</p>
+     *
+     * <p><b>已知取舍</b>：本模式下未命中 ALLOW 规则的工具一律被拒绝，<b>包括
+     * {@code list_files} / {@code read_file} 等只读工具</b>——工具的 {@code readOnly=true}
+     * 属性仅在 {@code EXPLORE} / {@code ACCEPT_EDITS} 模式下参与判定，在
+     * {@code DONT_ASK} 下不生效。只读 MCP 工具不受影响（{@code McpTool} 工具自检直接放行）。</p>
+     *
+     * <p><b>为何不用 EXPLORE</b>（语义上更贴近"只读放行"，曾被考虑）：
+     * {@code PermissionEngine} 的判定顺序为
+     * {@code deny → ask →[(EXPLORE/ACCEPT_EDITS 模式判定) 或 工具自检] → allow → BYPASS → 兜底}，
+     * EXPLORE 的模式判定位于 ALLOW 规则<b>之前</b>且立即返回
+     * （{@code PermissionEngine.checkExploreMode} L241-248 对非只读工具直接 DENY）。
+     * 而任务清单工具 {@code todo_write} 的 {@code readOnly=false}
+     * （{@code TodoTools} L96），改用 EXPLORE 会使其被直接 DENY、任务清单失效。
+     * 换言之：EXPLORE 与"为特定工具注入 ALLOW 放行"二者不可兼得，
+     * 故保留 DONT_ASK + ALLOW 规则的组合。
+     * </p>
+     *
+     * <p>若将来业务确实需要在此模式下使用框架内置只读工具，可行方案是：
+     * 在请求期通过 Agent 实例的 toolkit 枚举 {@code isReadOnly()} 为 true 的工具并注入
+     * ALLOW 规则（注意不能用装配期的 toolkit——实测其视图不完整：即便在 Agent 构建
+     * 完成后，其中也只含装配期注册的工具，框架在 build 阶段注册的工具不在其中）。</p>
+     *
+     * @return 无人值守权限上下文
+     */
+    public PermissionContextState unattendedContext() {
+        PermissionContextState.Builder builder = PermissionContextState.builder();
+        builder.mode(PermissionMode.DONT_ASK);
+        addTodoWriteAllowRule(builder);
+        return builder.build();
+    }
+
+    /**
+     * 为任务清单工具注入放行规则（ALLOW）。
+     *
+     * <p><b>为什么必须显式放行</b>：AgentScope 权限引擎的判定顺序为
+     * {@code deny → ask → tool 自检 → allow → BYPASS → 兜底判定}，兜底判定
+     * （{@code PermissionEngine.defaultDecisionAsk}）在 {@code DEFAULT} 模式下返回
+     * {@code ASK}、在 {@code DONT_ASK} 模式下返回 {@code DENY}。{@code todo_write}
+     * 属于写类工具且无显式规则，会一路落到兜底判定：
+     *
+     * <ul>
+     *   <li>配了 HITL 的 Agent（{@code DEFAULT} 模式）→ 触发人工确认并挂起，Agent 停止推进，
+     *       请求直接结束，任务清单永远无法写入；</li>
+     *   <li>未配 HITL 的 Agent（{@code DONT_ASK} 模式）→ 直接被拒绝执行，任务清单完全不可用。</li>
+     * </ul>
+     *
+     * 由于 ALLOW 规则命中于第 4 步、早于兜底判定，注入该规则即可让 {@code todo_write}
+     * 在任何权限模式下正常执行。
+     * </p>
+     *
+     * <p><b>安全性</b>：{@code todo_write} 仅读写当前会话的
+     * {@code AgentState.tasksContext}，不落盘业务数据、不执行命令、不访问网络，
+     * 与 {@code shell_execute} / {@code file_write} 等有外部副作用的工具有本质区别，
+     * 故不纳入人工确认范围。该规则仅在 Agent 启用任务清单
+     * （{@code plan.taskList=true}）注册了该工具后才可能命中；未启用时无副作用。
+     * </p>
+     *
+     * <p>注：本规则为 ALLOW 而非 ASK，不受 {@link #build} 中
+     * “{@code DONT_ASK} 模式不注入 ASK 规则”的约束（ALLOW 不会挂起等待）。</p>
+     */
+    private void addTodoWriteAllowRule(PermissionContextState.Builder builder) {
+        builder.addAllowRule(TODO_WRITE_TOOL,
+                new PermissionRule(TODO_WRITE_TOOL, null, PermissionBehavior.ALLOW, RULE_SOURCE));
     }
 
     /**

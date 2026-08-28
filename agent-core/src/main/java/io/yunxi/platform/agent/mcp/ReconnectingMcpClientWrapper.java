@@ -9,7 +9,7 @@
  * 删除条件：底层框架（AgentScope）升级到内置原生 reconnect 的 MCP SDK（>= 0.10.0）后，
  * 直接删除本类，并把 AgentConfigurer.registerMcpServers 中对 wrapWithReconnect 的调用还原为裸 buildMcpClient 即可。
  *
- * 设计约束（遵循"薄适配层（thin adapter layer）"原则）：
+ * 设计约束（遵循"薄适配层（thin adapter layer：不重写框架能力，仅在框架之上做最小必要适配）"原则）：
  * - 不修改 AgentScope 任何代码，不自建 MCP 协议层；仅包装框架原生 McpClientWrapper。
  * - toolkit 注册结构与调用路径完全不变（McpTool 持有的是本包装器引用，运行时只调 callTool）。
  * - 重连只在 callTool 失败且判定为连接级异常时触发，且每个调用至多重试一次，避免重连风暴。

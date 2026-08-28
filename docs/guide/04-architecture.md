@@ -1,6 +1,6 @@
 # 04. 架构设计
 
-> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（GA 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
+> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
 
 ## 软件架构理论基础
 
@@ -184,7 +184,7 @@ tools:
 └── skills/                     # 全局共享技能（Agent 不可在此创建）
 ```
 
-多租户运行时隔离由 AgentScope-Java 2.0GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 实现：按用户命名空间隔离工作空间与 AgentState 会话槽，用户数据按 `{userId}/` 子目录由框架运行时按需创建。根级 `skills/` 为全局共享资源。
+多租户运行时隔离由 AgentScope-Java 2.0 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 实现：按用户命名空间隔离工作空间与 AgentState 会话槽，用户数据按 `{userId}/` 子目录由框架运行时按需创建。根级 `skills/` 为全局共享资源。
 
 ### 依赖关系图
 
@@ -460,7 +460,7 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 |------|---------|---------|:--:|
 | **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
 | **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl`（网关统一入口） | 否 |
-| **3. 统一治理层（网关能力内置）** | 接入层认证/限流/路由由 AgentScope-Java 2.0GA Channel + AgentGatewayImpl 承接 | `AgentGatewayImpl`、`agent-core` | 否 |
+| **3. 统一治理层（网关能力内置）** | 接入层认证/限流/路由由 AgentScope-Java 2.0 Channel + AgentGatewayImpl 承接 | `AgentGatewayImpl`、`agent-core` | 否 |
 | **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | `ContentFilterMiddleware`（提示注入防护）、`ChatAppService` | 否 |
 | **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
 | **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
@@ -596,7 +596,7 @@ public class ModelFactory {
 │  第 4 层: 生产特性 (CircuitBreaker, HITL, Audit, Metrics)        │
 │    熔断器 | 人工审核 | 审计 | 监控 | 多租户 Profile                │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 3 层: 接入层 (AgentScope-Java 2.0GA Channel: 企微/钉钉/飞书/Web API)             │
+│  第 3 层: 接入层 (AgentScope-Java 2.0 Channel: 企微/钉钉/飞书/Web API)             │
 │    由 agentscope-extensions-channel-* 原生承载                    │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 2 层: 统一治理 (AgentGatewayImpl + 框架 Middleware)           │
@@ -632,7 +632,7 @@ public class ModelFactory {
 1. **YAML 配置 → DTO 的转换链**：`AgentDefinition` → `AgentConfigDto` → `AgentInfoDto` 有多层映射，部分可以合并
 2. ~~**自建 LLM Provider**~~：✅ **已修复** — 拆除 `ChatModelProvider` 接口及 3 个自建 Provider，复用框架 `ModelRegistry` 工厂机制
 3. ~~**自建 Shell 命令安全**~~：✅ **已修复** — 拆除 `CommandSafetyClassifier`，使用框架 `ShellCommandTool` 白名单/验证器
-4. **Session 会话管理**：`session/` 包保留（多租户会话管理），分布式协调能力由 GA 原生 `DistributedStore` + `RedisDistributedStore.fromJedis()` 承载，二者职责分离、各司其职
+4. **Session 会话管理**：`session/` 包保留（多租户会话管理），分布式协调能力由 AgentScope 原生 `DistributedStore` + `RedisDistributedStore.fromJedis()` 承载，二者职责分离、各司其职
 5. ~~**Tracer 废弃适配**~~：✅ **已适配** — 删除 `OpenTelemetryTracer.java`，改用全局 `OpenTelemetry` API
 6. **工具注册**：业务工具直接使用 `@Tool` 注解注册，无需单独的接口或桥接层。
 

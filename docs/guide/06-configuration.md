@@ -285,7 +285,7 @@ agentscope:
 
 ## 知识库（RAG）配置
 
-> **⚠️ V2.0 变更说明**：原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已随 GA 升级整体删除（框架 `io.agentscope.core.rag` 包 `@Deprecated(forRemoval=true)`）。应用层 RAG 由平台自建的 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，检索后端复用 `FileVectorService`（Milvus + EmbeddingService）。
+> **⚠️ V2.0 变更说明**：原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已随 AgentScope-Java 2.0 升级整体删除（框架 `io.agentscope.core.rag` 包 `@Deprecated(forRemoval=true)`）。应用层 RAG 由平台自建的 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，检索后端复用 `FileVectorService`（Milvus + EmbeddingService）。
 
 ### 理论基础：检索增强生成
 
@@ -591,7 +591,7 @@ boolean valid = securityContext.validateJwtToken(token);
 
 yunxi 业务层现已统一采集每次 LLM 调用的 token 消耗与耗时，并在日志与指标两个维度暴露，便于排查成本、性能与异常。
 
-**采集入口**：`io.yunxi.platform.tracing.LlmMetrics#recordAndLogUsage(model, provider, ChatUsage)`。该方法接收 GA 的 `io.agentscope.core.model.ChatUsage`（含 `inputTokens` / `outputTokens` / `cachedTokens` / `totalTokens` / `time` 秒），`usage` 为 null 时直接返回，不打印也不报错（某些 provider 不回填 usage 属正常）。
+**采集入口**：`io.yunxi.platform.tracing.LlmMetrics#recordAndLogUsage(model, provider, ChatUsage)`。该方法接收 AgentScope 的 `io.agentscope.core.model.ChatUsage`（含 `inputTokens` / `outputTokens` / `cachedTokens` / `totalTokens` / `time` 秒），`usage` 为 null 时直接返回，不打印也不报错（某些 provider 不回填 usage 属正常）。
 
 **1. 日志（INFO）**
 
@@ -798,6 +798,126 @@ agent:
 
 ---
 
+## 任务清单（TodoList）配置
+
+任务清单是 **AgentScope-Java 2.0 原生能力**：启用后由框架注册 `todo_write` 工具与 `TaskReminderMiddleware`，
+Agent 可维护结构化任务清单，yunxi 侧经 `todo_update` SSE 事件透出给前端。**yunxi 不自建工具、不自建存储**，仅提供开关。
+
+### 启用方式（二者之一生效）
+
+```yaml
+# 方式一：Agent 定义 YAML（按 Agent 开启）
+agent:
+  name: business-assistant
+  plan:
+    taskList: true                      # 默认 false
+```
+
+```yaml
+# 方式二：全局配置（agentscope.yml，对所有 Agent 生效）
+agentscope:
+  core:
+    plan:
+      task-list: true                   # 默认 false
+```
+
+启用条件与计划模式（`plan.enabled`）一致，取 **YAML 级 或 全局级** 二者之一。
+
+### 与计划模式（PlanMode）的关系
+
+两者**相互独立**：任务清单不要求先进入计划模式，`todo_write` 可随时调用；反之亦然。
+
+| 能力 | 开关 | 说明 |
+|------|------|------|
+| 计划模式 | `plan.enabled` | 先规划后执行的只读阶段，`plan_exit` 需人工确认 |
+| 任务清单 | `plan.taskList` | 结构化任务跟踪，无 HITL 门禁，自主推进 |
+
+### 语义与状态
+
+- **写入语义**：全量替换（full-list-replace）——模型每次提交完整列表，不做增量合并
+- **状态**：`pending`（待执行）/ `in_progress`（执行中）/ `completed`（已完成），同一时刻至多一个 `in_progress`（违反时工具返回错误，任务列表不被破坏）
+- **持久化**：存于 `AgentState.tasksContext`，随 AgentState 按 (userId, sessionId) 槽位持久化，跨会话续传天然具备
+- **默认即有持久化**：框架默认装配文件存储（`~/.agentscope/state/<agentId>/`），无需额外配置即可跨会话续传；仅**跨实例/多副本**部署时才需启用 `agentscope.core.session.type=redis`
+
+### SSE 事件（前端契约）
+
+```json
+{
+  "type": "todo_update",
+  "timestamp": "2026-08-28T10:00:00Z",
+  "conversationId": "conv-123",
+  "content": "{\"todos\":[{\"id\":\"a1b2c3…\",\"subject\":\"查询营养成分\",\"state\":\"completed\",…}]}"
+}
+```
+
+说明：`content` 为 **JSON 字符串**（与 `tool_result` 等结构化事件同一编码惯例），需二次解析后取 `todos` 数组：
+
+```javascript
+const payload = JSON.parse(evt.content);
+renderTodoCard(payload.todos);
+```
+
+`todo_update` 为**全量透出**，前端应整体替换清单而非合并。注意 `created_at` / `blocked_by` 为下划线命名。
+
+---
+
+## 人机确认（HITL）配置
+
+对于命令执行、文件写入等高危操作，可要求**人工确认后再执行**：Agent 执行前挂起并推送
+`REQUIRE_USER_CONFIRM` 事件，由调用方回传确认结果后继续。
+
+能力基于 AgentScope 原生权限引擎实现，平台仅负责把 YAML 配置映射为框架原生的
+ASK 规则，以及提供确认结果回传入口。
+
+### 配置方式
+
+```yaml
+# agent-definitions/<name>.yml
+agent:
+  name: general-assistant
+  extensions:
+    hitl:
+      toolGate:
+        enabled: true
+        tools:
+          - execute      # 命令执行
+          - write_file   # 文件写入
+          - edit_file    # 文件编辑
+```
+
+### 权限模式
+
+是否配置 HITL 决定了 Agent 采用的权限模式：
+
+| 情况 | 模式 | 未配置规则的工具 | 说明 |
+|------|------|-----------------|------|
+| 配置了 HITL | `DEFAULT` | 请求确认（挂起） | 需前端回传确认结果；无回传会停在挂起点 |
+| 未配置 HITL | `DONT_ASK` | **直接拒绝** | 无人值守场景，把"请求确认"降级为"拒绝"，避免永久挂起 |
+
+> 因此**未配置 HITL 不会导致卡死**：未命中放行规则的工具被直接拒绝，而非挂起等待。
+> 注意平台已为任务清单工具 `todo_write` 内置放行规则，它在两种模式下均可执行。
+
+### 注意事项（易踩坑）
+
+1. **工具名必须是系统中真实存在的名称**。配置不存在的名称**不会报错**，但规则永不生效，
+   人工确认形同虚设。可用工具名见启动日志中的 `Registered tool 'xxx'` 记录。
+2. **工具是否可用还取决于该 Agent 激活的工具组**（`toolsGroup.systemToolsGroup`）。
+   未激活组中的工具，即便列在此处也不会被触发。
+3. **前端必须实现确认交互**：收到 `REQUIRE_USER_CONFIRM` 后需回传 `confirmResults`
+   重新发起请求，否则会话停在挂起点。接口用法见
+   [09. API 参考](./09-api-reference.md#require_user_confirm-事件人机确认)。
+
+### 已知限制
+
+未配置 HITL 时（`DONT_ASK` 模式），未命中放行规则的工具**一律被拒绝，包括
+`list_files` / `read_file` 等只读工具**。原因是工具的 `readOnly` 属性只在框架
+`EXPLORE` / `ACCEPT_EDITS` 模式下参与判定，在 `DONT_ASK` 模式下不生效。
+
+只读 **MCP** 工具不受此限制（框架工具自检直接放行）。若业务需要在该模式下使用内置只读工具，
+可让 Agent 显式配置 HITL 或为只读工具补充放行规则。
+
+---
+
 ## MUSE 配置
 
 [MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 的配置集中在 `agent-config` 的 `config/muse.yml`（前缀 `yunxi.muse`，默认关闭，需显式 `enabled: true`）：
@@ -840,11 +960,11 @@ yunxi:
     terminology-table: classpath:config/intent/terminology.yml     # 术语/别名归一表
     intent-tree: classpath:config/intent/intent-tree.yml           # 意图树（分类规则）
     mapping-table: classpath:config/intent/intent-mapping.yml      # 意图 → Agent 路由映射表
-    # ── M2.1 意图路由（默认关闭，渐进式上线）──
+    # ── 意图路由（默认关闭，渐进式上线）──
     routing:
       enabled: false                    # 开启后 routeHint 参与会话入口路由决策（advisory）
       min-route-score: 0.5              # 最低采纳分数（低于此值不改道）
-    # ── M2.3 分类通道 ──
+    # ── 分类通道 ──
     classification:
       mode: rule                        # rule | llm | hybrid
       rule-confidence-threshold: 0.6    # hybrid 模式规则高分直出阈值
@@ -855,12 +975,12 @@ yunxi:
         min-confidence: 0.5             # LLM 输出最低采纳置信度
         max-intents: 30                 # 白名单上限
         cache: { ttl-days: 7, max-size: 10000 }   # LLM 结果缓存
-    # ── M2.2 多域（单域部署保持默认即可）──
+    # ── 多域（单域部署保持默认即可）──
     resolver:
       default: base                     # 未命中规则的默认域
       rules: []                         # 多域路由规则（agent 前缀 / profile 归属）
       domains: {}                       # 业务域数据源（缺省项继承 base）
-    # ── M2.4 热更新 ──
+    # ── 热更新 ──
     reload:
       enabled: true                     # reload 开关（actuator 端点受控）
       poll-seconds: -1                  # >0 时轮询 file: 前缀资源 mtime（默认关闭）
@@ -877,9 +997,9 @@ yunxi:
 | `yunxi.intent.terminology-table` | `classpath:intent/terminology.yml` | 术语归一表（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
 | `yunxi.intent.intent-tree` | `classpath:intent/intent-tree.yml` | 意图树（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
 | `yunxi.intent.mapping-table` | `classpath:intent/intent-mapping.yml` | 路由映射表（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
-| `yunxi.intent.routing.enabled` | `false` | M2.1 意图路由开关；开启后 `routeHint` 参与会话入口路由（advisory，目标缺失或分低不改道） |
+| `yunxi.intent.routing.enabled` | `false` | 意图路由开关；开启后 `routeHint` 参与会话入口路由（advisory，目标缺失或分低不改道） |
 | `yunxi.intent.routing.min-route-score` | `0.5` | 路由建议最低采纳分数 |
-| `yunxi.intent.classification.mode` | `rule` | M2.3 分类模式：`rule` / `llm` / `hybrid` |
+| `yunxi.intent.classification.mode` | `rule` | 分类模式：`rule` / `llm` / `hybrid` |
 | `yunxi.intent.classification.rule-confidence-threshold` | `0.6` | hybrid 模式规则高分直出阈值 |
 | `yunxi.intent.classification.llm.enabled` | `false`（部署默认；代码字段默认 `true`，但 `mode=rule` 时不装配） | LLM 通道总开关（false 时 llm/hybrid 退化为纯规则兜底） |
 | `yunxi.intent.classification.llm.model` | `qwen-turbo` | 低成本快模型 |
@@ -888,10 +1008,10 @@ yunxi:
 | `yunxi.intent.classification.llm.max-intents` | `30` | 白名单上限，超限按查询关键词粗筛 Top-N |
 | `yunxi.intent.classification.llm.cache.ttl-days` | `7` | LLM 结果缓存 TTL |
 | `yunxi.intent.classification.llm.cache.max-size` | `10000` | 缓存 LRU 上限 |
-| `yunxi.intent.resolver.default` | `base` | M2.2 默认域；未命中规则时回落 |
+| `yunxi.intent.resolver.default` | `base` | 默认域；未命中规则时回落 |
 | `yunxi.intent.resolver.rules` | `[]` | 多域路由规则（agent 名前缀 / profile 归属） |
 | `yunxi.intent.resolver.domains` | `{}` | 业务域数据源映射，缺省项继承 `base` |
-| `yunxi.intent.reload.enabled` | `true` | M2.4 热更新总开关（actuator 端点前置条件） |
+| `yunxi.intent.reload.enabled` | `true` | 热更新总开关（actuator 端点前置条件） |
 | `yunxi.intent.reload.poll-seconds` | `-1` | 文件轮询间隔秒；`>0` 时对 `file:` 前缀资源按 mtime 自动 reload |
 
 > **框架通用性**：意图引擎是框架层通用能力，与具体业务解耦，采用**数据两级模型**——`agent-core` 内置最小演示集（兜底），`agent-config` 的 `config/intent/*.yml` 为部署业务数据，也支持 `file:` 前缀完全外部化。业务方只需修改上表配置项指向自己的文件即可整体替换，无需改动 Java 代码。热更新端点见 [16. 意图引擎](./16-intent-engine.md#热更新与运维)，完整定制指南见 [16. 意图引擎](./16-intent-engine.md#业务定制指南)。

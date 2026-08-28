@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -211,6 +212,29 @@ public class SseMessageBuilder {
      */
     public String buildPlanProgressMessage(String progressJson) {
         return buildMessage("plan_progress", progressJson);
+    }
+
+    /**
+     * 构建任务清单更新事件消息（全量透出）。
+     * <p>
+     * 前端收到 type=todo_update 事件后，应整体替换任务清单卡片内容
+     * （AgentScope {@code todo_write} 为全量替换语义，不做增量合并）。
+     * 数据为 {@code {"todos":[...]}}，数组元素为 AgentScope
+     * {@code io.agentscope.core.state.Task} 的序列化结果，字段名为
+     * {@code id / subject / description / state / metadata / created_at / owner / blocks / blocked_by}
+     * （注意 {@code created_at} 与 {@code blocked_by} 为下划线风格）；
+     * {@code state} 取值为 {@code pending / in_progress / completed}。
+     * </p>
+     *
+     * @param todos          任务列表（AgentScope Task），可为空（表示清单已清空）
+     * @param conversationId 会话ID（可为 null）
+     * @return SSE 格式的任务清单更新消息
+     */
+    public String buildTodoUpdateMessage(List<?> todos, String conversationId) {
+        String payload = toJsonString(Map.of("todos", todos == null ? List.of() : todos));
+        return conversationId != null
+                ? buildMessageWithConversationId("todo_update", payload, conversationId)
+                : buildMessage("todo_update", payload);
     }
 
     /**

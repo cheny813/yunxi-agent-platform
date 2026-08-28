@@ -19,15 +19,17 @@
 | 特性 | 说明 |
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
-| **意图引擎（智能大脑中枢）** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型（M2.2）、rule/llm/hybrid 分类通道（M2.3）、actuator 热更新（M2.4）、意图路由（M2.1），业务数据可配置替换 |
+| **意图引擎（智能大脑中枢）** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型、rule/llm/hybrid 分类通道、actuator 热更新、意图路由，业务数据可配置替换 |
 | **执行引擎（智能手脚协调器）** | `AgentExecutionEngine` 门面统一收口所有调用形态（同步/流式/结构化/取消），6 拦截器可插拔链（AuthResolve→Memory→IntentPipeline→RagRetrieval→PermissionContext→Audit）+ 3 执行策略自动路由（Blocking/Streaming/StructuredBlocking）+ 事件算子链（Metrics/PhaseTracker）→ 协议适配器，接入新协议仅需新增 `AgentEventAdapter` 实现 |
 | **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.0 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，34 个 MCP 服务器可按需接入（sse/stdio/http 三种传输，核心 9 个默认启用） |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
-| **技能系统** | 启用 AgentScope-Java 2.0GA 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
+| **技能系统** | 启用 AgentScope-Java 2.0 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
 | **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并的闭环，Agent 技能的自我判断、自我修补与自我进化 |
-| **流式事件** | `Model.stream()`（Model 层现役调用）与 `Agent.streamEvents()`（Agent 层事件流，按 `AgentEventType` 过滤）双通道，均为 GA 2.0 现役 API |
+| **流式事件** | `Model.stream()`（Model 层现役调用）与 `Agent.streamEvents()`（Agent 层事件流，按 `AgentEventType` 过滤）双通道，均为 AgentScope-Java 2.0 现役 API |
+| **任务清单（TodoList）** | Agent 可为长任务维护结构化步骤清单（x/y 进度经 `todo_update` 事件实时同步），状态随会话持久化、中断后可从断点继续。复用 AgentScope-Java 2.0 原生 `todo_write` 工具，平台仅提供开关与事件透出，不自建工具/存储 |
+| **人机确认（HITL）** | 命令执行、文件写入等危险工具执行前经 `REQUIRE_USER_CONFIRM` 事件请求确认，前端回传 `confirmResults` 后恢复执行；未配置 HITL 的 Agent 则直接将此类操作降级为拒绝，避免无人值守场景挂起 |
 | **工具分组** | 按职责隔离工具（memory/filesystem/execute），默认最小权限，YAML 按需开放 |
 | **提示注入防护** | ContentFilterMiddleware 基于框架 Middleware 接口，`onAgent` 拦截点拦截中英文注入模式 |
 | **Shell 安全** | 复用框架 ShellCommandTool 白名单+平台验证器+审批回调，替代自建分级系统 |
@@ -108,13 +110,35 @@ curl -X POST http://localhost:40001/api/conversations/chat \
   }'
 ```
 
+### 体验前端示例（可选）
+
+`agent-nutritionist-web` 是一个可运行的前端示例：智能配餐工作台，展示"表单 + AI 助手"
+的完整交互，包含任务进度实时展示。
+
+```bash
+# 前置：后端已启动（第二步）
+cd agent-nutritionist-web
+npm install
+npm run dev
+```
+
+启动后访问：
+
+| 页面 | 地址 | 说明 |
+|------|------|------|
+| 产品首页 | http://localhost:5173/index.html | 产品介绍与核心能力 |
+| **智能配餐工作台** | **http://localhost:5173/pages/recipe-make.html** | 左栏填目标、右栏 AI 助手；Agent 启用任务清单时可实时展示步骤进度 |
+
+> 后端端口非 40001 时用 `BACKEND_PORT=40001 npm run dev` 指定。
+> 该示例通过 `@web-sdk` alias 直接引用 `agent-web-sdk/src` 源码，无需额外构建步骤。
+
 ---
 
 ## 模块概览
 
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
-| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全、网关（AgentScope-Java 2.0GA Channel 接入） | Spring Boot, agentscope-harness |
+| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全、网关（AgentScope-Java 2.0 Channel 接入） | Spring Boot, agentscope-harness |
 | **agent-muse** | 自进化引擎：技能沙箱评估→LLM 修补→剪枝合并闭环 | agentscope, Java 子进程沙箱 |
 | **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
 | **agent-spi** | SPI 接口定义 | Java SPI |
@@ -241,7 +265,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 - 记忆系统（双层文件系统 + Redis 跨实例共享）
 - 多通道接入（WebSocket / SSE / 飞书 / 钉钉 / 企业微信）
 - 模型级多租户（按 Agent 覆盖 apiKey / baseUrl）
-- 意图引擎（M1 四阶段规则管道 → M2.1 意图路由 / M2.2 多域模型 / M2.3 分类通道 / M2.4 热更新，业务数据可配置替换，开箱即用）
+- 意图引擎（四阶段规则管道 → 意图路由 / 多域模型 / 分类通道 / 热更新，业务数据可配置替换，开箱即用）
 
 ## 未来计划
 
