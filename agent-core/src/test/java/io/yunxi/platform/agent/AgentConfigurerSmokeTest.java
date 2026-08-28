@@ -1,9 +1,22 @@
 package io.yunxi.platform.agent;
 
 import io.agentscope.core.model.Model;
+import io.milvus.v2.client.MilvusClientV2;
 import io.yunxi.platform.AgentPlatformApplication;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.agent.service.AgentService;
+import io.yunxi.platform.spi.text2sql.EmbeddingService;
+import org.apache.ibatis.mapping.Environment;
+
+import java.util.function.Supplier;
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +32,7 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +83,73 @@ class AgentConfigurerSmokeTest {
                     .thenReturn(mockModel);
 
             return factory;
+        }
+
+        /**
+         * 提供 mock SqlSessionFactory，满足 @MapperScan 注册 Mapper 代理的依赖。
+         *
+         * <p>smoke 配置已排除 MyBatis 自动配置（无真实数据源），但主启动类上的
+         * @MapperScan 仍会注册 MapperScannerConfigurer，需要存在一个 SqlSessionFactory
+         * Bean 才能完成 Mapper bean 的创建。此处用 mock 满足装配要求；smoke 场景下
+         * 所有 Mapper 调用点（如 PersistenceService.initializeDatabase）均有 try-catch
+         * 或 ObjectProvider 兜底，失败仅记录日志，不影响上下文启动。</p>
+         */
+        @Bean
+        @Primary
+        SqlSessionFactory mockSqlSessionFactory() {
+            SqlSessionFactory factory = mock(SqlSessionFactory.class);
+            // 真实 Configuration/Environment（而非 mock）：MyBatis-Spring 的 SqlSessionTemplate
+            // 构造需 configuration.getEnvironment().getTransactionFactory() 非 null，
+            // MapperFactoryBean 也依赖真实 Configuration.hasMapper/addMapper 完成注册。
+            Environment environment = new Environment("smoke",
+                    new JdbcTransactionFactory(), mock(DataSource.class));
+            Configuration configuration = new Configuration(environment);
+            when(factory.getConfiguration()).thenReturn(configuration);
+            SqlSession session = mock(SqlSession.class);
+            when(factory.openSession()).thenReturn(session);
+            when(factory.openSession(anyBoolean())).thenReturn(session);
+            return factory;
+        }
+
+        /**
+         * mock StringRedisTemplate：smoke 配置排除 RedisAutoConfiguration，
+         * 但 RedisCacheService 强依赖 StringRedisTemplate，用 mock 满足装配。
+         * smoke 场景下启动期不调用 Redis 方法，无连接风险。
+         */
+        @Bean
+        @Primary
+        StringRedisTemplate mockStringRedisTemplate() {
+            return mock(StringRedisTemplate.class);
+        }
+
+        /**
+         * mock RedisTemplate：RedisConfig 受 storage-type=redis 条件控制（smoke 未激活），
+         * DistributedRequestManager 却无条件强注入 RedisTemplate，用 mock 满足装配。
+         */
+        @Bean
+        @Primary
+        RedisTemplate<String, Object> mockRedisTemplate() {
+            return mock(RedisTemplate.class);
+        }
+
+        /**
+         * Supplier<EmbeddingService>：ColumnRetriever（text2sql）构造注入该 Supplier，
+         * smoke 场景下不启用向量能力，返回 null 供应器即可满足装配。
+         */
+        @Bean
+        @Primary
+        Supplier<EmbeddingService> embeddingServiceSupplier() {
+            return () -> null;
+        }
+
+        /**
+         * Supplier<MilvusClientV2>：ColumnRetriever（text2sql）构造注入该 Supplier，
+         * smoke 场景下不启用 Milvus 向量库，返回 null 供应器即可满足装配。
+         */
+        @Bean
+        @Primary
+        Supplier<MilvusClientV2> milvusClientSupplier() {
+            return () -> null;
         }
     }
 

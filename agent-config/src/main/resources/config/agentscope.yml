@@ -113,6 +113,21 @@ agentscope:
       stop-on-reject: ${RESILIENCE_STOP_ON_REJECT:false}
       timeout-ms: ${RESILIENCE_TIMEOUT_MS:120000}
 
+    # ============================================================
+    # 执行拦截器配置（agentscope.core.interceptor，由 RagRetrievalInterceptor 读取）
+    # 阶段二：请求级文件 RAG 检索拦截器（order=300）开关
+    # ============================================================
+    interceptor:
+      rag-enabled: ${INTERCEPTOR_RAG_ENABLED:true}
+
+    # ============================================================
+    # 通用请求审计配置（agentscope.core.audit，由 AuditInterceptor 读取）
+    # 阶段二：AuditInterceptor（order=500），默认关闭；开启后 pre 记录开始、
+    # post 落库 agent_chat_logs（ConversationMapper.insertChatLog）。
+    # ============================================================
+    audit:
+      enabled: ${AUDIT_ENABLED:false}
+
   extensions:
     # 自动配置开关
     autoConfigEnabled: ${AGENTSCOPE_AUTO_CONFIG:true}

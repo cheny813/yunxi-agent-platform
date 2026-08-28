@@ -1,6 +1,6 @@
 # 03. 核心概念
 
-> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 supervisor/pipeline/routing 三种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。
+> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。说明：`Model.stream()` 为 Model 层现役调用方式（GA 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
 
 ## 理论基础
 
@@ -81,7 +81,7 @@ agent:
     provider: dashscope
     modelName: qwen-max
     temperature: 0.7
-  orchestration: supervisor   # 编排模式: supervisor / pipeline / routing
+  orchestration: supervisor   # 编排模式: single / supervisor / pipeline / routing
   runtime:
     maxIterations: 10
   toolsGroup:
@@ -160,13 +160,13 @@ agent:
 
 ```json
 {
-  "message": "查询产品信息",
-  "ragMode": "GENERIC",
-  "knowledgeBases": ["techDocs"]
+  "message": "根据知识库回答：查询产品信息",
+  "agentName": "business-assistant",
+  "ragMode": "GENERIC"
 }
 ```
 
-Bean 名称由配置 key 自动驼峰转换：`tech-docs` → `techDocs`，`product-manual` → `productManual`。
+> 说明：RAG 知识来源已收敛为「Agent 工作空间文档 + 文件向量检索」（`FileVectorService` + Milvus），请求体不再使用 `knowledgeBases` 字段。上述 `ragMode` 请求级覆盖即为唯一入口，与 Agent 定义 YAML 中的 `ragMode` 默认值联动。
 
 ---
 
@@ -291,7 +291,7 @@ agent:
   name: business-assistant
   description: 业务数据管理助手
   prompt: 你是一个专业的业务数据管理助手...
-  orchestration: expert
+  orchestration: single   # single / supervisor / pipeline / routing
 
   profiles:
     chat:                         # Profile 1：聊天模式

@@ -64,7 +64,7 @@ agent:
   name: my-business-agent
   description: 业务分析助手
   prompt: "你是一个业务分析助手..."
-  orchestration: expert          # supervisor / pipeline / routing / expert
+  orchestration: single          # single / supervisor / pipeline / routing
   model:
     provider: dashscope          # dashscope / openai / baidu / huawei
     modelName: qwen-plus
@@ -95,96 +95,67 @@ agent-definitions/*.yml
 
 ---
 
-## 创建 MCP 工具
+## 创建自定义工具
 
-### MCP 工具理论基础
+### 工具注册机制（@Tool 注解）
 
-**什么是 MCP 工具**：
-- MCP（Model Context Protocol）是 Anthropic 提出的标准协议
-- 允许 LLM 调用外部工具和服务
-- 统一的工具描述格式和调用方式
+AgentScope-Java 2.0 GA 中 `@Tool` 是**方法级注解**（`io.agentscope.core.tool.Tool`），而非需实现的接口。`Toolkit` 在 Agent 装配阶段自动扫描所有带 `@Tool` 注解的 Spring Bean 并注册，**无需实现额外的 `Tool` 接口或桥接层**。
 
-**工具的生命周期**：
-```
-定义 → 注册 → 发现 → 调用 → 返回
-```
+**工具生命周期**：定义 → 注册 → 发现 → 调用 → 返回
 
-### 创建工具处理器
+### 最小示例
 
 ```java
 @Component
-public class MyTool implements Tool {
+public class MyBusinessTool {
 
-    @Override
-    public String getName() {
-        return "my_tool";
-    }
-
-    @Override
-    public ToolDefinition getDefinition() {
-        return ToolDefinition.builder()
-            .name(getName())
-            .description("我的工具")
-            .build();
-    }
-
-    @Override
-    public ToolResult execute(Map<String, Object> arguments) {
+    @Tool(name = "query_business_data", description = "查询业务数据")
+    public String query(@ToolParam(description = "查询条件") String condition) {
         // 执行业务逻辑
-        return ToolResult.success("结果");
+        return result;
     }
 }
 ```
 
-**关键概念**：
-- **ToolDefinition**：工具元数据定义
-- **execute**：工具执行逻辑
-- **ToolResult**：工具执行结果
+**关键要求**：
+- 所有参数必须用 `@ToolParam` 标注（`@ToolEmitter` 流式输出除外）
+- 返回类型支持 `String`、`Mono<String>` 等响应式类型
+- 工具名建议使用 snake_case（如 `get_weather`），便于 LLM 调用
 
-### 注册到框架
+### 常用注解属性
 
-```java
-@Component
-public class MyTool implements Tool {
+| 属性 | 默认值 | 说明 |
+|------|--------|------|
+| `name` | 方法名 | 工具名，建议 snake_case |
+| `description` | 自动生成 | 工具描述（做什么、何时用） |
+| `readOnly` | `false` | 只读工具自动豁免 `EXPLORE` 权限模式 |
+| `strict` | `false` | 严格 JSON Schema 模式 |
+| `concurrencySafe` | `true` | 是否可并发调用自身 |
+| `externalTool` | `false` | 标记为框架外执行（调用时抛 `ToolSuspendException` 上抛给调用方） |
+| `stateInjected` | `false` | 在方法签名中注入 `AgentState` 参数 |
+| `dangerousFiles` / `dangerousDirectories` | 空 | 追加危险路径名单，触发权限审批 |
+| `converter` | `DefaultToolResultConverter` | 自定义结果转换器（过滤敏感数据/压缩输出） |
 
-    @Override
-    public String getName() {
-        return "my_tool";
-    }
+### 本地 @Tool vs 远程 MCP 工具
 
-    @Override
-    public ToolDefinition getDefinition() {
-        return ToolDefinition.builder()
-            .name(getName())
-            .description("我的工具")
-            .build();
-    }
+- **本地 `@Tool`**：在应用内直接执行，适合业务逻辑、内部数据访问；
+- **远程 MCP 工具**：通过 Agent 定义 YAML 的 `tools.mcpServers` 声明，由 `AgentConfigurer.registerMcpServers` 建立连接（sse / stdio / http 三种传输），适合跨服务复用的能力（如 yunxi-mcp-servers 提供的 40+ 即插即用工具）。
 
-    @Override
-    public ToolResult execute(Map<String, Object> arguments) {
-        // 执行业务逻辑
-        return ToolResult.success("结果");
-    }
-}
+```yaml
+# agent-definitions/my-business-agent.yml
+agent:
+  name: my-business-agent
+  tools:
+    mcpServers:
+      - name: business-data-mcp
+        type: sse
+        url: http://localhost:40602/sse   # 需先启动对应 MCP 服务
 ```
 
-**原理**：
+**注册流程**：
+
 ```
-┌─────────────────────────────────────────┐
-│  MCP 工具注册流程                        │
-├─────────────────────────────────────────┤
-│                                         │
-│  1. 创建 Tool 实现类                       │
-│     ↓                                   │
-│  2. 在 Controller 中注册                  │
-│     ↓                                   │
-│  3. Spring 启动时扫描                     │
-│     ↓                                   │
-│  4. 注册到 Agent 的 Toolkit（按服务器分组）  │
-│     ↓                                   │
-│  5. Agent 可以调用工具                    │
-│                                         │
-└─────────────────────────────────────────┘
+定义 @Tool Bean 方法 → Spring 启动扫描（@Component）→ Toolkit 反射生成 JSON Schema → 注册到 Agent 的 Toolkit（按分组隔离）→ Agent 按需调用
 ```
 
 ---
@@ -194,25 +165,6 @@ public class MyTool implements Tool {
 Agent 上下文由 GA 框架的 `HarnessAgent.workspaceFor(userId, sessionId)` 管理，通过 `RuntimeContext` 透传 `userId`/`sessionId`。yunxi 不提供自定义上下文的 SPI 扩展点——上下文数据经由 AgentScope 框架的 Middleware（如 `WorkspaceContextMiddleware`）和 `AgentStateStore` 管理。
 
 如需在 Agent 调用前注入额外上下文信息，可在 YAML 的 `systemPrompt` 中使用变量占位符，由模板引擎在装配时替换。
-
----
-
-## 实现自定义工具
-
-自定义工具通过 Spring `@Component` + AgentScope `@Tool` 注解注册：
-
-```java
-@Component
-public class MyBusinessTool {
-    @Tool(name = "my_business_query", description = "查询业务数据")
-    public String query(@ToolParam(description = "查询条件") String condition) {
-        // 业务逻辑
-        return result;
-    }
-}
-```
-
-无需实现额外的 `Tool` 接口或 `ToolAdapter` 桥接层。`Toolkit` 在 Agent 装配阶段自动扫描所有带 `@Tool` 注解的 Spring Bean 并注册。
 
 ---
 

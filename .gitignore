@@ -99,3 +99,13 @@ build/
 
 # 本地测试文件
 .agentscope/
+
+# 运行时产物（Spring Boot 可执行 jar 解包目录）
+META-INF/
+BOOT-INF/
+tmp/
+uploads/
+agent-core/uploads/
+
+# IDE 工程文件（Eclipse/VS Code Java，若需 m2e 导入可选择性保留）
+.factorypath

@@ -1,6 +1,6 @@
 # 04. 架构设计
 
-> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 supervisor/pipeline/routing 三种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`stream()` 已废弃（改用 `streamEvents()`）。
+> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（GA 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
 
 ## 软件架构理论基础
 
@@ -149,7 +149,7 @@ tools:
   mcpServers:
     - name: nutrition-data-mcp
       type: sse
-      url: http://localhost:40602/sse
+      url: http://localhost:40602/sse   # 需先启动对应 MCP 服务（如 mcp-nutrition，端口 40602）
 ```
 
 然后在工作区目录中放置 AGENTS.md 定义人格和行为：
@@ -576,7 +576,7 @@ public class ModelFactory {
 
 框架的 `Model` 接口负责"发请求、拿响应"，内置了正确的角色映射（`SYSTEM`/`USER`/`ASSISTANT`/`TOOL`）和 Prompt Caching 支持（`cache-control: true` 自动添加 `cache_control: {"type": "ephemeral"}`）。平台层保留百度/华为的自建实现（因认证协议不兼容标准 OpenAI），但已修复角色映射 Bug，现通过 `ModelRegistry` 工厂注册，与内置 Provider 走完全一致的 `ModelRegistry.resolve` 路径（按 Agent 透传 `apiKey`/`options`）。
 
-**拆除自建 Provider**：原 `ChatModelProvider` 接口 + `OpenAIModelProvider`/`ClaudeModelProvider`/`DashScopeModelProvider` 已删除（约 500 行），全部委托给框架内置实现。详见 [模型层改造说明](#)。
+**拆除自建 Provider**：原 `ChatModelProvider` 接口 + `OpenAIModelProvider`/`ClaudeModelProvider`/`DashScopeModelProvider` 已删除（约 500 行），全部委托给框架内置实现。详见上文「4. ModelFactory — 统一模型工厂」章节。
 
 ### 完整架构对比
 

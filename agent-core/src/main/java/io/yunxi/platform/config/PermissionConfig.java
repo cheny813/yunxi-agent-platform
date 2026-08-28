@@ -40,6 +40,34 @@ public class PermissionConfig {
     private static final String RULE_SOURCE = "yunxi-hitl";
 
     /**
+     * 判断 HITL 配置是否包含需要人工确认（ASK）的工具。
+     *
+     * <p>ToolGate 启用且工具列表非空，或 ReasoningReview 启用且 ToolGate 含工具，均视为有 ASK 工具。
+     * 用于决定透传的 AgentScope 权限模式：有 → {@code DEFAULT}（挂起向用户确认），无 → {@code BYPASS}（全放行）。
+     * 同时被 {@link AgentConfigurer#injectHITLMiddlewares}（构建期）与
+     * {@code PermissionContextInterceptor}（请求期快照）复用，保证两种注入路径模式决定一致。</p>
+     *
+     * @param hitl HITL 配置（可为 null）
+     * @return 是否配置了需人工确认的工具
+     */
+    public static boolean hasAskTools(HITLConfig hitl) {
+        if (hitl == null) {
+            return false;
+        }
+        ToolGateConfig toolGate = hitl.getToolGate();
+        if (toolGate != null && toolGate.isEnabled()
+                && toolGate.getTools() != null && !toolGate.getTools().isEmpty()) {
+            return true;
+        }
+        ReasoningReviewConfig reasoningReview = hitl.getReasoningReview();
+        if (reasoningReview != null && reasoningReview.isEnabled()
+                && toolGate != null && toolGate.getTools() != null && !toolGate.getTools().isEmpty()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 按调用方透传的 AgentScope 原生模式构建权限上下文。
      *
      * <p>模式完全由调用方决定（{@link PermissionMode} 5 种均可），yunxi 不裁剪、不重映射。

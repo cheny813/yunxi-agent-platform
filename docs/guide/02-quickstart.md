@@ -308,7 +308,7 @@ curl -X POST http://localhost:40001/api/conversations/chat \
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ MCP Server (端口 40101+)                 │  ← MCP 工具层
+│ MCP Server (如 mcp-nutrition 端口 40602)  │  ← MCP 工具层
 │ - 数据库查询、文件操作等                  │
 └─────────────────────────────────────────┘
 ```

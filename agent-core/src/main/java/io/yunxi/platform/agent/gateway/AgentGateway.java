@@ -82,8 +82,8 @@ class AgentGatewayImpl implements AgentGateway {
         RuntimeContext ctx = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
         // streamEvents 是 HarnessAgent/ReActAgent 的原生方法（Agent 接口未声明），需转型调用；
         // 重载签名为 streamEvents(List<Msg>, RuntimeContext)（非单 Msg）。
-        HarnessAgent harnessAgent = (HarnessAgent) agent;
-        return harnessAgent.streamEvents(
+        // 注意：共享 Agent 实例生命周期由框架管理，绝不可 close（内联转换避免 JDT resource-leak 误报）
+        return ((HarnessAgent) agent).streamEvents(
                 List.of(Msg.builder().textContent(message).build()), ctx);
     }
 

@@ -133,13 +133,24 @@
         SELECT COUNT(*) FROM agent_conversations
     </select>
 
+    <!--
+        插入会话审计日志（agent_chat_logs 表）
+        由 AuditInterceptor（order=500）在请求收尾时调用
+    -->
+    <insert id="insertChatLog" parameterType="io.yunxi.platform.shared.entity.ChatLogEntity">
+        INSERT INTO agent_chat_logs (conversation_id, agent_name, user_id, user_message,
+                               agent_response, model_used, duration_ms, success, error_message)
+        VALUES (#{conversationId}, #{agentName}, #{userId}, #{userMessage},
+                #{agentResponse}, #{modelUsed}, #{durationMs}, #{success}, #{errorMessage})
+    </insert>
+
     <!-- ==================== DDL 操作 ==================== -->
 
     <!--
-        创建 agents 表（如果不存在）
+        创建 agent_agents 表（如果不存在）
     -->
     <update id="createAgentsTableIfNotExists">
-        CREATE TABLE IF NOT EXISTS agents (
+        CREATE TABLE IF NOT EXISTS agent_agents (
             name VARCHAR(100) PRIMARY KEY COMMENT 'Agent 名称',
             prompt TEXT COMMENT '系统提示词',
             model_name VARCHAR(100) NOT NULL COMMENT '模型名称',
@@ -174,10 +185,10 @@
     </update>
 
     <!--
-        创建 tool_configs 表（如果不存在）
+        创建 agent_tool_configs 表（如果不存在）
     -->
     <update id="createToolConfigsTableIfNotExists">
-        CREATE TABLE IF NOT EXISTS tool_configs (
+        CREATE TABLE IF NOT EXISTS agent_tool_configs (
             id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '配置 ID',
             tool_name VARCHAR(100) UNIQUE NOT NULL COMMENT '工具名称',
             enabled BOOLEAN DEFAULT TRUE COMMENT '是否启用',
@@ -189,10 +200,10 @@
     </update>
 
     <!--
-        创建 chat_logs 表（如果不存在）
+        创建 agent_chat_logs 表（如果不存在）
     -->
     <update id="createChatLogsTableIfNotExists">
-        CREATE TABLE IF NOT EXISTS chat_logs (
+        CREATE TABLE IF NOT EXISTS agent_chat_logs (
             id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '日志 ID',
             conversation_id VARCHAR(100) COMMENT '会话 ID',
             agent_name VARCHAR(100) NOT NULL COMMENT 'Agent 名称',

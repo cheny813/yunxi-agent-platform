@@ -117,6 +117,12 @@ public class AgentscopeCoreProperties {
     /** 韧性配置：模型重试 / 降级模型 / 拒绝停止 / 执行超时 —— 完全复用 AgentScope Builder 原生能力 */
     private ResilienceProperties resilience = new ResilienceProperties();
 
+    /** 执行拦截器配置（阶段二：RagRetrieval 300 等可选拦截器开关） */
+    private InterceptorProperties interceptor = new InterceptorProperties();
+
+    /** 通用请求审计配置（阶段二：AuditInterceptor 500，默认关闭） */
+    private AuditProperties audit = new AuditProperties();
+
     /**
      * 各 Provider 配置
      */
@@ -424,5 +430,39 @@ public class AgentscopeCoreProperties {
 
         /** 单次模型调用超时毫秒数（注入 AgentScope ExecutionConfig.timeout） */
         private Integer timeoutMs;
+    }
+
+    /**
+     * 执行拦截器配置
+     * <p>
+     * 配置前缀：agentscope.core.interceptor
+     * </p>
+     *
+     * <pre>
+     * agentscope.core.interceptor:
+     *   rag-enabled: true   # 请求级文件 RAG 检索拦截器（order=300）
+     * </pre>
+     */
+    @Data
+    public static class InterceptorProperties {
+        /** 是否启用请求级文件 RAG 检索拦截器（RagRetrievalInterceptor, order=300）。默认开启以保持既有会话型 + 智能记忆的文件检索注入行为 */
+        private boolean ragEnabled = true;
+    }
+
+    /**
+     * 通用请求审计配置
+     * <p>
+     * 配置前缀：agentscope.core.audit
+     * </p>
+     *
+     * <pre>
+     * agentscope.core.audit:
+     *   enabled: false   # 默认关闭，不改变现有行为
+     * </pre>
+     */
+    @Data
+    public static class AuditProperties {
+        /** 是否启用通用请求审计（AuditInterceptor, order=500）。默认关闭；开启后 pre 记录开始、post 落库 agent_chat_logs */
+        private boolean enabled = false;
     }
 }

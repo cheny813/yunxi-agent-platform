@@ -64,7 +64,7 @@ public class PersistenceService {
     /**
      * 按需创建全部业务表（幂等）。
      *
-     * <p>依次创建 agents / conversations / tool_configs / chat_logs 表，\n     * 失败仅记录日志不阻断应用启动。</p>
+     * <p>依次创建 agent_agents / agent_conversations / agent_tool_configs / agent_chat_logs 表，\n     * 失败仅记录日志不阻断应用启动。</p>
      */
     private void createTablesIfNotExist() {
         try {

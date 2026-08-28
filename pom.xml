@@ -34,6 +34,9 @@
         <java.version>17</java.version>
         <agentscope.version>2.0.0</agentscope.version>
         <jacoco.version>0.8.12</jacoco.version>
+        <!-- surefire argLine 默认空串：未声明 jacoco 的模块 fork JVM 不带覆盖率 agent；
+             声明 jacoco 的模块由 prepare-agent 覆盖该属性注入 -javaagent -->
+        <argLine></argLine>
         <!-- 修复 jackson-databind 安全漏洞 (GHSA-j3rv-43j4-c7qm 等)，覆盖 Spring Boot 3.5.13 管理的版本 -->
         <jackson-bom.version>2.21.4</jackson-bom.version>
         <!-- 第三方依赖版本 -->
@@ -302,7 +305,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.2.5</version>
                     <configuration>
-                        <!-- ${argLine} 由 jacoco prepare-agent 注入（须放在最前），
+                        <!-- ${argLine} 默认空串（见 <properties>），由 jacoco prepare-agent 注入时覆盖为覆盖率 agent 参数；
                              显式挂载 mockito-core agent 替代运行时 self-attach（JDK 21+ 动态加载警告） -->
                         <argLine>${argLine} -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
                     </configuration>

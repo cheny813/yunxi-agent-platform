@@ -64,7 +64,9 @@ public class MilvusOperations {
             EmbeddingService embeddingService,
             EmbeddingBatchService embeddingBatchService,
             MilvusConfig milvusConfig) {
-        this.milvusClient = milvusClientProvider.getIfAvailable();
+        // null 防御：MilvusOperationsStub（milvus.enabled=false）以 null 传入 provider，
+        // 此时 Milvus 不可用、向量功能整体降级，绝不能抛 NPE 阻断启动。
+        this.milvusClient = milvusClientProvider != null ? milvusClientProvider.getIfAvailable() : null;
         this.embeddingService = embeddingService;
         this.embeddingBatchService = embeddingBatchService;
         this.milvusConfig = milvusConfig;

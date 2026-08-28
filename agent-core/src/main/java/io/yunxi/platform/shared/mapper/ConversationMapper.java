@@ -3,6 +3,7 @@ package io.yunxi.platform.shared.mapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import io.yunxi.platform.shared.entity.ChatLogEntity;
 import io.yunxi.platform.shared.entity.ConversationEntity;
 
 import java.time.LocalDateTime;
@@ -130,6 +131,16 @@ public interface ConversationMapper {
      */
     long count();
 
+    // ==================== 审计日志 ====================
+
+    /**
+     * 插入会话审计日志（agent_chat_logs 表）
+     *
+     * @param entity 审计日志实体
+     * @return 影响行数
+     */
+    int insertChatLog(ChatLogEntity entity);
+
     // ==================== DDL 操作 ====================
 
     /**
@@ -148,7 +159,7 @@ public interface ConversationMapper {
     void createToolConfigsTableIfNotExists();
 
     /**
-     * 创建 chat_logs 表（如果不存在）
+     * 创建 agent_chat_logs 表（如果不存在）
      */
     void createChatLogsTableIfNotExists();
 }
