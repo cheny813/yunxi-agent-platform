@@ -110,6 +110,17 @@
       <h2>营养方案</h2>
       <p>由云曦营养师生成，含食谱卡片与营养评分</p>
     </div>
+    <!-- 任务清单：由 SSE todo_update 事件驱动（Agent 侧的 todo_write 工具，由
+         AgentScope-Java 原生提供，需 Agent 配置 plan.taskList=true 才会产生）。
+         放在 result-area 之外，避免被 onDelta/onDone 的 innerHTML 覆盖；
+         Agent 未调用 todo_write 时保持隐藏。 -->
+    <div id="todo-panel" class="todo-panel" hidden>
+      <div class="todo-head">
+        <span class="todo-title">任务清单</span>
+        <span id="todo-progress" class="todo-progress"></span>
+      </div>
+      <ul id="todo-list" class="todo-list"></ul>
+    </div>
     <div id="result-area" class="result-area">
       <p class="result-empty">填写目标或向 AI 助手描述需求后，方案将显示在这里。</p>
     </div>
@@ -189,6 +200,21 @@
     .plan-prose strong { color:#0f172a; font-weight:700; }
     .plan-prose .prose-tag { display:inline-block; font-size:12px; color:#059669; background:#ecfdf5;
       border:1px solid #a7f3d0; border-radius:999px; padding:2px 10px; margin-bottom:10px; font-weight:600; }
+    /* 任务清单（todo_update 事件驱动，全量替换渲染） */
+    .todo-panel { margin-bottom:14px; background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+      padding:12px 14px; box-shadow:0 1px 3px rgba(15,23,42,.04); }
+    .todo-panel[hidden] { display:none; }
+    .todo-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .todo-title { font-size:13px; font-weight:700; color:#0f172a; }
+    .todo-progress { font-size:12px; color:#059669; font-weight:600; }
+    .todo-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px; }
+    .todo-item { display:flex; align-items:flex-start; gap:8px; font-size:13px; line-height:1.5; }
+    .todo-mark { flex:none; width:15px; height:15px; border-radius:4px; border:1.5px solid #cbd5e1;
+      display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; margin-top:2px; }
+    .todo-item[data-state="completed"] .todo-mark { background:#10b981; border-color:#10b981; }
+    .todo-item[data-state="in_progress"] .todo-mark { background:#f59e0b; border-color:#f59e0b; }
+    .todo-item[data-state="completed"] .todo-text { color:#94a3b8; text-decoration:line-through; }
+    .todo-item[data-state="in_progress"] .todo-text { color:#0f172a; font-weight:600; }
   </style>
 
   <!-- 公共 SDK 入口（agent-web-sdk 单一源）：
@@ -337,6 +363,8 @@
       const area = $('result-area');
       area.innerHTML = '<p class="result-empty">正在生成方案…</p>';
       area.classList.add('result-loading');
+      // 每轮新请求先清空上一轮任务清单（面板位于 result-area 之外，不会被 innerHTML 清掉）
+      hideTodoCard();
 
       try {
         // 路线 A：走 resident-nutrition-assistant Agent（居民口径，recipe-make profile，含真实营养评分链路 evaluate_recipe）
@@ -358,6 +386,10 @@
             }
             live.textContent = full;
           },
+          onTodo: (todos) => {
+            // 任务清单：后端 full-list-replace 语义，直接整体替换渲染
+            renderTodoCard(todos);
+          },
           onDone: (full) => {
             // 流结束或同步返回：尝试按结构化 JSON 渲染卡片，失败则保留 prose 文本
             area.innerHTML = renderRecipePlan(full);
@@ -371,6 +403,34 @@
         area.classList.remove('result-loading');
       }
     });
+
+    // ── 渲染任务清单：todo_update 事件（full-list-replace，整体替换渲染）──
+    // 任务状态：pending（待执行）/ in_progress（执行中）/ completed（已完成）
+    const TODO_STATE_MARK = { pending: '', in_progress: '~', completed: '\u2713' };
+
+    function hideTodoCard() {
+      const panel = $('todo-panel');
+      if (panel) panel.hidden = true;
+    }
+
+    // 注：escapeHtml 复用本文件后部既有定义（函数声明提升，无需重复定义）
+
+    function renderTodoCard(todos) {
+      const panel = $('todo-panel');
+      if (!panel) return;
+      if (!todos || !todos.length) { panel.hidden = true; return; }
+      panel.hidden = false;
+      const done = todos.filter((t) => t.state === 'completed').length;
+      $('todo-progress').textContent = done + '/' + todos.length;
+      $('todo-list').innerHTML = todos.map((t) => {
+        const state = t.state || 'pending';
+        const text = t.subject || t.description || '';
+        return '<li class="todo-item" data-state="' + escapeHtml(state) + '">'
+          + '<span class="todo-mark">' + (TODO_STATE_MARK[state] || '') + '</span>'
+          + '<span class="todo-text">' + escapeHtml(text) + '</span>'
+          + '</li>';
+      }).join('');
+    }
 
     // ── 渲染营养方案：优先解析结构化 JSON，失败降级为文本 ──
     function renderRecipePlan(content) {

@@ -112,6 +112,12 @@
 **我要定制意图识别与路由**
 → 查看 [16. 意图引擎](./16-intent-engine.md)，业务数据（词典/意图树/映射表）均可配置替换
 
+**我要让长任务展示实时进度**
+→ 查看 [07. 开发指南](./07-development.md#为-agent-启用任务清单todolist)；配置与事件契约见 [06. 配置指南](./06-configuration.md#任务清单todolist配置)、[09. API 参考](./09-api-reference.md#todo_update-事件任务清单)
+
+**我要给危险工具加人工确认**
+→ 查看 [06. 配置指南 - 人机确认（HITL）配置](./06-configuration.md#人机确认hitl配置)，确认结果回传用法见 [09. API 参考](./09-api-reference.md#require_user_confirm-事件人机确认)
+
 **我要排查生产问题**
 → 查看 [12. 常见问题](./12-faq.md) 和 [15. 可观测性](./15-observability.md)
 

@@ -225,6 +225,29 @@ public class UnifiedChatRequest {
     private String cancelToken;
 
     /**
+     * 人机确认（HITL）结果回传列表（可选）
+     * <p>
+     * 用于恢复因权限确认而挂起的对话。当 Agent 执行需人工确认的工具
+     * （由 Agent 配置的 {@code extensions.hitl.toolGate} 指定）时，服务端会推送
+     * {@code REQUIRE_USER_CONFIRM} 事件并挂起 Agent，此时需携带本参数重新发起请求。
+     * </p>
+     * <p>
+     * <b>使用方式</b>：
+     * <ol>
+     * <li>收到 {@code REQUIRE_USER_CONFIRM} 事件，其 {@code content.toolCalls}
+     *     数组含待确认工具调用的 {@code id} / {@code name} / {@code input}</li>
+     * <li>用户做出选择后，用相同的 {@code conversationId} 重新发起请求，
+     *     并携带 {@code confirmResults}（每项对应一个工具调用）</li>
+     * <li>AgentScope 校验通过后继续执行（批准）或拒绝该工具调用</li>
+     * </ol>
+     * </p>
+     * <p>
+     * 未携带本参数时行为不变，与普通对话完全一致。
+     * </p>
+     */
+    private java.util.List<ConfirmResultRequest> confirmResults;
+
+    /**
      * Schema 名称（可选）
      * <p>
      * 仅在 {@code structured=true} 时生效。

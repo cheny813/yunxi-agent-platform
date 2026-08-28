@@ -169,6 +169,10 @@ public class ConversationController {
         if (request.getContextData() != null) {
             streamRequest.setContextData(request.getContextData());
         }
+        // 支持人机确认结果回传（用于恢复因权限确认而挂起的对话）
+        if (request.getConfirmResults() != null && !request.getConfirmResults().isEmpty()) {
+            streamRequest.setConfirmResults(request.getConfirmResults());
+        }
         // 判断是否需要使用会话
         String conversationId = request.getConversationId();
         boolean needsConversation = (conversationId != null && !conversationId.isBlank()) ||

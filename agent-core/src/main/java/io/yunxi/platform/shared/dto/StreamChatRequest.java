@@ -165,6 +165,17 @@ public class StreamChatRequest implements MemoryParams {
     private MemoryConfig memoryConfig;
 
     /**
+     * 人机确认（HITL）结果回传列表（可选）
+     *
+     * <p>
+     * 用于恢复因权限确认而挂起的流式对话。Agent 执行需人工确认的工具时会推送
+     * {@code REQUIRE_USER_CONFIRM} 事件并挂起，调用方需携带本参数重新发起请求。
+     * 详见 {@link ConfirmResultRequest}。
+     * </p>
+     */
+    private java.util.List<ConfirmResultRequest> confirmResults;
+
+    /**
      * 默认构造函数
      */
     public StreamChatRequest() {
@@ -218,6 +229,14 @@ public class StreamChatRequest implements MemoryParams {
     }
 
     // ==================== Getter 和 Setter 方法 ====================
+
+    public java.util.List<ConfirmResultRequest> getConfirmResults() {
+        return confirmResults;
+    }
+
+    public void setConfirmResults(java.util.List<ConfirmResultRequest> confirmResults) {
+        this.confirmResults = confirmResults;
+    }
 
     public String getMessage() {
         return message;

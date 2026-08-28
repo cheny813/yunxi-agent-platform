@@ -79,5 +79,11 @@ agent:
       toolGate:
         enabled: true
         tools:
-          - shell_execute
-          - file_write
+          # 注意：须填写系统中真实存在的工具名。原名 shell_execute / file_write 在系统中
+          # 不存在（配置后无任何报错，但规则永不生效，形同虚设），已修正为真实工具名。
+          # 另注意：工具最终是否可用取决于本 Agent 激活的工具组（见上方
+          # toolsGroup.systemToolsGroup），未激活组中的工具即使在此列出也不会被触发。
+          # 可用工具名参见启动日志中的 "Registered tool 'xxx'" 记录。
+          - execute      # 命令执行（高危）
+          - write_file   # 文件写入（高危）
+          - edit_file    # 文件编辑（高危）

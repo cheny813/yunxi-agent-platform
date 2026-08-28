@@ -10,7 +10,7 @@
 yunxi-agent-platform/
 ├── agent-spi               # SPI 接口定义（最底层抽象）
 ├── agent-config            # 集中化配置管理
-├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、AgentScope-Java 2.0GA Channel 网关接入）
+├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、AgentScope-Java 2.0 Channel 网关接入）
 ├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-text2sql          # 自然语言转 SQL
 ├── agent-app               # 可执行应用打包（统一入口）
@@ -152,7 +152,7 @@ agent-core/src/main/java/io/yunxi/platform/
 - `ReActSpanMiddleware` — OpenTelemetry 链路追踪（平台自建，实现 `MiddlewareBase`）
 - 优雅关闭由框架内置 `GracefulShutdownMiddleware` 自动注册，无需平台实现
 
-> 说明：上层 Hook 体系已全面迁移为 AgentScope 原生 Middleware 体系；原 `ToolGate`/`ReasoningReview`/`TextToolCallParser` 等自建 Middleware 已在 AgentScope-Java 2.0GA 升级中移除，其能力由框架原生机制（如 `PermissionContextState` 的 ASK 规则、HITL 配置链）承接。
+> 说明：上层 Hook 体系已全面迁移为 AgentScope 原生 Middleware 体系；原 `ToolGate`/`ReasoningReview`/`TextToolCallParser` 等自建 Middleware 已在 AgentScope-Java 2.0 升级中移除，其能力由框架原生机制（如 `PermissionContextState` 的 ASK 规则、HITL 配置链）承接。
 
 #### 工具体系（tool/）
 
@@ -182,7 +182,7 @@ MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()`
 | `skill/`（无独立包） | 技能系统由 AgentScope 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录）管理，由框架 `DynamicSkillMiddleware` 自动装载 |
 | `conversation/` | 对话编排（ChatAppService） |
 | `intelligent/` | 智能 LLM 服务（IntelligentLlmService + IntelligentProperties + IntelligentAutoConfiguration） |
-| `workspace/`（无独立包） | 多租户运行时隔离（AgentScope-Java 2.0GA 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 按用户命名空间隔离工作空间与 AgentState 会话槽） |
+| `workspace/`（无独立包） | 多租户运行时隔离（AgentScope-Java 2.0 原生 `HarnessAgent.workspaceFor(userId, sessionId)` 按用户命名空间隔离工作空间与 AgentState 会话槽） |
 | `session/` | 会话管理 |
 | `sync/` | 数据同步引擎（MySQL → Milvus） |
 | `rag/` | 应用层 RAG（ApplicationRAG 中间件工厂，FileVectorService 检索） |

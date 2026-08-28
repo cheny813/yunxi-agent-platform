@@ -15,7 +15,6 @@ import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
 import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
-import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
 import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
@@ -427,18 +426,18 @@ public class AgentConfigurer implements SmartLifecycle {
                 .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName())
                 .compaction(buildCompactionConfig());
 
-        // 配置 Middleware 链、运行时参数、规划功能
+        // 配置 Middleware 链与运行时参数
         configureMiddlewares(builder, def, toolkit);
         configureRuntime(builder, def);
-        configurePlan(builder, def);
 
         // 配置分布式后端（可选）：stateStore + baseStore + snapshotSpec 一站式配置
         if (distributedBackend != null)
             builder.distributedStore(distributedBackend);
 
-        // 配置 AgentScope 原生能力：计划模式 / 技能系统 / 韧性（重试-降级-超时）
+        // 配置 AgentScope 原生能力：计划模式 / 任务清单 / 技能系统 / 韧性（重试-降级-超时）
         // 全部复用 HarnessAgent.Builder 原生 API，不自建任何等价逻辑
         configurePlan(builder, def);
+        configureTaskList(builder, def);
         configureSkills(builder, def);
         configureResilience(builder, def);
 
@@ -596,14 +595,14 @@ public class AgentConfigurer implements SmartLifecycle {
 
         configureMiddlewares(builder, def, toolkit);
         configureRuntime(builder, def);
-        configurePlan(builder, def);
 
         // 配置分布式后端（可选）
         if (distributedBackend != null)
             builder.distributedStore(distributedBackend);
 
-        // 配置 AgentScope 原生能力：计划模式 / 技能系统 / 韧性（与单 Agent 一致，完全复用框架）
+        // 配置 AgentScope 原生能力：计划模式 / 任务清单 / 技能系统 / 韧性（与单 Agent 一致，完全复用框架）
         configurePlan(builder, def);
+        configureTaskList(builder, def);
         configureSkills(builder, def);
         configureResilience(builder, def);
 
@@ -929,10 +928,18 @@ public class AgentConfigurer implements SmartLifecycle {
         // 未配置 HITL（无人值守安全场景）：AgentScope 框架默认权限模式为 DEFAULT，
         // 在无任何 ASK 规则时会对所有工具调用返回 PERMISSION_ASKING（挂起等人工确认），
         // 导致纯查询/评分类 Agent（如营养配餐）在无前端确认弹窗的自动生成路径上永久卡死。
-        // 因此显式注入 DONT_ASK 上下文，确保只读工具不被挂起。危险路径保护由框架层兜底。
+        // 因此显式注入 DONT_ASK 上下文：把兜底的 ASK 降级为 DENY，从根本上杜绝挂起；
+        // 写操作与危险路径一律拒绝，保护由框架层兜底（ToolBase 内部敏感路径拦截）。
+        //
+        // 注意（实测行为，勿按字面误解）：DONT_ASK 下未命中 ALLOW 规则的工具一律被拒绝，
+        // 包括 list_files / read_file 等只读工具——它们的 readOnly=true 在本模式下不生效，
+        // 因为该属性仅在 EXPLORE / ACCEPT_EDITS 模式下被判定。
+        // 只读 MCP 工具不受影响（McpTool 工具自检直接放行）。
+        // 为何不用 EXPLORE（语义上更贴近"只读放行"）：其判定早于 ALLOW 规则且立即返回，
+        // 会使 readOnly=false 的 todo_write 被直接 DENY，导致任务清单功能失效。
+        // 完整权衡见 PermissionConfig#unattendedContext。
         if (extensions == null || extensions.getHitl() == null) {
-            builder.permissionContext(
-                    PermissionContextState.builder().mode(PermissionMode.DONT_ASK).build());
+            builder.permissionContext(permissionConfig.unattendedContext());
             return;
         }
 
@@ -1009,6 +1016,43 @@ public class AgentConfigurer implements SmartLifecycle {
         builder.middleware(new PlanModeMiddleware(
                 new PlanModeManager(workspaceManager, planDir), readOnlyResolver));
         log.info("Agent '{}' 已启用 AgentScope PlanMode（planDir={}）", def.getName(), planDir);
+    }
+
+    /**
+     * 配置 Agent 任务清单能力（AgentScope 原生 TodoList）。
+     *
+     * <p>
+     * 能力完全由 AgentScope 提供：{@code ReActAgent.Builder.enableTaskList(true)} 在 build
+     * 阶段注册 {@code todo_write} 工具（操作 {@code AgentState.tasksContext}，全量替换语义）
+     * 与 {@code TaskReminderMiddleware}（每轮推理前重新注入任务列表）。yunxi 不自建工具、
+     * 不自建存储、不新增状态机。
+     * </p>
+     *
+     * <p>
+     * 启用条件与 {@link #configurePlan} 一致，取二者之一：YAML 的
+     * {@code plan.taskList=true} 或 全局 {@code agentscope.core.plan.task-list=true}。
+     * 任务清单与 PlanMode 相互独立——{@code todo_write} 不要求先进入计划模式。
+     * </p>
+     *
+     * <p>
+     * 任务状态持久化于 {@code AgentState.tasksContext}，随 AgentState 由
+     * {@code AgentStateStore} 按 (userId, sessionId) 槽位保存，跨会话续传天然具备。
+     * 默认即有文件持久化——HarnessAgent 在未显式设置时自动装配
+     * {@code JsonFileAgentStateStore}（{@code ~/.agentscope/state/<agentId>/}）；
+     * Redis 仅在跨实例/多副本部署时需要。
+     * </p>
+     *
+     * @param builder Agent Builder
+     * @param def     Agent 定义配置
+     */
+    private void configureTaskList(HarnessAgent.Builder builder, AgentDefinition def) {
+        boolean yamlEnabled = def.getPlan() != null && def.getPlan().isTaskList();
+        boolean globalEnabled = coreProperties.getPlan().isTaskList();
+        if (!yamlEnabled && !globalEnabled) {
+            return;
+        }
+        builder.enableTaskList(true);
+        log.info("Agent '{}' 已启用 AgentScope 任务清单（todo_write + TaskReminderMiddleware）", def.getName());
     }
 
     /**

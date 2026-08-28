@@ -2,7 +2,6 @@ package io.yunxi.platform.execution.interceptors;
 
 import org.springframework.stereotype.Component;
 
-import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
 import io.yunxi.platform.config.PermissionConfig;
 import io.yunxi.platform.execution.ExecutionContext;
@@ -17,7 +16,7 @@ import io.yunxi.platform.shared.config.HITLConfig;
  *
  * <p>判定逻辑与 AgentConfigurer 构建期注入 {@code Builder.permissionContext} 完全一致，
  * 复用 {@link PermissionConfig#build} 与 {@link PermissionConfig#hasAskTools} 两个入口。
- * 因 AgentScope GA 无 per-call 权限注入 API（仅构建时注入 → per-session AgentState），
+ * 因 AgentScope-Java 2.0 无 per-call 权限注入 API（仅构建时注入 → per-session AgentState），
  * 本拦截器落为"请求级权限快照"：供状态上报 / 审计等请求维度消费，
  * 不伪造调用时注入，实际权限执行仍由 AgentScope 构建期 PermissionContextState 承担。</p>
  *
@@ -50,8 +49,10 @@ public class PermissionContextInterceptor implements ExecutionInterceptor {
         ExtensionConfig extensions = def == null ? null : def.getExtensions();
         HITLConfig hitl = extensions == null ? null : extensions.getHitl();
         if (hitl == null) {
-            // 无人值守安全姿态：不配置 HITL 即不做人工确认（防工具调用挂起等待）
-            ctx.setPermissionContext(PermissionContextState.builder().mode(PermissionMode.DONT_ASK).build());
+            // 无人值守安全姿态：不配置 HITL 即不做人工确认（防工具调用挂起等待）。
+            // 复用 PermissionConfig 统一构造，确保任务清单工具的放行规则不被漏配
+            // （DONT_ASK 模式下未命中规则的工具会被直接拒绝）。
+            ctx.setPermissionContext(permissionConfig.unattendedContext());
             return;
         }
         PermissionMode mode = PermissionConfig.hasAskTools(hitl)

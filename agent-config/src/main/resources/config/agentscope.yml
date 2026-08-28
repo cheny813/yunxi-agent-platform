@@ -92,11 +92,11 @@ agentscope:
     plan:
       enabled: ${PLAN_ENABLED:false}
       plan-dir: ${PLAN_DIR:plan}
-      # 只读工具关键字（逗号分隔）：plan 模式下仅允许这些只读工具 + GA 内置 plan 控制工具
+      # 只读工具关键字（逗号分隔）：plan 模式下仅允许这些只读工具 + 框架内置 plan 控制工具
       read-only-tools: ${PLAN_READONLY_TOOLS:read_file,cat,ls,grep,memory_search,git}
 
     # ============================================================
-    # AgentScope-Java 2.0GA 原生技能系统（agentscope.core.skill，由 AgentConfigurer.configureSkills 读取）
+    # AgentScope-Java 2.0 原生技能系统（agentscope.core.skill，由 AgentConfigurer.configureSkills 读取）
     # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core。
     # ============================================================
     skill:
@@ -104,7 +104,7 @@ agentscope:
       project-global-dir: ${SKILL_PROJECT_DIR:.agentscope/workspace/skills}
 
     # ============================================================
-    # AgentScope-Java 2.0GA 原生韧性配置（agentscope.core.resilience，由 AgentConfigurer.configureResilience 读取）
+    # AgentScope-Java 2.0 原生韧性配置（agentscope.core.resilience，由 AgentConfigurer.configureResilience 读取）
     # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core。
     # ============================================================
     resilience:

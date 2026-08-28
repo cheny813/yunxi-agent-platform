@@ -14,6 +14,7 @@
  *     message:   '...',
  *     onDelta:   (delta) => { ... },       // 仅 stream 模式回调，逐段文本增量
  *     onDone:    (fullText) => { ... },    // 必填，完整文本（两种情况都会调）
+ *     onTodo:    (todos, evt) => { ... },  // 仅 stream 模式回调，任务清单全量更新
  *   });
  *
  * 返回：完整文本（也会在 onDone 中回调）。
@@ -42,8 +43,15 @@
   /**
    * 流式请求：POST /api/conversations/chat/stream，逐段回调 content 增量
    * SSE 事件格式：data: {"type":"content","timestamp":...,"content":"..."}
+   *
+   * 同时识别任务清单事件（需 Agent 配置 plan.taskList=true 才会产生）：
+   *   data: {"type":"todo_update","content":"{\"todos\":[...]}"}
+   * 注意 content 为 JSON 字符串（与 tool_result 等结构化事件同一编码惯例），
+   * SDK 内部已二次解析，回调给页面的 todos 即为任务数组。
+   * 该事件为全量透出（后端 todo_write 采用 full-list-replace 语义），
+   * 页面应整体替换任务清单渲染，不做增量合并。
    */
-  async function chatStream(body, onDelta) {
+  async function chatStream(body, onDelta, onTodo) {
     const res = await fetch(STREAM_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Agent-Token': DEFAULT_TOKEN },
@@ -76,6 +84,18 @@
           if (evt.type === 'content' && evt.content) {
             fullText += evt.content;
             if (typeof onDelta === 'function') onDelta(evt.content, fullText);
+          } else if (evt.type === 'todo_update') {
+            // 任务清单全量更新：content 为 JSON 字符串（与 tool_result 等结构化事件同一编码惯例），
+            // 需二次解析后取 todos；全量替换渲染，不做增量合并。
+            if (typeof onTodo === 'function') {
+              let payload = {};
+              try {
+                payload = typeof evt.content === 'string' ? JSON.parse(evt.content) : (evt.content || {});
+              } catch (e) {
+                payload = {};
+              }
+              onTodo(payload.todos || [], evt);
+            }
           }
         } catch (_) {
           /* 忽略非 JSON 控制行 */
@@ -92,14 +112,15 @@
    *   - 其余字段透传给后端 UnifiedChatRequest
    *   - onDelta: 流式增量回调 (delta, fullSoFar)
    *   - onDone:  完成回调 (fullText)
+   *   - onTodo:  任务清单全量更新回调 (todos, evt)，仅流式模式
    * @returns {string} 完整文本
    */
   async function yunxiChat(opts) {
-    const { mode = 'sync', onDelta, onDone, ...rest } = opts;
+    const { mode = 'sync', onDelta, onDone, onTodo, ...rest } = opts;
     let fullText;
 
     if (mode === 'stream') {
-      fullText = await chatStream(rest, onDelta);
+      fullText = await chatStream(rest, onDelta, onTodo);
     } else {
       fullText = await chatSync(rest);
     }

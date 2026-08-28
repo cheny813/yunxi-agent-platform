@@ -354,7 +354,7 @@ public class MyService {
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
 │  │  统一认证    │ │  限流熔断    │ │  路由转发    │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  (由 AgentScope-Java 2.0GA Channel + AgentGatewayImpl 在 agent-core 内承接)      │
+│  (由 AgentScope-Java 2.0 Channel + AgentGatewayImpl 在 agent-core 内承接)      │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -390,7 +390,7 @@ public class MyService {
 | 层级 | 职责 | 主要模块 |
 |------|------|----------|
 | **接入层** | 用户交互界面 | Web、桌面、移动端 |
-| **网关层** | 协议适配、认证、限流 | agent-core（AgentScope-Java 2.0GA Channel + AgentGatewayImpl） |
+| **网关层** | 协议适配、认证、限流 | agent-core（AgentScope-Java 2.0 Channel + AgentGatewayImpl） |
 | **业务层** | 业务逻辑实现 | agent-app, agent-muse, agent-text2sql |
 | **核心层** | 框架核心能力 | agent-core |
 | **基础设施层** | 技术实现 | agent-config, agent-spi, sdk-js, MCP |

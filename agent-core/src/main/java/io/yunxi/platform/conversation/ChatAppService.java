@@ -195,6 +195,7 @@ public class ChatAppService {
                         .useA2A(request.isUseA2A())
                         .deepMode(request.isDeepMode())
                         .enableThinking(request.isEnableThinking())
+                        .confirmResults(request.getConfirmResults())
                         .build();
                 ExecutionResult result = executionEngine.execute(execRequest, null);
                 if (result.isError()) {
@@ -237,6 +238,7 @@ public class ChatAppService {
                         .deepMode(request.isDeepMode())
                         .enableThinking(request.isEnableThinking())
                         .historyMessages(conversation.getMessages())
+                        .confirmResults(request.getConfirmResults())
                         .build();
                 ExecutionResult result = executionEngine.execute(execRequest, conversation);
                 if (result.isError()) {
