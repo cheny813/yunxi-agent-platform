@@ -40,3 +40,13 @@ agent:
     systemToolsGroup:
       - memory
       - general
+    mcpServersToolsGroup:
+      - milvus          # search_dishes 学校菜品 / get_dish_details
+      - database        # batch_query_dish_ingredients 菜品食材批量查询
+
+  # 无人值守权限：黑名单模式（BYPASS 默认全放行，仅拒绝危险工具），无需逐个列允许项。
+  # 平台危险工具基线由 PermissionConfig 提供；此处仅显式声明本 Agent 需拒绝的业务工具。
+  extensions:
+    hitl:
+      deniedTools:
+        - node_command

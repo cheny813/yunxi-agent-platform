@@ -255,11 +255,18 @@
             <artifactId>resilience4j-ratelimiter</artifactId>
             <version>${resilience4j.version}</version>
         </dependency>
-        <!-- M2.3: LLM 通道超时控制（TimeLimiter + CircuitBreaker，M1 主设计 F2 落地） -->
+        <!-- LLM 通道超时控制（TimeLimiter + CircuitBreaker，复用 resilience4j 实现调用熔断与超时） -->
         <dependency>
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-timelimiter</artifactId>
             <version>${resilience4j.version}</version>
+        </dependency>
+
+        <!-- 方法级鉴权注解 @PreAuthorize（spring-security-core 仅提供注解，不引入默认拦截链；
+            实际拦截由 agent-app 的 SecurityConfig 统一管控） -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-core</artifactId>
         </dependency>
 
         <!-- Micrometer -->
@@ -328,6 +335,19 @@
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- Nacos 3.2.4 客户端：MCP 动态注册协调底座（Config + Naming） -->
+        <dependency>
+            <groupId>com.alibaba.nacos</groupId>
+            <artifactId>nacos-client</artifactId>
+            <version>3.2.4</version>
+        </dependency>
+        <!-- nacos-api 提供 ConfigService/NamingService 及 listener 抽象（nacos-client 未传递引入） -->
+        <dependency>
+            <groupId>com.alibaba.nacos</groupId>
+            <artifactId>nacos-api</artifactId>
+            <version>3.2.4</version>
         </dependency>
     </dependencies>
 

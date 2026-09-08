@@ -22,7 +22,7 @@ import java.util.Map;
  * <p><b>/v1/chat/completions 是「裸 LLM 代理通道」，仅做透传转发，不经过任何 Agent 编排、工具调用或评分链路。</b></p>
  * <ul>
  *   <li><b>适合</b>：纯文本补全、表单自动填充、简单文案生成等不需要工具/Agent 的场景。</li>
- *   <li><b>不适合</b>：需要调用工具（如营养评分 {@code evaluateRecipe}）、需要多 Agent 协作、
+ *   <li><b>不适合</b>：需要调用工具（如营养评分 {@code evaluate_recipe}）、需要多 Agent 协作、
  *       需要结构化可控输出的业务。这类场景应走 <b>/api/conversations/chat</b>
  *       （指定 agentName + profile，由 Agent 编排工具与评分）。</li>
  * </ul>

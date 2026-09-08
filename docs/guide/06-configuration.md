@@ -798,6 +798,38 @@ agent:
 
 ---
 
+## MCP 动态注册配置（Nacos 协调底座）
+
+平台支持运行期通过 REST API 动态注册/注销 MCP 服务器（接口见 [09. API 参考 · MCP 动态注册](./09-api-reference.md#mcp-动态注册运行时-rest-api)）。该能力的协调底座基于 **Nacos 配置中心**：
+
+- **目录持久化**：每个服务器条目写入 Nacos `dataId`（默认 `yunxi.mcp-servers.json`），进程重启不丢失；
+- **跨实例广播**：通过 Nacos Naming 在协调服务名 `yunxi-mcp-coordinator` 下注册实例，多实例可统一感知服务器上下线；
+- **优雅降级**：Nacos 未启用或不可达时，自动退化为本地内存目录（单实例、重启清空），动态注册接口仍可正常使用。
+
+### 配置项
+
+```yaml
+yunxi:
+  mcp:
+    nacos:
+      enabled: true                      # 是否启用 Nacos 协调底座（默认 false，退化为本地内存）
+      server-addr: 127.0.0.1:8848        # Nacos 服务地址
+      namespace: public                  # 命名空间（多租户隔离用）
+      group: YUNXI_MCP_GROUP             # 配置 / 服务分组
+      data-id: yunxi.mcp-servers.json    # 目录持久化 dataId
+      coordinator-service: yunxi-mcp-coordinator   # Naming 协调服务名
+      coordinator-group: YUNXI_MCP_GROUP          # 协调服务分组
+```
+
+### 行为说明
+
+- 启动引导（`bootstrap`）会一次性合并发布所有在 `agentscope.core.mcp-servers` 中标记为 `enabled: true` 的静态服务器到目录，保证静态与动态服务器处于同一权威目录；
+- 注册/注销采用「内存权威目录 + Nacos 全量快照」机制：所有写操作先更新内存目录，再发布完整快照，避免并发读-改-写导致的覆盖丢失，从而解决多实例最终一致下的目录竞态；
+- 目标服务器不可达时仅 WARN 降级，首次调用时自动重连，不阻塞 HTTP 请求；
+- 动态注册的服务器与静态 `agentscope.core.mcp-servers` 段共享同一套 `Toolkit` 注册逻辑，工具同样按服务器名分组、由 Agent 在对话中自主调用。
+
+---
+
 ## 任务清单（TodoList）配置
 
 任务清单是 **AgentScope-Java 2.0 原生能力**：启用后由框架注册 `todo_write` 工具与 `TaskReminderMiddleware`，

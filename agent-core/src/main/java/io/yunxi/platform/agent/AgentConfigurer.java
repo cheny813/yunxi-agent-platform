@@ -1,6 +1,7 @@
 package io.yunxi.platform.agent;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.shutdown.GracefulShutdownManager;
@@ -9,6 +10,8 @@ import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.tool.mcp.McpClientBuilder;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
 import io.agentscope.core.tool.subagent.SubAgentConfig;
+import io.agentscope.core.state.AgentState;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.DistributedStore;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
@@ -31,22 +34,31 @@ import io.yunxi.platform.shared.config.ExpertConfig;
 import io.yunxi.platform.shared.config.ExtensionConfig;
 import io.yunxi.platform.shared.config.StageConfig;
 import io.yunxi.platform.shared.config.ToolsGroupConfig;
+import io.yunxi.platform.shared.config.HITLConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+
+import io.yunxi.platform.agent.mcp.McpConfigStore;
 
 import io.yunxi.platform.tracing.middleware.ReActSpanMiddleware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.SmartLifecycle;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.net.InetAddress;
 import java.util.function.Predicate;
 
 /**
@@ -71,6 +83,21 @@ public class AgentConfigurer implements SmartLifecycle {
 
     /** 类级别日志记录器 */
     private static final Logger log = LoggerFactory.getLogger(AgentConfigurer.class);
+
+    /**
+     * 构建期捕获的“意图激活工具组”快照：Agent 名称 -> 应在每次会话激活的工具组集合
+     * （systemToolsGroup + mcpServersToolsGroup + 动态注册组）。
+     * 供 {@link #activateSessionToolGroups} 使用，以覆盖持久化/遗留空激活组导致的
+     * MCP 工具 "Unauthorized ... is not available" 问题。
+     */
+    private static final Map<String, List<String>> AGENT_ACTIVE_GROUPS = new ConcurrentHashMap<>();
+
+    /**
+     * 运行时动态注册的 MCP 工具组名集合（构建期快照之外的增量）。
+     * 会话级激活时并入快照，避免动态注册的服务器被反激活。
+     */
+    private static final Set<String> DYNAMIC_ACTIVE_GROUPS =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     /** 生命周期运行标志，volatile 确保多线程可见性 */
     private volatile boolean running = false;
@@ -103,7 +130,22 @@ public class AgentConfigurer implements SmartLifecycle {
     private DistributedStore distributedBackend;
 
     /** 已建立的 MCP 客户端连接缓存，按服务器名复用，避免每个 Agent 重复建连 */
-    private final Map<String, McpClientWrapper> mcpClientCache = new HashMap<>();
+    private final Map<String, McpClientWrapper> mcpClientCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 已构建 Agent 的 Toolkit 引用集合，运行时动态注入 MCP 工具组时遍历 */
+    private final Set<Toolkit> registeredToolkits =
+            java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<Toolkit, Boolean>());
+
+    /** MCP 协调底座（Nacos）封装，承担目录/广播/监听协调职责 */
+    private final McpConfigStore mcpConfigStore;
+
+    /** 跨实例 reconcile 的熔断保护（复用 resilience4j circuitbreaker 防止目标不可达时雪崩） */
+    private final CircuitBreaker mcpReconcileCircuitBreaker =
+            CircuitBreakerRegistry.ofDefaults().circuitBreaker("mcp-dynamic-reconcile");
+
+    /** 应用端口，用于 Nacos 协调实例注册 */
+    @Value("${server.port:8080}")
+    private int serverPort;
 
     /**
      * 构造 Agent 配置器，通过 Spring 依赖注入获取所有必要组件。
@@ -123,7 +165,8 @@ public class AgentConfigurer implements SmartLifecycle {
             ModelFactory modelFactory,
             PermissionConfig permissionConfig,
             ObjectProvider<ReActSpanMiddleware> reactSpanMiddlewareProvider,
-            ObjectProvider<MuseToolRegistrar> museToolRegistrarProvider) {
+            ObjectProvider<MuseToolRegistrar> museToolRegistrarProvider,
+            McpConfigStore mcpConfigStore) {
         this.definitionLoader = definitionLoader;
         this.agentService = agentService;
         this.coreProperties = coreProperties;
@@ -132,6 +175,7 @@ public class AgentConfigurer implements SmartLifecycle {
         this.permissionConfig = permissionConfig;
         this.reactSpanMiddlewareProvider = reactSpanMiddlewareProvider;
         this.museToolRegistrarProvider = museToolRegistrarProvider;
+        this.mcpConfigStore = mcpConfigStore;
     }
 
     /**
@@ -193,6 +237,7 @@ public class AgentConfigurer implements SmartLifecycle {
         }
 
         log.info("Agent 初始化完成，共 {} 个 Agent", agentService.countAgents());
+        bootstrapMcpCoordinator();
         running = true;
     }
 
@@ -367,6 +412,7 @@ public class AgentConfigurer implements SmartLifecycle {
             Model model = modelFactory.create(def.getModel());
             // 构建工具集
             Toolkit toolkit = buildToolkit(def);
+        registeredToolkits.add(toolkit);
             // 按 Agent 配置注册 MCP 服务器工具（框架原生 McpClientBuilder / SSE）
             registerMcpServers(toolkit, def);
             registerMuseTools(toolkit);
@@ -904,6 +950,9 @@ public class AgentConfigurer implements SmartLifecycle {
 
         // 可选：HITL（人机交互）—— AgentScope 原生权限上下文 + 人工协作工具
         injectHITLMiddlewares(builder, def);
+
+        // 构建期工具引用校验（best-effort）：allowedTools/deniedTools 是否存在于已注册 toolkit
+        validateToolReferences(def, toolkit);
     }
 
     /**
@@ -934,28 +983,73 @@ public class AgentConfigurer implements SmartLifecycle {
         // 注意（实测行为，勿按字面误解）：DONT_ASK 下未命中 ALLOW 规则的工具一律被拒绝，
         // 包括 list_files / read_file 等只读工具——它们的 readOnly=true 在本模式下不生效，
         // 因为该属性仅在 EXPLORE / ACCEPT_EDITS 模式下被判定。
-        // 只读 MCP 工具不受影响（McpTool 工具自检直接放行）。
         // 为何不用 EXPLORE（语义上更贴近"只读放行"）：其判定早于 ALLOW 规则且立即返回，
         // 会使 readOnly=false 的 todo_write 被直接 DENY，导致任务清单功能失效。
         // 完整权衡见 PermissionConfig#unattendedContext。
+        // 注：McpTool 在 DONT_ASK 下并不会被框架自检自动放行，业务工具需在 HITL.allowedTools 中显式声明。
         if (extensions == null || extensions.getHitl() == null) {
             builder.permissionContext(permissionConfig.unattendedContext());
             return;
         }
 
         var hitlConfig = extensions.getHitl();
-        // 注入权限上下文：将 HITL 配置映射为 PermissionContextState（被点名工具执行前需人工确认）。
-        // 模式直接透传 AgentScope 原生枚举：配了需确认工具 → DEFAULT（挂起向用户确认）；
-        // 未配任何人工介入 → BYPASS（全放行）。如需无人值守，调用方可显式传 DONT_ASK。
-        // hasAskTools 收敛在 PermissionConfig，与请求期 PermissionContextInterceptor 复用同一判定。
-        PermissionMode mode = PermissionConfig.hasAskTools(hitlConfig) ? PermissionMode.DEFAULT : PermissionMode.BYPASS;
-        builder.permissionContext(permissionConfig.build(hitlConfig, mode));
+        if (PermissionConfig.hasAskTools(hitlConfig)) {
+            // 注入了需人工确认工具 → DEFAULT 模式，执行前挂起向用户确认
+            builder.permissionContext(permissionConfig.build(hitlConfig, PermissionMode.DEFAULT));
+        } else if (hitlConfig.getAllowedTools() != null && !hitlConfig.getAllowedTools().isEmpty()) {
+            // 声明了无人值守可调用工具白名单 → DONT_ASK + 显式 ALLOW，避免业务工具被兜底 DENY
+            builder.permissionContext(permissionConfig.unattendedContext(hitlConfig.getAllowedTools()));
+        } else {
+            // 未配置白名单 → 黑名单模式（BYPASS 默认全放行，仅拒绝 deniedTools 中显式列出的工具）。
+            // 不传入平台级基线：未在黑名单中列出的工具（如 node_command）一律放行，
+            // 只有 Agent 自己在 deniedTools 里写明的才被 DENY。适用于"禁止的少、允许的多"。
+            builder.permissionContext(permissionConfig.blacklistContext(hitlConfig.getDeniedTools(), null));
+        }
 
         // 注册人工工具（HumanTool 注册当前仅支持 schema 注册，无需绑定具体 Toolkit）
         if (hitlConfig.getHumanTool() != null && hitlConfig.getHumanTool().isEnabled()) {
             // HumanToolRegistrar 仅注册 ToolSchema，可在没有 Toolkit 的情况下工作
             // registerTools(null) 会跳过注册（registerTools 内有 null guard）
             new HumanToolRegistrar(hitlConfig.getHumanTool()).registerTools(null);
+        }
+    }
+
+    /**
+     * 构建期工具引用校验（best-effort）。
+     *
+     * <p>将 HITL 中声明的 allowedTools / deniedTools 与当前 toolkit 已注册工具名比对，
+     * 对不存在的工具名输出 WARN 日志，便于在启动时即发现"提示词/白名单写了不存在的工具名"
+     * 这类配置错误（例如把 search_public_dishes 错写成 search_dishes 会导致工具调用 Unauthorized）。</p>
+     *
+     * <p>注意：MCP 工具可能在构建期尚未完成异步连接，故未命中仅告警、不阻断启动；
+     * 运行时若工具仍不存在，AgentScope 会在调用时返回错误，Agent 可据此降级。</p>
+     *
+     * @param def     Agent 定义
+     * @param toolkit 已构建的工具集
+     */
+    private void validateToolReferences(AgentDefinition def, Toolkit toolkit) {
+        ExtensionConfig extensions = def == null ? null : def.getExtensions();
+        HITLConfig hitl = extensions == null ? null : extensions.getHitl();
+        if (hitl == null || toolkit == null) {
+            return;
+        }
+        Set<String> registered = toolkit.getToolNames();
+        List<String> refs = new ArrayList<>();
+        if (hitl.getAllowedTools() != null) {
+            refs.addAll(hitl.getAllowedTools());
+        }
+        if (hitl.getDeniedTools() != null) {
+            refs.addAll(hitl.getDeniedTools());
+        }
+        for (String ref : refs) {
+            if (ref == null || ref.isBlank()) {
+                continue;
+            }
+            if (!registered.contains(ref)) {
+                log.warn("[权限] Agent「{}」引用的工具名「{}」未在当前 toolkit 注册（可能名称拼写错误，"
+                        + "或 MCP 工具尚未异步连接）。若运行时仍不可用，工具调用将被框架拒绝。",
+                        def.getName(), ref);
+            }
         }
     }
 
@@ -1196,10 +1290,12 @@ public class AgentConfigurer implements SmartLifecycle {
     private void applyToolGroupActivation(Toolkit toolkit, AgentDefinition def) {
         boolean metaTool = def.getRuntime() != null && def.getRuntime().isEnableMetaTool();
 
-        // MetaTool 模式：Agent 自主管理工具，框架不干预
+        // MetaTool 模式：Agent 仍可经 reset_equipped_tools 自行管理工具组；
+        // 但 MCP / 集成工具组必须在构建期预激活，否则 fresh 会话派生自 build 期快照的
+        // initialActiveToolGroups 不含这些组，调用期会被 setActiveGroups(...) 覆盖为反激活，
+        // 报 "Unauthorized ... not available"。故不再跳过激活。
         if (metaTool) {
-            log.debug("MetaTool 模式: 跳过工具组激活，Agent 自行管理");
-            return;
+            log.debug("MetaTool 模式: 仍预激活 MCP/集成工具组，Agent 可经 meta 工具后续重置");
         }
 
         // 收集 YAML 配置中指定的活跃工具组
@@ -1233,6 +1329,240 @@ public class AgentConfigurer implements SmartLifecycle {
             } else {
                 log.debug("工具组 '{}' 不存在，跳过激活", group);
             }
+        }
+        // 捕获构建期意图激活组，供会话级钩子 activateSessionToolGroups 使用，
+        // 以覆盖持久化/遗留空激活组导致的 MCP 工具 "Unauthorized ... is not available"。
+        AGENT_ACTIVE_GROUPS.put(def.getName(), new ArrayList<>(activeGroups));
+        log.info("[toolgroup-activate] 构建期激活工具组 agent={} groups={}", def.getName(), activeGroups);
+    }
+
+    /**
+     * 会话级工具组激活（根治点）。
+     *
+     * <p>GA 在每次调用期（ReActAgent.activateSlotForContext）会以
+     * {@code toolkit.setActiveGroups(loaded.getToolContext().getActivatedGroups())}
+     * 把会话状态的激活组覆盖到 toolkit 上。若会话状态来自持久化存储（或 v1 遗留空列表），
+     * 其激活组为空，MCP 工具组会被反激活，运行时报
+     * {@code Unauthorized tool call: '<tool>' is not available}。</p>
+     *
+     * <p>本方法在每个会话调用前，把该会话状态的激活组重置为构建期已激活的工具组
+     * （含 systemToolsGroup + mcpServersToolsGroup + 动态注册组），从而覆盖持久化空状态。
+     * 由于 {@code getAgentState(userId, sessionId)} 走 stateCache.computeIfAbsent，
+     * 此处写入的状态会被调用期直接复用，setActiveGroups 将激活正确的 MCP 工具组。</p>
+     *
+     * @param agent     HarnessAgent 实例
+     * @param userId    用户标识
+     * @param sessionId 会话标识
+     */
+    public static void activateSessionToolGroups(HarnessAgent agent, String userId, String sessionId) {
+        if (agent == null || userId == null || sessionId == null) {
+            return;
+        }
+        try {
+            List<String> groups = resolveBuildTimeGroups(agent.getName());
+            if (groups == null) {
+                log.warn("未找到 Agent '{}' 的构建期工具组快照，跳过会话级激活", agent.getName());
+                return;
+            }
+            RuntimeContext rc = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
+            AgentState state = agent.getDelegate().getAgentState(rc);
+            state.getToolContext().setActivatedGroups(groups);
+            // 关键：stateStore != null 时 GA 每次调用都会从存储重新加载状态并覆盖本地缓存，
+            // 因此必须把修正后的激活组写回存储，否则 activateSlotForContext 重新加载时又会丢失。
+            AgentStateStore store = agent.getStateStore();
+            if (store != null) {
+                store.save(userId, sessionId, "agent_state", state);
+            }
+            log.debug("[toolgroup-activate] agent={} user={} session={} saved activatedGroups={}",
+                    agent.getName(), userId, sessionId, groups);
+        } catch (Exception e) {
+            log.warn("会话级工具组激活失败 (agent={}, user={}): {}", agent.getName(), userId, e.getMessage());
+        }
+    }
+
+    /**
+     * 解析运行时 Agent 名称对应的构建期激活工具组快照。
+     *
+     * <p>构建期快照以「基础 Agent 名」为键写入，而运行时被路由命中的可能是
+     * Profile 实例（组合键 {@code agentName#profileName}，与基础实例共享同一
+     * Toolkit）。因此先按精确名查找，未命中时回退到 {@code #} 之前的基础名，
+     * 避免 Profile 实例因取不到快照而跳过会话级激活，导致 MCP 工具组被
+     * 调用期的 setActiveGroups 反激活（报 "Unauthorized ... is not available"）。</p>
+     *
+     * <p>返回结果并入运行时动态注册的 MCP 工具组，使动态注册的服务器在
+     * 会话级激活后仍保持可见。</p>
+     *
+     * @param agentName 运行时 Agent 名称（基础名或 {@code 基础名#profile}）
+     * @return 应激活的工具组列表；无快照时返回 null
+     */
+    private static List<String> resolveBuildTimeGroups(String agentName) {
+        if (agentName == null) {
+            return null;
+        }
+        List<String> groups = AGENT_ACTIVE_GROUPS.get(agentName);
+        if (groups == null) {
+            int idx = agentName.indexOf('#');
+            if (idx > 0) {
+                groups = AGENT_ACTIVE_GROUPS.get(agentName.substring(0, idx));
+            }
+        }
+        if (groups == null) {
+            return null;
+        }
+        if (DYNAMIC_ACTIVE_GROUPS.isEmpty()) {
+            return groups;
+        }
+        List<String> merged = new ArrayList<>(groups);
+        for (String dynamic : DYNAMIC_ACTIVE_GROUPS) {
+            if (!merged.contains(dynamic)) {
+                merged.add(dynamic);
+            }
+        }
+        return merged;
+    }
+
+    // ========== MCP 动态注册（Nacos 协调底座）==========
+
+    /**
+     * 运行时动态注册一个 MCP 服务器到本 JVM 所有已构建 Agent。
+     * 复用 mcpClientCache + buildMcpClient/wrapWithReconnect，注入工具组并激活。
+     *
+     * @param name 服务器名称（即工具组名）
+     * @param src  服务器配置（type/url/command/args/headers/env/timeout）
+     */
+    public void registerDynamicMcpServer(String name, AgentscopeCoreProperties.McpServerConfig src) {
+        if (src == null) {
+            throw new IllegalArgumentException("MCP 服务器配置不能为空: " + name);
+        }
+        src.setEnabled(true);
+        // 记入动态组集合，使会话级激活（activateSessionToolGroups）不会把该组反激活
+        DYNAMIC_ACTIVE_GROUPS.add(name);
+        McpClientWrapper wrapper = mcpClientCache.computeIfAbsent(name, n -> wrapWithReconnect(n, src));
+        // 同步：先创建并激活工具组（createToolGroup/updateToolGroups 不触发 MCP 连接），工具立即可见，
+        // HTTP 请求立即返回，不阻塞在 initialize 的 30s 超时上。
+        int injected = 0;
+        for (Toolkit tk : registeredToolkits) {
+            try {
+                try {
+                    tk.createToolGroup(name, "MCP 服务器: " + name, false);
+                } catch (Exception ignored) {
+                    // 工具组已存在，忽略
+                }
+                tk.updateToolGroups(List.of(name), true);
+                injected++;
+            } catch (Exception e) {
+                log.warn("[MCP] 动态注册 '{}' 创建工具组失败：{}", name, e.getMessage());
+            }
+        }
+        log.info("动态注册 MCP 服务器 {} 已受理，已创建 {} 个工具组（连接在后台建立，首次调用时若不可达将自动重连）",
+                name, injected);
+        // 异步：在后台线程注入 MCP 客户端并激活连接。apply() 会触发 initialize，目标不可达时阻塞约 30s，
+        // 放到后台不阻塞 HTTP 请求；连接失败由 ReconnectingMcpClientWrapper 在首次调用时自动重连。
+        final McpClientWrapper fw = wrapper;
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            for (Toolkit tk : registeredToolkits) {
+                try {
+                    tk.registration().mcpClient(fw).group(name).apply();
+                    log.info("[MCP] 动态注册 '{}' 连接已建立，工具已加载进工具组", name);
+                } catch (Exception e) {
+                    log.warn("[MCP] 动态注册 '{}' 连接失败（首次调用时将自动重连）：{}", name, e.getMessage());
+                }
+            }
+        });
+    }
+
+    /**
+     * 运行时注销 MCP 服务器：禁用工具组并关闭连接。
+     *
+     * @param name 服务器名称
+     */
+    public void unregisterDynamicMcpServer(String name) {
+        DYNAMIC_ACTIVE_GROUPS.remove(name);
+        for (Toolkit tk : registeredToolkits) {
+            try {
+                tk.updateToolGroups(List.of(name), false);  // 先停用工具组
+                tk.removeToolGroups(List.of(name));          // 再真正移除工具组
+            } catch (Exception ignored) {
+                // 工具组不存在或已禁用，忽略
+            }
+        }
+        McpClientWrapper wrapper = mcpClientCache.remove(name);
+        if (wrapper != null) {
+            try {
+                wrapper.close();
+            } catch (Exception e) {
+                log.warn("关闭 MCP 客户端 {} 失败", name, e);
+            }
+        }
+        log.info("注销 MCP 服务器 {}", name);
+    }
+
+    /**
+     * 根据 Nacos 目录远端状态，对本 JVM 做增量 reconcile（跨实例同步入口）。
+     * 远端有而本地无 → 注册；本地有而远端无/禁用 → 注销。
+     */
+    private void reconcileMcpServers(Map<String, AgentscopeCoreProperties.McpServerConfig> remote) {
+        if (remote == null) {
+            return;
+        }
+        for (Map.Entry<String, AgentscopeCoreProperties.McpServerConfig> e : remote.entrySet()) {
+            if (e.getValue() != null && e.getValue().isEnabled() && !mcpClientCache.containsKey(e.getKey())) {
+                try {
+                    // 复用 resilience4j circuitbreaker 保护 reconcile 注册动作
+                    mcpReconcileCircuitBreaker.executeRunnable(
+                            () -> registerDynamicMcpServer(e.getKey(), e.getValue()));
+                } catch (Exception ex) {
+                    log.error("reconcile 注册 MCP 服务器 {} 失败", e.getKey(), ex);
+                }
+            }
+        }
+        for (String name : new java.util.HashSet<>(mcpClientCache.keySet())) {
+            AgentscopeCoreProperties.McpServerConfig cfg = remote.get(name);
+            if (cfg == null || !cfg.isEnabled()) {
+                try {
+                    mcpReconcileCircuitBreaker.executeRunnable(() -> unregisterDynamicMcpServer(name));
+                } catch (Exception ex) {
+                    log.error("reconcile 注销 MCP 服务器 {} 失败", name, ex);
+                }
+            }
+        }
+    }
+
+    /**
+     * MCP 协调底座引导（在 Agent 构建完成后由 start() 调用一次）：
+     * 1. 初始化 Nacos 客户端并监听目录变化
+     * 2. 把 YAML 已启用的 MCP 服务器同步到 Nacos 目录（首次对齐）
+     * 3. 注册协调实例（跨 JVM 广播感知）
+     */
+    private void bootstrapMcpCoordinator() {
+        if (mcpConfigStore == null || !mcpConfigStore.isEnabled()) {
+            return;
+        }
+        try {
+            mcpConfigStore.init();
+            Map<String, AgentscopeCoreProperties.McpServerConfig> yamlServers = coreProperties.getMcpServers();
+            Map<String, AgentscopeCoreProperties.McpServerConfig> enabled = new java.util.HashMap<>();
+            if (yamlServers != null) {
+                for (Map.Entry<String, AgentscopeCoreProperties.McpServerConfig> e : yamlServers.entrySet()) {
+                    if (e.getValue() != null && e.getValue().isEnabled()) {
+                        enabled.put(e.getKey(), e.getValue());
+                    }
+                }
+            }
+            // 一次性合并发布，避免逐条 saveServer 的读-改-写竞态（Nacos 最终一致，先发的条目会被后发的旧值覆盖）
+            log.info("[MCP] 引导：YAML 启用服务器共 {} 个，开始一次性同步到 Nacos 目录 {}", enabled.size(), enabled.keySet());
+            mcpConfigStore.syncServers(enabled);
+            // 把 YAML 启用服务器注册为 Naming 实例（此时 namingService 已 init）
+            for (Map.Entry<String, AgentscopeCoreProperties.McpServerConfig> e : enabled.entrySet()) {
+                mcpConfigStore.registerServerInstance(e.getKey(), e.getValue());
+            }
+            mcpConfigStore.addServerChangeListener(this::reconcileMcpServers);
+            String ip = InetAddress.getLocalHost().getHostAddress();
+            mcpConfigStore.setLocalAddress(ip, serverPort);  // 供 Naming 实例注册使用
+            mcpConfigStore.registerCoordinatorInstance(ip, serverPort);
+            log.info("MCP 协调底座引导完成，本实例 {}:{}", ip, serverPort);
+        } catch (Exception e) {
+            log.error("MCP 协调底座引导失败（不影响 Agent 启动）", e);
         }
     }
 

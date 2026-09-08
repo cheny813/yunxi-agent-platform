@@ -36,7 +36,8 @@ import io.yunxi.platform.tracing.LlmMetrics;
  * <p>负责把框架 {@link AgentEvent} 转换为 0..n 条 SSE 消息字符串：</p>
  * <ul>
  *   <li>已消费事件：TEXT/THINKING_BLOCK_DELTA（流式输出 + 推理累积）、块边界事件（消费丢弃）；</li>
- *   <li>AGENT_RESULT：usage 记录、thinking 元数据注入、会话持久化、分块输出（200 字符/块）；</li>
+ *   <li>AGENT_RESULT：usage 记录、thinking 元数据注入、会话持久化，正文仅在未被流式增量
+ *       覆盖时分块补发（200 字符/块），避免与 TEXT_BLOCK_DELTA 重复；</li>
  *   <li>透传模式：TOOL_CALL_START/END、TOOL_RESULT_END 附加 UX 友好状态消息，
  *       MODEL_CALL_START/END 不附加，其余事件原样透传（buildAgentEvent）。</li>
  * </ul>
@@ -50,6 +51,8 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
     private static final int RESULT_CHUNK_SIZE = 200;
     /** 推理累积器在 ExecutionContext.attributes 中的键 */
     private static final String ATTR_THINKING_ACCUMULATOR = "thinkingAccumulator";
+    /** 已流式输出正文累积器在 ExecutionContext.attributes 中的键（用于 AGENT_RESULT 去重） */
+    private static final String ATTR_STREAMED_TEXT = "streamedTextAccumulator";
     /** AgentScope 内置任务清单工具名（由 ReActAgent.Builder.enableTaskList(true) 注册） */
     private static final String TODO_WRITE_TOOL = "todo_write";
 
@@ -106,9 +109,12 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
             String delta = event instanceof TextBlockDeltaEvent
                     ? ((TextBlockDeltaEvent) event).getDelta()
                     : null;
-            return delta != null && !delta.isEmpty()
-                    ? List.of(sseMessageBuilder.buildContentMessage(delta))
-                    : List.of();
+            if (delta == null || delta.isEmpty()) {
+                return List.of();
+            }
+            // 记录已流出的正文，供 AGENT_RESULT 判断是否需要补发（避免终稿被重复推送一遍）
+            streamedTextAccumulator(ctx).append(delta);
+            return List.of(sseMessageBuilder.buildContentMessage(delta));
         }
         if (type == AgentEventType.THINKING_BLOCK_DELTA) {
             String text = event instanceof ThinkingBlockDeltaEvent
@@ -228,11 +234,41 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
                 conversation.addMessage(resultMsg);
                 conversationDomainService.saveConversation(conversation);
             }
-            return splitTextIntoChunks(text, RESULT_CHUNK_SIZE).stream()
+            // 去重：终稿正文通常已由 TEXT_BLOCK_DELTA 逐字流出，此处只补发尚未流出的部分
+            String pending = resolvePendingText(text, streamedTextAccumulator(ctx).toString());
+            if (pending.isEmpty()) {
+                return List.of();
+            }
+            return splitTextIntoChunks(pending, RESULT_CHUNK_SIZE).stream()
                     .map(sseMessageBuilder::buildContentMessage)
                     .collect(Collectors.toList());
         }
         return List.of();
+    }
+
+    /**
+     * 计算 AGENT_RESULT 阶段仍需补发的正文。
+     *
+     * <p>前端对 {@code content} 消息按到达顺序累加，因此终稿正文若在流式增量之外再整段
+     * 推送一次，页面就会出现整段重复。判定规则：</p>
+     * <ul>
+     *   <li>未产生流式增量（非流式模型 / 增量被上游吞掉）：AGENT_RESULT 是唯一文本来源，全量补发；</li>
+     *   <li>终稿正好是已流出内容的延长（尾部截断等边界情况）：只补差异尾部；</li>
+     *   <li>其余情况（含多轮 ReAct 时已流出「前言 + 终稿」）：不再补发，避免重复。</li>
+     * </ul>
+     *
+     * @param finalText    AGENT_RESULT 携带的终稿正文
+     * @param streamedText 本次执行已通过 TEXT_BLOCK_DELTA 流出的正文
+     * @return 需补发的文本，无需补发时返回空串
+     */
+    private static String resolvePendingText(String finalText, String streamedText) {
+        if (streamedText == null || streamedText.isEmpty()) {
+            return finalText;
+        }
+        if (finalText.length() > streamedText.length() && finalText.startsWith(streamedText)) {
+            return finalText.substring(streamedText.length());
+        }
+        return "";
     }
 
     /**
@@ -266,12 +302,20 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
     }
 
     private StringBuilder thinkingAccumulator(ExecutionContext ctx) {
-        Object existing = ctx.getAttribute(ATTR_THINKING_ACCUMULATOR);
+        return accumulator(ctx, ATTR_THINKING_ACCUMULATOR);
+    }
+
+    private StringBuilder streamedTextAccumulator(ExecutionContext ctx) {
+        return accumulator(ctx, ATTR_STREAMED_TEXT);
+    }
+
+    private StringBuilder accumulator(ExecutionContext ctx, String attributeKey) {
+        Object existing = ctx.getAttribute(attributeKey);
         if (existing instanceof StringBuilder sb) {
             return sb;
         }
         StringBuilder sb = new StringBuilder();
-        ctx.setAttribute(ATTR_THINKING_ACCUMULATOR, sb);
+        ctx.setAttribute(attributeKey, sb);
         return sb;
     }
 

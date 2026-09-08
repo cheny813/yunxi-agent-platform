@@ -9,6 +9,7 @@ import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
@@ -59,6 +60,9 @@ public class StreamingStrategy implements ExecutionStrategy {
         // 思考事件文本（生成规则见 computeThinkingText）
         String thinkingText = computeThinkingText(ctx, messages.size());
         ctx.setAttribute(ATTR_THINKING_TEXT, thinkingText);
+
+        // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
+        AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, rc.getUserId(), rc.getSessionId());
 
         // 注意：共享 Agent 实例生命周期由框架管理，绝不可 close（内联转换避免 JDT resource-leak 误报）
         return ((HarnessAgent) agent).streamEvents(messages, rc);

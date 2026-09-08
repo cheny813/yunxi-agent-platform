@@ -55,9 +55,15 @@ public class PermissionContextInterceptor implements ExecutionInterceptor {
             ctx.setPermissionContext(permissionConfig.unattendedContext());
             return;
         }
-        PermissionMode mode = PermissionConfig.hasAskTools(hitl)
-                ? PermissionMode.DEFAULT
-                : PermissionMode.BYPASS;
-        ctx.setPermissionContext(permissionConfig.build(hitl, mode));
+        if (PermissionConfig.hasAskTools(hitl)) {
+            ctx.setPermissionContext(permissionConfig.build(hitl, PermissionMode.DEFAULT));
+        } else if (hitl.getAllowedTools() != null && !hitl.getAllowedTools().isEmpty()) {
+            ctx.setPermissionContext(permissionConfig.unattendedContext(hitl.getAllowedTools()));
+        } else {
+            // 黑名单模式（BYPASS 默认全放行，仅拒绝 deniedTools 中显式列出的工具）。
+            // 不传入平台级基线：未在黑名单中列出的工具（如 node_command）一律放行，
+            // 只有 Agent 自己在 deniedTools 里写明的才被 DENY。适用于"禁止的少、允许的多"。
+            ctx.setPermissionContext(permissionConfig.blacklistContext(hitl.getDeniedTools(), null));
+        }
     }
 }

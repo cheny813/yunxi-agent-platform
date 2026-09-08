@@ -54,3 +54,14 @@ agent:
     systemToolsGroup:
       - memory
       - general
+    mcpServersToolsGroup:
+      - mcp-nutrition   # evaluate_recipe 食谱营养评分
+      - milvus          # get_nutrient_standard 营养素推荐标准
+      - database        # database SQL 查询食材营养数据
+
+  # 无人值守权限：黑名单模式（BYPASS 默认全放行，仅拒绝危险工具），无需逐个列允许项。
+  # 平台危险工具基线由 PermissionConfig 提供；此处仅显式声明本 Agent 需拒绝的业务工具。
+  extensions:
+    hitl:
+      deniedTools:
+        - node_command

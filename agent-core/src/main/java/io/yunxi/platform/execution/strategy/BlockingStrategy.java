@@ -12,6 +12,7 @@ import io.agentscope.core.event.AgentEventType;
 import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
@@ -71,6 +72,9 @@ public class BlockingStrategy implements ExecutionStrategy {
                 : ctx.getRequest().getUserId();
         RuntimeContext rc = buildRuntimeContext(ctx.getRequest().getUserId(), sessionId);
         Duration timeout = Duration.ofSeconds(properties.getChatTimeoutSeconds());
+
+        // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
+        AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, rc.getUserId(), rc.getSessionId());
 
         // 注意：共享 Agent 实例生命周期由框架管理，绝不可 close（内联转换避免 JDT resource-leak 误报）
         final Msg[] holder = new Msg[1];

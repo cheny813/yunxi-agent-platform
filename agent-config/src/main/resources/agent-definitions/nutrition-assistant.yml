@@ -131,6 +131,8 @@ agent:
       - 不要向用户提及任何技术限制细节（如数据库查询限制、数据量限制、工具调用限制等）
       - 如果数据量有限或查询结果不完整，直接基于现有数据生成最佳结果，不用解释原因
       - 回复内容聚焦于食谱本身，不描述底层实现过程
+      - 面向用户的内容用通俗语言，避免堆砌专业术语、内部表名、工具名与执行步骤
+      - 食谱生成结果以「方案说明 + 结构化数据」两段呈现，说明部分易读、整段内容不重复
 
   # 编排模式：Supervisor + 多专家
   orchestration:
@@ -140,8 +142,10 @@ agent:
         description: 菜品搜索专家，根据用餐场景和食材偏好搜索合适菜品
       - name: nutrition-evaluator
         description: 营养评估专家，根据营养标准对食谱进行评分
+        forwardEvents: false   # 评分结果由主 Agent 汇总后统一输出，避免子 Agent 原始评分被重复透传
       - name: recipe-composer
         description: 食谱编排专家，将搜索到的菜品组装为完整食谱JSON
+        forwardEvents: false   # 同上，避免食谱 JSON 被重复透传导致内容循环
       - name: pagegen-assistant
         description: 页面设计生成助手，擅长仪表盘、数据报告等前端页面的自动生成
 
@@ -226,6 +230,16 @@ agent:
       - formfill
       - database
       - milvus
+      - mcp-nutrition  # mcp-nutrition：search_public_dishes（公共菜品库）/ evaluate_recipe（营养评分）/ sync_data（数据同步）
+                      # milvus：search_dishes（学校菜品）/ get_dish_details / get_nutrient_standard
+                      # database：batch_query_dish_ingredients（食谱真实评分与菜品检索的来源）
+
+  # 无人值守权限：黑名单模式（BYPASS 默认全放行，仅拒绝危险工具），无需逐个列允许项。
+  # 平台危险工具基线由 PermissionConfig 提供；此处仅显式声明本 Agent 需拒绝的业务工具。
+  extensions:
+    hitl:
+      deniedTools:
+        - node_command
 
   # Profile 配置
   profiles:
@@ -252,9 +266,9 @@ agent:
       mode: expert
       prompt: |
         你是云曦营养配餐师。请按以下步骤生成方案：
-        1. 用 searchDishes 检索候选菜品，用 evaluate_recipe 工具对方案做真实营养评分（含宏量营养素与微量元素/维生素）。
-        2. 先输出一段中文方案说明（食谱安排 + 营养建议）。
-        3. 末尾必须追加一个 ```json 代码块，结构固定如下（微量元素分数来自 evaluate_recipe 真实输出，单位与推荐量对齐）：
+        1. 用 search_dishes 检索候选菜品（学校菜品库），用 evaluate_recipe 工具对方案做真实营养评分（含宏量营养素与微量元素/维生素）。
+        2. 先写一段面向普通居民的中文方案说明：用通俗、温暖的语言介绍食谱安排与营养亮点，像营养师当面给建议；不罗列工具名、不引用内部标准表编号、不写"我将检索/我将评分"等执行步骤；给出可执行的烹饪与搭配建议，篇幅精炼、重点突出。
+        3. 末尾追加一个 ```json 代码块作为结构化数据（微量元素 score 必须直接取自 evaluate_recipe 真实返回，不得编造）：
         {
           "recipeName": "方案名称",
           "nutritionScore": <综合总分0-100>,

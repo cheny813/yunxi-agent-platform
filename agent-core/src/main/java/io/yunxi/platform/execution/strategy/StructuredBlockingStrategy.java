@@ -14,6 +14,7 @@ import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.structured.SchemaClassRegistry;
@@ -95,6 +96,8 @@ public class StructuredBlockingStrategy implements ExecutionStrategy {
             // 命名/默认 Schema 类：带 RuntimeContext（保持多租户隔离）
             RuntimeContext rc = buildRuntimeContext(ctx.getRequest().getUserId(),
                     ctx.getRequest().getConversationId());
+            // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
+            AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, rc.getUserId(), rc.getSessionId());
             response = ((HarnessAgent) agent)
                     .call(List.of(inputMessage), target.schemaClass(), rc)
                     .block(timeout);

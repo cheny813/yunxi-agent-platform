@@ -3,20 +3,23 @@
 .SYNOPSIS
     yunxi-agent-platform 统一启动脚本（PowerShell 版）
 .DESCRIPTION
-    多模块启动脚本，支持 normal / fast / maven / clean 四种模式
+    多模块启动脚本，支持 normal / fast / maven / clean 四种模式。
+    启动前会强制释放 40001 端口（结束占用该端口的任意旧实例），避免端口冲突导致静默失败。
 .EXAMPLE
     .\启动项目.ps1           # 自动打包后启动（推荐）
     .\启动项目.ps1 -Fast     # 快速启动（已打包）
     .\启动项目.ps1 -Maven    # 使用 Maven spring-boot:run
     .\启动项目.ps1 -Clean    # 清理并重新打包启动
     .\启动项目.ps1 -NoSync   # 跳过 sdk-js 静态资源同步
+    .\启动项目.ps1 -NoPause  # 非交互/后台启动时不阻塞在结尾“按任意键继续”
 #>
 
 param(
     [switch]$Fast,
     [switch]$Maven,
     [switch]$Clean,
-    [switch]$NoSync
+    [switch]$NoSync,
+    [switch]$NoPause
 )
 
 # 设置控制台输出编码为 UTF-8，解决 Maven/javac 中文警告乱码
@@ -24,28 +27,67 @@ param(
 
 # ===== 辅助函数 =====
 
-function Stop-JavaProcess {
-    Write-Host "[INFO] Stopping agent-app process..."
+# 按监听端口结束占用进程（最精准：覆盖 jar / mvn / 任意方式拉起的实例，不误伤其他 java）
+function Stop-ProcessByPort {
+    param([int]$Port)
     try {
-        $procs = Get-CimInstance Win32_Process -Filter "name='java.exe'" -ErrorAction Stop |
-            Where-Object { $_.CommandLine -like '*agent-app-2.0.0.jar*' }
-        foreach ($p in $procs) {
-            Write-Host "[INFO] 终止 PID: $($p.ProcessId)"
-            Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        $lines = netstat -ano | Select-String ":$Port\s" | Where-Object { $_ -match 'LISTENING' }
+        $pids = @()
+        foreach ($l in $lines) {
+            if ($l -match '\s+(\d+)\s*$') { $pids += $Matches[1] }
+        }
+        $pids = $pids | Sort-Object -Unique
+        foreach ($pid in $pids) {
+            if ($pid -and [int]$pid -ne $PID) {
+                Write-Host "[INFO] 端口 $Port 被 PID $pid 占用，正在终止..." -ForegroundColor Yellow
+                # 先温和终止，1 秒后仍未退出再强制结束
+                Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            }
         }
     } catch {
-        # CIM 查询失败时的回退方案
-        $fallback = Get-Process -Name "java" -ErrorAction SilentlyContinue |
-            Where-Object { $_.MainWindowTitle -eq "" }
-        foreach ($p in $fallback) {
-            Write-Host "[INFO] 终止 PID: $($p.Id) (回退)"
-            $p.Kill()
-        }
+        Write-Host "[WARN] 端口查询失败: $_" -ForegroundColor Yellow
     }
-    Start-Sleep -Seconds 3
+}
+
+# 按命令行特征结束 agent-app 进程（兜底：覆盖“尚未监听端口但已启动”的情况）
+function Stop-JavaProcess {
+    Write-Host "[INFO] 停止已有的 agent-app 进程（释放端口 $SERVER_PORT）..."
+    # 1) 释放端口（最精准，覆盖所有启动方式）
+    Stop-ProcessByPort -Port $SERVER_PORT
+    # 2) 按命令行特征兜底（jar / mvn 子进程）
+    try {
+        $procs = Get-CimInstance Win32_Process -Filter "name='java.exe'" -ErrorAction Stop |
+            Where-Object { $_.CommandLine -like '*agent-app*' }
+        foreach ($p in $procs) {
+            if ([int]$p.ProcessId -ne $PID) {
+                Write-Host "[INFO] 终止 PID: $($p.ProcessId) (命令行匹配 agent-app)" -ForegroundColor Yellow
+                Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } catch {
+        Write-Host "[WARN] CIM 查询失败，跳过命令行兜底: $_" -ForegroundColor Yellow
+    }
+    # 等待端口真正释放（最多 15s），避免新实例刚启动就端口冲突
+    $waited = 0
+    while ($waited -lt 15) {
+        $still = netstat -ano | Select-String ":$SERVER_PORT\s" | Where-Object { $_ -match 'LISTENING' }
+        if (-not $still) { break }
+        Start-Sleep -Seconds 1; $waited++
+    }
+    if ($waited -ge 15) {
+        Write-Host "[WARN] 等待端口 $SERVER_PORT 释放超时，将继续尝试启动（若仍冲突请手动检查占用进程）" -ForegroundColor Red
+    } else {
+        Write-Host "[INFO] 端口 $SERVER_PORT 已释放（等待 ${waited}s）" -ForegroundColor Green
+    }
+    Start-Sleep -Seconds 1
 }
 
 function Invoke-Pause {
+    # 后台/非交互（stdin 被重定向，如 Start-Process 重定向输出）或显式 -NoPause 时，不阻塞
+    if ($NoPause -or [Console]::IsInputRedirected) {
+        Write-Host "[INFO] 非交互模式，跳过“按任意键继续”。" -ForegroundColor Gray
+        return
+    }
     Write-Host "Press any key to continue..."
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
@@ -88,6 +130,9 @@ function Sync-StaticResources {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $scriptDir
 
+# 【智能体框架 服务端口】（提前定义，供停止旧进程逻辑使用）
+$SERVER_PORT = "40001"
+
 Write-Host "========================================"
 Write-Host "  yunxi-agent-platform"
 Write-Host "  Multi-module version"
@@ -99,15 +144,13 @@ Write-Host "[提示] 如基础设施（MySQL/Redis/Milvus/OTel Collector）未�
 Write-Host "       docker compose up -d"
 Write-Host ""
 
-# 停止旧进程
+# 停止旧进程（释放端口，避免端口冲突导致新实例静默失败）
 Stop-JavaProcess
 
 # 同步 sdk-js 静态资源副本（在打包前执行，确保进入运行产物）
 Sync-StaticResources
 
 # ===== 配置参数（集中管理） =====
-# 【智能体框架 服务端口】
-$SERVER_PORT   = "40001"
 # 【OpenTelemetry 可观测性】
 #   如需启用，取消底部 $otelExtra 块的注释。默认值定义在此，统一管理：
 $OTEL_OTLP_ENDPOINT = "http://127.0.0.1:4318/v1/traces"
@@ -120,7 +163,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32b521eaa0d60d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32d8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -193,8 +236,8 @@ switch ($mode) {
     "fast" {
         Write-Host "[INFO] Fast mode (skip packaging)..."
         Write-Host ""
-        Write-Host "[提示] Service port: 40001"
-        Write-Host "[提示] Health check: http://localhost:40001/actuator/health"
+        Write-Host "[提示] Service port: $SERVER_PORT"
+        Write-Host "[提示] Health check: http://localhost:$SERVER_PORT/actuator/health"
         Write-Host ""
 
         if (-not (Test-Path $jarFile)) {
@@ -210,7 +253,7 @@ switch ($mode) {
         Write-Host "       .\启动项目.ps1 -Clean 重新打包。"
         Write-Host ""
 
-        $allArgs = $javaArgs + @("-jar", $jarFile)
+        $allArgs = $javaArgs + $configArgs + @("-jar", $jarFile)
         & "java" $allArgs
 
         if ($LASTEXITCODE -ne 0) {
@@ -264,8 +307,8 @@ switch ($mode) {
         Write-Host ""
 
         Write-Host "[INFO] Starting application..."
-        Write-Host "[提示] Service port: 40001"
-        Write-Host "[提示] Health check: http://localhost:40001/actuator/health"
+        Write-Host "[提示] Service port: $SERVER_PORT"
+        Write-Host "[提示] Health check: http://localhost:$SERVER_PORT/actuator/health"
         Write-Host ""
 
         $allArgs = $javaArgs + $configArgs + @("-jar", $jarFile)
@@ -314,4 +357,3 @@ switch ($mode) {
         Invoke-Pause
     }
 }
-

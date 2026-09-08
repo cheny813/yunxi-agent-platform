@@ -13,12 +13,14 @@
 mcp:
   cacheable-tools:
     - search_dishes
+    - search_public_dishes
     - batch_query_dish_ingredients
     - get_dish_details
     - get_nutrient_standard
     - search_ingredients
     - search_knowledge
     - evaluate_recipe
+    - sync_data
 
 agentscope:
   core:
@@ -82,7 +84,7 @@ agentscope:
       # --------------------- Nutrition MCP 服务器 ---------------------
       # 端口：40602
       # 协议：SSE（与 mcp-common 的 McpServerFactory 一致，仅暴露 /mcp/sse + /mcp/sse/message）
-      # 提供工具：searchDishes, evaluateRecipe
+      # 提供工具：search_public_dishes（公共菜品库检索）, evaluate_recipe（营养评分）, sync_data（数据同步）
       # 源码：D:\work\code\yunxi-mcp-servers\mcp-nutrition
       # 注意：原 type=http 走 Streamable HTTP 打 /mcp，但服务端未实现该端点（404），
       #       故统一改为 sse，与其它 MCP 服务保持一致。
