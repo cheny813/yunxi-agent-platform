@@ -31,6 +31,7 @@ import io.yunxi.platform.shared.dto.ChatResponse;
 import io.yunxi.platform.shared.dto.ConversationChatRequest;
 import io.yunxi.platform.shared.dto.StreamChatRequest;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
+import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.shared.entity.ConversationEntity;
 import io.yunxi.platform.shared.exception.BadRequestException;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
@@ -344,6 +345,12 @@ public class ChatAppService {
                         .textContent(request.getMessage())
                         .role(MsgRole.USER)
                         .build();
+                // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
+                String structUserId = request.getUserId();
+                String structSessionId = request.getConversationId() != null ? request.getConversationId()
+                        : (structUserId != null ? structUserId : "structured-" + agentName);
+                RuntimeContext rc = RuntimeContext.builder().userId(structUserId).sessionId(structSessionId).build();
+                AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, structUserId, structSessionId);
                 // 开始事件（包含 requestId）
                 Flux<String> startFlux = Flux.just(sseMessageBuilder.buildMessageWithRequestId("start", null, requestId));
                 // 完成事件
@@ -352,7 +359,7 @@ public class ChatAppService {
                 // 流模式：streamEvents 实时吐字 + 末尾自解析结构化数据
                 if (request.isStructuredStream()) {
                     log.info("流式结构化输出(流模式, 逐字流): Agent={}, requestId={}", agentName, requestId);
-                    Flux<String> streamFlux = ((HarnessAgent) agent).streamEvents(List.of(userMsg), RuntimeContext.empty())
+                    Flux<String> streamFlux = ((HarnessAgent) agent).streamEvents(List.of(userMsg), rc)
                             .takeWhile(event -> !requestManager.isRequestCancelled(requestId))
                             .flatMap(event -> processStructuredAgentEvent(event, target))
                             .doOnComplete(() -> {
@@ -376,7 +383,6 @@ public class ChatAppService {
                 // 该重载内部走 native(json_schema) 或 fallback(generate_response 合成工具) 并自动降级，与官方文档一致；
                 // 代价是结构化模式下不提供逐字 token 流（框架未公开 stream+structured 组合 API）。
                 log.info("流式结构化输出(表单模式, 阻塞校验): Agent={}, requestId={}", agentName, requestId);
-                RuntimeContext rc = RuntimeContext.empty();
                 Duration timeout = Duration.ofSeconds(conversationTimeoutSeconds);
                 Mono<String> structuredFlux = Mono.fromCallable(() -> {
                     Msg result;

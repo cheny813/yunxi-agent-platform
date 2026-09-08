@@ -171,7 +171,7 @@ agent-core/src/main/java/io/yunxi/platform/
 
 #### MCP 协议（mcp/）
 
-MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()` 通过 `McpClientBuilder` 连接 MCP 服务器，`ReconnectingMcpClientWrapper` 提供断线重连兜底。无需独立的 yunxi MCP 注册器。
+MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()` 通过 `McpClientBuilder` 连接 MCP 服务器，`ReconnectingMcpClientWrapper` 提供断线重连兜底。无需独立的 yunxi MCP 注册器。运行时动态注册通过 `McpController` 暴露 REST API（`GET /api/mcp/servers`、`POST /api/mcp/servers?name=`、`DELETE /api/mcp/servers/{name}`），由 `McpConfigStore` + Nacos 配置中心协调底座持久化并跨实例广播，无需重启即可接入新的 MCP 服务。
 
 #### 其他框架组件
 
@@ -190,7 +190,7 @@ MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()`
 | `security/` | 安全（SecurityContext 用户认证、审计、HITL 权限配置） |
 | `embedding/` | 嵌入模型（DashScopeProvider/OpenAIProvider/BaiduProvider/HuaweiProvider/ClaudeProvider） |
 | `intent/` | 意图引擎（多域 DomainRegistry + rule/llm/hybrid 分类 + reload 热更新，IntentProperties + IntentAwareAgentResolver 路由） |
-| `controller/` | REST 控制器（Agent/Conversation/Tool/SkillManagement/FileUpload/ConfigManagement） |
+| `controller/` | REST 控制器（Agent/Conversation/Tool/SkillManagement/FileUpload/ConfigManagement/McpController 动态注册） |
 
 > **说明**：`knowledge/` 与 `mcp/` 目录在 V2.0 已清空（知识库创建器与自建 MCP 客户端已删除），对应能力分别由 `rag/`（ApplicationRAG）与 AgentScope 框架原生 `McpClientBuilder` + `Toolkit.registration().mcpClient()` 承担。
 

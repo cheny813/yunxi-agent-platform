@@ -110,7 +110,7 @@
 **职责**：
 - 实现 AgentScope 扩展点
 - Agent 编排自动装配（`AgentConfigurer`）
-- MCP 协议集成、记忆系统
+- MCP 协议集成、记忆系统（含运行时动态注册与 Nacos 协调底座）
 - 配置管理、持久化、会话管理
 
 **核心包**（`io.yunxi.platform`）：
@@ -119,7 +119,7 @@ agent/        ← Agent 核心（工厂、网关、装配 AgentConfigurer、工�
 a2a/          ← A2A 跨服务 Agent 调用（客户端、服务器、注册中心）
 config/       ← 配置类（AgentscopeExtensionProperties、Redis 后端等）
 conversation/ ← 对话编排（ChatAppService、会话管理）
-controller/   ← REST 控制器（对话、Agent、技能、文件、配置管理）
+controller/   ← REST 控制器（对话、Agent、技能、文件、配置管理、MCP 动态注册）
 file/         ← 文件处理（上传、向量化入库）
 gateway/      ← Agent 网关（AgentGateway 接口 + 默认实现）
 intent/       ← 意图引擎（多域 DomainRegistry、rule/llm/hybrid 分类、reload 热更新）
@@ -323,7 +323,7 @@ public class WeatherTools {
 
 `@Tool` 注解的方法会被 `Toolkit.registerTool(Object bean)` 自动扫描注册，无需手动维护注册表。框架自动从方法签名生成 JSON Schema。
 
-MCP 工具注册同样由 AgentScope 框架原生处理：`AgentConfigurer.buildMcpClient()` 通过 `McpClientBuilder` 连接 MCP 服务器，`Toolkit.registration().mcpClient(wrapper).group(name).apply()` 注册工具分组。
+MCP 工具注册同样由 AgentScope 框架原生处理：`AgentConfigurer.buildMcpClient()` 通过 `McpClientBuilder` 连接 MCP 服务器，`Toolkit.registration().mcpClient(wrapper).group(name).apply()` 注册工具分组。除静态 YAML 配置外，平台提供运行时动态注册能力：`McpController` 暴露 `GET/POST/DELETE /api/mcp/servers` 接口，配合 `McpConfigStore` + Nacos 配置中心（dataId `yunxi.mcp-servers.json`，group `YUNXI_MCP_GROUP`）持久化配置并向集群内其他实例广播变更，新增或下线 MCP 服务无需重启平台。
 
 ### Supervisor 多 Agent 协作模式
 

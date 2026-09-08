@@ -24,6 +24,7 @@
 | **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.0 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，34 个 MCP 服务器可按需接入（sse/stdio/http 三种传输，核心 9 个默认启用） |
+| **MCP 动态注册** | 运行期通过 REST API 动态注册/注销 MCP 服务器，基于 Nacos 配置中心实现目录持久化与跨实例广播，工具即时注入 Agent Toolkit，无需重启；目标不可达时自动重连降级 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
 | **技能系统** | 启用 AgentScope-Java 2.0 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
 | **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并的闭环，Agent 技能的自我判断、自我修补与自我进化 |
@@ -262,6 +263,7 @@ yunxi 与 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers) 
 - MUSE 自进化引擎（agent-muse）：沙箱评估 + LLM 修补 + 闭环进化
 - 多 Agent 协作（Supervisor / Pipeline 编排）
 - MCP 协议完整支持（SSE / STDIO / HTTP，40+ 工具）
+- MCP 动态注册（运行时 REST API 注册/注销，Nacos 配置中心持久化与跨实例广播，无需重启）
 - 记忆系统（双层文件系统 + Redis 跨实例共享）
 - 多通道接入（WebSocket / SSE / 飞书 / 钉钉 / 企业微信）
 - 模型级多租户（按 Agent 覆盖 apiKey / baseUrl）

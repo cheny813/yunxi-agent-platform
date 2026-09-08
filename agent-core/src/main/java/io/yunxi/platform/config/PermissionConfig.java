@@ -9,6 +9,9 @@ import io.yunxi.platform.shared.config.ReasoningReviewConfig;
 import io.yunxi.platform.shared.config.ToolGateConfig;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -38,6 +41,14 @@ public class PermissionConfig {
 
     /** 权限规则来源标识，便于在 AgentScope 权限引擎日志/状态中区分 yunxi 注入的规则 */
     private static final String RULE_SOURCE = "yunxi-hitl";
+
+    /**
+     * 平台级危险工具黑名单基线（无人值守默认拒绝）。
+     * 这些工具具有执行代码 / 命令 / 文件写入等外部副作用，绝不应在无人值守 Agent 中静默放行。
+     * 被列入后，即便 Agent 处于 {@code BYPASS}（默认全放行）模式，也会在判定第 1 步被显式 DENY 拦截。
+     * 业务 Agent 可在 HITL.deniedTools 中追加更多需禁止的工具；基线始终与业务黑名单合并生效。
+     */
+    private static final List<String> DEFAULT_DENIED_BASELINE = List.of("node_command");
 
     /**
      * AgentScope 内置任务清单工具名（由 {@code HarnessAgent.Builder.enableTaskList(true)} 注册）。
@@ -132,6 +143,80 @@ public class PermissionConfig {
         PermissionContextState.Builder builder = PermissionContextState.builder();
         builder.mode(PermissionMode.DONT_ASK);
         addTodoWriteAllowRule(builder);
+        return builder.build();
+    }
+
+    /**
+     * 带业务工具白名单的无人值守权限上下文。
+     *
+     * <p>在 {@link #unattendedContext()} 基础上，对 {@code allowedTools} 中的每个工具名显式注入
+     * ALLOW 规则（命中于判定第 4 步、早于兜底 DENY）。这样纯查询/评分类 Agent 可在无人值守时
+     * 正常调用其 MCP / 表单 / 数据库等业务工具，而 {@code write_file} / {@code edit_file} /
+     * {@code execute} 等危险工具因不在白名单中仍被兜底 DENY，不会退化为 BYPASS 全放行。
+     *
+     * <p>注意：McpTool 在 DONT_ASK 模式下并不会被"工具自检"自动放行（其
+     * {@code checkPermissions} 对未标注只读的工具返回 PASSTHROUGH，最终落到底盘 DENY），
+     * 因此必须在此显式声明业务工具白名单，而非依赖框架自检。
+     *
+     * @param allowedTools 业务工具名白名单（精确匹配 {@code Tool.getName()}），可为空或 null
+     * @return 无人值守权限上下文
+     */
+    public PermissionContextState unattendedContext(List<String> allowedTools) {
+        PermissionContextState.Builder builder = PermissionContextState.builder();
+        builder.mode(PermissionMode.DONT_ASK);
+        addTodoWriteAllowRule(builder);
+        if (allowedTools != null) {
+            for (String tool : allowedTools) {
+                if (tool != null && !tool.isBlank()) {
+                    builder.addAllowRule(tool,
+                            new PermissionRule(tool, null, PermissionBehavior.ALLOW, RULE_SOURCE));
+                }
+            }
+        }
+        return builder.build();
+    }
+
+    /**
+     * 带业务工具黑名单的权限上下文（BYPASS 模式 + DENY 规则）。
+     *
+     * <p>与 {@link #unattendedContext(List)} 的白名单互补：白名单须逐一列出"允许"的工具，
+     * 漏列即被兜底 DENY（且 McpTool 在 DONT_ASK 下不会被框架自检放行，必须显式声明）；
+     * 黑名单则基于 {@link PermissionMode#BYPASS}（默认全放行），仅对 {@code deniedTools}
+     * 中的少数危险工具注入 DENY 规则（判定第 1 步，优先级最高），
+     * 适用于"禁止的少、允许的多"的场景——只需列出少数危险工具，其余全部放行。</p>
+     *
+     * <p>平台级危险工具基线 {@link #DEFAULT_DENIED_BASELINE} 作为可选参数与 {@code deniedTools} 合并生效；
+     * 若不需要全局基线（即"未在黑名单列出的工具一律放行"），调用方应传入 {@code null} 基线，
+     * 否则即便业务 Agent 不配置 deniedTools 也会自动拒绝平台级危险工具（如 node_command）。</p>
+     *
+     * @param deniedTools 业务工具名黑名单（精确匹配 Tool.getName()），可为空或 null
+     * @return 权限上下文
+     */
+    public PermissionContextState blacklistContext(List<String> deniedTools) {
+        return blacklistContext(deniedTools, DEFAULT_DENIED_BASELINE);
+    }
+
+    /**
+     * 带业务工具黑名单的权限上下文（BYPASS 模式 + DENY 规则），可指定平台级基线。
+     *
+     * @param deniedTools   业务工具名黑名单（精确匹配 Tool.getName()），可为空或 null
+     * @param baselineTools 平台级危险工具基线（全局默认拒绝），可为空或 null
+     * @return 权限上下文
+     */
+    public PermissionContextState blacklistContext(List<String> deniedTools, List<String> baselineTools) {
+        PermissionContextState.Builder builder = PermissionContextState.builder();
+        builder.mode(PermissionMode.BYPASS);
+        addTodoWriteAllowRule(builder); // todo_write 在 BYPASS 下本就放行，显式保留以防退化
+        Set<String> merged = new LinkedHashSet<>();
+        if (baselineTools != null) {
+            baselineTools.stream().filter(Objects::nonNull).filter(t -> !t.isBlank()).forEach(merged::add);
+        }
+        if (deniedTools != null) {
+            deniedTools.stream().filter(Objects::nonNull).filter(t -> !t.isBlank()).forEach(merged::add);
+        }
+        for (String tool : merged) {
+            builder.addDenyRule(tool, new PermissionRule(tool, null, PermissionBehavior.DENY, RULE_SOURCE));
+        }
         return builder.build();
     }
 

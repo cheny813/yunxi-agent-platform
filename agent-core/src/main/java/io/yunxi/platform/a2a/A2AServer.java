@@ -21,8 +21,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
+import io.agentscope.harness.agent.HarnessAgent;
+import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.config.AgentscopeExtensionProperties.A2AConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -251,7 +254,15 @@ public class A2AServer {
                     .build();
 
             // 同步阻塞调用（最多等待 5 分钟）
-            Msg msgResponse = agent.call(userMsg)
+            // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用；
+            // 必须使用与激活钩子相同的 (userId, sessionId) 作为 RC，否则 agent.call 重新加载的会话状态
+            // 仍是空激活组，MCP 工具仍会报 "Unauthorized ... is not available"。A2A 无真实用户，
+            // 以 "a2a" + agentName 作为确定性会话键。
+            HarnessAgent harnessAgent = (HarnessAgent) agent;
+            RuntimeContext a2aCtx = RuntimeContext.builder()
+                    .userId("a2a").sessionId(request.agentName()).build();
+            AgentConfigurer.activateSessionToolGroups(harnessAgent, a2aCtx.getUserId(), a2aCtx.getSessionId());
+            Msg msgResponse = harnessAgent.call(userMsg, a2aCtx)
                     .block(Duration.ofMinutes(blockTimeoutMinutes));
 
             String content = msgResponse != null ? msgResponse.getTextContent() : "Agent 无响应";

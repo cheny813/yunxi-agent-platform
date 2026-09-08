@@ -1,0 +1,121 @@
+﻿# ============================================================
+# yunxi-agent-platform — Nacos 3 节点集群（生产高可用版）
+# ============================================================
+# 用法： docker compose -f docker-compose.nacos-cluster.yml up -d
+# 停止： docker compose -f docker-compose.nacos-cluster.yml down
+# 重置： docker compose -f docker-compose.nacos-cluster.yml down -v && docker compose -f docker-compose.nacos-cluster.yml up -d
+#
+# 与单机版 docker-compose.yml 的区别：
+#   - 3 节点 cluster 模式，Derby + Raft 内置存储（EMBEDDED_STORAGE=embedded），免外部 MySQL；
+#   - 鉴权默认开启（NACOS_AUTH_ENABLE=true），满足生产安全要求；
+#   - 端口：8848=主API，8080=控制台(3.x新)，9848=gRPC客户端，9849=gRPC服务端(Raft)。
+#
+# 重要：部署前请重新生成鉴权密钥，不要使用下方默认值！
+#   生成新 token： openssl rand -base64 32
+#   并修改 NACOS_AUTH_IDENTITY_KEY / NACOS_AUTH_IDENTITY_VALUE / NACOS_AUTH_TOKEN。
+#
+# 应用连接地址（docker 网络内）： nacos1:8848,nacos2:8848,nacos3:8848
+#   nacos-client 自动以 port+1000 推导 gRPC 端口(9848)并做故障转移。
+#
+# 参考：https://nacos.io/blog/nacos-gvr7dx_awbbpb_eerxlks19kgclceq/  （Nacos 3.2 AI Registry）
+#      https://nacos.io/docs/latest/overview/                          （Nacos 3.x 概览）
+
+services:
+  nacos1:
+    image: nacos/nacos-server:v3.2.4
+    container_name: yunxi-nacos1
+    hostname: nacos1
+    environment:
+      - PREFER_HOST_MODE=hostname
+      - MODE=cluster
+      - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
+      - EMBEDDED_STORAGE=embedded
+      - NACOS_AUTH_ENABLE=true
+      - NACOS_AUTH_IDENTITY_KEY=yunxi-nacos-key
+      - NACOS_AUTH_IDENTITY_VALUE=yunxi-nacos-2026
+      - NACOS_AUTH_TOKEN=VGhpc0lzQW5OdWNhQ29zQXV0aFRva2VuRm9yWW91blhpMjAyNlN0YW5kYWxvbmU=
+    volumes:
+      - nacos1-data:/home/nacos/data
+      - nacos1-logs:/home/nacos/logs
+    ports:
+      - "8848:8848"   # 主 API（节点1）
+      - "8080:8080"   # 控制台（节点1）
+      - "9848:9848"   # gRPC 客户端（节点1）
+      - "9849:9849"   # gRPC 服务端/Raft（节点1）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - nacos-cluster-net
+
+  nacos2:
+    image: nacos/nacos-server:v3.2.4
+    container_name: yunxi-nacos2
+    hostname: nacos2
+    environment:
+      - PREFER_HOST_MODE=hostname
+      - MODE=cluster
+      - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
+      - EMBEDDED_STORAGE=embedded
+      - NACOS_AUTH_ENABLE=true
+      - NACOS_AUTH_IDENTITY_KEY=yunxi-nacos-key
+      - NACOS_AUTH_IDENTITY_VALUE=yunxi-nacos-2026
+      - NACOS_AUTH_TOKEN=VGhpc0lzQW5OdWNhQ29zQXV0aFRva2VuRm9yWW91blhpMjAyNlN0YW5kYWxvbmU=
+    volumes:
+      - nacos2-data:/home/nacos/data
+      - nacos2-logs:/home/nacos/logs
+    ports:
+      - "8858:8848"   # 主 API（节点2，调试用）
+      - "8850:8080"   # 控制台（节点2，调试用）
+      - "9858:9848"   # gRPC 客户端（节点2，调试用）
+      - "9859:9849"   # gRPC 服务端/Raft（节点2，调试用）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - nacos-cluster-net
+
+  nacos3:
+    image: nacos/nacos-server:v3.2.4
+    container_name: yunxi-nacos3
+    hostname: nacos3
+    environment:
+      - PREFER_HOST_MODE=hostname
+      - MODE=cluster
+      - NACOS_SERVERS=nacos1:8848 nacos2:8848 nacos3:8848
+      - EMBEDDED_STORAGE=embedded
+      - NACOS_AUTH_ENABLE=true
+      - NACOS_AUTH_IDENTITY_KEY=yunxi-nacos-key
+      - NACOS_AUTH_IDENTITY_VALUE=yunxi-nacos-2026
+      - NACOS_AUTH_TOKEN=VGhpc0lzQW5OdWNhQ29zQXV0aFRva2VuRm9yWW91blhpMjAyNlN0YW5kYWxvbmU=
+    volumes:
+      - nacos3-data:/home/nacos/data
+      - nacos3-logs:/home/nacos/logs
+    ports:
+      - "8868:8848"   # 主 API（节点3，调试用）
+      - "8860:8080"   # 控制台（节点3，调试用）
+      - "9868:9848"   # gRPC 客户端（节点3，调试用）
+      - "9869:9849"   # gRPC 服务端/Raft（节点3，调试用）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - nacos-cluster-net
+
+networks:
+  nacos-cluster-net:
+    driver: bridge
+
+volumes:
+  nacos1-data:
+  nacos1-logs:
+  nacos2-data:
+  nacos2-logs:
+  nacos3-data:
+  nacos3-logs:

@@ -347,6 +347,104 @@ agentscope:
 
 注册后的 MCP 工具与普通工具一样，由 Agent 在对话过程中根据任务自主调用（工具名以服务器名前缀区分），客户端无需直接调用 MCP 接口，通过 Chat API 即可触发。
 
+### 动态注册（运行时 REST API）
+
+除静态配置外，平台提供运行期动态注册 MCP 服务器的 REST API，适用于「不停机接入新工具」「多实例统一治理」等场景。动态注册以 Nacos 配置中心为协调底座：
+
+- 每个 MCP 服务器作为目录条目持久化到 Nacos `dataId`（默认 `yunxi.mcp-servers.json`，`group` 默认 `YUNXI_MCP_GROUP`），进程重启后目录不丢失；
+- 通过 Nacos Naming 进行服务发现与健康探测，注册实例在协调服务名 `yunxi-mcp-coordinator` 下广播，便于多实例感知；
+- 目标服务器不可达时，该服务器仅 WARN 降级并在下次调用时自动重连，**不会**阻塞 HTTP 请求或抛 500；
+- Nacos 未启用时自动退化为本地内存目录（单实例、重启即清空）。
+
+> 说明：动态注册的服务器与静态 `agentscope.core.mcp-servers` 段共享同一套 `Toolkit` 注册逻辑，工具同样按服务器名分组、由 Agent 在对话中自主调用。所有接口位于 `/api/mcp/servers`，受平台统一安全模型保护（见 [06. 配置指南 · 安全配置](./06-configuration.md#安全配置)）。
+
+**列出当前目录**
+
+```http
+GET /api/mcp/servers
+```
+
+返回 `McpServerEntry` 列表（字段对齐 MCP 官方 `server.json` 规范，便于生态互认）。示例：
+
+```json
+[
+  {
+    "name": "nutrition",
+    "transport": "sse",
+    "url": "http://localhost:40602/mcp/sse",
+    "enabled": true,
+    "status": "UP",
+    "group": "nutrition"
+  }
+]
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `name` | string | 服务器名（即工具组名） |
+| `transport` | string | 传输方式：`sse` / `stdio` / `streamable-http` |
+| `url` | string | sse / streamable-http 模式地址 |
+| `command` | string | stdio 模式启动命令 |
+| `args` | string | stdio 模式参数（空格分隔） |
+| `headers` | string | 自定义请求头（JSON） |
+| `env` | string | 环境变量（JSON） |
+| `timeout` | string | 连接超时（毫秒） |
+| `enabled` | boolean | 是否注入 Toolkit |
+| `status` | string | 健康状态：`UP` / `DOWN`（Naming 健康探测）或 `local`（Nacos 未启用降级） |
+
+**注册（或更新）一个服务器**
+
+```http
+POST /api/mcp/servers?name=nutrition
+```
+
+请求体为 `McpServerConfig`，常用字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `type` | string | 是 | 传输方式：`sse` / `stdio` / `streamable-http` |
+| `url` | string | sse/http 必填 | 服务器地址 |
+| `command` | string | stdio 必填 | 启动命令 |
+| `args` | array | stdio 可选 | 启动参数 |
+| `headers` | map | 可选 | 自定义请求头 |
+| `env` | map | 可选 | 环境变量 |
+| `timeout` | int | 可选 | 连接超时（毫秒，默认 60000） |
+| `description` | string | 可选 | 服务器描述 |
+| `group` | string | 可选 | 工具组名（默认与 `name` 相同） |
+
+SSE 模式示例：
+
+```bash
+curl -X POST "http://localhost:40001/api/mcp/servers?name=nutrition" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "sse",
+    "url": "http://localhost:40602/mcp/sse",
+    "timeout": 60000,
+    "description": "营养计算 MCP 服务器"
+  }'
+```
+
+返回：
+
+```json
+{ "name": "nutrition", "status": "registered", "coordinator": "127.0.0.1:8848" }
+```
+
+注册为异步注入：HTTP 仅创建目录条目并激活工具组，真实连接（含 `initialize` 握手）在后台完成；若目标此刻不可达，仅记录 WARN 并在首次调用时自动重连。
+
+**注销一个服务器**
+
+```http
+DELETE /api/mcp/servers/{name}
+```
+
+从目录与 Naming 中移除，并卸载对应工具组。返回：
+
+```json
+{ "name": "nutrition", "status": "unregistered" }
+```
+
 ---
 
 ## 错误码

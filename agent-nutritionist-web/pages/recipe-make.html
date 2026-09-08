@@ -200,6 +200,12 @@
     .plan-prose strong { color:#0f172a; font-weight:700; }
     .plan-prose .prose-tag { display:inline-block; font-size:12px; color:#059669; background:#ecfdf5;
       border:1px solid #a7f3d0; border-radius:999px; padding:2px 10px; margin-bottom:10px; font-weight:600; }
+    /* 流式阶段骨架占位：预示结构化卡片即将生成，给出连贯的「卡片在长出来」观感 */
+    .plan-skeleton { display:flex; align-items:center; gap:10px; padding:18px 20px; margin-top:14px;
+      background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; color:#94a3b8; font-size:13px; }
+    .plan-skeleton .skeleton-dot { width:9px; height:9px; border-radius:50%; background:#34d399;
+      animation:pulseDot 1s ease-in-out infinite; }
+    @keyframes pulseDot { 0%,100% { opacity:.3; transform:scale(.8); } 50% { opacity:1; transform:scale(1.1); } }
     /* 任务清单（todo_update 事件驱动，全量替换渲染） */
     .todo-panel { margin-bottom:14px; background:#fff; border:1px solid #e2e8f0; border-radius:12px;
       padding:12px 14px; box-shadow:0 1px 3px rgba(15,23,42,.04); }
@@ -378,21 +384,35 @@
           autoManageConversation: true,
           message: '根据以下目标生成营养配餐方案（含食谱卡片与微量营养素评分）：' + JSON.stringify(payload),
           onDelta: (delta, full) => {
-            // 流式实时渲染：用 prose 容器承载增量，保证过程可读；流结束再由 onDone 定稿为卡片
+            // 流式实时渲染：说明卡片（prose）逐字长出 + 下方骨架占位预示「食谱卡片即将生成」，
+            // 让整个输出读起来是「同一张卡片在长出来」，而非两波独立输出。
             let live = $('prose-live');
             if (!live) {
-              area.innerHTML = '<div class="plan-prose"><span class="prose-tag">营养方案（生成中…）</span><span id="prose-live"></span></div>';
+              area.innerHTML =
+                '<div class="plan-prose"><span class="prose-tag">营养方案（生成中…）</span><span id="prose-live"></span></div>'
+                + '<div class="plan-skeleton"><span class="skeleton-dot"></span>正在生成食谱卡片…</div>';
               live = $('prose-live');
             }
-            live.textContent = full;
+            // 流式阶段隐藏末尾用于渲染卡片的 JSON 块，避免面向大众逐字滚出技术化 JSON
+            live.textContent = livePreview(full);
           },
           onTodo: (todos) => {
             // 任务清单：后端 full-list-replace 语义，直接整体替换渲染
             renderTodoCard(todos);
           },
           onDone: (full) => {
-            // 流结束或同步返回：尝试按结构化 JSON 渲染卡片，失败则保留 prose 文本
-            area.innerHTML = renderRecipePlan(full);
+            // 流结束：流式阶段的「说明卡片」原位保留（位置不变、不跳动）；
+            // 下方骨架替换为真实结构化卡片（评分圆环 + 微量元素 + 食谱安排）。
+            // 二者共存 = 完整方案，读出「同一张卡片长完整」的连贯感，而非第二波输出。
+            const prose = renderProse(stripJson(full));
+            const plan = parsePlan(full);
+            const proseCard = '<div class="plan-prose"><span class="prose-tag">营养方案说明</span>' + prose + '</div>';
+            if (!plan) {
+              // 解析失败兜底：保留说明卡片（已剥离 JSON），不补结构化卡片
+              area.innerHTML = proseCard;
+              return;
+            }
+            area.innerHTML = proseCard + buildPlanStructured(plan);
           }
         });
       } catch (err) {
@@ -432,23 +452,17 @@
       }).join('');
     }
 
-    // ── 渲染营养方案：优先解析结构化 JSON，失败降级为文本 ──
-    function renderRecipePlan(content) {
-      if (!content) return '<p class="result-empty">未获取到方案内容。</p>';
-      // 从 content 中提取 ```json 代码块或最后一个 JSON 对象
+    // ── 解析结构化 JSON（从 ```json 块或最后一个 JSON 对象）──
+    function parsePlan(content) {
+      if (!content) return null;
       const jsonMatch = content.match(/```json\s*([\s\S]*?)```/) || content.match(/\{[\s\S]*\}/);
       const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : null;
-      let plan = null;
-      if (jsonStr) {
-        try { plan = JSON.parse(jsonStr.trim()); } catch (e) { plan = null; }
-      }
-      if (!plan) {
-        return '<div class="plan-prose"><span class="prose-tag">营养方案（文本）</span>' + renderProse(content) + '</div>';
-      }
-      return buildPlanCard(plan, content);
+      if (!jsonStr) return null;
+      try { return JSON.parse(jsonStr.trim()); } catch (e) { return null; }
     }
 
-    function buildPlanCard(plan, rawContent) {
+    // ── 仅渲染结构化卡片（评分圆环 + 微量元素 + 食谱安排），不含文案；文案由 onDone 单独承载 ──
+    function buildPlanStructured(plan) {
       const score = plan.nutritionScore ?? plan.score ?? null;
       const micro = plan.microRatings || plan.micro || (plan.dimensions && plan.dimensions.micro) || {};
       const days = Array.isArray(plan.days) ? plan.days : [];
@@ -499,18 +513,26 @@
         }
         html += '</div>';
       }
-
-      // 文案说明（去掉 json 后的正文）
-      const prose = stripJson(rawContent);
-      if (prose) {
-        html += '<div class="plan-prose">' + escapeHtml(prose).replace(/\n/g, '<br>') + '</div>';
-      }
       html += '</div>';
       return html;
     }
 
     function stripJson(text) {
       return text.replace(/```json[\s\S]*?```/g, '').replace(/\{[\s\S]*\}/, '').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    // 流式阶段预览：只展示方案说明文案，把用于渲染卡片的 ```json 块隐藏，
+    // 避免面向大众逐字滚出技术化 JSON；终稿由 onDone 用卡片（已剥离 JSON）定稿。
+    // 同时折叠模型推理常产生的连续空行（最多保留一个空行），去除行尾空白，避免大段留白。
+    function livePreview(text) {
+      const idx = text.indexOf('```json');
+      let s = idx >= 0 ? text.slice(0, idx) : text;
+      s = s
+        .replace(/[ \t]+\n/g, '\n')   // 去行尾空白
+        .replace(/\n{3,}/g, '\n\n')   // 3+ 换行折叠为一个空行
+        .replace(/^\n+/, '')          // 去开头空行
+        .replace(/\n+$/, '');         // 去结尾空行
+      return s;
     }
 
     // 纯文本/Markdown 方案的基础渲染：先转义防 XSS，再识别标题/列表/加粗，保证可读性

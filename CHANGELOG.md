@@ -30,6 +30,7 @@
   - **M2.3 分类通道**：`classification.mode` 支持 `rule` / `llm` / `hybrid` 三模式，新增 `HybridIntentClassifier`（规则优先、LLM 兜底）与 `LlmIntentClassifier` + `LlmResultCache`（按 `domain|normalizedQuery|whitelistVersion` 缓存，TTL 7 天）；`llm.enabled=false` 时退化纯规则，规则兜底永不失效。
   - **M2.4 热更新**：actuator 端点 `/actuator/intent/status` / `/actuator/intent/reload` / `/actuator/intent/suggest-words`（LLM 热度建议词，按域过滤）；`IntentFilePoller` 支持 `file:` 前缀资源 mtime 轮询（默认关闭）；reload 全程审计日志，单域失败不阻断其他域。
   - 重构：`TreeSnapshot.build()` 统一两遍扫描工厂、`IntentKeywordMatcher` / `IntentYaml` 共享工具消除跨类重复、reload 监听器 SPI（`IntentReloadListener`）预留。
+- **MCP 动态注册（运行时 REST API + Nacos 协调底座）**：支持运行期通过 REST API 动态注册/注销 MCP 服务器，无需重启即可将工具注入 Agent Toolkit。协调底座基于 Nacos 配置中心：目录条目持久化到 `dataId`（默认 `yunxi.mcp-servers.json`），并通过 Nacos Naming 在 `yunxi-mcp-coordinator` 下跨实例广播；Nacos 未启用时自动退化为本地内存目录。采用「内存权威目录 + Nacos 全量快照」机制避免并发读-改-写竞态；目标不可达时仅 WARN 降级并在首次调用时自动重连，不阻塞 HTTP 请求。接口与配置见 [09. API 参考 · MCP 动态注册](./docs/guide/09-api-reference.md) 与 [06. 配置指南 · MCP 动态注册配置](./docs/guide/06-configuration.md)。
 
 ### 变更
 

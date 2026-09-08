@@ -5,6 +5,7 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.agent.service.AgentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,6 +81,8 @@ class AgentGatewayImpl implements AgentGateway {
     public Flux<AgentEvent> callStream(String agentName, String message, String userId, String sessionId) {
         Agent agent = agentService.getAgentInstance(agentName);
         RuntimeContext ctx = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
+        // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
+        AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, userId, sessionId);
         // streamEvents 是 HarnessAgent/ReActAgent 的原生方法（Agent 接口未声明），需转型调用；
         // 重载签名为 streamEvents(List<Msg>, RuntimeContext)（非单 Msg）。
         // 注意：共享 Agent 实例生命周期由框架管理，绝不可 close（内联转换避免 JDT resource-leak 误报）

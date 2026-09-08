@@ -33,3 +33,18 @@ spring:
 yunxi:
   observability:
     enabled: true
+
+  # ============================================================
+  # MCP 动态注册协调底座（Nacos 3.2.4）
+  # 单机验证：server-addr 指向 docker 启动的 Nacos 8848；集群部署改此处即可。
+  # ============================================================
+  mcp:
+    nacos:
+      enabled: true
+      server-addr: 127.0.0.1:8848
+      namespace: ""
+      username: ""
+      password: ""
+      data-id: yunxi.mcp-servers.json
+      group: YUNXI_MCP_GROUP
+      service-name: yunxi-mcp-coordinator
