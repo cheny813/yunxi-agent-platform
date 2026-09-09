@@ -1,6 +1,6 @@
 # 15. 可观测性
 
-> **可观测性说明**：AgentScope-Java 2.0.0（GA）废弃了 `Tracer`/`TracerRegistry` 接口，改用 OpenTelemetry 直连 API。平台已删除 `OpenTelemetryTracer.java`，通过 `OtelTracingMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
+> **可观测性说明**：AgentScope-Java 自 2.0.0（GA）起废弃了 `Tracer`/`TracerRegistry` 接口（当前 2.0.3 GA 沿用该 OpenTelemetry 直连 API），平台已删除 `OpenTelemetryTracer.java`，通过 `OtelTracingMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
 
 了解 yunxi Agent Platform 的可观测性设计。
 
@@ -8,7 +8,7 @@
 
 ## 架构
 
-通过实现 AgentScope V2.0 SDK 的 `MiddlewareBase` 接口（V2.0.0 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
+通过实现 AgentScope 2.0.3 SDK 的 `MiddlewareBase` 接口（2.0.0 GA 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
 
 ### 组件关系
 
@@ -39,7 +39,7 @@
 | 组件 | 机制 | 优先级 | 产出 |
 |------|------|--------|------|
 | `AgentTraceMiddleware`（框架内置） | SLF4J 日志 | 0 | 文本日志 |
-| `OtelTracingMiddleware`（框架原生） | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
+| `OtelTracingMiddleware`（框架原生） | MiddlewareBase 接口 | 30 | invoke_agent / chat / execute_tool Span |
 | OpenTelemetry 全局实例 | 直连 API | SDK 内部 | llm.invoke / tool.execute Span |
 
 > 升级说明：V2.0.0（GA）之前，框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。GA 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
@@ -51,33 +51,27 @@
 一个典型的 Agent 对话生成的 Span 树：
 
 ```
-agent.call (agent.name="business-assistant")
-├── react.iteration (iteration=1)
-│   ├── llm.invoke (model="qwen-plus", messages=3)
-│   └── tool.execute (tool="search_data")
-├── react.iteration (iteration=2)
-│   ├── llm.invoke (model="qwen-plus", messages=5)
-│   └── tool.execute (tool="get_business_info")
-└── react.iteration (iteration=3)
-    └── llm.invoke (model="qwen-plus", messages=2)
+invoke_agent (gen_ai.agent.name="business-assistant")
+├── chat (gen_ai.request.model="qwen-plus")         # 第 1 轮模型调用
+├── execute_tool (gen_ai.tool.name="search_data")   # 工具调用
+├── chat (gen_ai.request.model="qwen-plus")         # 第 2 轮模型调用（含工具结果）
+└── execute_tool (gen_ai.tool.name="get_business_info")
 ```
 
 ### Span 属性说明
 
 | Span 名称 | 属性 | 说明 | 来源 |
 |-----------|------|------|------|
-| `agent.call` | `agent.name` | Agent 名称 | OtelTracingMiddleware |
-| | `agent.response_length` | 响应文本长度 | 框架内部 Span |
-|...|...|...|...|
-| `react.iteration` | `react.iteration` | 当前迭代次数 | OtelTracingMiddleware |
-| | `react.stop_requested` | 是否请求停止 | OtelTracingMiddleware |
-| `llm.invoke` | `model.name` | 调用的模型名称（真实模型名，不再写死 AgentScope） | OtelTracingMiddleware |
-| | `gen_ai.operation.name` | 固定值 `chat` | OtelTracingMiddleware |
+| `invoke_agent` | `gen_ai.operation.name` | 固定值 `invoke_agent` | OtelTracingMiddleware |
+| | `gen_ai.agent.name` | Agent 名称 | OtelTracingMiddleware |
+| `chat` | `gen_ai.operation.name` | 固定值 `chat` | OtelTracingMiddleware |
 | | `gen_ai.request.model` | 调用的模型名称 | OtelTracingMiddleware |
 | | `gen_ai.usage.input_tokens` | 本次模型调用输入 token 数 | OtelTracingMiddleware（监听 ModelCallEndEvent） |
 | | `gen_ai.usage.output_tokens` | 本次模型调用输出 token 数 | OtelTracingMiddleware（监听 ModelCallEndEvent） |
 | | `gen_ai.usage.cache_read_input_tokens` | 命中缓存的输入 token 数 | OtelTracingMiddleware（监听 ModelCallEndEvent） |
 | | `gen_ai.usage.total_tokens` | 输入+输出合计 token 数（派生值） | OtelTracingMiddleware（监听 ModelCallEndEvent） |
+| `execute_tool` | `gen_ai.operation.name` | 固定值 `execute_tool` | OtelTracingMiddleware |
+| | `gen_ai.tool.name` | 调用的工具名称 | OtelTracingMiddleware |
 
 ---
 
@@ -86,10 +80,9 @@ agent.call (agent.name="business-assistant")
 每次 Span 结束时写入日志文件（`logs/yunxi-agent-platform.log`）：
 
 ```
-[Trace] agent.call [5234ms] {agent.name=business-assistant}
-[Trace] react.iteration [0ms] {react.iteration=1}
-[Trace] llm.invoke [2340ms] {llm.model=qwen-plus, llm.message_count=3}
-[Trace] tool.execute [567ms] {tool.name=search_data}
+[Trace] invoke_agent [5234ms] {gen_ai.agent.name=business-assistant}
+[Trace] chat [2340ms] {gen_ai.request.model=qwen-plus}
+[Trace] execute_tool [567ms] {gen_ai.tool.name=search_data}
 ```
 
 格式：`[Trace] <span名称> [<耗时ms>] <属性>`
