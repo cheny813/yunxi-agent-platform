@@ -12,7 +12,7 @@
 
     <groupId>io.yunxi</groupId>
     <artifactId>yunxi-agent-platform</artifactId>
-    <version>2.0.0</version>
+    <version>2.0.3</version>
     <name>yunxi-agent-platform</name>
     <description>AgentScope Platform - Simplified Agent Management Framework</description>
 
@@ -32,7 +32,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <agentscope.version>2.0.0</agentscope.version>
+        <agentscope.version>2.0.3</agentscope.version>
         <jacoco.version>0.8.12</jacoco.version>
         <!-- surefire argLine 默认空串：未声明 jacoco 的模块 fork JVM 不带覆盖率 agent；
              声明 jacoco 的模块由 prepare-agent 覆盖该属性注入 -javaagent -->
@@ -49,6 +49,9 @@
         <gson.version>2.10.1</gson.version>
         <postgresql.version>42.7.11</postgresql.version>
         <jjwt.version>0.12.7</jjwt.version>
+        <!-- 覆盖 Spring Boot 默认的 protobuf 3.x：micrometer-registry-otlp 与 opentelemetry 的 OTLP proto 由 protobuf 4.x 生成，
+             运行时需要 RuntimeVersion 类（protobuf-java 4.26+ 才有），否则启动报 NoClassDefFoundError: com/google/protobuf/RuntimeVersion$RuntimeDomain -->
+        <protobuf.version>4.36.1</protobuf.version>
     </properties>
 
     <!-- 依赖管理（只管理第三方依赖，Spring Boot 依赖由 parent 管理） -->
@@ -120,27 +123,8 @@
                 <version>${opentelemetry.version}</version>
             </dependency>
 
-            <!-- RAG 知识库扩展 -->
-            <dependency>
-                <groupId>io.agentscope</groupId>
-                <artifactId>agentscope-extensions-rag-bailian</artifactId>
-                <version>${agentscope.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.agentscope</groupId>
-                <artifactId>agentscope-extensions-rag-dify</artifactId>
-                <version>${agentscope.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.agentscope</groupId>
-                <artifactId>agentscope-extensions-rag-haystack</artifactId>
-                <version>${agentscope.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>io.agentscope</groupId>
-                <artifactId>agentscope-extensions-rag-ragflow</artifactId>
-                <version>${agentscope.version}</version>
-            </dependency>
+            <!-- RAG 知识库扩展：仅保留 rag-simple（提供 io.agentscope.core.embedding.EmbeddingModel，
+                 被 yunxi 的 YunxiEmbeddingModel 实现；其余平台集成模块在 yunxi 中均无引用，属死依赖） -->
             <dependency>
                 <groupId>io.agentscope</groupId>
                 <artifactId>agentscope-extensions-rag-simple</artifactId>
@@ -216,6 +200,21 @@
                 <groupId>org.apache.rocketmq</groupId>
                 <artifactId>rocketmq-spring-boot-starter</artifactId>
                 <version>2.2.3</version>
+            </dependency>
+
+            <!-- protobuf 强制锁定 4.x：micrometer-registry-otlp 与 opentelemetry 的 OTLP proto
+                 由 protobuf 4.x 生成，运行时需要 RuntimeVersion 类（protobuf-java 4.26+ 才有）。
+                 Spring Boot 3.5.13 默认硬编码 protobuf-java 3.25.x，且其 ${protobuf.version} 属性
+                 覆盖对硬编码项不生效，故在依赖管理里直接锁定版本（优先级高于被引入的 BOM）。 -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>4.36.1</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java-util</artifactId>
+                <version>4.36.1</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

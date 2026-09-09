@@ -15,8 +15,7 @@ public interface ExecutionInterceptor {
 
     /**
      * 执行顺序，数值越小越先执行。
-     * 约定：AuthResolve=100, Memory=150, IntentPipeline=200, RagRetrieval=300,
-     * PermissionContext=400, Audit=500。
+ * 约定：AuthResolve=100, Memory=150, IntentPipeline=200, RagRetrieval=300, Audit=500。
      *
      * @return 顺序值
      */

@@ -139,8 +139,7 @@ agent-core/src/main/java/io/yunxi/platform/
 
 | 组件 | 说明 | 代码量 |
 |------|------|:-----:|
-| `AgentGateway` | 业务层唯一需要的接口，定义 callStream/interrupt 方法 | 接口 |
-| `AgentGatewayImpl` | **默认实现** — 包内私有类，仅 callStream（请求→AgentEvent 流）与 interrupt（中断透传）两个方法，薄适配 | ~103行 |
+| `AgentExecutionEngine` | **统一执行编排入口** — 串联拦截器链（Auth/Memory/Intent/RAG/Audit）与执行策略（阻塞/流式），最终调用 AgentScope 原生 `streamEvents/call` 并适配事件流，薄适配 | ~420行 |
 | `AgentService` | Agent 生命周期管理（创建、缓存、获取），通过 HarnessAgent 包装 | ~320行 |
 | `AgentConfigurer` | **Agent 自动装配引擎** — 启动时两轮初始化：独立 Agent → 编排 Agent（supervisor/pipeline/routing） | 约 1261 行 |
 | `TempAgentFactory` | 临时 Agent 创建工厂（原名 AdvancedAgentFactory） | - |
@@ -149,7 +148,7 @@ agent-core/src/main/java/io/yunxi/platform/
 
 扩展点（agent/middleware/）：
 - `ContentFilterMiddleware` — 提示注入防护（HITL 安全护栏，平台自建）
-- `ReActSpanMiddleware` — OpenTelemetry 链路追踪（平台自建，实现 `MiddlewareBase`）
+- `OtelTracingMiddleware` — OpenTelemetry 链路追踪（框架原生，复用全局 OpenTelemetry SDK，取代早期自研 `ReActSpanMiddleware`）
 - 优雅关闭由框架内置 `GracefulShutdownMiddleware` 自动注册，无需平台实现
 
 > 说明：上层 Hook 体系已全面迁移为 AgentScope 原生 Middleware 体系；原 `ToolGate`/`ReasoningReview`/`TextToolCallParser` 等自建 Middleware 已在 AgentScope-Java 2.0 升级中移除，其能力由框架原生机制（如 `PermissionContextState` 的 ASK 规则、HITL 配置链）承接。

@@ -265,7 +265,7 @@ public class ChatAppService {
     /**
      * 阻塞结构化输出（经执行引擎的 StructuredBlockingStrategy 执行）。
      *
-     * <p>与普通阻塞通道一样经过拦截器链（AuthResolve/Memory/PermissionContext/Audit），
+     * <p>与普通阻塞通道一样经过拦截器链（AuthResolve/Memory/IntentPipeline/RagRetrieval/Audit），
      * 由 {@code StructuredBlockingStrategy} 完成 schema 绑定调用；结构化数据由本方法
      * 从返回 Msg 中提取（Class 走 getStructuredData(schemaClass)，
      * 内联 JsonNode 走 getStructuredData(false)）。</p>

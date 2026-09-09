@@ -2,15 +2,15 @@
 
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)](https://spring.io/projects/spring-boot)
-[![AgentScope](https://img.shields.io/badge/AgentScope--Java-2.0.0-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
+[![AgentScope](https://img.shields.io/badge/AgentScope--Java-2.0.3-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Maven](https://img.shields.io/badge/Maven-3.8%2B-red)](https://maven.apache.org/)
 
-**yunxi Agent Platform** 是一个企业级多 Agent 协作框架，基于 **AgentScope-Java 2.0.0（GA 正式版）** 核心运行时，提供开箱即用的 Agent 编排、MCP 协议集成、记忆系统等能力。
+**yunxi Agent Platform** 是一个企业级多 Agent 协作框架，基于 **AgentScope-Java 2.0.3（GA 正式版）** 核心运行时，提供开箱即用的 Agent 编排、MCP 协议集成、记忆系统等能力。
 
 > **yunxi**（云曦），寓意 AI 平台像晨曦之光赋能万物。
 >
-> **版本策略**：yunxi Agent Platform 的版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 保持同步。当前版本 **2.0.0** 基于 AgentScope-Java 2.0.0 正式版（GA）构建。完整的版本变更记录见 [CHANGELOG](CHANGELOG.md)。
+> **版本策略**：yunxi Agent Platform 的版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 保持同步。当前版本 **2.0.3** 基于 AgentScope-Java 2.0.3 正式版（GA）构建。完整的版本变更记录见 [CHANGELOG](CHANGELOG.md)。
 
 ---
 
@@ -21,7 +21,7 @@
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
 | **意图引擎（智能大脑中枢）** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型、rule/llm/hybrid 分类通道、actuator 热更新、意图路由，业务数据可配置替换 |
 | **执行引擎（智能手脚协调器）** | `AgentExecutionEngine` 门面统一收口所有调用形态（同步/流式/结构化/取消），6 拦截器可插拔链（AuthResolve→Memory→IntentPipeline→RagRetrieval→PermissionContext→Audit）+ 3 执行策略自动路由（Blocking/Streaming/StructuredBlocking）+ 事件算子链（Metrics/PhaseTracker）→ 协议适配器，接入新协议仅需新增 `AgentEventAdapter` 实现 |
-| **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.0 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
+| **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.3 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，34 个 MCP 服务器可按需接入（sse/stdio/http 三种传输，核心 9 个默认启用） |
 | **MCP 动态注册** | 运行期通过 REST API 动态注册/注销 MCP 服务器，基于 Nacos 配置中心实现目录持久化与跨实例广播，工具即时注入 Agent Toolkit，无需重启；目标不可达时自动重连降级 |
@@ -71,9 +71,9 @@ docker compose up -d
 | MinIO | 9000 | Milvus 对象存储（内部） |
 | etcd | 2379 | Milvus 元数据协调（内部） |
 | Nacos 3.2.4 | 8848 / 8080 / 9848 | 统一协调底座：MCP 注册中心 + 配置中心（动态注册持久化与跨实例广播）+ AI Registry（MCP/Skill/Agent/Prompt） |
-| OTel Collector | 4318 | 链路追踪收集器（消除 "Failed to connect to 127.0.0.1:4318" 日志错误，可选） |
-| Jaeger UI | 16686 | 链路追踪可视化（http://127.0.0.1:16686，可选） |
-| Attu UI | 8000 | Milvus 向量库 Web 管理界面（http://127.0.0.1:8000，可选） |
+| OTel Collector | 4318 | 链路追踪收集器（默认启用） |
+| Jaeger UI | 16686 | 链路追踪可视化（http://127.0.0.1:16686，默认启用） |
+| Attu UI | 8000 | Milvus 向量库 Web 管理界面（http://127.0.0.1:8000，默认启用） |
 
 首次启动约需 30-60 秒（主要等 Milvus 就绪）。可用 `docker compose ps` 确认所有容器状态。
 

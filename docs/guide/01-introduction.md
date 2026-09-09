@@ -349,12 +349,12 @@ public class MyService {
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      网关层 (Gateway Layer)                   │
-│         AgentGatewayImpl (运行于 agent-core 内)              │
+│                   执行编排层 (Execution Layer)                │
+│      AgentExecutionEngine (运行于 agent-core 内)             │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │  统一认证    │ │  限流熔断    │ │  路由转发    │            │
+│  │  拦截器链    │ │  执行策略    │ │  事件适配    │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  (由 AgentScope-Java 2.0 Channel + AgentGatewayImpl 在 agent-core 内承接)      │
+│  (认证/限流/追踪等治理由 AgentScope Middleware 在链路中承载)  │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -390,7 +390,7 @@ public class MyService {
 | 层级 | 职责 | 主要模块 |
 |------|------|----------|
 | **接入层** | 用户交互界面 | Web、桌面、移动端 |
-| **网关层** | 协议适配、认证、限流 | agent-core（AgentScope-Java 2.0 Channel + AgentGatewayImpl） |
+| **网关层** | 执行编排、事件适配、拦截器链 | agent-core（AgentExecutionEngine + AgentScope-Java 2.0 Channel） |
 | **业务层** | 业务逻辑实现 | agent-app, agent-muse, agent-text2sql |
 | **核心层** | 框架核心能力 | agent-core |
 | **基础设施层** | 技术实现 | agent-config, agent-spi, sdk-js, MCP |

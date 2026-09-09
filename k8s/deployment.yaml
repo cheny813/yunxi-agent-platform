@@ -32,7 +32,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: agent-platform
-          image: yunxi/agent-platform:2.0.0
+          image: yunxi/agent-platform:2.0.3
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

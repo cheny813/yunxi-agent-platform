@@ -1,6 +1,6 @@
 # 03. 核心概念
 
-> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
+> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.3（GA 正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
 
 ## 理论基础
 
@@ -684,10 +684,10 @@ public class DatabaseTool {
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 3. AgentGatewayImpl (统一网关)           │
-│    callStream(agentName, message, ...)  │
-│    - 获取 Agent 实例                     │
-│    - 调用 streamEvents(messages, ctx)   │
+│ 3. AgentExecutionEngine (执行编排)         │
+│    execute(agentName, request)           │
+│    - 拦截器链(Auth/Memory/Intent/RAG/Audit)│
+│    - 调用 streamEvents/call + 事件适配    │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐

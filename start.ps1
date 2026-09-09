@@ -153,7 +153,7 @@ Sync-StaticResources
 # ===== 配置参数（集中管理） =====
 # 【OpenTelemetry 可观测性】
 #   如需启用，取消底部 $otelExtra 块的注释。默认值定义在此，统一管理：
-$OTEL_OTLP_ENDPOINT = "http://127.0.0.1:4318/v1/traces"
+$OTEL_OTLP_ENDPOINT = "http://127.0.0.1:4318"
 $OTEL_TRACES_SAMPLER = "parentbased_always_on"
 $OTEL_SERVICE_NAME = "yunxi-agent-platform"
 # 【智能体框架 数据库】
@@ -163,7 +163,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-$DASHSCOPE_API_KEY = "sk-dd32d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b521e8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -188,8 +188,20 @@ if ($Fast)  { $mode = "fast" }
 if ($Maven) { $mode = "maven" }
 if ($Clean) { $mode = "clean" }
 
-# JAR 路径
-$jarFile = Join-Path $scriptDir "agent-app\target\agent-app-2.0.0.jar"
+# JAR 路径（动态匹配打包产物，避免版本号升版后硬编码失效）
+$jarFile = Join-Path $scriptDir "agent-app\target\agent-app-*.jar"
+$candidateJars = @(Resolve-Path -Path $jarFile -ErrorAction SilentlyContinue)
+if ($candidateJars.Count -eq 0) {
+    Write-Host "[ERROR] 未在 agent-app\target 找到打包产物 agent-app-*.jar，请先执行 mvn package" -ForegroundColor Red
+    Read-Host "Press any key to continue..."
+    exit 1
+}
+if ($candidateJars.Count -gt 1) {
+    Write-Host "[WARN] 发现多个 agent-app-*.jar，默认使用最新修改的一个" -ForegroundColor Yellow
+    $jarFile = ($candidateJars | Sort-Object { (Get-Item $_).LastWriteTime } -Descending | Select-Object -First 1).Path
+} else {
+    $jarFile = $candidateJars[0].Path
+}
 
 # 通用 JVM 参数
 $javaArgs = @(

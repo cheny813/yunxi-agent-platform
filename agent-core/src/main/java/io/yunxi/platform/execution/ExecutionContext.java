@@ -5,7 +5,6 @@ import java.util.Map;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.message.Msg;
-import io.agentscope.core.permission.PermissionContextState;
 import io.yunxi.platform.intent.IntentResult;
 import io.yunxi.platform.intent.routing.RouteDecision;
 import io.yunxi.platform.shared.entity.ConversationEntity;
@@ -43,8 +42,6 @@ public class ExecutionContext {
     private IntentResult intentResult;
     /** 路由决策（IntentPipeline 拦截器写入，可为 null） */
     private RouteDecision routeDecision;
-    /** 权限上下文（PermissionContext 拦截器写入，可为 null） */
-    private PermissionContextState permissionContext;
     /** 执行结果错误信息（引擎收口时写入；null 表示成功），供 postHandle 收尾（如审计）消费 */
     private String executionError;
     /** 会话实体（引擎从 ConversationDomainService 加载后写入；非会话型入口为 null） */
@@ -120,14 +117,6 @@ public class ExecutionContext {
 
     public void setRouteDecision(RouteDecision routeDecision) {
         this.routeDecision = routeDecision;
-    }
-
-    public PermissionContextState getPermissionContext() {
-        return permissionContext;
-    }
-
-    public void setPermissionContext(PermissionContextState permissionContext) {
-        this.permissionContext = permissionContext;
     }
 
     public String getExecutionError() {

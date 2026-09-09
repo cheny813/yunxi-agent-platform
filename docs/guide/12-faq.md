@@ -46,7 +46,7 @@
 # 进入项目目录
 cd yunxi-agent-platform
 
-# 一键启动全部基础设施（MySQL + Redis + Milvus + MinIO + etcd + OTel Collector；可选 Jaeger / Attu）
+# 一键启动全部基础设施（MySQL + Redis + Milvus + MinIO + etcd + OTel Collector + Jaeger + Attu，全部默认启动）
 docker compose up -d
 
 # 确认所有容器就绪

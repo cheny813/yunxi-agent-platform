@@ -1,10 +1,21 @@
 # ============================================================
 # OpenTelemetry Collector 配置
 # ============================================================
-# 用途：接收应用端 OTLP trace 数据，输出到本地日志，消除"connection refused"错误
-# 
-# 如果后续需要将 trace 发送到 Jaeger/Zipkin/Prometheus，
-# 在 exporters 段追加对应配置即可。
+# 用途：接收应用端 OTLP trace / metrics 数据，输出到本地日志，
+#       消除应用侧 "Failed to export ... HTTP status code 404" 错误。
+#
+# 原理说明（避免再次出现 404）：
+#   Collector 的 OTLP HTTP 接收端（4318）对 /v1/traces、/v1/metrics、
+#   /v1/logs 每个信号，只有在 service.pipelines 中存在「消费该信号的
+#   活跃管线」时才会受理请求；否则直接返回 404（"no consumers"）。
+#   因此：
+#   1) metrics 必须单独配置一条 pipeline（本文件已补上），否则 /v1/metrics 404。
+#   2) traces 管线若引用了不可达的 exporter（如 jaeger 未启动），该 exporter
+#      在启动时解析不到主机导致整条管线启动失败，同样会让 /v1/traces 返回 404。
+#      所以下面 traces 仅用 logging，不强制依赖 jaeger；需要 Jaeger 可视化时
+#      再放开（见末尾注释）。
+#
+# 若后续需要将 trace 发送到 Jaeger / Prometheus，在 exporters 段追加即可。
 
 receivers:
   otlp:
@@ -24,15 +35,23 @@ exporters:
     loglevel: info
     sampling_initial: 5
     sampling_thereafter: 200
-  # 转发 trace 到 Jaeger（docker-compose 中的 yunxi-jaeger 容器）
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
+  # 转发 trace 到 Jaeger（需 docker-compose 中已启动 yunxi-jaeger 容器，
+  # 且处于同一 yunxi-net 网络）。jaeger 未启动时请勿启用，否则该 exporter
+  # 解析不到主机，traces 管线启动失败 → /v1/traces 返回 404。
+  # 启用方式：将下方 traces 管线的 exporters 改为 [logging, otlp/jaeger]，
+  # 并取消下面这段注释。
+  # otlp/jaeger:
+  #   endpoint: jaeger:4317
+  #   tls:
+  #     insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging, otlp/jaeger]
+      exporters: [logging]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging]

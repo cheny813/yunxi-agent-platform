@@ -1,6 +1,6 @@
 # 04. 架构设计
 
-> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.0（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
+> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.3（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
 
 ## 软件架构理论基础
 
@@ -96,7 +96,7 @@
 
 #### AgentScope 核心运行时（底层）
 
-**定位**：第三方 SDK 依赖（AgentScope-Java 2.0.0 GA），不可修改
+**定位**：第三方 SDK 依赖（AgentScope-Java 2.0.3 GA），不可修改
 
 **职责**：
 - 提供 Agent/Model/Toolkit/Middleware/State 核心抽象
@@ -121,7 +121,7 @@ config/       ← 配置类（AgentscopeExtensionProperties、Redis 后端等）
 conversation/ ← 对话编排（ChatAppService、会话管理）
 controller/   ← REST 控制器（对话、Agent、技能、文件、配置管理、MCP 动态注册）
 file/         ← 文件处理（上传、向量化入库）
-gateway/      ← Agent 网关（AgentGateway 接口 + 默认实现）
+gateway/      ← （历史包，已移除：统一入口逻辑收敛至 AgentExecutionEngine + ChatAppService）
 intent/       ← 意图引擎（多域 DomainRegistry、rule/llm/hybrid 分类、reload 热更新）
 lifecycle/    ← 生命周期管理
 memory/       ← 记忆场景管理（MemoryScene、MemorySceneRegistry）
@@ -459,8 +459,8 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 | 层次 | 能力范畴 | 关键代码 | agentscope 内置？ |
 |------|---------|---------|:--:|
 | **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
-| **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentGatewayImpl`（网关统一入口） | 否 |
-| **3. 统一治理层（网关能力内置）** | 接入层认证/限流/路由由 AgentScope-Java 2.0 Channel + AgentGatewayImpl 承接 | `AgentGatewayImpl`、`agent-core` | 否 |
+| **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentExecutionEngine`（执行编排入口） | 否 |
+| **3. 接入层（渠道能力内置）** | 接入层认证/限流/路由由 AgentScope-Java 2.0 Channel 承接 | 框架 Channel + @PreAuthorize | 否 |
 | **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | `ContentFilterMiddleware`（提示注入防护）、`ChatAppService` | 否 |
 | **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
 | **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
@@ -468,42 +468,15 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 
 ### 关键接线：具体桥接代码解读
 
-#### 1. AgentGatewayImpl — 统一调用入口
+#### 1. AgentExecutionEngine — 统一执行编排入口
 
-`AgentGatewayImpl` 是**所有 Agent 调用必须经过的唯一入口**，它将外部请求转化为 AgentScope 原生调用并映射事件流 / 中断信号：
+`AgentExecutionEngine` 是**所有 Agent 调用必须经过的统一执行入口**。对外承接 REST 请求（`ChatAppService`），对内串联拦截器链与执行策略，最终调用 AgentScope 原生 `streamEvents/call` 并将框架事件适配为 SSE 流：
 
-```java
-// AgentGateway.java (接口) → AgentGatewayImpl.java (默认实现，包内私有类)
-public interface AgentGateway {
-    // 以流式事件方式调用 Agent（注入 RuntimeContext 实现多租户隔离）
-    Flux<AgentEvent> callStream(String agentName, String message, String userId, String sessionId);
+- 拦截器链（按序）：`AuthResolve`（租户/用户上下文）→ `Memory`（记忆构建与 HITL 确认注入）→ `IntentPipeline`（意图路由）→ `RagRetrieval`（知识检索）→ `Audit`（审计日志）；
+- 执行策略：`BlockingStrategy`（结构化阻塞，产出 `ExecutionResult`）/ `StreamingStrategy`（流式，产出 SSE）；
+- 限流、超时、优雅关闭、链路追踪等治理能力**不在此实现**，全部由 AgentScope 框架的 Middleware 体系（`GracefulShutdownMiddleware`、`OtelTracingMiddleware`、`Resilience4j` 熔断等）在 Agent 执行链路中承载。
 
-    // 中断指定 Agent 的当前执行（AgentScope 原生协作式中断，下次调用自动恢复）
-    void interrupt(String agentName);
-}
-```
-
-```java
-// AgentGatewayImpl.java (核心实现)
-@Override
-public Flux<AgentEvent> callStream(String agentName, String message, String userId, String sessionId) {
-    Agent agent = agentService.getAgentInstance(agentName);
-    RuntimeContext ctx = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
-    // streamEvents 是 HarnessAgent/ReActAgent 的原生方法（Agent 接口未声明），需转型调用；
-    // 重载签名为 streamEvents(List<Msg>, RuntimeContext)（非单 Msg）。
-    HarnessAgent harnessAgent = (HarnessAgent) agent;
-    return harnessAgent.streamEvents(
-            List.of(Msg.builder().textContent(message).build()), ctx);
-}
-
-@Override
-public void interrupt(String agentName) {
-    log.info("中断 Agent: {}", agentName);
-    agentService.getAgentInstance(agentName).interrupt();   // 委托给 AgentScope 原生 Agent.interrupt()
-}
-```
-
-**关键点**：网关自身不实现限流/超时/审计等治理逻辑——这些由 AgentScope 框架的 Middleware 体系（`GracefulShutdownMiddleware`、`OtelTracingMiddleware` 等）在 Agent 执行链路中承载，网关只做"请求转换 + 事件透出 + 中断透传"三件事，保持薄适配。
+**关键点**：执行引擎只做"请求编排 + 业务前置/后置管线 + 事件适配"三件事，保持薄适配；Agent 的实际执行、权限、HITL、PlanMode、技能、压缩、追踪均由 AgentScope 完成。
 
 #### 2. AgentConfigurer — 配置驱动的自动装配
 
@@ -599,7 +572,7 @@ public class ModelFactory {
 │  第 3 层: 接入层 (AgentScope-Java 2.0 Channel: 企微/钉钉/飞书/Web API)             │
 │    由 agentscope-extensions-channel-* 原生承载                    │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 2 层: 统一治理 (AgentGatewayImpl + 框架 Middleware)           │
+│  第 2 层: 统一治理 (AgentExecutionEngine + 框架 Middleware)       │
 │    网关薄适配 | GracefulShutdown/Tracing 由框架中间件承载          │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 1 层: Spring Boot 集成 (AutoConfiguration)                    │

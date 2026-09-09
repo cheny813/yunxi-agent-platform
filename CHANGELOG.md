@@ -6,7 +6,7 @@
 
 ---
 
-## [Unreleased]
+## [2.0.3] - 2026-09-09
 
 ### 新增
 
@@ -32,7 +32,17 @@
   - 重构：`TreeSnapshot.build()` 统一两遍扫描工厂、`IntentKeywordMatcher` / `IntentYaml` 共享工具消除跨类重复、reload 监听器 SPI（`IntentReloadListener`）预留。
 - **MCP 动态注册（运行时 REST API + Nacos 协调底座）**：支持运行期通过 REST API 动态注册/注销 MCP 服务器，无需重启即可将工具注入 Agent Toolkit。协调底座基于 Nacos 配置中心：目录条目持久化到 `dataId`（默认 `yunxi.mcp-servers.json`），并通过 Nacos Naming 在 `yunxi-mcp-coordinator` 下跨实例广播；Nacos 未启用时自动退化为本地内存目录。采用「内存权威目录 + Nacos 全量快照」机制避免并发读-改-写竞态；目标不可达时仅 WARN 降级并在首次调用时自动重连，不阻塞 HTTP 请求。接口与配置见 [09. API 参考 · MCP 动态注册](./docs/guide/09-api-reference.md) 与 [06. 配置指南 · MCP 动态注册配置](./docs/guide/06-configuration.md)。
 
+### 升级
+
+- **底层框架 AgentScope-Java 2.0.0 → 2.0.3**：同步升级底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 至 2.0.3（GA）。可观测性链路追踪中间件由平台自研 `ReActSpanMiddleware` 统一切换为框架原生 `OtelTracingMiddleware`；同步清理遗留的 `AgentGateway`、`HITLConfirmInterceptor`、`PermissionContextInterceptor` 等已不再使用的代码，权限模式全面透传 GA 原生枚举。
+
+### 修复
+
+- **OTLP 指标/链路导出 404**：`ObservabilityAutoConfiguration` 中 `OtlpHttpSpanExporter` / `OtlpHttpMetricExporter` 原以基础地址（如 `http://127.0.0.1:4318`）作为 endpoint，而 AgentScope-Java SDK 将该值原样当作完整 URL 使用（其默认常量已含 `/v1/traces`、`/v1/metrics`），导致请求打到根路径返回 `404 page not found`。现显式拼接信号路径（`/v1/traces`、`/v1/metrics`），metrics / traces 正常上报至 OTel Collector。
+
 ### 变更
+
+- **docker-compose 默认启用可视化组件**：`attu` / `otel-collector` / `jaeger` 三个服务由 `--profile optional` 可选改为默认启动，`docker compose up -d` 即可拉起全部 9 个容器，无需再带 `--profile optional`。
 
 - 模型缓存策略文档化：单租户按 `modelId` 复用实例，多租户默认不复用，避免不同账号的 Key / BaseURL 串用。
 - 意图引擎配置项扩展（`routing` / `classification` / `resolver` / `reload`），详见 [16. 意图引擎](./docs/guide/16-intent-engine.md)。
