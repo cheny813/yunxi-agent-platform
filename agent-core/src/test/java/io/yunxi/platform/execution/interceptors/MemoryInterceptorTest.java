@@ -12,6 +12,7 @@ import io.agentscope.core.message.Msg;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.shared.config.MemoryConfig;
+import io.yunxi.platform.shared.dto.ConfirmResultRequest;
 
 /**
  * MemoryInterceptor（order=150）：记忆模式分支与上下文注入测试。
@@ -128,5 +129,37 @@ class MemoryInterceptorTest {
         interceptor.preHandle(ctx);
 
         assertThat(ctx.getInputMessage().getTextContent()).isEqualTo("原问题");
+    }
+
+    @Test
+    @DisplayName("HITL 确认结果：写入输入消息 METADATA_CONFIRM_RESULTS")
+    void hitlConfirmResultsInjected() {
+        ConfirmResultRequest req = new ConfirmResultRequest();
+        req.setToolCallId("call-1");
+        req.setToolName("queryDb");
+        req.setApproved(true);
+        ExecutionContext ctx = ctxWith(ExecutionRequest.builder()
+                .message("继续")
+                .confirmResults(List.of(req)));
+
+        interceptor.preHandle(ctx);
+
+        Object meta = ctx.getInputMessage().getMetadata().get(Msg.METADATA_CONFIRM_RESULTS);
+        assertThat(meta).isNotNull().isInstanceOf(List.class);
+        assertThat((List<?>) meta).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("HITL 确认结果缺少 toolCallId：跳过，不写入元数据")
+    void hitlConfirmResultsMissingToolCallIdSkipped() {
+        ConfirmResultRequest req = new ConfirmResultRequest();
+        req.setApproved(true);
+        ExecutionContext ctx = ctxWith(ExecutionRequest.builder()
+                .message("继续")
+                .confirmResults(List.of(req)));
+
+        interceptor.preHandle(ctx);
+
+        assertThat(ctx.getInputMessage().getMetadata()).doesNotContainKey(Msg.METADATA_CONFIRM_RESULTS);
     }
 }

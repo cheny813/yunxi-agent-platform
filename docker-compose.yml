@@ -1,7 +1,8 @@
 ﻿# ============================================================
 # yunxi-agent-platform 基础设施一键启动（单机验证版）
 # ============================================================
-# 启动： docker compose up -d
+# 启动全部（9 个服务，开箱即用）：
+#   docker compose up -d
 # 停止： docker compose down
 # 重置： docker compose down -v && docker compose up -d
 #
@@ -9,8 +10,10 @@
 #   Nacos 采用 standalone 单机（内置 Derby，免外部 MySQL），对机器要求低、开箱即用。
 #   生产高可用（3 节点集群 + Raft）请使用 docker-compose.nacos-cluster.yml。
 #
-# 服务清单（共 9 个容器：6 核心 + 3 可选；外加 1 个本地进程 Ollama）：
-#   Nacos 单机为新增核心组件，承担 MCP 注册中心 + 配置热更新 + AI Registry（MCP/Skill/Agent/Prompt）。
+# 服务清单（共 9 个容器，全部默认启动）：
+#   核心：MySQL / Redis / etcd / MinIO / Milvus / Nacos
+#   默认启用：Attu UI / OTel Collector / Jaeger
+#   Ollama 为本地进程（端口 11434），不在此编排，需单独安装 ollama pull。
 # ┌──────────────────┬───────────┬───────────────────────────────────┐
 # │ 服务              │ 端口       │ 说明                              │
 # ├──────────────────┼───────────┼───────────────────────────────────┤
@@ -18,19 +21,16 @@
 # │ Redis 7          │ 6379      │ 缓存/分布式状态/会话（其余特性）   │
 # │ Milvus Standalone │ 19530     │ 向量数据库（记忆/语义检索）      │
 # │ MinIO (Milvus)   │ 9000      │ Milvus 对象存储（内部）            │
-# │ etcd (Milvus)    │ 2379      │ Milvus 元数据协调（内部）          │
+# │ etcd (Milvus)    │ 2379      │ Milvus 元数据协调（内部，不暴露）  │
 # │ Nacos 单机        │ 8848/8080 │ MCP 注册中心+配置热更新+AI Registry │
 # ├──────────────────┼───────────┼───────────────────────────────────┤
 # │ Attu UI          │ 8000      │ Milvus 向量库 Web 管理界面（可选）  │
 # │ OTel Collector   │ 4317/4318 │ 链路追踪收集器（可选，转发至 Jaeger）│
 # │ Jaeger UI        │ 16686     │ 链路追踪可视化（可选）             │
-# ├──────────────────┼───────────┼───────────────────────────────────┤
-# │ Ollama (本地进程) │ 11434     │ 向量嵌入（需单独安装 ollama pull） │
 # └──────────────────┴───────────┴───────────────────────────────────┘
 #
 # Milvus 首次启动需要 30-60 秒，请耐心等待。
-# OTel Collector / Jaeger 不启动也不影响核心功能，仅链路追踪丢失。
-# 仅需关闭可视化时：docker compose stop jaeger otel-collector
+# 可选服务不启动也不影响核心功能，仅链路追踪 / 向量库 UI 丢失。
 #
 # 注意：LLM API Key 请在 start.ps1 或环境变量中配置。
 
@@ -41,13 +41,12 @@ services:
   mysql:
     image: mysql:8.0
     container_name: yunxi-mysql
+    restart: unless-stopped
     ports:
       - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: yunxi_agent_platform
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
       TZ: Asia/Shanghai
     command:
       [
@@ -71,6 +70,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: yunxi-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     command:
@@ -97,14 +97,17 @@ services:
   etcd:
     image: quay.io/coreos/etcd:v3.5.5
     container_name: yunxi-milvus-etcd
+    restart: unless-stopped
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ETCD_SNAPSHOT_COUNT=50000
+    # advertise-client-urls 必须用容器可达的服务名/地址（etcd:2379），
+    # 不能用 127.0.0.1（仅本容器回环），否则其他容器按广播地址无法连接。
     command: >
       etcd
-      -advertise-client-urls=http://127.0.0.1:2379
+      -advertise-client-urls=http://etcd:2379
       -listen-client-urls http://0.0.0.0:2379
       --data-dir /etcd
     healthcheck:
@@ -123,6 +126,7 @@ services:
   minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     container_name: yunxi-milvus-minio
+    restart: unless-stopped
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -147,6 +151,7 @@ services:
   milvus:
     image: milvusdb/milvus:v2.3.3
     container_name: yunxi-milvus
+    restart: unless-stopped
     depends_on:
       etcd:
         condition: service_healthy
@@ -175,57 +180,6 @@ services:
       - yunxi-net
 
   # ============================================================
-  # Attu — Milvus 向量库 Web 管理界面（可选）
-  #   访问 http://127.0.0.1:8000 ，连接 milvus:19530
-  # ============================================================
-  attu:
-    image: zilliz/attu:v2.4
-    container_name: yunxi-attu
-    restart: unless-stopped
-    environment:
-      - MILVUS_URL=milvus:19530
-    ports:
-      - "8000:3000" # Attu Web UI（容器内 3000）
-    depends_on:
-      - milvus
-    networks:
-      - yunxi-net
-
-  # ============================================================
-  # OpenTelemetry Collector — 链路追踪（可选）
-  # ============================================================
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.97.0
-    container_name: yunxi-otel-collector
-    restart: unless-stopped
-    ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./scripts/deploy/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    networks:
-      - yunxi-net
-
-  # ============================================================
-  # Jaeger — 链路追踪可视化（可选）
-  #   访问 http://127.0.0.1:16686 查看调用链
-  #   trace 由 otel-collector 通过 otlp/jaeger exporter 转发至此
-  # ============================================================
-  jaeger:
-    image: jaegertracing/all-in-one:1.57
-    container_name: yunxi-jaeger
-    restart: unless-stopped
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    ports:
-      - "16686:16686" # Jaeger UI
-    depends_on:
-      - otel-collector
-    networks:
-      - yunxi-net
-
-  # ============================================================
   # Nacos 3.2.4 — 单机版（standalone，内置 Derby，免外部 MySQL）
   # 平台统一协调底座：MCP 注册中心 + 配置热更新 + AI Registry（MCP/Skill/Agent/Prompt）
   # 应用连接地址（docker 网络内）：nacos:8848
@@ -243,6 +197,7 @@ services:
     image: nacos/nacos-server:v3.2.4
     container_name: yunxi-nacos
     hostname: yunxi-nacos
+    restart: unless-stopped
     environment:
       - MODE=standalone
       - NACOS_AUTH_ENABLE=false
@@ -261,6 +216,66 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # 以下为默认启用的服务（原可选服务，现已默认启动）
+  # ============================================================
+
+  # ============================================================
+  # Attu — Milvus 向量库 Web 管理界面
+  #   访问 http://127.0.0.1:8000 ，连接 milvus:19530
+  # 启动： docker compose up -d attu
+  # ============================================================
+  attu:
+    image: zilliz/attu:v2.4
+    container_name: yunxi-attu
+    restart: unless-stopped
+    environment:
+      - MILVUS_URL=milvus:19530
+    ports:
+      - "8000:3000" # Attu Web UI（容器内 3000）
+    depends_on:
+      - milvus
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # OpenTelemetry Collector — 链路追踪
+  # 启动： docker compose up -d otel-collector
+  # 配置挂载 scripts/deploy/otel-collector-config.yaml（已含 traces + metrics 管线）
+  # ============================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.97.0
+    container_name: yunxi-otel-collector
+    restart: unless-stopped
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./scripts/deploy/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Jaeger — 链路追踪可视化
+  #   访问 http://127.0.0.1:16686 查看调用链
+  #   trace 由 otel-collector 通过 otlp/jaeger exporter 转发至此
+  #   （默认配置仅 logging 导出，需可视化时请在 otel-collector-config.yaml 放开 jaeger exporter）
+  # 启动： docker compose up -d jaeger
+  # ============================================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: yunxi-jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger UI
+    depends_on:
+      - otel-collector
     networks:
       - yunxi-net
 

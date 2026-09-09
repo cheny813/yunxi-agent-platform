@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.yunxi</groupId>
         <artifactId>yunxi-agent-platform</artifactId>
-        <version>2.0.0</version>
+        <version>2.0.3</version>
     </parent>
 
     <artifactId>agent-core</artifactId>
@@ -182,23 +182,9 @@
             <version>${opentelemetry.version}</version>
         </dependency>
 
-        <!-- RAG -->
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-rag-bailian</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-rag-dify</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-rag-haystack</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.agentscope</groupId>
-            <artifactId>agentscope-extensions-rag-ragflow</artifactId>
-        </dependency>
+        <!-- RAG：仅保留 rag-simple（提供 io.agentscope.core.embedding.EmbeddingModel，
+             被 YunxiEmbeddingModel 实现；其余平台集成模块 bailian/dify/haystack/ragflow 在 yunxi
+             中无任何 io.agentscope.core.rag.integration 引用，属死依赖，已移除） -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-rag-simple</artifactId>
@@ -277,6 +263,10 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-otlp</artifactId>
         </dependency>
 
         <!-- PostgreSQL -->

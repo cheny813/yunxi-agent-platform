@@ -1,6 +1,7 @@
 package io.yunxi.platform.execution.interceptors;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -11,6 +12,9 @@ import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.execution.spi.ExecutionInterceptor;
 import io.yunxi.platform.shared.config.MemoryConfig;
+import io.agentscope.core.event.ConfirmResult;
+import io.agentscope.core.message.ToolUseBlock;
+import io.yunxi.platform.shared.dto.ConfirmResultRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +54,9 @@ public class MemoryInterceptor implements ExecutionInterceptor {
 
         // 1. 构建基础用户消息（含 contextData 页面上下文注入）
         Msg userMsg = buildUserMessage(message, contextData);
+        // 1.5 注入人机确认（HITL）回传结果：确认结果本质是输入消息的有机组成部分，
+        //     与记忆消息构建一并处理，避免单独维护一条仅做 DTO 转换的拦截器。
+        userMsg = enrichWithConfirmResults(userMsg, req.getConfirmResults(), ctx);
 
         // 2. 根据记忆模式组装 inputMessages
         List<Msg> allMessages;
@@ -99,6 +106,53 @@ public class MemoryInterceptor implements ExecutionInterceptor {
             }
         }
         return Msg.builder().textContent(finalMessage).build();
+    }
+
+    /**
+     * 将请求携带的人机确认（HITL）回传结果转换为 AgentScope 的 {@link ConfirmResult}，
+     * 注入输入消息的 {@code Msg.METADATA_CONFIRM_RESULTS} 元数据；无确认结果时原样返回。
+     *
+     * <p>原由独立 {@code HITLConfirmInterceptor} 承担，因确认结果是输入消息的有机组成部分，
+     * 现合并到记忆消息构建阶段，减少一条仅做参数转换的拦截器。后续的校验（是否对应处于
+     * ASKING 状态的工具调用）、执行或拒绝全部由 AgentScope 完成，yunxi 不实现确认语义。</p>
+     */
+    private Msg enrichWithConfirmResults(Msg userMsg, List<ConfirmResultRequest> requests, ExecutionContext ctx) {
+        if (requests == null || requests.isEmpty()) {
+            return userMsg;
+        }
+        List<ConfirmResult> confirmResults = new ArrayList<>();
+        for (ConfirmResultRequest req : requests) {
+            if (req == null || req.getToolCallId() == null || req.getToolCallId().isBlank()) {
+                log.warn("确认结果缺少 toolCallId，已跳过: {}", req);
+                continue;
+            }
+            ToolUseBlock toolCall = new ToolUseBlock(req.getToolCallId(), req.getToolName(), req.getInput());
+            confirmResults.add(new ConfirmResult(req.isApproved(), toolCall));
+        }
+        if (confirmResults.isEmpty()) {
+            return userMsg;
+        }
+        Map<String, Object> metadata = new HashMap<>();
+        if (userMsg.getMetadata() != null) {
+            metadata.putAll(userMsg.getMetadata());
+        }
+        metadata.put(Msg.METADATA_CONFIRM_RESULTS, confirmResults);
+        Msg enriched = Msg.builder()
+                .id(userMsg.getId())
+                .name(userMsg.getName())
+                .role(userMsg.getRole())
+                .content(userMsg.getContent())
+                .metadata(metadata)
+                .build();
+        int approved = 0;
+        for (ConfirmResult r : confirmResults) {
+            if (r.isConfirmed()) {
+                approved++;
+            }
+        }
+        log.info("[HITL] 已注入人机确认结果: agentName={}, conversationId={}, 批准={}, 拒绝={}",
+                ctx.getAgentName(), ctx.getConversationId(), approved, confirmResults.size() - approved);
+        return enriched;
     }
 
     /**

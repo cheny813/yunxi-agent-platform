@@ -61,7 +61,7 @@ public class PermissionConfig {
      * <p>ToolGate 启用且工具列表非空，或 ReasoningReview 启用且 ToolGate 含工具，均视为有 ASK 工具。
      * 用于决定透传的 AgentScope 权限模式：有 → {@code DEFAULT}（挂起向用户确认），无 → {@code BYPASS}（全放行）。
      * 同时被 {@link AgentConfigurer#injectHITLMiddlewares}（构建期）与
-     * {@code PermissionContextInterceptor}（请求期快照）复用，保证两种注入路径模式决定一致。</p>
+     * 执行引擎（请求期权限快照，原 {@code PermissionContextInterceptor} 已删除）复用，保证两种注入路径模式决定一致。</p>
      *
      * @param hitl HITL 配置（可为 null）
      * @return 是否配置了需人工确认的工具
@@ -113,7 +113,7 @@ public class PermissionConfig {
      * 本方法与 {@link #build} 保持一致的放行策略，仅模式固定为 {@code DONT_ASK}。
      *
      * <p>构建期（{@code AgentConfigurer.injectHITLMiddlewares}）与请求期
-     * （{@code PermissionContextInterceptor}）两条注入路径均复用本方法，
+     * （执行引擎权限快照，原 {@code PermissionContextInterceptor} 已删除）两条注入路径均复用本方法，
      * 避免各自构造上下文导致放行策略漏配。</p>
      *
      * <p><b>已知取舍</b>：本模式下未命中 ALLOW 规则的工具一律被拒绝，<b>包括

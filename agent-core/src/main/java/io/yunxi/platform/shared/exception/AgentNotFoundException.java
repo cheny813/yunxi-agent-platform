@@ -1,7 +1,7 @@
 package io.yunxi.platform.shared.exception;
 
 /**
- * Agent 未找到异常 — AgentGateway 调用时抛出
+ * Agent 未找到异常 — 执行引擎解析 Agent 时抛出
  *
  * @author yunxi-agent-platform
  */

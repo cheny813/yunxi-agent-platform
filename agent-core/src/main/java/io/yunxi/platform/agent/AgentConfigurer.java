@@ -40,7 +40,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 
 import io.yunxi.platform.agent.mcp.McpConfigStore;
 
-import io.yunxi.platform.tracing.middleware.ReActSpanMiddleware;
+import io.agentscope.core.tracing.OtelTracingMiddleware;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -123,8 +123,8 @@ public class AgentConfigurer implements SmartLifecycle {
     /** MUSE 自进化元工具注册器（可选）：仅当 yunxi.muse.enabled=true 时作为 Bean 存在 */
     private final ObjectProvider<MuseToolRegistrar> museToolRegistrarProvider;
 
-    /** ReAct 链路追踪 Middleware 提供者（可选），用于 OpenTelemetry 分布式追踪 */
-    private final ObjectProvider<ReActSpanMiddleware> reactSpanMiddlewareProvider;
+    /** GA 原生 OpenTelemetry 链路追踪 Middleware 提供者（可选） */
+    private final ObjectProvider<OtelTracingMiddleware> otelTracingMiddlewareProvider;
 
     /** Agent 分布式后端（可选），提供 AgentStateStore + BaseStore + SandboxSnapshot 一站式配置 */
     private DistributedStore distributedBackend;
@@ -156,7 +156,7 @@ public class AgentConfigurer implements SmartLifecycle {
      * @param customizerProvider          Agent 自定义扩展提供者（可选）
      * @param modelFactory                模型工厂
      * @param permissionConfig             权限配置构造器，将 HITL 配置映射为框架 PermissionContextState
-     * @param reactSpanMiddlewareProvider ReAct 追踪 Middleware 提供者（可选）
+     * @param otelTracingMiddlewareProvider OpenTelemetry 链路追踪 Middleware 提供者（可选，GA 原生）
      */
     public AgentConfigurer(AgentDefinitionLoader definitionLoader,
             AgentService agentService,
@@ -164,7 +164,7 @@ public class AgentConfigurer implements SmartLifecycle {
             ObjectProvider<AgentCustomizer> customizerProvider,
             ModelFactory modelFactory,
             PermissionConfig permissionConfig,
-            ObjectProvider<ReActSpanMiddleware> reactSpanMiddlewareProvider,
+            ObjectProvider<OtelTracingMiddleware> otelTracingMiddlewareProvider,
             ObjectProvider<MuseToolRegistrar> museToolRegistrarProvider,
             McpConfigStore mcpConfigStore) {
         this.definitionLoader = definitionLoader;
@@ -173,7 +173,7 @@ public class AgentConfigurer implements SmartLifecycle {
         this.customizerProvider = customizerProvider;
         this.modelFactory = modelFactory;
         this.permissionConfig = permissionConfig;
-        this.reactSpanMiddlewareProvider = reactSpanMiddlewareProvider;
+        this.otelTracingMiddlewareProvider = otelTracingMiddlewareProvider;
         this.museToolRegistrarProvider = museToolRegistrarProvider;
         this.mcpConfigStore = mcpConfigStore;
     }
@@ -924,7 +924,7 @@ public class AgentConfigurer implements SmartLifecycle {
      * Middleware 按添加顺序执行，当前配置的 Middleware 顺序：
      * 1. GracefulShutdownMiddleware（优雅关停，必须）
      * 2. ContentFilterMiddleware（内容安全过滤/提示注入检测，必须）
-     * 3. ReActSpanMiddleware（可选，OpenTelemetry 链路追踪）
+     * 3. OtelTracingMiddleware（可选，GA 原生 OpenTelemetry 链路追踪）
      * 4. HITL：通过框架 {@code permissionContext} 注入
      *    并保留 HumanToolRegistrar（人工协作工具注册）
      * </p>
@@ -943,9 +943,9 @@ public class AgentConfigurer implements SmartLifecycle {
         // 必须：内容安全过滤（提示注入检测）
         builder.middleware(new ContentFilterMiddleware());
 
-        // 可选：OpenTelemetry 链路追踪
-        if (reactSpanMiddlewareProvider.getIfAvailable() != null) {
-            builder.middleware(reactSpanMiddlewareProvider.getIfAvailable());
+        // 可选：GA 原生 OpenTelemetry 链路追踪（invoke_agent / chat / execute_tool 三段 span）
+        if (otelTracingMiddlewareProvider.getIfAvailable() != null) {
+            builder.middleware(otelTracingMiddlewareProvider.getIfAvailable());
         }
 
         // 可选：HITL（人机交互）—— AgentScope 原生权限上下文 + 人工协作工具

@@ -25,7 +25,7 @@ import io.yunxi.platform.tracing.LlmMetrics;
  *
  * <p>结构化（非流式）输出通道：与普通阻塞通道一样经过拦截器链
  * （AuthResolve 解析 Agent/RuntimeContext、Memory 组装单条输入、
- * PermissionContext 权限快照、Audit 审计），再由本策略完成结构化调用：</p>
+ * 权限（由底层框架中间件执行）、Audit 审计），再由本策略完成结构化调用：</p>
  * <ul>
  *   <li>Schema 解析优先级：请求内联 Schema（Map → JsonNode）> 命名 Schema
  *       （agentName+schemaName 查 {@link SchemaClassRegistry}）> 默认 Schema 表；</li>

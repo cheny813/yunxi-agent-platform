@@ -1,6 +1,6 @@
 # 15. 可观测性
 
-> **可观测性说明**：AgentScope-Java 2.0.0（GA）废弃了 `Tracer`/`TracerRegistry` 接口，改用 OpenTelemetry 直连 API。平台已删除 `OpenTelemetryTracer.java`，通过 `ReActSpanMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
+> **可观测性说明**：AgentScope-Java 2.0.0（GA）废弃了 `Tracer`/`TracerRegistry` 接口，改用 OpenTelemetry 直连 API。平台已删除 `OpenTelemetryTracer.java`，通过 `OtelTracingMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
 
 了解 yunxi Agent Platform 的可观测性设计。
 
@@ -23,7 +23,7 @@
 └──────────────────────┬──────────────────────────────────────┘
                        │ 注册
              ┌─────────┴──────────┐
-             │ ReActSpanMiddleware   │  实现 MiddlewareBase 接口
+             │ OtelTracingMiddleware  │  框架原生实现 MiddlewareBase 接口
              └─────────┬──────────┘
                        │
              ┌─────────▼──────────┐
@@ -39,7 +39,7 @@
 | 组件 | 机制 | 优先级 | 产出 |
 |------|------|--------|------|
 | `AgentTraceMiddleware`（框架内置） | SLF4J 日志 | 0 | 文本日志 |
-| `ReActSpanMiddleware`（平台自建） | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
+| `OtelTracingMiddleware`（框架原生） | MiddlewareBase 接口 | 30 | agent.call / react.iteration Span |
 | OpenTelemetry 全局实例 | 直连 API | SDK 内部 | llm.invoke / tool.execute Span |
 
 > 升级说明：V2.0.0（GA）之前，框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。GA 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
@@ -66,18 +66,18 @@ agent.call (agent.name="business-assistant")
 
 | Span 名称 | 属性 | 说明 | 来源 |
 |-----------|------|------|------|
-| `agent.call` | `agent.name` | Agent 名称 | ReActSpanMiddleware |
+| `agent.call` | `agent.name` | Agent 名称 | OtelTracingMiddleware |
 | | `agent.response_length` | 响应文本长度 | 框架内部 Span |
 |...|...|...|...|
-| `react.iteration` | `react.iteration` | 当前迭代次数 | ReActSpanMiddleware |
-| | `react.stop_requested` | 是否请求停止 | ReActSpanMiddleware |
-| `llm.invoke` | `model.name` | 调用的模型名称（真实模型名，不再写死 AgentScope） | ReActSpanMiddleware |
-| | `gen_ai.operation.name` | 固定值 `chat` | ReActSpanMiddleware |
-| | `gen_ai.request.model` | 调用的模型名称 | ReActSpanMiddleware |
-| | `gen_ai.usage.input_tokens` | 本次模型调用输入 token 数 | ReActSpanMiddleware（监听 ModelCallEndEvent） |
-| | `gen_ai.usage.output_tokens` | 本次模型调用输出 token 数 | ReActSpanMiddleware（监听 ModelCallEndEvent） |
-| | `gen_ai.usage.cache_read_input_tokens` | 命中缓存的输入 token 数 | ReActSpanMiddleware（监听 ModelCallEndEvent） |
-| | `gen_ai.usage.total_tokens` | 输入+输出合计 token 数（派生值） | ReActSpanMiddleware（监听 ModelCallEndEvent） |
+| `react.iteration` | `react.iteration` | 当前迭代次数 | OtelTracingMiddleware |
+| | `react.stop_requested` | 是否请求停止 | OtelTracingMiddleware |
+| `llm.invoke` | `model.name` | 调用的模型名称（真实模型名，不再写死 AgentScope） | OtelTracingMiddleware |
+| | `gen_ai.operation.name` | 固定值 `chat` | OtelTracingMiddleware |
+| | `gen_ai.request.model` | 调用的模型名称 | OtelTracingMiddleware |
+| | `gen_ai.usage.input_tokens` | 本次模型调用输入 token 数 | OtelTracingMiddleware（监听 ModelCallEndEvent） |
+| | `gen_ai.usage.output_tokens` | 本次模型调用输出 token 数 | OtelTracingMiddleware（监听 ModelCallEndEvent） |
+| | `gen_ai.usage.cache_read_input_tokens` | 命中缓存的输入 token 数 | OtelTracingMiddleware（监听 ModelCallEndEvent） |
+| | `gen_ai.usage.total_tokens` | 输入+输出合计 token 数（派生值） | OtelTracingMiddleware（监听 ModelCallEndEvent） |
 
 ---
 
@@ -191,12 +191,11 @@ docker run -d --name jaeger \
 
 ```
 agent-core/.../tracing/
-├── ReActSpanMiddleware.java           # MiddlewareBase 接口实现（Agent/迭代层）
 ├── LlmMetrics.java                    # LLM 指标收集
-└── ObservabilityAutoConfiguration.java # Spring Boot 自动配置
+└── ObservabilityAutoConfiguration.java # Spring Boot 自动配置（注册框架原生 OtelTracingMiddleware）
 ```
 
-核心代码约 530 行，零侵入现有业务代码。
+核心代码量小，零侵入现有业务代码。
 
 > **注**：`OpenTelemetryTracer.java`（约 120 行）已在 2.0.0（GA）升级中删除。框架不再需要平台实现 `Tracer` 接口，改为内部直接使用 `GlobalOpenTelemetry`。
 

@@ -2,8 +2,8 @@ apiVersion: v2
 name: yunxi-agent-platform
 description: yunxi Agent Platform - Enterprise Multi-Agent Collaboration Framework
 type: application
-version: 2.0.0
-appVersion: "2.0.0"
+version: 2.0.3
+appVersion: "2.0.3"
 home: https://gitcode.com/chenyao813/yunxi-agent-platform
 sources:
   - https://gitcode.com/chenyao813/yunxi-agent-platform

@@ -48,3 +48,16 @@ yunxi:
       data-id: yunxi.mcp-servers.json
       group: YUNXI_MCP_GROUP
       service-name: yunxi-mcp-coordinator
+
+# ============================================================
+# Micrometer 指标导出（与 OTel 共用同一 OTLP 后端）
+#   - pipeline / text2sql / @Timed 等 Micrometer 指标，在配置了 OTLP 端点时
+#     一并经 OTLP 导出；未配置端点则仅保留 Spring Actuator 本地采集。
+#   - 端点复用 otel.exporter.otlp.endpoint（与链路追踪、LlmMetrics 同源）。
+# ============================================================
+management:
+  metrics:
+    export:
+      otlp:
+        enabled: true
+        endpoint: ${otel.exporter.otlp.endpoint:}

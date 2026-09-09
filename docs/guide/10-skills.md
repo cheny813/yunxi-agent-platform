@@ -175,7 +175,7 @@ agentscope:
 
 ## 框架演进说明
 
-> **当前版本（基于 AgentScope-Java 2.0.0 GA）**：技能系统由框架原生 `AgentSkillRepository` 托管，提供 `skill_manage`（列出、启用、禁用技能）与 `skill_propose`（提案新技能）等内置工具。
+> **当前版本（基于 AgentScope-Java 2.0.3 GA）**：技能系统由框架原生 `AgentSkillRepository` 托管，提供 `skill_manage`（列出、启用、禁用技能）与 `skill_propose`（提案新技能）等内置工具。
 >
 > **MUSE 自进化引擎（已实现）**：在框架技能系统之上提供三个闭环能力——`muse_skill_eval`（沙箱评估技能测试）、`muse_skill_evolve`（LLM 修补失败技能）、`muse_skill_prune`（TUI 剪枝与合并）。详见下方「MUSE 自进化引擎」专节和 [agent-muse README](../../agent-muse/README.md)。
 >

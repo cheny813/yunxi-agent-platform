@@ -24,7 +24,7 @@ import reactor.core.publisher.SignalType;
  * <ol>
  *   <li>构造 {@link ExecutionContext}（request + conversation 关联）；</li>
  *   <li>拦截器链 {@code preHandleAll}（AuthResolve → Memory → IntentPipeline →
- *       RagRetrieval → PermissionContext → Audit），失败时收口为错误结果；</li>
+ *       RagRetrieval → Audit），失败时收口为错误结果；</li>
  *   <li>策略选择（BlockingStrategy / StreamingStrategy / StructuredBlockingStrategy）
  *       并执行（首个 supports 的胜出）；</li>
  *   <li>流式通道：事件算子链（Metrics → PhaseTracker）→ 协议适配器
