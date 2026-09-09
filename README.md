@@ -79,6 +79,10 @@ docker compose up -d
 
 Ollama 向量嵌入服务建议在宿主机安装（`ollama pull bge-m3`），由应用通过 `localhost:11434` 调用。
 
+> **首次体验注意（MCP 外部服务）**：`agent-config/src/main/resources/config/mcp-core.yml` 中 `database`、`redis`、`milvus`、`mcp-nutrition`、`formfill` 五个内置 MCP 服务默认 `enabled: true`，它们依赖独立的 MCP 服务进程（端口 40101 / 40102 / 40103 / 40602 / 40601，来自配套的 `yunxi-mcp-servers` 项目）。若这些外部进程未启动，平台会因连接超时而无法正常运行。
+>
+> 初体验只想先把平台跑起来时，请将上述服务的 `enabled` 由 `true` 改为 `false`（或直接设置环境变量 `MCP_DATABASE_ENABLED=false`、`MCP_REDIS_ENABLED=false`、`MCP_MILVUS_ENABLED=false`、`MCP_NUTRITION_ENABLED=false`、`MCP_FORMFILL_ENABLED=false` 覆盖）。全部关闭后平台仍可正常启动，仅对应 MCP 工具暂不可用；待外部 MCP 服务就绪后，可改回 `true`，或通过「MCP 动态注册」API 运行时接入，无需重启。
+
 **关闭服务**：`docker compose down`；**彻底重置**：`docker compose down -v && docker compose up -d`
 
 ### 第二步：启动应用
