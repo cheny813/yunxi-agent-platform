@@ -20,10 +20,10 @@
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
 | **意图引擎（智能大脑中枢）** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型、rule/llm/hybrid 分类通道、actuator 热更新、意图路由，业务数据可配置替换 |
-| **执行引擎（智能手脚协调器）** | `AgentExecutionEngine` 门面统一收口所有调用形态（同步/流式/结构化/取消），6 拦截器可插拔链（AuthResolve→Memory→IntentPipeline→RagRetrieval→PermissionContext→Audit）+ 3 执行策略自动路由（Blocking/Streaming/StructuredBlocking）+ 事件算子链（Metrics/PhaseTracker）→ 协议适配器，接入新协议仅需新增 `AgentEventAdapter` 实现 |
+| **执行引擎（智能手脚协调器）** | `AgentExecutionEngine` 门面统一收口所有调用形态（同步/流式/结构化/取消），5 拦截器可插拔链（AuthResolve→Memory→IntentPipeline→RagRetrieval→Audit）+ 3 执行策略自动路由（Blocking/Streaming/StructuredBlocking）+ 事件算子链（Metrics/PhaseTracker）→ 协议适配器，接入新协议仅需新增 `AgentEventAdapter` 实现 |
 | **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.3 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
-| **MCP 协议** | 完整支持 Model Context Protocol，34 个 MCP 服务器可按需接入（sse/stdio/http 三种传输，核心 9 个默认启用） |
+| **MCP 协议** | 完整支持 Model Context Protocol，内置 9 个 MCP 服务定义（sse/stdio/http 三种传输），其中 database/redis/milvus/mcp-nutrition/formfill 共 5 个默认启用，其余可一键开启；亦支持接入外部 30+ MCP 服务生态 |
 | **MCP 动态注册** | 运行期通过 REST API 动态注册/注销 MCP 服务器，基于 Nacos 配置中心实现目录持久化与跨实例广播，工具即时注入 Agent Toolkit，无需重启；目标不可达时自动重连降级 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
 | **技能系统** | 启用 AgentScope-Java 2.0 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |

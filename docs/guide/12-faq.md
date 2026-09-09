@@ -67,7 +67,7 @@ docker compose ps
 
 ```yaml
 server:
-  port: 40001  # 修改为未被占用的端口（agent-core 默认 40001）
+  port: 40001  # 修改为未被占用的端口（平台 server.yml 默认 40001，由 agent-config 提供）
 ```
 
 **排查方法**：

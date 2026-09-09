@@ -121,7 +121,7 @@ config/       ← 配置类（AgentscopeExtensionProperties、Redis 后端等）
 conversation/ ← 对话编排（ChatAppService、会话管理）
 controller/   ← REST 控制器（对话、Agent、技能、文件、配置管理、MCP 动态注册）
 file/         ← 文件处理（上传、向量化入库）
-gateway/      ← （历史包，已移除：统一入口逻辑收敛至 AgentExecutionEngine + ChatAppService）
+gateway/      ← SSE 消息通道（SseEmitterManager / ProgressListener）
 intent/       ← 意图引擎（多域 DomainRegistry、rule/llm/hybrid 分类、reload 热更新）
 lifecycle/    ← 生命周期管理
 memory/       ← 记忆场景管理（MemoryScene、MemorySceneRegistry）
@@ -204,7 +204,7 @@ tools:
               │ 依赖
               ▼
 ┌─────────────────────────────────────────┐
-│       AgentScope V2.0 核心运行时          │
+│       AgentScope 2.0.3 核心运行时          │
 │  Agent/Model/Toolkit/Middleware/State    │
 └─────────────────────────────────────────┘
 ```
