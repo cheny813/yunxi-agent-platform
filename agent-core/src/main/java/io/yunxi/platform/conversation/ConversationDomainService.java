@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.yunxi.platform.aistio.registry.ActiveSessionRegistry;
 import io.yunxi.platform.cache.CacheNamespaces;
 import io.yunxi.platform.persistence.repository.ConversationRepository;
 import io.yunxi.platform.shared.dto.ConversationInfoDto;
@@ -57,6 +58,9 @@ public class ConversationDomainService {
     /** 缓存提供器 */
     private final CacheProvider cacheProvider;
 
+    /** aistio 活跃会话索引（会话创建 / 删除时同步，作为 /agentscope/sessions 数据源） */
+    private final ActiveSessionRegistry activeSessionRegistry;
+
     /** 会话列表缓存 TTL（分钟），可通过 conversation.session-cache-ttl-minutes 配置覆盖 */
     @Value("${conversation.session-cache-ttl-minutes:5}")
     private long sessionCacheTtlMinutes = 5;
@@ -75,9 +79,11 @@ public class ConversationDomainService {
     public ConversationDomainService(ConversationMapper conversationMapper,
             ConversationRepository conversationRepository,
             CacheProvider cacheProvider,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ActiveSessionRegistry activeSessionRegistry) {
         this.conversationRepository = conversationRepository;
         this.cacheProvider = cacheProvider;
+        this.activeSessionRegistry = activeSessionRegistry;
         log.info("会话领域服务初始化，存储类型: {}", conversationRepository.getStorageType());
     }
 
@@ -123,6 +129,9 @@ public class ConversationDomainService {
         invalidateUserConversationList(userId);
 
         log.info("创建会话: id={}, agentName={}, userId={}, title={}", id, agentName, userId, title);
+
+        // 同步写入 aistio 活跃会话索引（作为 /agentscope/sessions 数据源）
+        activeSessionRegistry.register(id, userId, agentName, entity.getCreatedAt());
 
         ConversationInfoDto info = new ConversationInfoDto();
         info.setId(id);
@@ -335,6 +344,8 @@ public class ConversationDomainService {
 
         // 清理本地缓存
         localCache.remove(conversationId);
+        // 同步移除 aistio 活跃会话索引
+        activeSessionRegistry.remove(conversationId);
         // 清理 Redis 缓存（忽略失败）
         try {
             cacheProvider.delete(CacheNamespaces.CONVERSATION, conversationId);

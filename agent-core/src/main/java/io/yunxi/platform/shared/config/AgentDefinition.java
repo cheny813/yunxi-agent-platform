@@ -49,6 +49,12 @@ public class AgentDefinition {
     /** 是否启用 */
     private boolean enabled = true;
 
+    /**
+     * 是否隐藏（不出现在前端 /agents 下拉列表），但仍会构建实例，
+     * 可被 Supervisor 作为子 Agent 调用。用于隐藏内部专家 Agent。
+     */
+    private boolean hidden = false;
+
     // ========== Prompt ==========
 
     /** 系统提示词 */
@@ -157,6 +163,14 @@ public class AgentDefinition {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isHidden() {
+        return hidden;
+    }
+
+    public void setHidden(boolean hidden) {
+        this.hidden = hidden;
     }
 
     public String getPrompt() {

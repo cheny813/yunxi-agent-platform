@@ -18,13 +18,13 @@ import static org.junit.jupiter.api.Assertions.*;
  * 端到端集成测试（新架构）。
  *
  * <p>覆盖：概念识别 → Agent 对话 → SSE 通知 的完整链路，
- * 以及配置加载与基础性能。对话使用通用助手 general-assistant，
+ * 以及配置加载与基础性能。对话使用居民营养配餐助手 resident-nutrition-assistant，
  * 调用真实的本地 LLM（凭证见 src/test/resources/application.yml）。</p>
  */
 @SpringBootTest(classes = {AgentPlatformApplication.class, IntegrationTestConfig.class})
 class EndToEndIntegrationTest {
 
-    private static final String AGENT = "general-assistant";
+    private static final String AGENT = "resident-nutrition-assistant";
 
     @Autowired
     private ChatAppService chatAppService;

@@ -253,8 +253,16 @@ public class ChatAppService {
                     conversation.addMessage(userMsg);
                 }
 
-                return result.getStream()
-                        .doOnComplete(() -> log.info("基于会话的流式对话完成: ConversationId={}", conversationId));
+        long clientStartNanos = System.nanoTime();
+        return result.getStream()
+                .doOnSubscribe(s -> log.info("[TRACE-CLIENT] 客户端流订阅(开始) conv={} thread={}",
+                        conversationId, Thread.currentThread().getName()))
+                .doOnComplete(() -> log.info("基于会话的流式对话完成: ConversationId={}", conversationId))
+                .doFinally(sig -> {
+                    long ms = (System.nanoTime() - clientStartNanos) / 1_000_000;
+                    log.info("[TRACE-CLIENT] 客户端流终结 conv={} signal={} elapsedMs={}",
+                            conversationId, sig, ms);
+                });
             } catch (Exception e) {
                 log.error("基于会话的流式对话失败: ConversationId={}", conversationId, e);
                 return Flux.just(sseMessageBuilder.buildErrorMessage(AgentExecutionEngine.formatAgentError(e)));

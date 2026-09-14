@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 
 # 获取当前目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 echo -e "${BLUE}项目根目录: $PROJECT_ROOT${NC}"
 
@@ -32,18 +32,18 @@ check_project_structure() {
     fi
     
     # 检查配置文件
-    if [ ! -f "$PROJECT_ROOT/src/main/resources/application.yml" ]; then
+    if [ ! -f "$PROJECT_ROOT/agent-config/src/main/resources/application.yml" ]; then
         missing_files+=("application.yml")
     fi
     
-    if [ ! -d "$PROJECT_ROOT/src/main/resources/config" ]; then
+    if [ ! -d "$PROJECT_ROOT/agent-config/src/main/resources/config" ]; then
         missing_files+=("config/目录")
     fi
     
     # 检查配置文件
     config_files=("server.yml" "cache.yml" "async.yml")
     for config in "${config_files[@]}"; do
-        if [ ! -f "$PROJECT_ROOT/src/main/resources/config/$config" ]; then
+        if [ ! -f "$PROJECT_ROOT/agent-config/src/main/resources/config/$config" ]; then
             missing_files+=("config/$config")
         fi
     done
@@ -109,21 +109,21 @@ check_performance_config() {
     fi
     
     # 检查数据库连接池配置
-    if grep -q "hikari" "$PROJECT_ROOT/src/main/resources/config/server.yml"; then
+    if grep -q "hikari" "$PROJECT_ROOT/agent-config/src/main/resources/config/server.yml"; then
         echo -e "${GREEN}✅ HikariCP连接池配置已设置${NC}"
     else
         echo -e "${YELLOW}⚠️  HikariCP连接池配置未找到${NC}"
     fi
     
     # 检查异步配置
-    if grep -q "async" "$PROJECT_ROOT/src/main/resources/config/async.yml"; then
+    if grep -q "async" "$PROJECT_ROOT/agent-config/src/main/resources/config/async.yml"; then
         echo -e "${GREEN}✅ 异步处理配置已设置${NC}"
     else
         echo -e "${YELLOW}⚠️  异步处理配置未找到${NC}"
     fi
     
     # 检查缓存配置
-    if grep -q "cache" "$PROJECT_ROOT/src/main/resources/config/cache.yml"; then
+    if grep -q "cache" "$PROJECT_ROOT/agent-config/src/main/resources/config/cache.yml"; then
         echo -e "${GREEN}✅ 缓存配置已设置${NC}"
     else
         echo -e "${YELLOW}⚠️  缓存配置未找到${NC}"
@@ -135,7 +135,7 @@ check_monitoring_config() {
     echo -e "\n${BLUE}4. 验证监控配置${NC}"
     
     # 检查Actuator端点
-    if grep -q "management" "$PROJECT_ROOT/src/main/resources/application.yml"; then
+    if grep -q "management" "$PROJECT_ROOT/agent-config/src/main/resources/application.yml"; then
         echo -e "${GREEN}✅ Spring Boot Actuator已配置${NC}"
     else
         echo -e "${YELLOW}⚠️  Spring Boot Actuator未配置${NC}"
@@ -204,12 +204,12 @@ yunxi-agent-platform 优化验证报告
 
 3. 性能配置验证:
    - JVM配置: $(if grep -q "Xms" "$PROJECT_ROOT/pom.xml"; then echo "已设置"; else echo "未设置"; fi)
-   - 连接池: $(if grep -q "hikari" "$PROJECT_ROOT/src/main/resources/config/server.yml"; then echo "已配置"; else echo "未配置"; fi)
-   - 异步处理: $(if grep -q "async" "$PROJECT_ROOT/src/main/resources/config/async.yml"; then echo "已配置"; else echo "未配置"; fi)
-   - 缓存配置: $(if grep -q "cache" "$PROJECT_ROOT/src/main/resources/config/cache.yml"; then echo "已配置"; else echo "未配置"; fi)
+   - 连接池: $(if grep -q "hikari" "$PROJECT_ROOT/agent-config/src/main/resources/config/server.yml"; then echo "已配置"; else echo "未配置"; fi)
+   - 异步处理: $(if grep -q "async" "$PROJECT_ROOT/agent-config/src/main/resources/config/async.yml"; then echo "已配置"; else echo "未配置"; fi)
+   - 缓存配置: $(if grep -q "cache" "$PROJECT_ROOT/agent-config/src/main/resources/config/cache.yml"; then echo "已配置"; else echo "未配置"; fi)
 
 4. 监控配置验证:
-   - Actuator: $(if grep -q "management" "$PROJECT_ROOT/src/main/resources/application.yml"; then echo "已配置"; else echo "未配置"; fi)
+   - Actuator: $(if grep -q "management" "$PROJECT_ROOT/agent-config/src/main/resources/application.yml"; then echo "已配置"; else echo "未配置"; fi)
    - 性能监控: $(if [ -f "$PROJECT_ROOT/scripts/perf/performance-monitor.groovy" ]; then echo "已创建"; else echo "未创建"; fi)
    - 线程池监控: $(if grep -q "ThreadPoolMonitor" "$PROJECT_ROOT" -r; then echo "已创建"; else echo "未创建"; fi)
 

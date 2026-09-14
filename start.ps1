@@ -130,6 +130,14 @@ function Sync-StaticResources {
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $scriptDir
 
+# 统一日志目录：所有非控制台日志（Spring Boot 文件日志、各 MCP 服务日志等）写入 <仓库根>/logs，
+# 避免从子模块（如 agent-core）启动时散落到 agent-core/logs 等位置。
+# logback 通过 ${LOG_DIR:-...} 读取此变量；同时用 -DLOG_DIR 与 $env:LOG_DIR 双写，
+# 覆盖 java -jar 与 maven(spring-boot:run) 两种启动方式。
+$LogDir = Join-Path $scriptDir 'logs'
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
+$env:LOG_DIR = $LogDir
+
 # 【智能体框架 服务端口】（提前定义，供停止旧进程逻辑使用）
 $SERVER_PORT = "40001"
 
@@ -163,6 +171,7 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
+# 大模型密钥请通过环境变量 DASHSCOPE_API_KEY 注入，切勿将真实密钥提交到仓库
 $DASHSCOPE_API_KEY = "***REDACTED***"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
@@ -190,17 +199,30 @@ if ($Clean) { $mode = "clean" }
 
 # JAR 路径（动态匹配打包产物，避免版本号升版后硬编码失效）
 $jarFile = Join-Path $scriptDir "agent-app\target\agent-app-*.jar"
-$candidateJars = @(Resolve-Path -Path $jarFile -ErrorAction SilentlyContinue)
-if ($candidateJars.Count -eq 0) {
-    Write-Host "[ERROR] 未在 agent-app\target 找到打包产物 agent-app-*.jar，请先执行 mvn package" -ForegroundColor Red
-    Read-Host "Press any key to continue..."
-    exit 1
+
+# 解析真实 JAR 路径：匹配 agent-app-*.jar 并把真实路径写回 $jarFile。
+# 返回 $true 表示找到，否则 $false。clean 模式在 mvn 编译后调用，其余模式在开头调用。
+function Resolve-AgentJar {
+    $candidateJars = @(Resolve-Path -Path $jarFile -ErrorAction SilentlyContinue)
+    if ($candidateJars.Count -eq 0) {
+        return $false
+    }
+    if ($candidateJars.Count -gt 1) {
+        Write-Host "[WARN] 发现多个 agent-app-*.jar，默认使用最新修改的一个" -ForegroundColor Yellow
+        $script:jarFile = ($candidateJars | Sort-Object { (Get-Item $_).LastWriteTime } -Descending | Select-Object -First 1).Path
+    } else {
+        $script:jarFile = $candidateJars[0].Path
+    }
+    return $true
 }
-if ($candidateJars.Count -gt 1) {
-    Write-Host "[WARN] 发现多个 agent-app-*.jar，默认使用最新修改的一个" -ForegroundColor Yellow
-    $jarFile = ($candidateJars | Sort-Object { (Get-Item $_).LastWriteTime } -Descending | Select-Object -First 1).Path
-} else {
-    $jarFile = $candidateJars[0].Path
+
+# clean 模式会先编译再启动，跳过此处检查；其余模式依赖已存在的 JAR
+if ($mode -ne "clean") {
+    if (-not (Resolve-AgentJar)) {
+        Write-Host "[ERROR] 未在 agent-app\target 找到打包产物 agent-app-*.jar，请先执行 mvn package" -ForegroundColor Red
+        Read-Host "Press any key to continue..."
+        exit 1
+    }
 }
 
 # 通用 JVM 参数
@@ -210,7 +232,8 @@ $javaArgs = @(
     "-Dsun.stdout.encoding=UTF-8",
     "-Dsun.stderr.encoding=UTF-8",
     "-Dconsole.encoding=UTF-8",
-    "-Djava.net.preferIPv4Stack=true"
+    "-Djava.net.preferIPv4Stack=true",
+    "-DLOG_DIR=$LogDir"
 )
 
 # 配置 JVM 参数（用于 normal / clean 模式）
@@ -308,7 +331,7 @@ switch ($mode) {
         }
 
         Write-Host "[INFO] Packaging (clean install)..."
-        & mvn clean install -DskipTests
+        & mvn -pl agent-app -am clean install -DskipTests "-Djacoco.skip=true"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[ERROR] Package failed!" -ForegroundColor Red
             Invoke-Pause
@@ -316,6 +339,12 @@ switch ($mode) {
         }
 
         Write-Host "[SUCCESS] Package complete"
+
+        if (-not (Resolve-AgentJar)) {
+            Write-Host "[ERROR] 打包完成但未找到 agent-app-*.jar，请检查上方 maven 编译输出" -ForegroundColor Red
+            Invoke-Pause
+            exit 1
+        }
         Write-Host ""
 
         Write-Host "[INFO] Starting application..."
@@ -337,7 +366,7 @@ switch ($mode) {
         if (-not (Test-Path $jarFile)) {
             Write-Host "[INFO] Not packaged, executing packaging..."
             Write-Host ""
-            & mvn clean install -DskipTests
+            & mvn -pl agent-app -am clean install -DskipTests "-Djacoco.skip=true"
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "[ERROR] Package failed!" -ForegroundColor Red
                 Invoke-Pause

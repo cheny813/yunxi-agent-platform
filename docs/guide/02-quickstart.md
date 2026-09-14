@@ -101,7 +101,7 @@ docker compose up -d
 docker compose ps
 ```
 
-启动的容器清单：
+启动的容器清单（默认 profile，共 8 个）：
 
 | 容器名 | 镜像 | 端口 | 说明 |
 |--------|------|------|------|
@@ -113,6 +113,20 @@ docker compose ps
 | yunxi-otel-collector | otel/opentelemetry-collector-contrib | 4318 | 链路追踪接收器 |
 | yunxi-jaeger | jaegertracing/all-in-one | 16686（WebUI）/ 4317（gRPC） | 链路追踪可视化 |
 | yunxi-attu | zilliz/attu:v2.3.3 | 8000 | Milvus Web 管理界面 |
+
+> **可选：启用 AgentScope-Service（aistio）管控面**。需要 Agent 管控 / 治理可视化 / 会话干预能力时，追加 `--profile aistio` 一并拉起：
+> ```powershell
+> docker compose --profile aistio up -d
+> ```
+> aistio 由 `agentscope-service` 仓库源码本地构建（无公开镜像），**启动前须先在 `AISTIO_SRC` 指向的源码目录完成构建**（详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio) 与 [配置指南](./06-configuration.md#aistio)）。该 profile 包含 5 个额外容器，见下表：
+
+| 容器名 | 镜像/构建 | 端口 | 说明 |
+|--------|----------|------|------|
+| yunxi-aistio-db | postgres:17（构建） | 5432 | aistio 元数据库（builder/builder） |
+| yunxi-aistio-control | aistiod（Go，构建） | 8081（内部） | 控制面 |
+| yunxi-aistio-data | service-dataplane（Java，构建） | 8082（内部） | 数据面 |
+| yunxi-aistio-scheduler | service-scheduler（Java，构建） | 8083（内部） | 调度面 |
+| yunxi-aistio-gateway | service-gateway（Java，构建） | 18080（对外） | 网关（对外发布到主机 18080，避开 Nacos 控制台 8080） |
 
 首次启动约 30-60 秒。Ollama 向量嵌入需在宿主机单独安装：
 
@@ -127,6 +141,10 @@ ollama pull bge-m3
 docker compose down          # 停止但保留数据
 docker compose down -v       # 停止并清除所有数据（彻底重置）
 ```
+
+> **`docker compose up -d` 不含 5 个内置 MCP 服务**：它们来自配套项目 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers)，是独立 Java 进程（端口 40101 / 40102 / 40103 / 40602 / 40601）。`mcp-core.yml` 中 `database` / `redis` / `milvus` / `nutrition` / `formfill` 默认 `enabled: true`，外部进程未就绪时平台会连接超时。需要这些 MCP 工具时，运行 `scripts/start-stack.ps1` 一键拉起（详见 [仓库 README · 启动内置 MCP 外部服务](../../README.md)）；暂不需要也可把对应 `enabled` 设为 `false` 先跑平台。
+>
+> **关闭这些服务**：`start-stack.ps1` 把 5 个 MCP 以隐藏窗口的 java 进程后台启动、aistio 以 Docker 容器运行，可用配套的 `scripts/stop-stack.ps1` 一键关闭（`.\scripts\stop-stack.ps1`，或用 `-IncludeYunxi` 连 yunxi 平台一并关闭）。MCP 日志在 `logs/mcp/<服务名>.out.log`，aistio 日志用 `docker compose --profile aistio logs -f`。详见 [仓库 README · 关闭外部依赖栈](../../README.md)。
 
 ### 检查环境
 

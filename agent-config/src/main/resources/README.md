@@ -30,12 +30,12 @@ agent-config/src/main/resources/
 │   └── application.yml
 │
 ├── agent-definitions/                 # 【Agent 定义】由 AgentDefinitionLoader 加载
-│   ├── nutrition-assistant.yml        #   校园餐营养助手 (Supervisor + 4 专家，校园人群口径)
-│   ├── resident-nutrition-assistant.yml #  居民营养配餐助手 (Supervisor + 4 专家，居民人群口径)
-│   ├── nutrition-experts.yml          #   专家 Agent (dish-searcher 等)
+│   ├── resident-nutrition-assistant.yml #  居民营养配餐助手 (Supervisor + 3 专家，唯一对外食谱 Agent)
 │   ├── pagegen-assistant.yml          #   页面生成助手
 │   ├── safety-assistant.yml           #   食品安全助手
-│   └── food-chat.yml                  #   食品聊天助手 (单 Agent，轻量)
+│   ├── dish-searcher.yml              #   菜品搜索专家 (内部子 Agent，hidden)
+│   ├── nutrition-evaluator.yml        #   营养评估专家 (内部子 Agent，hidden)
+│   └── recipe-composer.yml            #   食谱编排专家 (内部子 Agent，hidden)
 │
 ├── page-configs/                      # 【Page Agent 配置】由 PageAgentService 加载
 │   └── page-agent-config.yml          #   页面类型提示词 + 工具定义，非 Agent
@@ -119,7 +119,7 @@ AgentDefinitionLoader 启动时扫描：
 
 ```yaml
 agent:
-  name: nutrition-assistant
+  name: resident-nutrition-assistant
   prompt: "你是一个营养助手..."
   orchestration:
     pattern: supervisor          # supervisor | pipeline | routing | single

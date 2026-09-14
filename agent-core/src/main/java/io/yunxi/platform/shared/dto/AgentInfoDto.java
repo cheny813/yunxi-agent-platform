@@ -24,6 +24,9 @@ public class AgentInfoDto {
 
     private Instant createdAt;
 
+    /** 是否隐藏（不出现在前端下拉列表，仍可被 Supervisor 调用） */
+    private boolean hidden = false;
+
     public AgentInfoDto() {
     }
 
@@ -97,5 +100,13 @@ public class AgentInfoDto {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public boolean isHidden() {
+        return hidden;
+    }
+
+    public void setHidden(boolean hidden) {
+        this.hidden = hidden;
     }
 }

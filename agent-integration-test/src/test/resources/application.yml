@@ -7,7 +7,7 @@
 #   3. 禁用默认启用的 MCP 服务器（本地未运行 mcp-nutrition/database/redis/milvus/knowledge/puppeteer），
 #      避免 AgentConfigurer 启动时对不可达端点 buildAsync().block() 建连，导致 Agent 注册失败；
 #   4. Milvus 本地可用（默认 192.168.11.48:19530 可达），保留 milvus.enabled=true，
-#      让 SyncEngine 完整跑通 MySQL→Milvus ETL（外部库 nutrition_zhaoxian → 向量集合）；
+#      让 SyncEngine 完整跑通 MySQL→Milvus ETL（外部库 yunxi_nutrition → 向量集合）；
 #   5. 提供确定性的 concepts 配置，供 ConceptRegistry 集成测试做断言。
 #
 # 说明：Redis / MySQL / LLM 由本地基建提供（见 start.ps1）。
@@ -34,7 +34,7 @@ spring:
       database: 0
       timeout: 3000ms
 
-# 外部库（营养平台库 nutrition_zhaoxian @ 192.168.10.153:3306，与 mcp-database 服务同源，
+# 外部库（营养平台库 yunxi_nutrition @ 192.168.10.153:3306，与 mcp-database 服务同源，
 # 见 yunxi-mcp-servers/mcp-database/src/main/resources/application.yml:10-18）。
 # 重新启用同步，让 SyncEngine 在启动期真实连接外部库做 MySQL→Milvus ETL 验证；
 # Milvus 本地可用（192.168.11.48:19530），upsert 阶段会真正写入向量集合，完整验证
@@ -43,25 +43,25 @@ spring:
 dish-sync:
   enabled: true
   database:
-    jdbc-url: jdbc:mysql://192.168.10.153:3306/nutrition_zhaoxian?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    jdbc-url: jdbc:mysql://192.168.10.153:3306/yunxi_nutrition?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
     password: root
 static-sync:
   enabled: true
   database:
-    jdbc-url: jdbc:mysql://192.168.10.153:3306/nutrition_zhaoxian?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    jdbc-url: jdbc:mysql://192.168.10.153:3306/yunxi_nutrition?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
     password: root
 
 agentscope:
   core:
     # 本地 LLM 凭证（与 start.ps1 保持一致）
-    api-key: ***REDACTED***
+    api-key: ${LLM_API_KEY:your-dashscope-api-key}
     model-name: qwen-plus
     provider: dashscope
     # DashScope Provider 专属配置（框架实际读取此段）
     dashscope:
-      api-key: ***REDACTED***
+      api-key: ${LLM_API_KEY:your-dashscope-api-key}
       model: qwen-plus
     # 禁用默认启用的 MCP 服务器（本地未运行）
       mcp-servers:

@@ -106,12 +106,16 @@ public class AgentExecutionEngine {
 
         try {
             if (request.isStreaming()) {
+                long streamStartNanos = System.nanoTime();
                 @SuppressWarnings("unchecked")
                 Flux<AgentEvent> events = (Flux<AgentEvent>) strategy.execute(ctx);
                 Flux<AgentEvent> operated = operatorChain.apply(events, ctx);
                 Flux<String> stream = composeStream(operated, ctx)
                         // 流式通道 postHandle 收尾：流终结（完成/错误/取消）时触发审计等无流式依赖的收尾
                         .doFinally(sig -> {
+                            long ms = (System.nanoTime() - streamStartNanos) / 1_000_000;
+                            log.info("[TRACE-ENGINE] 流终结 signal={} elapsedMs={} agent={} conv={}",
+                                    sig, ms, request.getAgentName(), request.getConversationId());
                             if (sig == SignalType.CANCEL) {
                                 ctx.setExecutionError("客户端取消");
                             } else if (sig == SignalType.ON_ERROR && ctx.getExecutionError() == null) {
@@ -178,7 +182,17 @@ public class AgentExecutionEngine {
         // 内容事件流：算子链结果 → 适配器转换 → 双层错误兜底
         // 结束信号由 PhaseTracker 注入的 DONE 阶段标记（agent_status "处理完成"）承担，
         // 无需单独追加 finishFlux。
-        Flux<String> contentFlux = events
+        // 仅保留空闲超时（.timeout）：单次事件流长时间静默时触发，兜底单次大模型调用卡死；
+        // 注意：此处不做"墙上时钟总时长上限"式硬截止——长程任务（A2A 多轮编排、编码等）
+        // 本就会持续产出事件，总时长上限会误杀正常长任务。agent 执行的生命周期由调用方
+        // （ChatAppService）在客户端流终止时显式 cancel 来兜底，而非在此强加时间上限。
+        // [TRACE] 事件级追踪：打印 agent 运行产生的每一个事件类型。若此处 streamEvents 流已
+        // onComplete（[TRACE-RUN] 打印），但模型 transport 仍在收 SSE chunk（DEBUG 日志），
+        // 即证明运行脱离了响应式订阅链——这是"前端流结束后端还在跑"的根因判据。
+        Flux<AgentEvent> tracedEvents = events
+                .doOnNext(e -> log.info("[TRACE-EVENT] type={} agent={} conv={}",
+                        e.getType(), ctx.getAgentName(), ctx.getConversationId()));
+        Flux<String> contentFlux = tracedEvents
                 .timeout(timeout)
                 .flatMapSequential(event -> Flux.fromIterable(eventAdapter.convert(event, ctx)))
                 .onErrorResume(e -> {

@@ -73,12 +73,13 @@ spring:
     deserialization:
       fail-on-unknown-properties: false
 
-# 激活的 profile 列表
-# 注意：config/*.yml 是通过 imports.yml（spring.config.import）加载的，与这里的 profiles 无关。
-# 此列表仅用于激活 @Profile 注解的 Spring Bean，目前没有 Bean 使用这些 profile 名。
-# 如有自定义配置需要按 profile 隔离时再启用对应值。
-# spring.profiles:
-#   active: server,datasource,cache,async,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,resilience,file-upload,a2a-pipeline,gateway,business,text2sql
+  # 激活的 profile 列表。
+  # 注意：config/*.yml 是通过 imports.yml（spring.config.import）加载的，与这里的 profiles 无关。
+  # 此列表仅用于激活 @Profile 注解的 Spring Bean（目前多数模块未使用这些 profile 名隔离，
+  # 保留以便日后按需按 profile 隔离自定义配置）。
+  # 可用 profile 名见 docs/guide/06-configuration.md。
+  profiles:
+    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,mcp-business,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql
 
 # ============================================================
 # 日志配置
@@ -90,6 +91,53 @@ logging:
   # 注意：DEBUG 级别会打印较完整的模型请求/响应体，生产环境可按需关闭。
   level:
     io.agentscope.core.model: DEBUG
+    # 流式响应与长连接保活会把每个 SSE data chunk 都打一条 DEBUG（"Received SSE data chunk"），
+    # 一次对话可达数百条且与业务无关，单独收敛；连接级异常仍以 INFO/WARN 透出。
+    io.agentscope.core.model.transport: INFO
+
+# ============================================================
+# yunxi 业务配置
+# ============================================================
+yunxi:
+  observability:
+    enabled: true
+
+  # ============================================================
+  # aistio 集成（agentscope-service 控制面观测 / 治理对接）
+  # 默认关闭；开启后暴露 /agentscope/* 契约端点并启动时注册数据面。
+  # 详见 docs/agentscope-service-integration-design.md
+  # ============================================================
+  aistio:
+    enabled: false
+    control-plane-url: http://localhost:18080
+    internal-token: compose-local-internal-token-at-least-32chars
+    # 注意：routingKey（契约基址）= base-url + /agentscope，故此处只填 host:port，不要带 /agentscope。
+    # aistio 控制面容器需能访问到此地址：yunxi 在宿主机、aistio 在 docker 时，用 host.docker.internal；
+    # 若二者同处一个 docker 网络，改为对应服务名或容器间 localhost。
+    base-url: http://host.docker.internal:40001
+    agent-name: yunxi-agent-platform
+    namespace: default
+    contract-level: 3
+    advertise-context: true
+    advertise-subagents: true
+    advertise-workspaces: true
+    command-enabled: false
+    context-window: 20
+
+  # ============================================================
+  # MCP 动态注册协调底座（Nacos 3.2.4）
+  # 单机验证：server-addr 指向 docker 启动的 Nacos 8848；集群部署改此处即可。
+  # ============================================================
+  mcp:
+    nacos:
+      enabled: true
+      server-addr: 127.0.0.1:8848
+      namespace: ""
+      username: ""
+      password: ""
+      data-id: yunxi.mcp-servers.json
+      group: YUNXI_MCP_GROUP
+      service-name: yunxi-mcp-coordinator
 
 # ============================================================
 # 运维端点和健康检查
@@ -101,3 +149,15 @@ management:
   health:
     elasticsearch:
       enabled: false                   # 未安装 ES，避免 WARN
+
+  # ============================================================
+  # Micrometer 指标导出（与 OTel 共用同一 OTLP 后端）
+  #   - pipeline / text2sql / @Timed 等 Micrometer 指标，在配置了 OTLP 端点时
+  #     一并经 OTLP 导出；未配置端点则仅保留 Spring Actuator 本地采集。
+  #   - 端点复用 otel.exporter.otlp.endpoint（与链路追踪、LlmMetrics 同源）。
+  # ============================================================
+  metrics:
+    export:
+      otlp:
+        enabled: true
+        endpoint: ${otel.exporter.otlp.endpoint:}

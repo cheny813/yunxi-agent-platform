@@ -529,9 +529,9 @@
             color: #3b82f6;
         }
         .tool-call-indicator.error {
-            background: #fef2f2;
-            border-color: #fecaca;
-            color: #dc2626;
+            background: #fffbeb;
+            border-color: #fde68a;
+            color: #d97706;
         }
         .tool-call-indicator .tool-spinner {
             width: 12px;
@@ -1178,11 +1178,9 @@
                 <div class="empty-state" id="emptyState">
                     <div class="empty-icon">✨</div>
                     <h3>欢迎使用 AI 智能助手</h3>
-                    <p>我可以帮您完成各种任务，比如食谱生成、营养分析等</p>
+                    <p>我可以根据你选择的 Agent 提供帮助，切换上方 Agent 即可切换能力。</p>
                     <div class="quick-prompts">
-                        <span class="quick-prompt" onclick="sendQuickPrompt('帮我生成一份健康午餐食谱')">帮我生成午餐食谱</span>
-                        <span class="quick-prompt" onclick="sendQuickPrompt('分析这份食谱的营养成分')">分析营养成分</span>
-                        <span class="quick-prompt" onclick="sendQuickPrompt('推荐适合小学生的晚餐')">推荐晚餐</span>
+                        <span class="quick-prompt" onclick="sendQuickPrompt('你好，请介绍一下你能做什么')">开始对话</span>
                     </div>
                 </div>
             </div>
@@ -1234,9 +1232,87 @@
 
         // 状态
         let currentConversationId = null;
-        let currentAgent = 'nutrition-assistant';
+        let currentAgent = 'resident-nutrition-assistant';
         let isStreaming = false;
         let abortController = null;
+
+        // 各 Agent 的页面布局配置（切换 Agent 时下方页面跟着变化）
+        const AGENT_PAGES = {
+            'resident-nutrition-assistant': {
+                icon: '🍱',
+                title: '居民营养配餐助手',
+                subtitle: '我可以帮您生成健康食谱、分析营养成分、规划每日 / 每周餐单。',
+                placeholder: '输入需求，例如：帮我规划一周减脂餐单...',
+                quickPrompts: [
+                    { label: '生成午餐食谱', prompt: '帮我生成一份健康午餐食谱' },
+                    { label: '分析营养成分', prompt: '分析这份食谱的营养成分' },
+                    { label: '推荐晚餐', prompt: '推荐适合小学生的晚餐' }
+                ]
+            },
+            'safety-assistant': {
+                icon: '🛡️',
+                title: '校园餐食品安全管理助手',
+                subtitle: '我可以帮您检查食材合规性、排查食安风险、识别并填写整改表单。',
+                placeholder: '输入需求，例如：排查本周食材验收的风险点...',
+                quickPrompts: [
+                    { label: '食安风险排查', prompt: '帮我排查校园餐常见的食品安全风险' },
+                    { label: '食材验收规范', prompt: '生成一份食材验收 checklist' },
+                    { label: '整改建议', prompt: '针对餐具消毒不达标给出整改建议' }
+                ]
+            },
+            'pagegen-assistant': {
+                icon: '🎨',
+                title: '通用页面设计生成助手',
+                subtitle: '我可以帮您根据业务数据自动生成仪表盘、数据报告、展示页等前端页面。',
+                placeholder: '输入需求，例如：生成一个 SaaS 产品落地页...',
+                quickPrompts: [
+                    { label: '生成落地页', prompt: '帮我生成一个 SaaS 产品落地页' },
+                    { label: '页面结构', prompt: '设计一个后台管理系统的页面结构' },
+                    { label: 'UI 组件', prompt: '生成一个响应式卡片组件' }
+                ]
+            }
+        };
+
+        // 根据 Agent 名称返回页面布局（未知 Agent 使用通用兜底）
+        function getAgentPage(agentName) {
+            return AGENT_PAGES[agentName] || {
+                icon: '✨',
+                title: 'AI 智能助手',
+                subtitle: '我可以帮您完成各种任务。',
+                placeholder: '输入消息，按 Enter 发送...',
+                quickPrompts: [
+                    { label: '开始对话', prompt: '你好，请介绍一下你能做什么' }
+                ]
+            };
+        }
+
+        // 渲染空状态（欢迎语 + 快捷提示），随当前 Agent 变化
+        function renderEmptyState(resetConversation = true) {
+            const page = getAgentPage(currentAgent);
+            const promptsHtml = (page.quickPrompts || []).map(q => {
+                // 转义单引号，使用单引号包裹 JS 字符串，避免破坏 onclick 双引号属性
+                const safe = String(q.prompt).replace(/'/g, "\\'");
+                return `<span class="quick-prompt" onclick="sendQuickPrompt('${safe}')">${escapeHtml(q.label)}</span>`;
+            }).join('');
+            const container = document.getElementById('messagesContainer');
+            if (!container) return;
+            container.innerHTML = `
+                <div class="empty-state" id="emptyState">
+                    <div class="empty-icon">${page.icon}</div>
+                    <h3>${escapeHtml(page.title)}</h3>
+                    <p>${escapeHtml(page.subtitle)}</p>
+                    <div class="quick-prompts">${promptsHtml}</div>
+                </div>
+            `;
+            if (resetConversation) currentConversationId = null;
+        }
+
+        // 根据当前 Agent 更新输入框占位符
+        function applyAgentLayout(agentName) {
+            const page = getAgentPage(agentName);
+            const input = document.getElementById('messageInput');
+            if (input) input.placeholder = page.placeholder;
+        }
 
         // 页面加载
         document.addEventListener('DOMContentLoaded', function () {
@@ -1270,14 +1346,17 @@
                         select.appendChild(option);
                     });
                 } else {
-                    select.innerHTML = '<option value="nutrition-assistant">营养助手 (默认)</option>';
+                    select.innerHTML = '<option value="resident-nutrition-assistant">营养助手 (默认)</option>';
                 }
 
                 // 加载当前 Agent 的 Profile
                 loadProfiles(currentAgent);
+                // 切换 Agent 时下方页面（欢迎语/快捷提示/占位符）联动更新
+                applyAgentLayout(currentAgent);
+                renderEmptyState();
             } catch (error) {
                 console.error('加载 Agent 失败:', error);
-                document.getElementById('agentSelect').innerHTML = '<option value="nutrition-assistant">营养助手 (默认)</option>';
+                document.getElementById('agentSelect').innerHTML = '<option value="resident-nutrition-assistant">营养助手 (默认)</option>';
             }
         }
 
@@ -1357,7 +1436,7 @@ const requestBody = {
                 };
 
                 // 当使用营养助手Agent时，预置上下文信息
-                if (agentName === 'nutrition-assistant') {
+                if (agentName === 'resident-nutrition-assistant') {
                     // 从消息中尝试提取学校ID（格式：schoolId=123）
                     const schoolIdMatch = message.match(/schoolId[=:]\s*(\d+)/i);
                     if (schoolIdMatch) {
@@ -1476,6 +1555,24 @@ const requestBody = {
         /** 活跃工具调用映射：toolCallId → indicator DOM 元素 */
         const activeToolCalls = {};
 
+        // 工具名 → 友好中文标签，避免直接向用户暴露内部工具名（如 list_templates）
+        const TOOL_LABELS = {
+            'list_templates': '检索模板库',
+            'get_template': '获取模板详情',
+            'generate_page': '生成页面',
+            'render_page': '渲染页面',
+            'search_knowledge': '检索知识库',
+            'web_search': '联网搜索',
+            'calculate': '计算',
+            'http_request': '发起请求',
+            'database_query': '查询数据库'
+        };
+        function toolLabel(name) {
+            if (TOOL_LABELS[name]) return TOOL_LABELS[name];
+            // 兜底：snake_case 转可读（每词首字母大写）
+            return String(name).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        }
+
         /**
          * 添加工具调用指示器（收到 TOOL_CALL_START 事件时调用）。
          * 在最后一条 assistant 消息的 message-content 尾部插入胶囊形标签。
@@ -1489,32 +1586,37 @@ const requestBody = {
             }
             const msgContent = assistantMsg.querySelector('.message-content');
 
+            const label = toolLabel(toolCallName);
             const indicator = document.createElement('div');
             indicator.className = 'tool-call-indicator executing';
             indicator.id = 'tool-' + toolCallId;
+            indicator.dataset.label = label;
             indicator.innerHTML = '<span class="tool-spinner"></span>'
                 + '<span class="tool-icon-done">✓</span>'
-                + '<span class="tool-name">' + escapeHtml(toolCallName) + '</span>';
+                + '<span class="tool-name">正在' + escapeHtml(label) + '…</span>';
             msgContent.appendChild(indicator);
             activeToolCalls[toolCallId] = indicator;
         }
 
         /**
          * 更新工具调用结果为完成状态（收到 TOOL_RESULT_END 事件时调用）。
+         * 以对话式友好文案呈现，失败时弱化提示而非刺眼报错。
          */
         function updateToolResultIndicator(toolCallId, state) {
             const indicator = activeToolCalls[toolCallId];
             if (!indicator) return;
             indicator.classList.remove('executing');
             const iconEl = indicator.querySelector('.tool-icon-done');
+            const nameEl = indicator.querySelector('.tool-name');
+            const label = indicator.dataset.label || (nameEl ? nameEl.textContent : '');
             if (state === 'success') {
                 indicator.classList.remove('error');
                 if (iconEl) iconEl.textContent = '✓';
+                if (nameEl) nameEl.textContent = label + '完成';
             } else {
                 indicator.classList.add('error');
-                if (iconEl) iconEl.textContent = '✗';
-                const nameEl = indicator.querySelector('.tool-name');
-                if (nameEl) nameEl.textContent += ' (' + state + ')';
+                if (iconEl) iconEl.textContent = '⚠';
+                if (nameEl) nameEl.textContent = label + '未完成';
             }
             // 完成后不删除映射，保留状态可在页面保留查看
         }
@@ -1920,8 +2022,10 @@ const requestBody = {
 
         // 快捷提示
         function sendQuickPrompt(prompt) {
-            document.getElementById('messageInput').value = prompt;
-            sendMessage();
+            const input = document.getElementById('messageInput');
+            input.value = prompt;
+            autoResize(input);
+            input.focus();
         }
 
         // 清空消息（只清空UI，不删除后端会话）
@@ -1937,19 +2041,8 @@ const requestBody = {
                 console.error('messagesContainer not found!');
                 return;
             }
-            container.innerHTML = `
-                <div class="empty-state" id="emptyState">
-                    <div class="empty-icon">✨</div>
-                    <h3>欢迎使用 AI 智能助手</h3>
-                    <p>我可以帮您完成各种任务，比如食谱生成、营养分析等</p>
-                    <div class="quick-prompts">
-                        <span class="quick-prompt" onclick="sendQuickPrompt('帮我生成一份健康午餐食谱')">帮我生成午餐食谱</span>
-                        <span class="quick-prompt" onclick="sendQuickPrompt('分析这份食谱的营养成分')">分析营养成分</span>
-                        <span class="quick-prompt" onclick="sendQuickPrompt('推荐适合小学生的晚餐')">推荐晚餐</span>
-                    </div>
-                </div>
-            `;
-            currentConversationId = null;
+            // 渲染当前 Agent 对应的空状态（欢迎语/快捷提示），并重置会话
+            renderEmptyState();
             console.log('Messages cleared');
         }
 
@@ -1966,6 +2059,9 @@ const requestBody = {
         // Agent 切换
         function onAgentChange() {
             currentAgent = document.getElementById('agentSelect').value;
+            // 切换 Agent 时下方页面（欢迎语/快捷提示/占位符/会话）联动更新
+            applyAgentLayout(currentAgent);
+            renderEmptyState();
             loadProfiles(currentAgent);
         }
 
@@ -2484,18 +2580,8 @@ const requestBody = {
                         }
                     });
                 } else {
-                    container.innerHTML = `
-                        <div class="empty-state" id="emptyState">
-                            <div class="empty-icon">✨</div>
-                            <h3>欢迎使用 AI 智能助手</h3>
-                            <p>我可以帮您完成各种任务，比如食谱生成、营养分析等</p>
-                            <div class="quick-prompts">
-                                <span class="quick-prompt" onclick="sendQuickPrompt('帮我生成一份健康午餐食谱')">帮我生成午餐食谱</span>
-                                <span class="quick-prompt" onclick="sendQuickPrompt('分析这份食谱的营养成分')">分析营养成分</span>
-                                <span class="quick-prompt" onclick="sendQuickPrompt('推荐适合小学生的晚餐')">推荐晚餐</span>
-                            </div>
-                        </div>
-                    `;
+                    // 渲染当前 Agent 对应的空状态（保留当前会话上下文）
+                    renderEmptyState(false);
                 }
             } catch (error) {
                 console.error('加载会话消息失败:', error);
@@ -2584,6 +2670,9 @@ const requestBody = {
         // ==================== Agent 切换 ====================
         function onAgentChange() {
             currentAgent = document.getElementById('agentSelect').value;
+            // 切换 Agent 时下方页面（欢迎语/快捷提示/占位符/会话）联动更新
+            applyAgentLayout(currentAgent);
+            renderEmptyState();
             loadProfiles(currentAgent);
         }
 

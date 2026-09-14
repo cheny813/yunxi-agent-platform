@@ -3,16 +3,20 @@ package io.yunxi.platform.execution.strategy;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
+import reactor.core.publisher.Flux;
 
 /**
  * 流式执行策略（流式通道）。
@@ -30,6 +34,8 @@ import io.yunxi.platform.execution.spi.ExecutionStrategy;
  */
 @Component
 public class StreamingStrategy implements ExecutionStrategy {
+
+    private static final Logger log = LoggerFactory.getLogger(StreamingStrategy.class);
 
     /** 思考事件文本在 ExecutionContext.attributes 中的键 */
     public static final String ATTR_THINKING_TEXT = "thinkingText";
@@ -65,7 +71,21 @@ public class StreamingStrategy implements ExecutionStrategy {
         AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, rc.getUserId(), rc.getSessionId());
 
         // 注意：共享 Agent 实例生命周期由框架管理，绝不可 close（内联转换避免 JDT resource-leak 误报）
-        return ((HarnessAgent) agent).streamEvents(messages, rc);
+        // [TRACE] 运行边界追踪：streamEvents 是 agent 真实运行的响应式事件流。订阅=运行开始，
+        // 终结(signal)=运行结束。若此处 COMPLETE 已打印、但模型 transport 仍在收 chunk，
+        // 即证明 agent 内部以脱离响应式订阅链的方式派生了后续执行（如 supervisor 合成推理用的
+        // 阻塞/异步模型调用），前端流"完成"只是响应式视角，后端仍在跑——这正是待坐实的根因。
+        Flux<AgentEvent> runFlux = ((HarnessAgent) agent).streamEvents(messages, rc);
+        long runStartNanos = System.nanoTime();
+        return runFlux
+                .doOnSubscribe(s -> log.info("[TRACE-RUN] streamEvents 订阅(agent运行开始) agent={} conv={} thread={}",
+                        ctx.getAgentName(), ctx.getConversationId(), Thread.currentThread().getName()))
+                .doFinally(sig -> {
+                    long ms = (System.nanoTime() - runStartNanos) / 1_000_000;
+                    log.info("[TRACE-RUN] streamEvents 流终结(agent运行结束) agent={} conv={} signal={} elapsedMs={} thread={}",
+                            ctx.getAgentName(), ctx.getConversationId(), sig, ms,
+                            Thread.currentThread().getName());
+                });
     }
 
     /**

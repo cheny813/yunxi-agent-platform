@@ -87,7 +87,9 @@ public class AgentService {
      * @return Agent 信息列表
      */
     public List<AgentInfoDto> listAgents() {
-        return agentCache.values().stream().toList();
+        return agentCache.values().stream()
+                .filter(info -> !info.isHidden())
+                .toList();
     }
 
     /**
@@ -276,7 +278,23 @@ public class AgentService {
      * @param modelName   模型名称
      */
     public void registerAgentInfoDto(String name, String description, String prompt, String modelName) {
-        agentCache.put(name, new AgentInfoDto(name, description, prompt, modelName, Instant.now()));
+        registerAgentInfoDto(name, description, prompt, modelName, false);
+    }
+
+    /**
+     * 注册 Agent 信息到缓存（可指定是否隐藏）。
+     *
+     * @param name        Agent 名称
+     * @param description Agent 描述
+     * @param prompt      系统提示词
+     * @param modelName   模型名称
+     * @param hidden      是否隐藏（隐藏后不出现在 /agents 下拉列表，但实例仍可被 Supervisor 调用）
+     */
+    public void registerAgentInfoDto(String name, String description, String prompt, String modelName,
+            boolean hidden) {
+        AgentInfoDto info = new AgentInfoDto(name, description, prompt, modelName, Instant.now());
+        info.setHidden(hidden);
+        agentCache.put(name, info);
     }
 
     /**

@@ -15,32 +15,32 @@
 # =============================================================================
 intent-mappings:
   - intent: recipe.monthly-plan
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     experts: [营养专家]
     tool-groups: [nutrition]
     skills: [recipe-planning]
   - intent: recipe.weekly-plan
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     experts: [营养专家]
     tool-groups: [nutrition]
     skills: [recipe-planning]
   - intent: recipe.single
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     tool-groups: [nutrition]
   - intent: recipe.ingredient-substitute
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     tool-groups: [nutrition]
   - intent: allergen.check
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     experts: [营养专家]
   - intent: nutrition.analysis
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     experts: [营养专家]
   - intent: nutrition.requirement
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     experts: [营养专家]
   - intent: nutrition.advice
-    agent: nutrition-assistant
+    agent: resident-nutrition-assistant
     experts: [营养专家]
   - intent: faq.general
-    agent: general-assistant
+    agent: resident-nutrition-assistant

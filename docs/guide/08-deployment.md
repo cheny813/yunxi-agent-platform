@@ -152,7 +152,7 @@ java -Xms2g -Xmx2g \
 docker compose up -d
 ```
 
-将启动以下服务（共 9 个容器，全部默认启动，含链路追踪与可视化组件）：
+将启动以下服务（默认 profile，共 8 个容器，全部默认启动，含链路追踪与可视化组件）：
 
 | 容器 | 镜像 | 端口 | 用途 |
 |------|------|------|------|
@@ -168,6 +168,62 @@ docker compose up -d
 > Milvus 依赖 etcd 与 minio 先进入 healthy 后才会启动，首次启动约需 30-60 秒。`milvus` 服务的 `command: ["milvus", "run", "standalone"]` 不可省略，否则容器会瞬间 `Exited (1)` 退出（详见 FAQ 安装部署章节）。
 
 OTel Collector 的配置文件位于 `scripts/deploy/otel-collector-config.yaml`，默认将 trace 输出到 Docker 日志。
+
+#### 可选启用 aistio 管控面<a name="aistio"></a>
+
+若需要 **Agent 管控 / 治理可视化 / 会话干预** 能力，可在默认基础设施之外追加 `--profile aistio` 一并拉起 AgentScope-Service 管控面（设计见 `docs/agentscope-service-integration-design.md`）：
+
+```powershell
+# 同时拉起 yunxi 自有基础设施 + aistio 管控面（共 13 个容器）
+docker compose --profile aistio up -d
+```
+
+aistio 由 `agentscope-service` 仓库源码本地构建（**无公开镜像**），启动前必须先克隆并构建，否则镜像 build 阶段会因 JAR 缺失而失败。构建产物的版本号由 `AISTIO_VERSION` 环境变量控制（默认 `2.0.3`，**须与该仓库根 pom 的 `<revision>` 一致**；若你的仓库 revision 不同，先 `export AISTIO_VERSION=<其版本>` 再启动，否则 `COPY *.jar` 会因文件名不匹配而失败）：
+
+```bash
+# 0) 获取源码
+git clone https://github.com/agentscope-ai/agentscope-java.git
+cd agentscope-java
+# git checkout 2.0.3   # 可选：切到与 yunxi 匹配的 GA 标签
+
+# 1) 构建后端（方式 A：在仓库根目录执行，显式列出 service 子模块，-am 顺带编译 harness/extensions 等上游依赖）
+#    注意：-pl agentscope-service 只会选中聚合 pom 本身、不会构建其下子模块的 jar，必须列出子模块
+mvn -pl agentscope-service/service-dataplane,agentscope-service/service-gateway,agentscope-service/service-scheduler -am install -DskipTests
+
+# 2) 构建前端（生成 aistio/ui，由 aistio/Dockerfile 打进 aistio-control（Go 控制平面）镜像作为 Web 控制台）
+(cd agentscope-service/frontend && npm install && npm run build)
+```
+
+> **注意**：`mvn -pl agentscope-service -am install` 必须在仓库根目录（含 `agentscope-service` 模块的 pom）执行；若已 `cd` 进 `agentscope-service/` 子目录再执行会报 "Could not find the selected project in the reactor"。
+>
+> 源码位置由环境变量 `AISTIO_SRC` 指定（构建后指向仓库内的 `agentscope-service` 目录，默认 `../agentscope-java-2.0GA/agentscope-service`）。开源发布时需使用者自行 `export AISTIO_SRC=<其 agentscope-service 路径>`。
+
+aistio profile 包含 5 个容器（均在 `aistio` profile 下，默认不启动）：
+
+| 容器 | 构建来源 | 端口 | 用途 |
+|------|----------|------|------|
+| yunxi-aistio-db | postgres:17 | 5432（可选映射） | aistio 元数据库（库/用户/密码均为 `builder`） |
+| yunxi-aistio-control | `aistio/` 下 Go 二进制 aistiod | 8081（内部） | 控制面 |
+| yunxi-aistio-data | service-dataplane（Java） | 8082（内部） | 数据面 |
+| yunxi-aistio-scheduler | service-scheduler（Java） | 8083（内部） | 调度面 |
+| yunxi-aistio-gateway | service-gateway（Java） | 18080（对外） | 网关，对外发布到主机 18080（避开 Nacos 控制台已占用的 8080） |
+
+- 内部 token 为 `compose-local-internal-token-at-least-32chars`（compose 本地联调用，生产务必替换）。
+- `aistio-db` 的 `5432` 映射仅用于本地调试，与宿主机已有 Postgres 冲突时可删除该映射行。
+- yunxi 侧接入需在 `application.yml` 配置 `yunxi.aistio.*`（详见 [配置指南 · aistio 管控面](./06-configuration.md#aistio)）。
+
+> 配套的内置 MCP 服务（来自 `yunxi-mcp-servers` 项目，端口 40101 / 40102 / 40103 / 40602 / 40601）不在此 `docker compose` 内。开发联调可用 `scripts/start-stack.ps1` 一键拉起 5 个 MCP 服务 + aistio 控制面（幂等，详情见仓库 README）。
+>
+> 关闭时同样用配套脚本：`scripts/stop-stack.ps1`（加 `-IncludeYunxi` 连 yunxi 平台一起关）；想把 MySQL / Redis / Milvus 等基础容器也停掉则直接 `docker compose down`。MCP 日志在 `logs/mcp/<服务名>.out.log`，aistio 日志用 `docker compose --profile aistio logs -f`。
+
+确认 aistio 各平面健康：
+
+```powershell
+docker compose --profile aistio ps
+# 网关就绪后访问 http://localhost:18080
+```
+
+aistio 控制台（`http://localhost:18080/login`，亦提供于 `:8081`）首次启动会在 PostgreSQL 自动注入种子用户，本地开发用 **admin / admin** 登录即可（其余种子账号 `bob/bob`、`alice/alice`；用户已存在则不会重复注入）。详见 [仓库 README · 登录 aistio 控制台](../../README.md)。
 
 确认所有服务就绪：
 

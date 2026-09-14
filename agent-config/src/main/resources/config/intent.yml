@@ -49,7 +49,7 @@ yunxi:
           ttl-days: 7                        # 缓存 TTL（惰性失效，reload 后按版本跳过）
           max-size: 10000                    # LRU 上限
     # M2.2 多域（单域部署保持空，base 由顶层字段构造；
-    #  多域示例见 docs/intent-engine-m2-m234-design.md §3）
+    #  多域示例：在 resolver.domains 下为每个业务域配置独立的 intent-tree 与路由规则）
     resolver:
       default: base                          # 未命中规则的默认域
       rules: []                              # 按 agent 前缀 / 画像的多域路由规则

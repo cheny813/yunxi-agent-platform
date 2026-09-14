@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 import io.agentscope.core.shutdown.GracefulShutdownManager;
+import java.util.concurrent.TimeUnit;
 
 /**
  * AgentScope 生命周期管理器
@@ -38,6 +39,12 @@ public class AgentscopeLifecycleManager implements SmartLifecycle {
         } catch (Exception e) {
             log.warn("优雅关停执行异常 (phase={}): {}", phase, e.getMessage());
         }
+        // Release any in-flight fire-and-forget memory background tasks (flush / maintenance
+        // consolidation model calls). These tasks are dispatched asynchronously after a response is
+        // returned and their underlying connections would otherwise leak until the JVM exits.
+        // Cancellation is best-effort: it only takes effect on AgentScope-Java versions that expose
+        // the per-owner cancellation API, older versions just wait for the tasks to settle.
+        MemoryBackgroundTaskReaper.awaitQuiescenceAndCancel(5, TimeUnit.SECONDS);
         running = false;
     }
 

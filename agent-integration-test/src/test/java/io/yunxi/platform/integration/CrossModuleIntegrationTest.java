@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(classes = {AgentPlatformApplication.class, IntegrationTestConfig.class})
 class CrossModuleIntegrationTest {
 
-    private static final String AGENT = "general-assistant";
+    private static final String AGENT = "resident-nutrition-assistant";
 
     @Autowired
     private ChatAppService chatAppService;

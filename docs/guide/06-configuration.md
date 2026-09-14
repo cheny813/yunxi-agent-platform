@@ -723,7 +723,7 @@ logging:
     io.yunxi.platform: warn
 ```
 
-> **说明**：所有 `config/*.yml` 由 `config/imports.yml` 全量加载（`optional`），`spring.profiles.active` 只控制 `@Profile` 注解 Bean 的启用。真实可激活的 profile 名见 `agent-app/src/main/resources/application.yml`（datasource/redis/llm/milvus/embedding/persistence/mcp-core/mcp-external/mcp-business/skill/resilience/file-upload/a2a-pipeline 等）。
+> **说明**：所有 `config/*.yml` 由 `config/imports.yml` 全量加载（`optional`），`spring.profiles.active` 只控制 `@Profile` 注解 Bean 的启用。真实可激活的 profile 名见 `agent-config/src/main/resources/application.yml`（datasource/redis/llm/milvus/embedding/persistence/mcp-core/mcp-external/mcp-business/skill/resilience/file-upload/a2a-pipeline 等）。
 
 ---
 
@@ -1047,6 +1047,42 @@ yunxi:
 | `yunxi.intent.reload.poll-seconds` | `-1` | 文件轮询间隔秒；`>0` 时对 `file:` 前缀资源按 mtime 自动 reload |
 
 > **框架通用性**：意图引擎是框架层通用能力，与具体业务解耦，采用**数据两级模型**——`agent-core` 内置最小演示集（兜底），`agent-config` 的 `config/intent/*.yml` 为部署业务数据，也支持 `file:` 前缀完全外部化。业务方只需修改上表配置项指向自己的文件即可整体替换，无需改动 Java 代码。热更新端点见 [16. 意图引擎](./16-intent-engine.md#热更新与运维)，完整定制指南见 [16. 意图引擎](./16-intent-engine.md#业务定制指南)。
+
+---
+
+## AgentScope-Service（aistio）管控面配置<a name="aistio"></a>
+
+yunxi 通过应用内 `io.yunxi.platform.aistio` 适配层接入外部 AgentScope-Service 管控面（设计见 `docs/agentscope-service-integration-design.md`），补齐 **Agent 管控 / 治理可视化 / 会话干预** 能力。该能力默认关闭，需显式开启并指向一个已运行的 aistio 控制面（见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)）。
+
+### 配置项
+
+```yaml
+yunxi:
+  aistio:
+    enabled: false                                  # 总开关（默认 false，不连接管控面）
+    control-plane-url: http://localhost:18080        # aistio 网关地址（即 docker-compose 中 gateway 发布端口）
+    internal-token: compose-local-internal-token-at-least-32chars   # 与 aistio 侧 BUILDER_INTERNAL_TOKEN 一致
+    base-url: http://localhost:40001/agentscope      # yunxi 自身对外的基座地址（管控面回调用，填本机 IP 或域名）
+```
+
+### 配置说明
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `yunxi.aistio.enabled` | `false` | 是否启用管控面接入；开启后平台向 aistio 注册 Agent、上报会话事件并接收干预指令 |
+| `yunxi.aistio.control-plane-url` | — | aistio 网关地址；docker-compose 默认发布到主机 `18080`，故填 `http://localhost:18080` |
+| `yunxi.aistio.internal-token` | — | 内部令牌，须与 aistio 各平面的 `BUILDER_INTERNAL_TOKEN` 环境变量完全一致（compose 本地默认 `compose-local-internal-token-at-least-32chars`） |
+| `yunxi.aistio.base-url` | — | yunxi 自身对外可达的基座地址，供管控面回调控本平台会话使用，应填本机 IP 或对外域名（如 `http://<host-ip>:40001/agentscope`） |
+
+### 接入步骤（docker-compose 方式）
+
+1. 在 `agentscope-service` 源码目录完成构建（见部署指南 aistio 小节）；
+2. 启动管控面：`docker compose --profile aistio up -d`；
+3. 在 yunxi 的 `application.yml`（或环境变量）设置上表四项，将 `enabled` 置为 `true`；
+4. 重启 yunxi（`mvn spring-boot:run -pl agent-app`），观察启动日志确认 `aistio` 适配层连接成功；
+5. 浏览器访问 `http://localhost:18080` 打开管控面，验证 Agent 注册与会话干预。
+
+> 生产环境务必替换默认的 `internal-token` 与数据库弱口令（`builder/builder`），并避免将 `aistio-db` 的 `5432` 端口直接映射到公网。
 
 ---
 

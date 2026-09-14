@@ -1,6 +1,7 @@
 agent:
   name: recipe-composer
   description: 食谱编排专家，将搜索到的菜品组装为完整食谱JSON
+  hidden: true
   prompt: |
     你是校园餐食谱编排专家。
 

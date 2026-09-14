@@ -45,7 +45,7 @@
     // 默认配置
     const DEFAULT_CONFIG = {
         apiBase: '',
-        agentName: 'nutrition-assistant',
+        agentName: 'resident-nutrition-assistant',
         userId: 'user-' + Date.now(),
         welcomeMessage: '你好！我是 AI 智能助手，点击与我对话~',
         position: 'bottom-right',

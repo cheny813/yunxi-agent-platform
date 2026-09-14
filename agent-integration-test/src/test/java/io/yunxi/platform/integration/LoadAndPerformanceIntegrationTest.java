@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(classes = {AgentPlatformApplication.class, IntegrationTestConfig.class})
 class LoadAndPerformanceIntegrationTest {
 
-    private static final String AGENT = "general-assistant";
+    private static final String AGENT = "resident-nutrition-assistant";
 
     @Autowired
     private ConceptRegistry conceptRegistry;

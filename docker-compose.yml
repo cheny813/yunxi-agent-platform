@@ -14,6 +14,10 @@
 #   核心：MySQL / Redis / etcd / MinIO / Milvus / Nacos
 #   默认启用：Attu UI / OTel Collector / Jaeger
 #   Ollama 为本地进程（端口 11434），不在此编排，需单独安装 ollama pull。
+#   管控面 aistio（AgentScope-Service）：默认不启动，纳入可选 profile「aistio」。
+#     需要 Agent 管控 / 治理可视化 / 会话干预能力时执行：
+#       docker compose --profile aistio up -d
+#     aistio 由 agentscope-service 仓库源码本地构建（无公开镜像），前置条件与接入方式见文末 aistio 段注释。
 # ┌──────────────────┬───────────┬───────────────────────────────────┐
 # │ 服务              │ 端口       │ 说明                              │
 # ├──────────────────┼───────────┼───────────────────────────────────┤
@@ -61,6 +65,9 @@ services:
       retries: 20
     volumes:
       - yunxi-mysql-data:/var/lib/mysql
+      # 一键初始化 mcp-nutrition 所需的 yunxi_nutrition 库与空表结构，
+      # 使 mcp-nutrition 在本地/外部环境下也能跑起来（不含任何业务数据）。
+      - ./scripts/init/nutrition-schema.sql:/docker-entrypoint-initdb.d/02-nutrition-schema.sql:ro
     networks:
       - yunxi-net
 
@@ -279,6 +286,192 @@ services:
     networks:
       - yunxi-net
 
+  # ============================================================
+  # AgentScope-Service（aistio）管控面 — 可选 Profile: aistio
+  # ------------------------------------------------------------
+  # 用途：补齐「Agent 管控 / 治理可视化 / 会话干预」能力（设计见 docs/agentscope-service-integration-design.md）。
+  # 默认不启动（保持单机版低配开箱即用）；需要时执行：
+  #   docker compose --profile aistio up -d
+  #
+  # 前置条件（本编排只负责拉起，不负责编译；须先在 agentscope-service 仓库完成构建）：
+  #   1) cd <AISTIO_SRC> && mvn -pl agentscope-service -am install -DskipTests
+  #   2) (cd <AISTIO_SRC>/frontend && npm run build)   # 生成 aistio/ui，打包进 gateway 镜像
+  # 源码位置由环境变量指定：AISTIO_ROOT 指向 AgentScope-Java 仓库根（默认 ../agentscope-java-2.0GA），
+  # AISTIO_SRC 指向其下 agentscope-service 子目录（默认 ../agentscope-java-2.0GA/agentscope-service）。
+  # aistio-control 须以仓库根为构建上下文（Dockerfile.control 内 COPY agentscope-service/*），
+  # 故用 AISTIO_ROOT；其余平面以 agentscope-service 为上下文，用 AISTIO_SRC。
+  # 注意：不要通过 AISTIO_SRC/.. 之类推算仓库根，Windows 下混合分隔符会使构建上下文解析为空目录。
+  # 产物版本号由 AISTIO_VERSION 指定（默认 2.0.3，须与本仓库根 pom 的 <revision> 一致；
+  #   若你的 agentscope-service 仓库 revision 不同，先 export AISTIO_VERSION=<其版本> 再启动）。
+  #
+  # yunxi 接入（application.yml / 环境变量）：
+  #   yunxi.aistio.enabled=true
+  #   yunxi.aistio.control-plane-url=http://localhost:18080   # 即下方 gateway 发布端口
+  #   yunxi.aistio.internal-token=compose-local-internal-token-at-least-32chars
+  #   yunxi.aistio.base-url=http://<本机IP或localhost>:40001/agentscope
+  #
+  # 端口说明：gateway 发布到主机 18080（避开本编排中 Nacos 控制台已占用的 8080），供 yunxi 经控制面 API 接入；
+  #   control 8081（Go aistiod，同时承载 Web 控制台，已发布到主机 8081）/ data 8082 / scheduler 8083 为内部平面；
+  #   db 5432 可移除避免与本地 Postgres 冲突。
+  # 注意：aistiod 为 Go 二进制、gateway/data/scheduler 为 Java 平面，均从 AISTIO_SRC 源码构建，
+  #   agentscope-service 无公开镜像，故必须先行本地构建后再 --profile aistio 启动。
+  # ============================================================
+  aistio-db:
+    image: postgres:17
+    container_name: yunxi-aistio-db
+    restart: unless-stopped
+    profiles: ["aistio"]
+    environment:
+      POSTGRES_DB: builder
+      POSTGRES_USER: builder
+      POSTGRES_PASSWORD: builder
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U builder -d builder"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - aistio-db-data:/var/lib/postgresql/data
+      - ${AISTIO_SRC:-../agentscope-java-2.0GA/agentscope-service}/docker/postgres-init.sql:/docker-entrypoint-initdb.d/01-schemas.sql:ro
+    ports:
+      - "5432:5432"   # 可选；与本地 Postgres 冲突时删除此行
+    networks:
+      - yunxi-net
+
+  aistio-control:
+    build:
+      context: ${AISTIO_ROOT:-../agentscope-java-2.0GA}
+      dockerfile: agentscope-service/docker/Dockerfile.control
+    container_name: yunxi-aistio-control
+    restart: unless-stopped
+    profiles: ["aistio"]
+    command:
+      - --storage-driver=postgres
+      - --storage-dsn=postgres://builder:builder@aistio-db:5432/builder?sslmode=disable&search_path=rt
+      - --log-format=console
+    environment:
+      AISTIO_ENABLE_KUBERNETES: "false"
+      AISTIO_PRODUCT_DSN: postgres://builder:builder@aistio-db:5432/builder?sslmode=disable
+      AISTIO_HTTP_BIND: ":8081"
+      BUILDER_JWT_SECRET: builder-compose-dev-secret-change-in-production-32chars
+      BUILDER_INTERNAL_TOKEN: compose-local-internal-token-at-least-32chars
+      BUILDER_DATA_URL: http://aistio-data:8082
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "/aistiod", "--healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      aistio-db:
+        condition: service_healthy
+    networks:
+      - yunxi-net
+
+  aistio-data:
+    build:
+      context: ${AISTIO_SRC:-../agentscope-java-2.0GA/agentscope-service}
+      dockerfile: docker/Dockerfile.plane
+      args:
+        JAR_FILE: service-dataplane/target/service-dataplane-${AISTIO_VERSION:-2.0.3}.jar
+    container_name: yunxi-aistio-data
+    restart: unless-stopped
+    profiles: ["aistio"]
+    environment:
+      SPRING_PROFILES_ACTIVE: jdbc
+      BUILDER_DB_URL: jdbc:postgresql://aistio-db:5432/builder?currentSchema=dp
+      BUILDER_DB_DRIVER: org.postgresql.Driver
+      BUILDER_DB_USER: builder
+      BUILDER_DB_PASSWORD: builder
+      BUILDER_JWT_SECRET: builder-compose-dev-secret-change-in-production-32chars
+      BUILDER_INTERNAL_TOKEN: compose-local-internal-token-at-least-32chars
+      BUILDER_CONTROL_URL: http://aistio-control:8081
+      BUILDER_DATA_URL: http://aistio-data:8082
+      SERVER_PORT: 8082
+      BUILDER_DATAPLANE_PUBLIC_URL: http://aistio-data:8082
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    depends_on:
+      aistio-db:
+        condition: service_healthy
+      aistio-control:
+        condition: service_healthy
+    networks:
+      - yunxi-net
+
+  aistio-scheduler:
+    build:
+      context: ${AISTIO_SRC:-../agentscope-java-2.0GA/agentscope-service}
+      dockerfile: docker/Dockerfile.plane
+      args:
+        JAR_FILE: service-scheduler/target/service-scheduler-${AISTIO_VERSION:-2.0.3}.jar
+    container_name: yunxi-aistio-scheduler
+    restart: unless-stopped
+    profiles: ["aistio"]
+    environment:
+      SPRING_PROFILES_ACTIVE: jdbc
+      BUILDER_DB_URL: jdbc:postgresql://aistio-db:5432/builder?currentSchema=dp
+      BUILDER_DB_DRIVER: org.postgresql.Driver
+      BUILDER_DB_USER: builder
+      BUILDER_DB_PASSWORD: builder
+      BUILDER_JWT_SECRET: builder-compose-dev-secret-change-in-production-32chars
+      BUILDER_INTERNAL_TOKEN: compose-local-internal-token-at-least-32chars
+      BUILDER_CONTROL_URL: http://aistio-control:8081
+      BUILDER_DATA_URL: http://aistio-data:8082
+      SERVER_PORT: 8083
+      BUILDER_SCHEDULER_URL: http://aistio-scheduler:8083
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    depends_on:
+      aistio-control:
+        condition: service_healthy
+      aistio-data:
+        condition: service_healthy
+    networks:
+      - yunxi-net
+
+  aistio-gateway:
+    build:
+      context: ${AISTIO_SRC:-../agentscope-java-2.0GA/agentscope-service}
+      dockerfile: docker/Dockerfile.plane
+      args:
+        JAR_FILE: service-gateway/target/service-gateway-${AISTIO_VERSION:-2.0.3}.jar
+    container_name: yunxi-aistio-gateway
+    restart: unless-stopped
+    profiles: ["aistio"]
+    environment:
+      SERVER_PORT: 8080
+      BUILDER_CONTROL_URL: http://aistio-control:8081
+      BUILDER_DATA_URL: http://aistio-data:8082
+      BUILDER_SCHEDULER_URL: http://aistio-scheduler:8083
+    ports:
+      - "18080:8080"   # 发布到主机 18080，避开本编排中 Nacos 控制台已占用的 8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    depends_on:
+      aistio-control:
+        condition: service_healthy
+      aistio-data:
+        condition: service_healthy
+      aistio-scheduler:
+        condition: service_healthy
+    networks:
+      - yunxi-net
+
 networks:
   yunxi-net:
     driver: bridge
@@ -291,3 +484,4 @@ volumes:
   yunxi-milvus-data:
   yunxi-nacos-data:
   yunxi-nacos-logs:
+  aistio-db-data:

@@ -1,6 +1,7 @@
 agent:
   name: nutrition-evaluator
   description: 营养评估专家，根据营养标准对食谱进行评分
+  hidden: true
   prompt: |
     你是校园餐营养评估专家。
 

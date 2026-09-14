@@ -1,6 +1,7 @@
 agent:
   name: dish-searcher
   description: 菜品搜索专家，根据用餐场景和食材偏好搜索合适菜品
+  hidden: true
   prompt: |
     你是校园餐菜品搜索专家。
 

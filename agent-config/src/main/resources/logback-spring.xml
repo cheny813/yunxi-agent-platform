@@ -29,16 +29,17 @@
         </encoder>
     </appender>
 
-    <!-- 文件Appender - 默认写入项目根目录下的 logs/（相对路径，运行时工作目录即仓库根）
-         覆盖方式：-DLOG_DIR=xxx 或环境变量 LOG_DIR -->
+    <!-- 文件Appender - 统一写入 <仓库根>/logs/，绝不散落到子模块目录
+         优先级：-DLOG_DIR (系统属性) > 环境变量 LOG_DIR > 默认相对路径 logs/
+         （start.ps1 已注入 -DLOG_DIR 与 $env:LOG_DIR，保证任意启动目录下都落到仓库根/logs） -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR:-logs}/${LOG_NAME}.log</file>
+        <file>${LOG_DIR:-${env.LOG_DIR:-logs}}/${LOG_NAME}.log</file>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>${FILE_LOG_PATTERN}</pattern>
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR:-logs}/${LOG_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR:-${env.LOG_DIR:-logs}}/${LOG_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>10MB</maxFileSize>
             <maxHistory>30</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
@@ -75,5 +76,12 @@
     <logger name="org.springframework.boot.autoconfigure" level="WARN"/>
     <logger name="org.apache.tomcat.util.compat" level="INFO"/>
     <logger name="org.apache.catalina.startup.DigesterFactory" level="ERROR"/>
+
+    <!-- 抑制 SSE/HTTP 传输层 DEBUG 日志：流式响应与长连接保活的每个 data chunk 都会以 DEBUG
+         打一条（"Received SSE data chunk"），量极大且与业务无关。连接级错误仍以 INFO/WARN 透出，
+         不影响诊断，故提到 INFO。注意 model 与 mcp 两个 transport 包缩写同为 i.a.c.m.transport，
+         必须分别配置，漏一个就会继续刷屏 -->
+    <logger name="io.agentscope.core.mcp.transport" level="INFO"/>
+    <logger name="io.agentscope.core.model.transport" level="INFO"/>
 
 </configuration>

@@ -249,6 +249,19 @@ public class AgentConfigurer implements SmartLifecycle {
         if (!running)
             return;
         log.info("AgentConfigurer 关停...");
+        // 显式关闭所有已缓存的 MCP 客户端长连接（SSE/STDIO/HTTP），
+        // 避免底层连接读线程（reactor boundedElastic 等）阻止 JVM 优雅退出，
+        // 否则正常停止会卡住、只能强杀进程。框架 GracefulShutdownManager 不追踪
+        // yunxi 自建缓存的 McpClientWrapper，故在此集中关闭；ReconnectingMcpClientWrapper.close()
+        // 会委托关闭底层真实连接，静态构建与运行时动态注册的客户端都落在同一 mcpClientCache 中。
+        for (Map.Entry<String, McpClientWrapper> entry : mcpClientCache.entrySet()) {
+            try {
+                entry.getValue().close();
+            } catch (Exception e) {
+                log.warn("关闭 MCP 客户端 '{}' 失败: {}", entry.getKey(), e.getMessage());
+            }
+        }
+        mcpClientCache.clear();
         running = false;
     }
 
@@ -441,8 +454,10 @@ public class AgentConfigurer implements SmartLifecycle {
             }
 
             // 注册 Agent 元信息（仅基础实例；Profile 实例为内部路由实体，不进入 Agent 列表）
+            // hidden=true 的内部专家 Agent 不进入下拉列表，但其 prototype Bean 已构建，仍可被 Supervisor 调用
             agentService.registerAgentInfoDto(def.getName(), description(def), def.getPrompt(),
-                    def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName());
+                    def.getModel() != null ? def.getModel().getModelName() : coreProperties.getModelName(),
+                    def.isHidden());
             agentService.registerAgentRagMode(def.getName(), def.getRagMode());
 
             log.info("Agent 创建成功: {}, ragMode={}, profiles={}", def.getName(), def.getRagMode(),

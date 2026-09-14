@@ -180,7 +180,7 @@
         <span class="sub">基于 SDK 的 chatStreamEvents（工具卡片 + 打字机输出）</span>
         <div id="config">
             <input id="baseUrl" value="http://localhost:40001" />
-            <input id="agentName" value="general-assistant" placeholder="agentName" />
+            <input id="agentName" value="resident-nutrition-assistant" placeholder="agentName" />
             <input id="userId" value="demo-user" placeholder="userId" />
         </div>
     </header>
@@ -201,7 +201,7 @@
 
         function getClient() {
             const baseUrl = document.getElementById('baseUrl').value.trim();
-            const agentName = document.getElementById('agentName').value.trim() || 'general-assistant';
+            const agentName = document.getElementById('agentName').value.trim() || 'resident-nutrition-assistant';
             const userId = document.getElementById('userId').value.trim();
             return new AgentClient(baseUrl, {
                 defaultUserId: userId || 'demo-user',
