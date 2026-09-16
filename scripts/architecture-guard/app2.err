@@ -1,0 +1,6 @@
+12:19:23,309 |-WARN in ch.qos.logback.core.joran.action.ParamAction - <param> element is deprecated in favor of a more direct syntax.At line 12
+12:19:23,314 |-WARN in ch.qos.logback.core.joran.action.ParamAction - For details see https://logback.qos.ch/codes.html#param
+12:19:23,315 |-WARN in ch.qos.logback.core.joran.action.ParamAction - <param> element is deprecated in favor of a more direct syntax.At line 13
+12:19:23,315 |-WARN in ch.qos.logback.core.joran.action.ParamAction - For details see https://logback.qos.ch/codes.html#param
+12:19:23,354 |-WARN in ch.qos.logback.core.joran.util.PropertySetter@543e593 - No setter for property [key] in ch.qos.logback.classic.LoggerContext.
+12:19:23,356 |-WARN in ch.qos.logback.core.joran.util.PropertySetter@4e628b52 - No setter for property [defaultValue] in ch.qos.logback.classic.LoggerContext.

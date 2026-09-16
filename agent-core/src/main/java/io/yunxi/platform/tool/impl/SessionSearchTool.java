@@ -15,7 +15,13 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 会话搜索工具
  * <p>
- * 用于 Agent 搜索历史会话、查看最近会话和获取会话摘要
+ * 用于 Agent 搜索历史会话、查看最近会话和获取会话摘要。
+ * </p>
+ *
+ * <p>
+ * 数据源为应用数据库中的会话记录，支持跨会话、跨实例的持久化全文检索。
+ * 框架已内置一个覆盖本地会话缓存的同名能力，本工具以
+ * {@code session_history_search} 对外注册以避免工具名冲突。
  * </p>
  *
  * @author yunxi-agent-platform
@@ -48,7 +54,7 @@ public class SessionSearchTool {
         this.securityContext = securityContext;
     }
 
-    @Tool(name = "session_search", description = "Search history conversations, view recent conversations and get conversation summaries. Can be used to find previous chat records and related discussions.")
+    @Tool(name = "session_history_search", readOnly = true, description = "Search persisted conversation history stored in the application database, across sessions and instances. Supports full-text search, listing recent conversations and fetching conversation summaries.")
     public String search(
             @ToolParam(name = "action", description = "Action type: search, list_recent, get_summary") String action,
             @ToolParam(name = "query", description = "Search query text (only for search action)") String query,

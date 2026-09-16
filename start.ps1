@@ -172,7 +172,7 @@ $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
 # 大模型密钥请通过环境变量 DASHSCOPE_API_KEY 注入，切勿将真实密钥提交到仓库
-$DASHSCOPE_API_KEY = "***REDACTED***"
+$DASHSCOPE_API_KEY = "sk-dd32b5210d8d08a9e"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
@@ -183,13 +183,22 @@ $MILVUS_PASSWORD = "Milvus"
 $REDIS_HOST     = "127.0.0.1"
 $REDIS_PORT     = "6379"
 $REDIS_PASSWORD = "redispass"
+$REDIS_DATABASE = "0"
 
 Write-Host "[INFO] Current config:"
 Write-Host "       Database: $MYSQL_HOST`:$MYSQL_PORT/$MYSQL_DATABASE"
 Write-Host "       Service port: $SERVER_PORT"
 Write-Host "       向量Database: $MILVUS_HOST`:$MILVUS_PORT"
-Write-Host "       Cache: $REDIS_HOST`:$REDIS_PORT"
+Write-Host "       Cache: $REDIS_HOST`:$REDIS_PORT db=$REDIS_DATABASE"
 Write-Host ""
+
+if ([string]::IsNullOrWhiteSpace($DASHSCOPE_API_KEY)) {
+    Write-Host "[WARN] DASHSCOPE_API_KEY is not set - the app will start but chat will fail with 'no available model'." -ForegroundColor Yellow
+    Write-Host "       Set it first, then re-run:" -ForegroundColor Yellow
+    Write-Host '         $env:DASHSCOPE_API_KEY = "sk-your-real-key"' -ForegroundColor DarkGray
+    Write-Host "       Or put it in agent-config/src/main/resources/config/llm.yml." -ForegroundColor DarkGray
+    Write-Host ""
+}
 
 # ===== 确定模式 =====
 $mode = "normal"
@@ -253,9 +262,12 @@ $configArgs = @(
     "-Dmilvus.port=$MILVUS_PORT",
     "-Dmilvus.username=$MILVUS_USERNAME",
     "-Dmilvus.password=$MILVUS_PASSWORD",
+    # Redis：前缀必须是 spring.data.redis（Spring Boot 3.x 起旧写法 spring.redis 不再绑定）。
+    # 这里的变量值来自本脚本顶部的 $REDIS_*，权威默认值仍在 config/redis.yml。
     "-Dspring.data.redis.host=$REDIS_HOST",
     "-Dspring.data.redis.port=$REDIS_PORT",
     "-Dspring.data.redis.password=$REDIS_PASSWORD",
+    "-Dspring.data.redis.database=$REDIS_DATABASE",
     "-Dotel.service.name=$OTEL_SERVICE_NAME"
 )
 # OTLP 导出到 Jaeger（确保 docker-compose 已启动 collector）

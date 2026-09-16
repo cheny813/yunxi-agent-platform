@@ -104,7 +104,7 @@
             <artifactId>agentscope-extensions-studio</artifactId>
         </dependency>
 
-        <!-- AgentScope 模型扩展（GA 2.0.0 已将各厂商 ChatModel 由 core.model 拆分到独立 extension 模块） -->
+        <!-- AgentScope-Java 模型扩展（2.0.0 已将各厂商 ChatModel 由 core.model 拆分到独立 extension 模块） -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-openai</artifactId>
@@ -121,7 +121,7 @@
             <version>${agentscope.version}</version>
         </dependency>
 
-        <!-- Gemini 模型扩展（GA 2.0.0 已从 core.model 拆分到独立 extension 模块） -->
+        <!-- Gemini 模型扩展（2.0.0 已从 core.model 拆分到独立 extension 模块） -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-gemini</artifactId>

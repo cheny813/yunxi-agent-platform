@@ -145,7 +145,7 @@ yunxi:
 management:
   endpoint:
     health:
-      show-details: when_authorized   # 查看详情需要认证
+      show-details: when_authorized
   health:
     elasticsearch:
       enabled: false                   # 未安装 ES，避免 WARN

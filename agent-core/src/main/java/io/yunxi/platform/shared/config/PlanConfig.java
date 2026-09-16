@@ -20,6 +20,16 @@ public class PlanConfig {
     /** 计划是否需要用户确认（AgentScope 通过 readOnlyResolver 控制只读阶段） */
     private boolean userConfirm = false;
 
+    /**
+     * 计划模式下是否放行 shell 工具。
+     * <p>
+     * 映射到 {@code HarnessAgent.Builder.allowShellInPlanMode(boolean)}。shell 是双用途工具，
+     * 框架默认在计划模式下拒绝它；仅当需要以 {@code grep} / {@code git log} 一类命令做只读勘察
+     * 时显式打开。yunxi 的写类工具（{@code http_request} / {@code node_command}）不在此列。
+     * </p>
+     */
+    private boolean allowShellInPlanMode = false;
+
     /** 最大子任务数量 */
     private Integer maxSubtasks;
 
@@ -57,6 +67,14 @@ public class PlanConfig {
 
     public void setUserConfirm(boolean userConfirm) {
         this.userConfirm = userConfirm;
+    }
+
+    public boolean isAllowShellInPlanMode() {
+        return allowShellInPlanMode;
+    }
+
+    public void setAllowShellInPlanMode(boolean allowShellInPlanMode) {
+        this.allowShellInPlanMode = allowShellInPlanMode;
     }
 
     public Integer getMaxSubtasks() {

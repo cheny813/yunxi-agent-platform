@@ -42,6 +42,7 @@ logs/
 # 临时文件
 .claude
 .comate
+.codebuddy
 *.tmp
 *.temp
 *.swp
@@ -109,3 +110,17 @@ agent-core/uploads/
 
 # IDE 工程文件（Eclipse/VS Code Java，若需 m2e 导入可选择性保留）
 .factorypath
+
+# ============================================================
+# 文档边界：docs/ 采用白名单，仅公开 docs/guide/ 下的用户文档
+# ============================================================
+# docs/ 下的架构设计、里程碑台账、产品路线图、调研报告等属内部文档，永不进入开源仓库。
+# 只有 docs/guide/（面向使用者的手册）会随仓库发布。
+# 新增对外文档请一律放进 docs/guide/ 下，切勿直接放在 docs/ 根目录。
+#
+# 注意：被 git 追踪过的文件，.gitignore 对其无效 —— 从内部转为公开（或反之）时，
+# 需同步执行 `git rm --cached <file>` 才会真正生效。
+docs/*
+!docs/guide/
+docs/guide/**/*.tmp
+

@@ -83,7 +83,7 @@ management:
   
   endpoint:
     health:
-      show-details: when_authorized                      # 健康检查详情
+      show-details: when_authorized
       probes:
         enabled: true                                    # 启用探针
     

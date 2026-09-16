@@ -40,6 +40,8 @@ public class ExecutionContext {
     private Agent resolvedAgent;
     /** 意图分析结果（IntentPipeline 拦截器写入，可为 null） */
     private IntentResult intentResult;
+    /** 意图分析耗时（毫秒），归集为 INTENT 节点时用作节点时长 */
+    private long intentDurationMs;
     /** 路由决策（IntentPipeline 拦截器写入，可为 null） */
     private RouteDecision routeDecision;
     /** 执行结果错误信息（引擎收口时写入；null 表示成功），供 postHandle 收尾（如审计）消费 */
@@ -109,6 +111,14 @@ public class ExecutionContext {
 
     public void setIntentResult(IntentResult intentResult) {
         this.intentResult = intentResult;
+    }
+
+    public long getIntentDurationMs() {
+        return intentDurationMs;
+    }
+
+    public void setIntentDurationMs(long intentDurationMs) {
+        this.intentDurationMs = intentDurationMs;
     }
 
     public RouteDecision getRouteDecision() {

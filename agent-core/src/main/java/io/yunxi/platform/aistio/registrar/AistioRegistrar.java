@@ -130,7 +130,7 @@ public class AistioRegistrar {
     private Map<String, String> defaultLabels(DataPlaneInfo info) {
         Map<String, String> labels = new HashMap<>(4);
         labels.put("platform", "yunxi-agent-platform");
-        labels.put("runtime", "agentscope-ga");
+        labels.put("runtime", "agentscope-java");
         labels.put("version", info.getVersion());
         return labels;
     }

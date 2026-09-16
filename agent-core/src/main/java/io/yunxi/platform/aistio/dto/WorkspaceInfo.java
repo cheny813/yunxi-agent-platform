@@ -7,7 +7,7 @@ import lombok.Data;
 /**
  * 工作空间（{@code GET /agentscope/workspaces}，能力 workspace-inventory）。
  *
- * <p>在 yunxi 中 workspace 即按 userId 隔离的命名空间（与 GA HarnessAgent.workspaceFor 一致）。</p>
+ * <p>在 yunxi 中 workspace 即按 userId 隔离的命名空间（与 AgentScope-Java HarnessAgent.workspaceFor 一致）。</p>
  */
 @Data
 public class WorkspaceInfo {

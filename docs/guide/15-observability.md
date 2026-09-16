@@ -1,6 +1,6 @@
 # 15. 可观测性
 
-> **可观测性说明**：AgentScope-Java 自 2.0.0（GA）起废弃了 `Tracer`/`TracerRegistry` 接口（当前 2.0.3 GA 沿用该 OpenTelemetry 直连 API），平台已删除 `OpenTelemetryTracer.java`，通过 `OtelTracingMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
+> **可观测性说明**：AgentScope-Java 自 2.0.0 起废弃了 `Tracer`/`TracerRegistry` 接口（当前 2.0.3 沿用该 OpenTelemetry 直连 API），平台已删除 `OpenTelemetryTracer.java`，通过 `OtelTracingMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
 
 了解 yunxi Agent Platform 的可观测性设计。
 
@@ -8,7 +8,7 @@
 
 ## 架构
 
-通过实现 AgentScope 2.0.3 SDK 的 `MiddlewareBase` 接口（2.0.0 GA 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
+通过实现 AgentScope 2.0.3 SDK 的 `MiddlewareBase` 接口（2.0.0 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
 
 ### 组件关系
 
@@ -42,7 +42,7 @@
 | `OtelTracingMiddleware`（框架原生） | MiddlewareBase 接口 | 30 | invoke_agent / chat / execute_tool Span |
 | OpenTelemetry 全局实例 | 直连 API | SDK 内部 | llm.invoke / tool.execute Span |
 
-> 升级说明：V2.0.0（GA）之前，框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。GA 废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
+> 升级说明：V2.0.0 之前，框架通过 `TracerRegistry` → `OpenTelemetryTracer` 收集 Model/Tool 层 Span。该版本废弃了该机制，改为框架内部直接使用 OpenTelemetry 全局实例创建 Span，平台无需再实现 `Tracer` 接口。已删除 `OpenTelemetryTracer.java`（约 120 行）。
 
 ---
 
@@ -124,7 +124,7 @@ Jaeger 与 OTel Collector 已集成进 `docker-compose.yml`，一键启动即可
 ### 方式一：docker-compose 一键启动（推荐）
 
 ```bash
-cd d:\work\code\yunxi-agent-platform
+cd <yunxi-agent-platform>          # 你的项目根目录
 docker compose up -d
 ```
 
@@ -190,7 +190,7 @@ agent-core/.../tracing/
 
 核心代码量小，零侵入现有业务代码。
 
-> **注**：`OpenTelemetryTracer.java`（约 120 行）已在 2.0.0（GA）升级中删除。框架不再需要平台实现 `Tracer` 接口，改为内部直接使用 `GlobalOpenTelemetry`。
+> **注**：`OpenTelemetryTracer.java`（约 120 行）已在 2.0.0 升级中删除。框架不再需要平台实现 `Tracer` 接口，改为内部直接使用 `GlobalOpenTelemetry`。
 
 ---
 

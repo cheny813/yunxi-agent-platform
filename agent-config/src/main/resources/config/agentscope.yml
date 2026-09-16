@@ -25,24 +25,24 @@ agentscope:
     # ============================================================
     # 消息压缩配置（控制 HarnessAgent 历史压缩策略）
     #
-    # GA CompactionConfig.Builder 原始默认值（供参考）：
+    # AgentScope-Java CompactionConfig.Builder 原始默认值（供参考）：
     #   triggerMessages=50, triggerTokens=0(动态=contextWindow-20000),
     #   keepMessages=20, keepTokens=-1(动态=min(8000,max(2000,usable*0.25))),
     #   flushBeforeCompact=true, offloadBeforeCompact=true
     #
     # 本平台对 triggerMessages/triggerTokens/keepMessages 进行了调优覆盖，
-    # flushBeforeCompact/offloadBeforeCompact 与 GA 默认保持一致。
+    # flushBeforeCompact/offloadBeforeCompact 与 AgentScope-Java 默认保持一致。
     # ============================================================
     compaction:
-      # GA 默认 50 → 降为 20，更早触发压缩，控制 token 消耗
+      # AgentScope-Java 默认 50 → 降为 20，更早触发压缩，控制 token 消耗
       trigger-messages: ${COMPACTION_TRIGGER_MSGS:20}
-      # GA 默认 0（动态模式）→ 显式设为 8000，当 token 激增时作为保底触发
+      # AgentScope-Java 默认 0（动态模式）→ 显式设为 8000，当 token 激增时作为保底触发
       trigger-tokens: ${COMPACTION_TRIGGER_TOKENS:8000}
-      # GA 默认 20 → 降为 8，压缩后保留更少消息以减少 token 消耗
+      # AgentScope-Java 默认 20 → 降为 8，压缩后保留更少消息以减少 token 消耗
       keep-messages: ${COMPACTION_KEEP_MSGS:8}
-      # 与 GA 默认 true 一致
+      # 与 AgentScope-Java 默认 true 一致
       flush-before-compact: ${COMPACTION_FLUSH:true}
-      # 与 GA 默认 true 一致
+      # 与 AgentScope-Java 默认 true 一致
       offload-before-compact: ${COMPACTION_OFFLOAD:true}
 
     # Studio 可视化调试配置（可选）
@@ -86,14 +86,16 @@ agentscope:
       #   args: ["-y", "@modelcontextprotocol/server-sqlite", "./data/sample.db"]
 
     # ============================================================
-    # GA PlanMode 计划模式配置（agentscope.core.plan，由 AgentConfigurer.configurePlan 读取）
+    # AgentScope-Java PlanMode 计划模式配置（agentscope.core.plan，由 AgentConfigurer.configurePlan 读取）
     # 原误置于 agentscope.extensions 下导致无法绑定，现归位到 core 与 mcp-servers 一致。
     # ============================================================
     plan:
       enabled: ${PLAN_ENABLED:false}
       plan-dir: ${PLAN_DIR:plan}
-      # 只读工具关键字（逗号分隔）：plan 模式下仅允许这些只读工具 + 框架内置 plan 控制工具
-      read-only-tools: ${PLAN_READONLY_TOOLS:read_file,cat,ls,grep,memory_search,git}
+      # 计划模式下是否放行 shell 工具。默认 false：shell 是双用途工具，框架在计划模式下默认拒绝。
+      # 只读阶段的放行由框架按工具自身的 readOnly 元数据判定（见 @Tool(readOnly = true) 标注），
+      # 无需在此罗列工具名关键字。
+      allow-shell-in-plan-mode: ${PLAN_ALLOW_SHELL:false}
 
     # ============================================================
     # AgentScope-Java 2.0 原生技能系统（agentscope.core.skill，由 AgentConfigurer.configureSkills 读取）
@@ -121,9 +123,9 @@ agentscope:
       rag-enabled: ${INTERCEPTOR_RAG_ENABLED:true}
 
     # ============================================================
-    # 通用请求审计配置（agentscope.core.audit，由 AuditInterceptor 读取）
-    # 阶段二：AuditInterceptor（order=500），默认关闭；开启后 pre 记录开始、
-    # post 落库 agent_chat_logs（ConversationMapper.insertChatLog）。
+    # 通用请求审计配置（agentscope.core.audit，由对话审计中间件读取）
+    # 默认关闭；开启后每次调用收尾落库 agent_chat_logs
+    # （ConversationMapper.insertChatLog）。
     # ============================================================
     audit:
       enabled: ${AUDIT_ENABLED:false}
@@ -140,7 +142,7 @@ agentscope:
       default-score-threshold: ${RAG_DEFAULT_SCORE_THRESHOLD:0.5}
 
     # ============================================================
-    # V2.0 GA 升级：原 knowledge-bases 配置段（bailian/dify/ragflow/simple）
+    # V2.0 AgentScope-Java 升级：原 knowledge-bases 配置段（bailian/dify/ragflow/simple）
     # 对应的 KnowledgeAutoConfiguration / *KnowledgeCreator 已删除（rag 包 @Deprecated）。
     # 应用层 RAG 由 ApplicationRAG（基于 FileVectorService + EmbeddingService）在
     # ChatAppService 中注入，不再依赖此 YAML 段。此处删除该段避免 Jackson 绑定到已删类。

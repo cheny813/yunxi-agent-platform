@@ -8,7 +8,7 @@ import lombok.Data;
 /**
  * 任务信息（{@code GET /agentscope/sessions/{id}/tasks}、{@code /subagent-tasks}）。
  *
- * <p>数据来源于 GA {@code AgentState.tasksContext}（由 {@code enableTaskList(true)} 注册
+ * <p>数据来源于 AgentScope-Java {@code AgentState.tasksContext}（由 {@code enableTaskList(true)} 注册
  * 的 {@code todo_write} 工具持久化）。</p>
  */
 @Data

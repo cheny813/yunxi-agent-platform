@@ -12,7 +12,7 @@ import io.yunxi.platform.agent.service.AgentService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 将 yunxi 运行时 Agent 解析为 GA 的 {@link HarnessAgent}，用于访问其 delegate / stateStore /
+ * 将 yunxi 运行时 Agent 解析为 AgentScope-Java 的 {@link HarnessAgent}，用于访问其 delegate / stateStore /
  * plan-mode / task 等运行时能力。
  *
  * <p>注意：{@link AgentService#getAgentInstance(String)} 返回的是由 AgentConfigurer 经

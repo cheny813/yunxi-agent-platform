@@ -15,12 +15,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.message.Msg;
+import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.agent.service.AgentService;
+import io.yunxi.platform.security.auth.SecurityContext;
 import io.yunxi.platform.conversation.ChatAppService;
 import io.yunxi.platform.conversation.ConversationDomainService;
 import io.yunxi.platform.conversation.DistributedRequestManager;
+import io.yunxi.platform.agent.capability.ObservabilityCapability;
+import io.yunxi.platform.agent.middleware.AgentPhaseMiddleware;
 import io.yunxi.platform.execution.AgentPhase;
-import io.yunxi.platform.execution.operator.PhaseTracker;
 import io.yunxi.platform.shared.dto.ChatRequest;
 import io.yunxi.platform.shared.dto.ChatResponse;
 import io.yunxi.platform.shared.dto.ConversationChatRequest;
@@ -58,8 +61,11 @@ public class ConversationController {
     /** 分布式请求管理器 - 根据请求令牌管理请求 */
     private final DistributedRequestManager requestManager;
 
-    /** 阶段追踪算子 - 提供最近一次执行的阶段轨迹（agent_status 状态视图） */
-    private final PhaseTracker phaseTracker;
+    /** 可观测性能力 - 提供最近一次执行的阶段轨迹（agent_status 状态视图） */
+    private final ObservabilityCapability observabilityCapability;
+
+    /** 安全上下文 - 解析当前登录用户身份（会话级中断的 userId 回退来源） */
+    private final SecurityContext securityContext;
 
     /**
      * 获取用户会话列表
@@ -257,31 +263,71 @@ public class ConversationController {
 
     // ========== Agent 中断控制 ==========
 
-    /** 中断 Agent 执行 */
+    /**
+     * 中断 Agent 执行。
+     *
+     * <p>中断信号是<b>会话级</b>的：框架把中断控制状态挂在 {@code (userId, sessionId)} 槽位上
+     * （AgentState），因此必须传入对应当前会话的身份参数，才能真正打断那一次正在进行的调用。
+     * 无参的 {@code interrupt()} 打到的是实例级默认槽位，对多租户下按会话隔离的执行不生效。</p>
+     *
+     * <p>另外两点：中断信号是一次性的，由框架在本次迭代结束后自动消费，没有独立的恢复 API
+     * （{@code /resume} 因此只是空操作）；用户可在中断的同时附带一条消息，框架会把它并入
+     * 下一次推理输入。</p>
+     *
+     * @param name        Agent 名称
+     * @param conversationId 会话 ID（可选）；与 userId 一起定位要中断的会话槽位
+     * @param userId      用户 ID（可选）；留空时回退到当前登录身份
+     * @param message     中断时附带的用户消息（可选）
+     */
     @PostMapping("/agent/{name}/interrupt")
     public Map<String, Object> interruptAgent(@PathVariable String name,
+            @RequestParam(required = false) String conversationId,
+            @RequestParam(required = false) String userId,
             @RequestParam(required = false) String message) {
-        log.info("中断 Agent: name={}, message={}", name, message);
-        // 中断执行：有伴随消息则注入用户消息，否则仅发送中断信号。
-        // 框架在本次迭代结束后自动消费中断，无需显式恢复（详见 resumeAgent）。
+        log.info("中断 Agent: name={}, conversationId={}, userId={}, message={}",
+                name, conversationId, userId, message);
+
         Agent agent = agentDomainService.getAgentInstance(name);
-        if (message != null && !message.isBlank()) {
-            agent.interrupt(Msg.builder().textContent(message).build());
-        } else {
-            agent.interrupt();
+        if (!(agent instanceof HarnessAgent harness)) {
+            // 非 Harness 实现没有会话级中断能力，明确报错而不是静默降级为全局中断，
+            // 以免在多租户场景下误伤同一 Agent 实例上的其他会话。
+            log.warn("Agent '{}' 不是 HarnessAgent，不支持会话级中断", name);
+            return Map.of("success", false, "message", "该 Agent 不支持会话级中断");
         }
-        return Map.of("success", true, "message", "Agent 已中断");
+
+        String effectiveUserId = (userId != null && !userId.isBlank())
+                ? userId
+                : securityContext.getCurrentUserId();
+        Msg interruptMsg = (message != null && !message.isBlank())
+                ? Msg.builder().textContent(message).build()
+                : null;
+
+        if (interruptMsg != null) {
+            harness.interrupt(effectiveUserId, conversationId, interruptMsg);
+        } else {
+            harness.interrupt(effectiveUserId, conversationId);
+        }
+        return Map.of("success", true, "message", "Agent 已中断",
+                "conversationId", conversationId == null ? "" : conversationId);
     }
 
-    /** 查询 Agent 执行状态（含最近一次执行的阶段轨迹） */
+    /**
+     * 查询 Agent 执行状态（含最近一次执行的阶段轨迹）。
+     *
+     * <p>阶段轨迹按<b>会话</b>归集（中间件在 onAgent 钩子上按 sessionId 记录），故传入
+     * {@code conversationId} 才能取到该会话的轨迹；不传则回退按 Agent 名查询，可能命中
+     * 同一 Agent 上最近一次执行的其它会话。</p>
+     */
     @GetMapping("/agent/{name}/status")
-    public Map<String, Object> getAgentStatus(@PathVariable String name) {
-        log.info("查询 Agent 状态: name={}", name);
+    public Map<String, Object> getAgentStatus(@PathVariable String name,
+            @RequestParam(required = false) String conversationId) {
+        log.info("查询 Agent 状态: name={}, conversationId={}", name, conversationId);
         // interrupt 为一次性信号，由框架在本次迭代结束后自动消费，无独立的持久化状态机。
-        // 状态由 PhaseTracker 事件推导（IDLE→THINKING→TOOL_CALL→ANSWER→DONE）提供，
-        // 返回最近一次执行的阶段轨迹供前端状态视图渲染。
+        // 状态由事件流推导的阶段轨迹（IDLE→THINKING→TOOL_CALL→ANSWER→DONE）提供，
+        // 返回最近一次执行的阶段快照供前端状态视图渲染。
         Agent agent = agentDomainService.findAgent(name);
-        PhaseTracker.PhaseTrace lastTrace = phaseTracker.getLastPhaseTrace(name);
+        AgentPhaseMiddleware.PhaseTrace lastTrace = observabilityCapability.phaseMiddleware()
+                .getLastPhaseTrace(name, conversationId);
         String state;
         if (agent == null) {
             state = "NOT_FOUND";

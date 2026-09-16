@@ -414,7 +414,7 @@ log.info("操作耗时: {}ms", duration);
 
 ## 底层框架适配
 
-本平台基于 **AgentScope-Java**（阿里巴巴开源，2.0.3 GA 正式版），在实际使用中遇到了一些底层框架的设计限制。
+本平台基于 **AgentScope-Java**（阿里巴巴开源，2.0.3 正式版），在实际使用中遇到了一些底层框架的设计限制。
 
 ### 1. 工具组管理（理解框架内置工具与应用层工具的分组边界）
 
@@ -445,7 +445,7 @@ public boolean isActiveTool(String toolName) {
 
 #### 升级说明：不干预框架内置工具
 
-早期版本曾通过 `assignUngroupedTools()` 反射 hack 将未分组工具强行分配到 "general" 组。该方案已在 2.0.0（GA）中移除，原因：
+早期版本曾通过 `assignUngroupedTools()` 反射 hack 将未分组工具强行分配到 "general" 组。该方案已在 2.0.0 中移除，原因：
 
 - 底层框架的内置工具属于 Agent 基础设施能力，不参与分组是框架的设计意图
 - 应用框架的职责是管好自己的工具，不应通过反射 hack 干预框架内部状态

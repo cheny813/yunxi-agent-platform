@@ -135,7 +135,7 @@
 
     <!--
         插入会话审计日志（agent_chat_logs 表）
-        由 AuditInterceptor（order=500）在请求收尾时调用
+        由对话审计中间件在调用收尾时调用
     -->
     <insert id="insertChatLog" parameterType="io.yunxi.platform.shared.entity.ChatLogEntity">
         INSERT INTO agent_chat_logs (conversation_id, agent_name, user_id, user_message,

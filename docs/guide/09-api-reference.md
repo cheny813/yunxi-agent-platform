@@ -288,6 +288,30 @@ X-User-Id: user001
 | GET | `/api/conversations/agent/{name}/status` | 查询 Agent 执行状态 |
 | POST | `/api/conversations/agent/{name}/resume` | 恢复 Agent（清除中断状态；框架采用协作式中断、执行会自动继续，此端点兼容保留） |
 
+### 推理轨迹（Trace）
+
+内核只维护一条结构化推理轨迹（`ReasoningSpan` 快照序列），SSE 与 AG-UI 是它的两种**投影**（One Trace, Many Projections）。轨迹默认落 Redis（`conversation.trace-storage-type=redis`），多实例部署下跨实例可读；未装 Redis 时回退内存实现（仅本实例可见）。
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| GET | `/api/traces?userId=&sessionId=` | 查询轨迹列表（按用户 / 会话过滤） |
+| GET | `/api/traces/stream?userId=&sessionId=` | 轨迹**实时流**（SSE），订阅指定范围的快照增量 |
+| DELETE | `/api/traces?userId=&sessionId=` | 删除指定范围的轨迹 |
+| GET | `/api/traces/{traceId}` | 按 traceId 查询单条轨迹的完整快照序列 |
+| GET | `/api/traces/{traceId}/stream` | 按 traceId **回放**轨迹（SSE，从 `TraceStore` 读快照后经投影输出） |
+| GET | `/api/traces/{traceId}/ag-ui` | 按 traceId 以 **AG-UI 事件**形式回放（SSE，`AguiProjection` 投影） |
+
+**说明**：
+
+- `/stream` 系列的实时推送能力受存储后端限制：内存后端只推送本实例写入的快照；Redis 后端的历史部分跨实例全量可读，但实时增量仍限于本实例（跨实例实时推送需 Pub/Sub，当前未实现）。
+- `/ag-ui` 端点把轨迹映射为 AG-UI 协议事件（`TURN→RUN_*`、`TEXT/REASONING→MESSAGE_*`、`TOOL_CALL→TOOL_CALL_*`、`PLAN/TASK→STATE_SNAPSHOT`、`SUBAGENT→SUBAGENT_*`、`HITL→RUN_PAUSED/RUN_RESUMED` 等）。AG-UI 1.0 规范截至 2026-09 仍为草案，per-model usage 字段暂以 `CUSTOM` 事件占位，协议冻结后回填。
+
+**示例**：回放某条轨迹的 AG-UI 事件流
+
+```bash
+curl -N http://localhost:40001/api/traces/drill-001/ag-ui
+```
+
 ### 健康检查
 
 ```http
@@ -305,6 +329,8 @@ GET /actuator/health
   }
 }
 ```
+
+> 健康检查包含 `db` 与 `redis` 两个组件：任一不可用都会让聚合状态变为 `DOWN`（HTTP 503）。Redis 连接参数统一由 `config/redis.yml` 提供（`spring.data.redis.*`，Spring Boot 3.x 的绑定前缀），库号由 `REDIS_DATABASE` 环境变量控制。若 `redis` 组件报 `NOAUTH`，说明连接未带上密码——先确认配置前缀是否为 `spring.data.redis`（写成旧的 `spring.redis` 会被静默忽略，表现为「配置看着全对但健康检查 503」）。
 
 ---
 

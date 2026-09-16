@@ -1,19 +1,33 @@
 package io.yunxi.platform.execution;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.event.AgentEventType;
+import io.agentscope.core.event.ToolCallStartEvent;
+import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.state.AgentState;
 import io.agentscope.core.message.Msg;
 import io.yunxi.platform.execution.spi.AgentEventAdapter;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.execution.strategy.StreamingStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.trace.ReasoningSpan;
+import io.yunxi.platform.trace.SpanKind;
+import io.yunxi.platform.trace.TraceCollectorMiddleware;
+import io.yunxi.platform.trace.TraceComposer;
+import io.yunxi.platform.trace.TraceStore;
+import io.yunxi.platform.trace.projection.ProjectionContext;
+import io.yunxi.platform.trace.projection.SseProjection;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.SignalType;
 
@@ -27,7 +41,7 @@ import reactor.core.publisher.SignalType;
  *       RagRetrieval → Audit），失败时收口为错误结果；</li>
  *   <li>策略选择（BlockingStrategy / StreamingStrategy / StructuredBlockingStrategy）
  *       并执行（首个 supports 的胜出）；</li>
- *   <li>流式通道：事件算子链（Metrics → PhaseTracker）→ 协议适配器
+ *   <li>流式通道：指标观测 → 阶段归集（{@link AgentPhaseTracker}）→ 协议适配器
  *       {@link AgentEventAdapter}（含 onStart/onThinking/onError 生命周期钩子与事件转换）
  *       → start/thinking/content 编排 + 双层超时，流终结（doFinally）触发
  *       {@code postHandleAll} 收尾（审计落库）；</li>
@@ -48,20 +62,26 @@ public class AgentExecutionEngine {
 
     private final DefaultInterceptorChain interceptorChain;
     private final List<ExecutionStrategy> strategies;
-    private final EventOperatorChain operatorChain;
     private final AgentEventAdapter eventAdapter;
     private final AgentscopeCoreProperties properties;
+    private final TraceComposer composer;
+    private final TraceStore traceStore;
+    private final SseProjection sseProjection;
 
     public AgentExecutionEngine(DefaultInterceptorChain interceptorChain,
                                 List<ExecutionStrategy> strategies,
-                                EventOperatorChain operatorChain,
                                 AgentEventAdapter eventAdapter,
-                                AgentscopeCoreProperties properties) {
+                                AgentscopeCoreProperties properties,
+                                TraceComposer composer,
+                                TraceStore traceStore,
+                                SseProjection sseProjection) {
         this.interceptorChain = interceptorChain;
         this.strategies = strategies;
-        this.operatorChain = operatorChain;
         this.eventAdapter = eventAdapter;
         this.properties = properties;
+        this.composer = composer;
+        this.traceStore = traceStore;
+        this.sseProjection = sseProjection;
     }
 
     /**
@@ -109,8 +129,10 @@ public class AgentExecutionEngine {
                 long streamStartNanos = System.nanoTime();
                 @SuppressWarnings("unchecked")
                 Flux<AgentEvent> events = (Flux<AgentEvent>) strategy.execute(ctx);
-                Flux<AgentEvent> operated = operatorChain.apply(events, ctx);
-                Flux<String> stream = composeStream(operated, ctx)
+                // 指标观测与阶段归集已下沉为 Agent 侧的原生中间件
+                // （AgentMetricsMiddleware / AgentPhaseMiddleware，见 ObservabilityCapability），
+                // 引擎在此只做协议编排，不再承担横切关切。
+                Flux<String> stream = composeStream(events, ctx)
                         // 流式通道 postHandle 收尾：流终结（完成/错误/取消）时触发审计等无流式依赖的收尾
                         .doFinally(sig -> {
                             long ms = (System.nanoTime() - streamStartNanos) / 1_000_000;
@@ -179,22 +201,19 @@ public class AgentExecutionEngine {
         String thinkingText = (String) ctx.getAttribute(StreamingStrategy.ATTR_THINKING_TEXT);
         Flux<String> thinkingFlux = toFlux(eventAdapter.onThinking(thinkingText, ctx));
 
-        // 内容事件流：算子链结果 → 适配器转换 → 双层错误兜底
-        // 结束信号由 PhaseTracker 注入的 DONE 阶段标记（agent_status "处理完成"）承担，
-        // 无需单独追加 finishFlux。
-        // 仅保留空闲超时（.timeout）：单次事件流长时间静默时触发，兜底单次大模型调用卡死；
-        // 注意：此处不做"墙上时钟总时长上限"式硬截止——长程任务（A2A 多轮编排、编码等）
-        // 本就会持续产出事件，总时长上限会误杀正常长任务。agent 执行的生命周期由调用方
-        // （ChatAppService）在客户端流终止时显式 cancel 来兜底，而非在此强加时间上限。
-        // [TRACE] 事件级追踪：打印 agent 运行产生的每一个事件类型。若此处 streamEvents 流已
-        // onComplete（[TRACE-RUN] 打印），但模型 transport 仍在收 SSE chunk（DEBUG 日志），
-        // 即证明运行脱离了响应式订阅链——这是"前端流结束后端还在跑"的根因判据。
-        Flux<AgentEvent> tracedEvents = events
-                .doOnNext(e -> log.info("[TRACE-EVENT] type={} agent={} conv={}",
-                        e.getType(), ctx.getAgentName(), ctx.getConversationId()));
-        Flux<String> contentFlux = tracedEvents
+        // 一次调用 = 一棵轨迹树 = 一个归集会话。会话持有跨事件的归集状态（节点栈、配对键、
+        // 未决计数），必须复用而非逐事件重建 —— 那正是 M1 修复过的缺陷（见 §G V10-21）。
+        // 整条事件流先经归集器成为语义快照流，再由协议投影消费（M2 切换点：
+        // 归集结果直接供投影消费），同时旁路落库。
+        String traceId = resolveTraceId(ctx);
+        TraceComposer.Session session = traceId == null ? null : composer.session(traceId);
+        boolean[] orchestrationInjected = {false};
+        RuntimeContext runtimeContext = (RuntimeContext) ctx.getAttribute("yunxi.runtimeContext");
+
+        Flux<String> contentFlux = events
                 .timeout(timeout)
-                .flatMapSequential(event -> Flux.fromIterable(eventAdapter.convert(event, ctx)))
+                .concatMap(event -> projectEvent(event, ctx, session, traceId, runtimeContext,
+                        orchestrationInjected))
                 .onErrorResume(e -> {
                     // 推理异常被兜底为 error 消息：同时记录结果摘要，供 postHandle 审计判定失败
                     ctx.setExecutionError(formatAgentError(e));
@@ -210,6 +229,100 @@ public class AgentExecutionEngine {
     /** null 安全的消息列表转 Flux（适配器钩子未实现/mock 场景返回 null 时降级为空流） */
     private static Flux<String> toFlux(List<String> messages) {
         return (messages == null || messages.isEmpty()) ? Flux.empty() : Flux.fromIterable(messages);
+    }
+
+    /**
+     * 逐事件投影：归集为语义快照 → 投影为协议消息 → 旁路落库。
+     *
+     * <p>事件流里覆盖的语义由投影承载（文本 / 思考 / 工具调用 / 工具结果）；事件流里<b>没有</b>
+     * 或投影不覆盖的事件（回合开始结束、人机交互、阶段标记、模型调用、透明事件）仍交由
+     * {@link AgentEventAdapter} 处理 —— 它们携带 usage 记录、会话持久化、结果去重、
+     * 阶段状态与透传等投影不负责的协议副作用。</p>
+     *
+     * <p>归集是状态化的：调用方必须复用传入的 {@code session}，逐事件投喂。投影与落库都吞掉异常，
+     * 保证观测失败不中断执行。</p>
+     */
+    private Flux<String> projectEvent(AgentEvent event, ExecutionContext ctx,
+                                      TraceComposer.Session session, String traceId,
+                                      RuntimeContext runtimeContext, boolean[] orchestrationInjected) {
+        List<String> out = new ArrayList<>();
+        if (session != null) {
+            try {
+                List<ReasoningSpan> spans = session.accept(event);
+                if (event instanceof ToolCallStartEvent start
+                        && "todo_write".equals(start.getToolCallName())) {
+                    injectTodoSnapshot(session, runtimeContext, start);
+                }
+                ProjectionContext pctx = ProjectionContext.of(traceId,
+                        ctx.getRequest().getUserId(), ctx.getConversationId(), Map.of());
+                for (ReasoningSpan span : spans) {
+                    out.addAll(sseProjection.convert(span, pctx));
+                }
+                for (ReasoningSpan span : spans) {
+                    try {
+                        traceStore.append(span);
+                    } catch (Exception ex) {
+                        log.warn("轨迹落库失败: traceId={}: {}", traceId, ex.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("轨迹归集失败: traceId={}: {}", traceId, e.getMessage());
+            }
+        }
+
+        AgentEventType type = event.getType();
+        boolean projected = type == AgentEventType.TEXT_BLOCK_DELTA
+                || type == AgentEventType.THINKING_BLOCK_DELTA
+                || type == AgentEventType.TEXT_BLOCK_START || type == AgentEventType.TEXT_BLOCK_END
+                || type == AgentEventType.THINKING_BLOCK_START || type == AgentEventType.THINKING_BLOCK_END
+                || type == AgentEventType.TOOL_CALL_START || type == AgentEventType.TOOL_CALL_END
+                || type == AgentEventType.TOOL_RESULT_END;
+        if (session == null || !projected) {
+            out.addAll(eventAdapter.convert(event, ctx));
+        }
+        return Flux.fromIterable(out);
+    }
+
+    /** 旁路读取 AgentState 任务清单，注入为 PLAN 节点（工具参数不在事件流里） */
+    private void injectTodoSnapshot(TraceComposer.Session session, RuntimeContext runtimeContext,
+                                    ToolCallStartEvent start) {
+        if (runtimeContext == null) {
+            return;
+        }
+        try {
+            AgentState state = RuntimeContext.resolveAgentState(runtimeContext, null);
+            if (state == null || state.getTasksContext() == null) {
+                return;
+            }
+            List<Map<String, Object>> tasks = state.getTasksContext().getTasks().stream()
+                    .map(t -> {
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("id", t.getId());
+                        item.put("subject", t.getSubject());
+                        item.put("state", t.getState() == null ? null : t.getState().name());
+                        return item;
+                    })
+                    .toList();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("tasks", tasks);
+            payload.put("taskCount", tasks.size());
+            payload.put("toolCallId", start.getToolCallId());
+            for (ReasoningSpan span : session.inject(SpanKind.PLAN, payload, 0L)) {
+                traceStore.append(span);
+            }
+        } catch (Exception e) {
+            log.debug("任务清单归集失败: {}", e.getMessage());
+        }
+    }
+
+    /** 轨迹标识：未显式指定时按 userId:sessionId 生成，与存储键一致 */
+    private static String resolveTraceId(ExecutionContext ctx) {
+        String sessionId = ctx.getConversationId();
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        String userId = ctx.getRequest().getUserId();
+        return (userId == null || userId.isBlank()) ? sessionId : userId + ":" + sessionId;
     }
 
     /**

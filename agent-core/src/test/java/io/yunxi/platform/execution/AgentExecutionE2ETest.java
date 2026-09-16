@@ -16,6 +16,9 @@ import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.ConfirmResultRequest;
 import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.trace.TraceComposer;
+import io.yunxi.platform.trace.TraceStore;
+import io.yunxi.platform.trace.projection.SseProjection;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -99,12 +102,16 @@ class AgentExecutionE2ETest {
     }
 
     private AgentExecutionEngine buildEngine(DefaultInterceptorChain chain, CaptureStrategy strategy) {
+        // 阶段归集与指标观测已下沉为 Agent 侧中间件（ObservabilityCapability），
+        // 引擎不再持有这两个关切，构造参数随之收敛。
         return new AgentExecutionEngine(
                 chain,
                 List.of(strategy),
-                new EventOperatorChain(List.of()),
                 mock(AgentEventAdapter.class),
-                mock(AgentscopeCoreProperties.class));
+                mock(AgentscopeCoreProperties.class),
+                mock(TraceComposer.class),
+                mock(TraceStore.class),
+                mock(SseProjection.class));
     }
 
     private static ConfirmResultRequest approvedResult(String toolCallId, String toolName) {

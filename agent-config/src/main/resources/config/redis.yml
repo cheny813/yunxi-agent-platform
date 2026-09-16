@@ -1,8 +1,22 @@
 # ============================================================
-# Redis 配置
+# Redis 配置（全平台唯一权威来源）
 # ============================================================
-# 用于会话存储和缓存
-# 支持环境变量覆盖：REDIS_HOST、REDIS_PORT、REDIS_PASSWORD
+# 全平台所有用到 Redis 的模块（会话存储、缓存、分布式协调锁、
+# A2A 流水线状态、轨迹 TraceStore 等）共用同一套连接参数，只在本文件
+# 定义一次，其它配置文件不得再写 host/port/password，一律引用
+# ${REDIS_HOST} / ${REDIS_PORT} / ${REDIS_PASSWORD} 占位符。
+#
+# 【前缀必须为 spring.data.redis】
+# Spring Boot 3.x 起 RedisProperties 的绑定前缀已从旧写法改为 spring.data.redis，
+# 旧写法只保留为兼容性元数据别名，不参与实际绑定。写成旧前缀会导致整段配置
+# 被静默忽略（host/port/password 全部退回 Spring 默认值 → 空密码 → NOAUTH），
+# 排查时表现为“Redis 健康检查 503 但配置看起来完全正确”。
+#
+# 【库号统一】
+# 全平台共用同一个逻辑库号（DB），由 REDIS_DATABASE 环境变量控制（默认 0）。
+# 其它配置文件不得硬编码库号，避免读错库。
+#
+# 支持环境变量覆盖：REDIS_HOST、REDIS_PORT、REDIS_PASSWORD、REDIS_DATABASE
 # ============================================================
 
 spring:

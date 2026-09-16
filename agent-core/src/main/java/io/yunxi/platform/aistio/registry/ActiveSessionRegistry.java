@@ -85,7 +85,7 @@ public class ActiveSessionRegistry {
 
     /**
      * 会话元数据（按<b>会话维度</b>）。
-     * 注意：区别于 GA 的 {@code PhaseTracker}（其以 agentName 为键、只保留最近一次执行），
+     * 注意：区别于 AgentScope-Java 的 {@code PhaseTracker}（其以 agentName 为键、只保留最近一次执行），
      * 本元数据以会话为单位，可正确支撑 {@code /sessions/{id}/state}。
      *
      * @param sessionId  会话 ID

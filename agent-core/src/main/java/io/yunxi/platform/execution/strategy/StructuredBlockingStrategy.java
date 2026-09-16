@@ -55,6 +55,10 @@ public class StructuredBlockingStrategy implements ExecutionStrategy {
     private final LlmMetrics llmMetrics;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** 审计开关（配置项，默认关闭） */
+    @Value("${agentscope.core.audit.enabled:false}")
+    private boolean auditEnabled;
+
     /** 对话接口等待超时时间（秒） */
     @Value("${conversation.timeout-seconds:300}")
     private int conversationTimeoutSeconds;
@@ -94,8 +98,8 @@ public class StructuredBlockingStrategy implements ExecutionStrategy {
             response = agent.call(inputMessage, target.schemaNode()).block(timeout);
         } else {
             // 命名/默认 Schema 类：带 RuntimeContext（保持多租户隔离）
-            RuntimeContext rc = buildRuntimeContext(ctx.getRequest().getUserId(),
-                    ctx.getRequest().getConversationId());
+            RuntimeContext rc = StrategyContextSupport.build(ctx,
+                    ctx.getRequest().getConversationId(), auditEnabled);
             // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
             AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, rc.getUserId(), rc.getSessionId());
             response = ((HarnessAgent) agent)
@@ -125,14 +129,5 @@ public class StructuredBlockingStrategy implements ExecutionStrategy {
         return schemaClass != null ? new SchemaTarget(schemaClass, null) : null;
     }
 
-    private static RuntimeContext buildRuntimeContext(String userId, String sessionId) {
-        RuntimeContext.Builder b = RuntimeContext.builder();
-        if (userId != null && !userId.isBlank()) {
-            b.userId(userId);
-        }
-        if (sessionId != null && !sessionId.isBlank()) {
-            b.sessionId(sessionId);
-        }
-        return b.build();
-    }
+
 }

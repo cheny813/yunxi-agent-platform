@@ -10,7 +10,7 @@ import io.yunxi.platform.execution.ExecutionContext;
  *   <li>{@code BlockingStrategy}：聚合完整回复（QUICK/BLOCKING 通道）；</li>
  *   <li>{@code StreamingStrategy}：返回 Flux&lt;AgentEvent&gt; 供 SSE 推送。</li>
  * </ul>
- * 两者均统一经事件算子链（Metrics/PhaseTracker），保证可观测性一致。
+ * 两者均统一经引擎的指标观测与阶段归集，保证可观测性一致。
  * </p>
  *
  * @author yunxi-agent-platform

@@ -6,16 +6,23 @@
 
 ## 模块概览
 
+### Maven 模块（根 `pom.xml` 的 `<modules>`，共 7 个）
+
 ```
 yunxi-agent-platform/
 ├── agent-spi               # SPI 接口定义（最底层抽象）
 ├── agent-config            # 集中化配置管理
-├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、同步引擎、AgentScope-Java 2.0 Channel 网关接入）
+├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、统一执行引擎、意图引擎、轨迹系统）
 ├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-text2sql          # 自然语言转 SQL
-├── agent-app               # 可执行应用打包（统一入口）
-├── agent-integration-test  # 跨模块集成测试
-├── agent-nutritionist-web  # 营养师前端演示（静态页 + 对话 SDK 调用）
+├── agent-app               # 可执行应用打包（统一入口，端口 40001）
+└── agent-integration-test  # 跨模块集成测试
+```
+
+### 附属工程（非 Maven 模块，独立构建）
+
+```
+├── agent-nutritionist-web  # 营养师前端演示（静态页 + 对话 SDK 调用，Vite 构建）
 ├── agent-web-sdk           # 浏览器端 JS SDK（WebSocket 接入）
 └── sdk-js                  # JavaScript/TypeScript SDK（Node.js 接入）
 ```
@@ -248,12 +255,18 @@ yunxi-mcp-servers/          ← 独立项目，30+ MCP 服务
 
 ## 端口规划
 
-参见 [`docs/端口规划.md`](../端口规划.md) 完整列表。
+平台各服务默认占用端口如下（均可在对应配置文件或启动参数中覆盖）：
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | agent-app | 40001 | 统一入口（可执行服务，内含 agent-core 核心框架） |
-| mcp-data | 40602 | 业务数据 MCP |
+| aistio 管控面 | 8081 / 18080 | 可选，见 [08. 部署运维](./08-deployment.md) |
+| mysql | 3306 | 业务数据（`agent-config` 中配置） |
+| redis | 6379 | 会话 / 缓存 / 轨迹存储（见 [06. 配置指南](./06-configuration.md)） |
+| nacos | 8848 | 配置中心（MCP 动态注册底座） |
+| milvus | 19530 | 向量检索 |
+| MCP 服务组 | 40101-40103、40501-40509、40602 | `yunxi-mcp-servers` 仓库提供 |
+| OTLP 接收端 | 4318 | OpenTelemetry 导出目标（可选） |
 
 ---
 

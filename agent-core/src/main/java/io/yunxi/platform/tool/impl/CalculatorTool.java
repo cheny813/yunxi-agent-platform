@@ -18,7 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 public class CalculatorTool {
 
-    @Tool(name = "calculator", description = "执行数学计算，支持加减乘除、指数、平方根等运算")
+    @Tool(name = "calculator", readOnly = true, description = "执行数学计算，支持加减乘除、指数、平方根等运算")
     public String calculate(
             @ToolParam(name = "operation", description = "运算类型: add/subtract/multiply/divide/power/sqrt/abs/expression") String operation,
             @ToolParam(name = "a", description = "第一个操作数（双元运算需要）") Double a,

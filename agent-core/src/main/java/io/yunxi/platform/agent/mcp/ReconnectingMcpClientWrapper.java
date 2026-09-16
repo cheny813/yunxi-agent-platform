@@ -1,16 +1,16 @@
 /*
  * 轻量适配层：MCP 客户端断线自动重连包装器。
  *
- * 背景：AgentScope GA 内置的 MCP Java SDK（io.modelcontextprotocol:sdk:mcp:0.17.2）中，
- * GA 的 McpClientBuilder 使用 HttpClientSseClientTransport.builder(url) 但未配置 reconnectInterval，
- * 且 GA 的 McpAsyncClientWrapper.callTool 仅记录错误、无重试/重连逻辑。因此当某个 MCP 服务器进程重启、
+ * 背景：AgentScope-Java 内置的 MCP Java SDK（io.modelcontextprotocol:sdk:mcp:0.17.2）中，
+ * AgentScope-Java 的 McpClientBuilder 使用 HttpClientSseClientTransport.builder(url) 但未配置 reconnectInterval，
+ * 且 AgentScope-Java 的 McpAsyncClientWrapper.callTool 仅记录错误、无重试/重连逻辑。因此当某个 MCP 服务器进程重启、
  * 服务端主动关闭 SSE 长连接后，yunxi 侧的工具调用会静默挂起直至超时。为避免"任一 MCP 服务重启后都必须
  * 重启 yunxi 平台"这一问题，在 yunxi 自有层加一个委托包装器：调用抛连接异常时关闭旧连接、按需重建底层
  * McpClientWrapper 并重试一次。
  *
  * 删除条件：当底层框架满足以下任一条件后即可移除本类：
- *  - GA 的 McpAsyncClientWrapper / McpClientBuilder 内置连接级重试/重连；或
- *  - MCP Java SDK 的 SSE 传输默认自动重连且 GA 的 Builder 已启用（无需 yunxi 侧兜底）。
+ *  - AgentScope-Java 的 McpAsyncClientWrapper / McpClientBuilder 内置连接级重试/重连；或
+ *  - MCP Java SDK 的 SSE 传输默认自动重连且 AgentScope-Java 的 Builder 已启用（无需 yunxi 侧兜底）。
  * 届时直接删除本类，并把 AgentConfigurer.registerMcpServers 中对 wrapWithReconnect 的调用还原为裸
  * buildMcpClient 即可。
  *

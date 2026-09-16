@@ -89,8 +89,8 @@ class MemoryInterceptorTest {
     }
 
     @Test
-    @DisplayName("SMART 模式：历史消息 + 当前用户消息")
-    void smartModeWithHistory() {
+    @DisplayName("携带历史：本拦截器只产出当前用户消息，历史由请求级中间件注入")
+    void historyInjectionMovedToMiddleware() {
         ExecutionContext ctx = ctxWith(ExecutionRequest.builder()
                 .message("当前问题")
                 .memoryConfig(new MemoryConfig("smart"))
@@ -99,9 +99,8 @@ class MemoryInterceptorTest {
 
         interceptor.preHandle(ctx);
 
-        assertThat(ctx.getInputMessages()).hasSize(3);
-        assertThat(ctx.getInputMessages().get(0).getTextContent()).isEqualTo("历史1");
-        assertThat(ctx.getInputMessages().get(2).getTextContent()).isEqualTo("当前问题");
+        assertThat(ctx.getInputMessages()).hasSize(1);
+        assertThat(ctx.getInputMessages().get(0).getTextContent()).isEqualTo("当前问题");
     }
 
     @Test
@@ -161,5 +160,71 @@ class MemoryInterceptorTest {
         interceptor.preHandle(ctx);
 
         assertThat(ctx.getInputMessage().getMetadata()).doesNotContainKey(Msg.METADATA_CONFIRM_RESULTS);
+    }
+
+    @Test
+    @DisplayName("HITL 确认轮：清空用户文本，仅保留确认结果元数据")
+    void hitlConfirmTurnStripsUserText() {
+        ConfirmResultRequest req = new ConfirmResultRequest();
+        req.setToolCallId("call-1");
+        req.setToolName("queryDb");
+        req.setApproved(true);
+        ExecutionContext ctx = ctxWith(ExecutionRequest.builder()
+                .message("那顺便再问你三个问题：……")
+                .confirmResults(List.of(req)));
+
+        interceptor.preHandle(ctx);
+
+        // 框架在确认轮直接 resumeAgent()，不补一次推理；用户文本若留下会成为永不回答的悬空问题
+        assertThat(ctx.getInputMessage().getTextContent())
+                .as("确认轮不应把用户新问题带进上下文")
+                .isNullOrEmpty();
+        assertThat(ctx.getInputMessage().getMetadata())
+                .as("确认结果元数据必须保留")
+                .containsKey(Msg.METADATA_CONFIRM_RESULTS);
+    }
+
+    @Test
+    @DisplayName("HITL 确认轮：contextData 一并被剥离，不得随确认轮进入上下文")
+    void hitlConfirmTurnStripsContextDataToo() {
+        ConfirmResultRequest req = new ConfirmResultRequest();
+        req.setToolCallId("call-1");
+        req.setApproved(false);
+        ExecutionContext ctx = ctxWith(ExecutionRequest.builder()
+                .message("随便")
+                .contextData(Map.of("pageType", "nutrition"))
+                .confirmResults(List.of(req)));
+
+        interceptor.preHandle(ctx);
+
+        assertThat(ctx.getInputMessage().getTextContent()).isNullOrEmpty();
+    }
+
+    @Test
+    @DisplayName("非确认轮：用户文本原样保留（不能被裁剪逻辑误伤）")
+    void normalTurnKeepsUserText() {
+        ExecutionContext ctx = ctxWith(ExecutionRequest.builder()
+                .message("正常提问")
+                .confirmResults(List.of()));
+
+        interceptor.preHandle(ctx);
+
+        assertThat(ctx.getInputMessage().getTextContent()).isEqualTo("正常提问");
+    }
+
+    @Test
+    @DisplayName("确认项全部缺少 toolCallId：视为非确认轮，用户文本保留")
+    void confirmResultsWithoutValidIdKeepsUserText() {
+        ConfirmResultRequest invalid = new ConfirmResultRequest();
+        invalid.setApproved(true);
+        ExecutionContext ctx = ctxWith(ExecutionRequest.builder()
+                .message("仍应保留")
+                .confirmResults(List.of(invalid)));
+
+        interceptor.preHandle(ctx);
+
+        assertThat(ctx.getInputMessage().getTextContent())
+                .as("无有效 toolCallId 时不构成确认轮，不应裁剪文本")
+                .isEqualTo("仍应保留");
     }
 }

@@ -171,7 +171,7 @@ OTel Collector 的配置文件位于 `scripts/deploy/otel-collector-config.yaml`
 
 #### 可选启用 aistio 管控面<a name="aistio"></a>
 
-若需要 **Agent 管控 / 治理可视化 / 会话干预** 能力，可在默认基础设施之外追加 `--profile aistio` 一并拉起 AgentScope-Service 管控面（设计见 `docs/agentscope-service-integration-design.md`）：
+若需要 **Agent 管控 / 治理可视化 / 会话干预** 能力，可在默认基础设施之外追加 `--profile aistio` 一并拉起 AgentScope-Service 管控面：
 
 ```powershell
 # 同时拉起 yunxi 自有基础设施 + aistio 管控面（共 13 个容器）
@@ -184,7 +184,7 @@ aistio 由 `agentscope-service` 仓库源码本地构建（**无公开镜像**�
 # 0) 获取源码
 git clone https://github.com/agentscope-ai/agentscope-java.git
 cd agentscope-java
-# git checkout 2.0.3   # 可选：切到与 yunxi 匹配的 GA 标签
+# git checkout 2.0.3   # 可选：切到与 yunxi 匹配的版本标签
 
 # 1) 构建后端（方式 A：在仓库根目录执行，显式列出 service 子模块，-am 顺带编译 harness/extensions 等上游依赖）
 #    注意：-pl agentscope-service 只会选中聚合 pom 本身、不会构建其下子模块的 jar，必须列出子模块
@@ -196,7 +196,7 @@ mvn -pl agentscope-service/service-dataplane,agentscope-service/service-gateway,
 
 > **注意**：`mvn -pl agentscope-service -am install` 必须在仓库根目录（含 `agentscope-service` 模块的 pom）执行；若已 `cd` 进 `agentscope-service/` 子目录再执行会报 "Could not find the selected project in the reactor"。
 >
-> 源码位置由环境变量 `AISTIO_SRC` 指定（构建后指向仓库内的 `agentscope-service` 目录，默认 `../agentscope-java-2.0GA/agentscope-service`）。开源发布时需使用者自行 `export AISTIO_SRC=<其 agentscope-service 路径>`。
+> 源码位置由环境变量 `AISTIO_SRC` 指定（构建后指向仓库内的 `agentscope-service` 目录，默认 `../agentscope-java/agentscope-service`）。使用者需自行 `export AISTIO_SRC=<其 agentscope-service 路径>`；若本地 AgentScope-Java 目录名不同，相应调整即可。
 
 aistio profile 包含 5 个容器（均在 `aistio` profile 下，默认不启动）：
 

@@ -78,7 +78,7 @@ public class GovernanceService {
             return Map.of("sessionId", sessionId, "compressed", false, "reason", "empty context");
         }
         try {
-            // 强制压缩：将触发阈值压到 1 条，绕过 GA 默认的阈值触发，复用框架原生 compactor。
+            // 强制压缩：将触发阈值压到 1 条，绕过 AgentScope-Java 默认的阈值触发，复用框架原生 compactor。
             CompactionConfig forceConfig = CompactionConfig.builder().triggerMessages(1).build();
             MemoryFlushManager flushManager =
                     new MemoryFlushManager(agent.getWorkspaceManager(), agent.getModel());

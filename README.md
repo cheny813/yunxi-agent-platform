@@ -3,8 +3,8 @@
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)](https://spring.io/projects/spring-boot)
 [![AgentScope](https://img.shields.io/badge/AgentScope--Java-2.0.3-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
-[![GitCode](https://img.shields.io/badge/GitCode-cheny813%2Fyunxi--agent--platform-blue)](https://gitcode.com/cheny813/yunxi-agent-platform)
-[![GitHub](https://img.shields.io/badge/GitHub-Mirror-lightgrey?logo=github)](https://github.com/cheny813/yunxi-agent-platform)
+[![GitCode](https://img.shields.io/badge/GitCode-chenyao813%2Fyunxi--agent--platform-blue)](https://gitcode.com/chenyao813/yunxi-agent-platform)
+[![GitHub](https://img.shields.io/badge/GitHub-Mirror-lightgrey?logo=github)](https://github.com/chenyao813/yunxi-agent-platform)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Maven](https://img.shields.io/badge/Maven-3.8%2B-red)](https://maven.apache.org/)
 [![Multi-Agent](https://img.shields.io/badge/Architecture-Multi--Agent-ff69b4)](https://github.com/agentscope-ai/agentscope-java)
@@ -12,11 +12,11 @@
 [![OpenTelemetry](https://img.shields.io/badge/Observability-OpenTelemetry-9cf)](https://opentelemetry.io)
 [![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-success)](CHANGELOG.md)
 
-**yunxi Agent Platform** 是基于 **AgentScope-Java 2.0.3（GA）** 构建的企业级多智能体协作平台，以**意图引擎**为决策核心，开箱即用地提供多 Agent 编排、MCP 协议集成、记忆系统与技能自进化（MUSE）等能力。
+**yunxi Agent Platform** 是基于 **AgentScope-Java 2.0.3（正式版）** 构建的企业级多智能体协作平台，以**意图引擎**为决策核心，开箱即用地提供多 Agent 编排、MCP 协议集成、记忆系统与技能自进化（MUSE）等能力。
 
 > **yunxi（云曦）—— 让多智能体像晨曦一样自然涌现、协同共生。**
 
-> **版本策略**：版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 同步，当前 **2.0.3** 基于其 GA 正式版。完整变更见 [CHANGELOG](CHANGELOG.md)。
+> **版本策略**：版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 同步，当前 **2.0.3** 基于其正式版。完整变更见 [CHANGELOG](CHANGELOG.md)。
 
 ## 项目介绍
 
@@ -27,7 +27,7 @@ yunxi 站在经过生产验证的 AgentScope-Java 2.0.3 运行时之上，为企
 ## 为什么选择 yunxi
 
 - **决策中枢：意图引擎** — NER → 改写 → 分类 → 映射四阶段前置管道，自动路由到最合适的 Agent，告别硬编码 if-else 编排。
-- **官方稳定底座** — 直接复用 AgentScope-Java 2.0.3 GA 的 Model / Toolkit / Middleware / DistributedStore 体系。
+- **官方稳定底座** — 直接复用 AgentScope-Java 2.0.3 的 Model / Toolkit / Middleware / DistributedStore 体系。
 - **协议与工具开箱即用** — 原生 MCP 集成，支持运行期动态注册（Nacos 持久化、目标不可达自动重连），一键接入 30+ MCP 服务生态。
 - **技能自进化（MUSE）** — 沙箱评估 → LLM 修补 → 剪枝合并闭环，让技能自我判断、修补、进化。
 - **生产级保障** — OpenTelemetry 全链路追踪、提示注入防护、HITL 人机确认、工具最小权限。
@@ -40,13 +40,15 @@ yunxi 站在经过生产验证的 AgentScope-Java 2.0.3 运行时之上，为企
 |------|------|
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
 | **意图引擎** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型、rule/llm/hybrid 分类通道、actuator 热更新、意图路由，业务数据可配置替换 |
-| **执行引擎** | `AgentExecutionEngine` 门面统一收口同步/流式/结构化/取消调用；5 拦截器链（AuthResolve→Memory→IntentPipeline→RagRetrieval→Audit）+ 3 执行策略 + 事件算子链，新增协议仅需实现 `AgentEventAdapter` |
-| **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.3 GA，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
+| **执行引擎** | `AgentExecutionEngine` 门面统一收口同步 / 流式 / 结构化 / 取消四类调用入口；调用前经 4 个前置解析拦截器（AuthResolve → Memory → IntentPipeline → RagRetrieval），事件流经统一轨迹归集后由投影消费（新增协议只需实现一个 Projection） |
+| **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.3，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
+| **统一推理轨迹（One Trace, Many Projections）** | 内核只维护一条结构化轨迹（`TraceComposer` → `ReasoningSpan` → `TraceStore`），SSE / AG-UI 只是它的投影（`SseProjection` / `AguiProjection`）；轨迹可落 Redis 跨实例共享，支持历史回放与断点续传 |
+| **能力装配（Capability）** | `AgentCapability` + `AgentCapabilityRegistry` 能力切片自注册，新增一类能力只需登记一行，无需改动装配主流程 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
 | **MCP 协议** | 完整支持 Model Context Protocol，内置 9 个 MCP 服务定义（sse/stdio/http），其中 database/redis/milvus/mcp-nutrition/formfill 共 5 个默认启用，亦支持接入外部 30+ MCP 服务生态 |
 | **MCP 动态注册** | 运行期通过 REST API 注册/注销 MCP 服务器，基于 Nacos 配置中心实现目录持久化与跨实例广播，工具即时注入 Agent Toolkit，无需重启；目标不可达时自动重连降级 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
-| **技能系统** | 启用 AgentScope-Java 2.0 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载 |
+| **技能系统** | 复用 AgentScope-Java 2.0 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载。默认关闭，需将 `agentscope.core.skill.enabled` 设为 `true` 启用 |
 | **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并闭环 |
 | **流式事件** | `Model.stream()` 与 `Agent.streamEvents()` 双通道，均按 `AgentEventType` 过滤 |
 | **任务清单（TodoList）** | Agent 维护结构化步骤清单（x/y 进度经 `todo_update` 事件实时同步），状态随会话持久化、可断点续跑，复用原生 `todo_write` 工具 |
@@ -68,7 +70,7 @@ yunxi 站在经过生产验证的 AgentScope-Java 2.0.3 运行时之上，为企
 按下列顺序操作即可完整跑通（aistio 管控面为可选，跳过也不影响基础启动）。两个配套仓库需与本项目放在**同级目录**，脚本默认从此推导路径：
 
 - [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) — 5 个内置 MCP 服务（Java 进程）
-- [`agentscope-java-2.0GA`](https://github.com/agentscope-ai/agentscope-java) — aistio 管控面源码（仅需启用 aistio 时）
+- [`agentscope-java`](https://github.com/agentscope-ai/agentscope-java) — AgentScope-Java 源码仓（aistio 管控面源码即位于其 `agentscope-service` 模块，仅需启用 aistio 时）
 
 ### 环境要求
 
@@ -88,7 +90,7 @@ cd yunxi-agent-platform
 git clone https://gitcode.com/chenyao813/yunxi-mcp-servers.git ../yunxi-mcp-servers
 ```
 
-> **关于两个配套仓库**：`yunxi-mcp-servers` 首次体验即需要（第三步拉起 MCP 服务），请按上面一并克隆到与主项目同级；`agentscope-java-2.0GA` 仅在你启用 aistio 管控面时才需要，首次可暂不克隆（见第三步 aistio 段）。
+> **关于两个配套仓库**：`yunxi-mcp-servers` 首次体验即需要（第三步拉起 MCP 服务），请按上面一并克隆到与主项目同级；`agentscope-java` 仅在你启用 aistio 管控面时才需要，首次可暂不克隆（见第三步 aistio 段）。
 
 > **编译在第四步自动完成**：项目编译已内置在第四步的 `.\启动项目.ps1 -Clean` 中（脚本会执行 `mvn -pl agent-app -am clean install -DskipTests "-Djacoco.skip=true"`，仅构建运行链路、跳过 `agent-integration-test` 测试模块）。如果你希望先单独验证编译，也可现在手动执行这条命令，看到 `BUILD SUCCESS` 即可；否则直接跳到第四步一键完成「编译 + 启动」。
 
@@ -122,7 +124,7 @@ docker compose up -d
 
 `scripts/start-stack.ps1` 一键拉起初体验所需的 5 个 MCP 服务，并检查 aistio 控制面（未运行则一并拉起），幂等可重复运行。
 
-这 5 个 MCP 服务都来自配套项目 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers)，由 `agent-config/src/main/resources/config/mcp-core.yml` 统一配置（地址、协议、开关），各 Agent 在 `agent-definitions/*.yml` 的 `mcpServersToolsGroup` 中按需接入，平台通过 SSE（端点 `/mcp/sse`）连接：
+这 5 个 MCP 服务都来自配套项目 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers)，由 `agent-config/src/main/resources/config/mcp-core.yml` 统一配置（地址、协议、开关），各 Agent 在 `agent-config/src/main/resources/agent-definitions/*.yml` 的 `mcpServersToolsGroup` 中按需接入，平台通过 SSE（端点 `/mcp/sse`）连接：
 
 | 服务 | 端口 | 提供能力 |
 |------|------|----------|
@@ -158,24 +160,25 @@ docker compose up -d
 >
 > **重要**：aistio 构建时留在 `main` 分支，不要用 `v2.0.3` 标签 / `release/2.0.3` 分支——其前端引用了并不存在的 `features/build` 模块，会编译报 `TS2307: Cannot find module`。脚本默认构建 `main`，产物版本 `2.0.3-SNAPSHOT`。
 
-> **路径约定**：`McpServersRoot` / `AistioRepoRoot` / `YunxiRoot` 默认从脚本位置自动推导为与 `yunxi-agent-platform` 同级目录（如 `../yunxi-mcp-servers`、`../agentscope-java-2.0GA`），目录布局不同时用 `-McpServersRoot` / `-AistioRepoRoot` 指定。
+> **路径约定**：`McpServersRoot` / `AistioRepoRoot` / `YunxiRoot` 默认从脚本位置自动推导为与 `yunxi-agent-platform` 同级目录（如 `../yunxi-mcp-servers`、`../agentscope-java`），目录布局不同时用 `-McpServersRoot` / `-AistioRepoRoot` 指定。若你的 AgentScope-Java 源码目录名不同（例如带版本后缀），用 `-AistioRepoRoot` 显式指向即可。
 
 **日志**：yunxi 平台日志在 `logs/yunxi-agent-platform.log`；5 个 MCP 的 stdout/stderr 分别落在 `logs/mcp/<服务名>.out.log` / `.err.log`（实时跟踪：`Get-Content logs/mcp/database.out.log -Tail 50 -Wait`）；aistio 容器日志用 `docker compose --profile aistio logs -f`。关闭外部依赖栈用 `scripts/stop-stack.ps1`（加 `-IncludeYunxi` 一并关闭 yunxi 平台）。
 
 ### 第四步前：配置大模型（LLM）
 
-平台运行**必须接入一个大模型后端**才能对话。默认使用阿里云 DashScope（`qwen-plus`），密钥通过环境变量 `DASHSCOPE_API_KEY` 注入。
+平台运行**必须接入一个大模型后端**才能对话。默认使用阿里云 DashScope（`qwen-plus`），密钥通过环境变量 `DASHSCOPE_API_KEY` 注入。**仓库中不含任何密钥**，请自备。
 
-- **开箱即用（推荐首次体验）**：本仓库的启动脚本 `启动项目.ps1` 内置了一个**示例** `DASHSCOPE_API_KEY`（`start.ps1` 中）。若该 Key 仍有效，直接 `.\启动项目.ps1` 即可对话；若调用返回鉴权 / 额度错误，请按下方设置自己的 `DASHSCOPE_API_KEY` 后重试。
-- **使用自己的 Key**：在启动前的终端设置环境变量即可覆盖演示 Key：
+- **设置密钥（必须）**：在启动前的终端设置环境变量：
   ```powershell
   $env:DASHSCOPE_API_KEY = "sk-你的真实Key"
   .\启动项目.ps1
   ```
   也可在 `agent-config/src/main/resources/config/llm.yml` 中填写 `agentscope.core.dashscope.api-key`。
+
+  未设置密钥时应用仍可启动，但对话会报「无可用模型」；`启动项目.ps1` 会在启动前给出提示。
 - **切换其它厂商**（OpenAI / 百度 / 华为）：设置对应的 `OPENAI_API_KEY` / `BAIDU_API_KEY` / `HUAWEI_API_KEY` 等环境变量，并将 `agentscope.core.provider` 设为 `openai` / `baidu` / `huawei`（及相应 `model`）。
 
-> **注意**：若改用 `mvn spring-boot:run -pl agent-app` 启动（绕过 `启动项目.ps1`），不会自动注入演示 Key，必须先 `set DASHSCOPE_API_KEY=sk-xxx`（Windows）再启动，否则对话会因「无可用模型」失败。
+> **注意**：环境变量需在**启动前**于同一个终端设置。若改用 `mvn spring-boot:run -pl agent-app` 启动，同样需要先设置 `DASHSCOPE_API_KEY`，否则对话会因「无可用模型」失败。
 
 ### 第四步：启动 yunxi 应用
 
@@ -216,7 +219,7 @@ curl -X POST http://localhost:40001/api/conversations/chat \
   }'
 ```
 
-> `dish-searcher` 是内置示例 Agent，随平台**默认加载**（其 `hidden: true` 仅表示不在前端聊天列表展示，仍可直接按 `agentName` 调用）。更多内置 Agent 见 `agent-config/.../agent-definitions/`。
+> `dish-searcher` 是内置示例 Agent，随平台**默认加载**（其 `hidden: true` 仅表示不在前端聊天列表展示，仍可直接按 `agentName` 调用）。更多内置 Agent 见 `agent-config/src/main/resources/agent-definitions/`（当前含 dish-searcher、resident-nutrition-assistant、nutrition-evaluator、pagegen-assistant、recipe-composer、safety-assistant 共 6 个）。
 
 ### 体验前端示例（可选）
 
@@ -241,7 +244,7 @@ Vite 通过 `/api`、`/v1`、`/js` 代理到后端 `localhost:40001`（可用 `B
 
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
-| **agent-core** | 核心框架：Agent 编排、会话管理、模型、记忆、技能、安全、网关 | Spring Boot, agentscope-harness |
+| **agent-core** | 核心框架：Agent 编排、统一执行引擎、意图引擎、推理轨迹、会话、模型、记忆、技能、安全 | Spring Boot, agentscope-harness |
 | **agent-muse** | 自进化引擎：技能沙箱评估→LLM 修补→剪枝合并闭环 | agentscope, Java 子进程沙箱 |
 | **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
 | **agent-spi** | SPI 接口定义 | Java SPI |
@@ -261,21 +264,30 @@ Vite 通过 `/api`、`/v1`、`/js` 代理到后端 `localhost:40001`（可用 `B
 └───────────────────────────────▼──────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────┐
-│              编排层 (Core + agentscope-harness)              │
-│Agent 编排 · 会话管理 · 路由 · 技能治理 · 工作空间            │
+│               编排层 (agent-core + agentscope-harness)        │
+│Agent 编排 · 会话管理 · 路由 · 意图引擎 · 技能治理 · 工作空间   │
+│统一执行引擎 · 能力装配 (Capability)                          │
 │SmartLifecycle 启停 · prototype 作用域 · @Tool 注解           │
 └───────────────────────────────▼──────────────────────────────┘
-┌──────────────────────────────────────────────────────────────┐   ┌──────────────────────────────────────────────────────────────┐
-│                           MCP 协议                           │   │                       AgentScope V2.0                        │
-│30+ 工具                                                      │   │Model / Toolkit / Memory                                      │
-│SPI 扩展                                                      │   │Middleware / State                                            │
-└───────────────────────────────▼──────────────────────────────┘   └───────────────────────────────▼──────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│                统一推理轨迹 (Trace) → 投影 (Projection)       │
+│ReasoningSpan · TraceComposer · TraceStore (内存 / Redis)     │
+│         ├── SseProjection  → SSE 事件流                       │
+│         └── AguiProjection → AG-UI 协议事件                   │
+└───────────────────────────────▼──────────────────────────────┘
+
+┌────────────────────────────────┐   ┌──────────────────────────────┐
+│            MCP 协议            │   │     AgentScope-Java 2.0.3    │
+│30+ 工具 · SPI 扩展             │   │Model / Toolkit / Memory      │
+│运行期动态注册 (Nacos)          │   │Middleware / State            │
+└────────────────────────────────┘   └──────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────┐
 │                    基础设施 (Spring Boot)                    │
 │SmartLifecycle · Actuator · Micrometer · OTel                 │
 │@ConditionalOnClass · ConfigurationProperties                 │
-│Redis · MySQL · RocketMQ · Nacos                              │
+│Redis · MySQL · Milvus · Nacos · RocketMQ (可选，国产化环境)  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -327,7 +339,9 @@ yunxi 采用 **Agent 优先** 的目录布局，遵循 agentscope-java 框架约
 └── skills/                   # 全局共享技能（24 个技能目录）
 ```
 
-**设计原则**：工作空间以 `agents/` 为统一入口；用户运行时数据按 `{userId}/` 子目录隔离（由 `HarnessAgent.workspaceFor(userId, sessionId)` 在调用时按用户/会话命名空间路由，无需自建扫描器）；workspace 根目录 `skills/` 为全局共享资源；API 路由用 `compositeKey = agentName + "#" + userId` 定位用户专属 Agent 实例。Agent 定义 YAML 的 `model.apiKey` / `model.baseUrl` / `model.stream` 可为单个 Agent 指定独立 LLM 账号，不填则回退全局 `agentscope.core.*`。
+**设计原则**：工作空间以 `agents/` 为统一入口；用户运行时数据按 `{userId}/` 子目录隔离（由 `HarnessAgent.workspaceFor(userId, sessionId)` 在调用时按用户/会话命名空间路由，无需自建扫描器）；workspace 根目录 `skills/` 为全局共享技能资源（由 `agentscope.core.skill.project-global-dir` 指定，默认 `.agentscope/workspace/skills`，经框架 `composeSkillRepositories()` 自动装载）；API 路由用 `compositeKey = agentName + "#" + userId` 定位用户专属 Agent 实例。Agent 定义 YAML 的 `model.apiKey` / `model.baseUrl` / `model.stream` 可为单个 Agent 指定独立 LLM 账号，不填则回退全局 `agentscope.core.*`。
+
+> **技能目录说明**：平台技能统一存放于 `.agentscope/workspace/skills/`（框架唯一识别路径，随仓库附 24 个内置技能）。MUSE 自进化引擎会将其 classpath 内 `builtin-skills/` 的内建技能在启动时落地到此目录，二者共用同一标准格式，不引入私有格式。
 
 ---
 

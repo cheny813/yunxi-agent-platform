@@ -6,15 +6,19 @@ WORKDIR /build
 
 # Copy pom files first for better layer caching
 COPY pom.xml .
+COPY agent-config/pom.xml agent-config/
+COPY agent-spi/pom.xml agent-spi/
 COPY agent-core/pom.xml agent-core/
+COPY agent-muse/pom.xml agent-muse/
 COPY agent-app/pom.xml agent-app/
 COPY agent-text2sql/pom.xml agent-text2sql/
-
-# Download dependencies
-RUN mvn dependency:go-offline -B
+COPY agent-integration-test/pom.xml agent-integration-test/
 
 # Copy source code
 COPY . .
+
+# Download dependencies
+RUN mvn dependency:go-offline -B
 
 # Build application
 RUN mvn clean package -DskipTests -B

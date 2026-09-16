@@ -739,7 +739,7 @@ Agent 的工具按职责分组隔离，避免 LLM 调用不相关的工具导致
 
 | 组名 | 包含的工具 | 用途 |
 |------|-----------|------|
-| `memory` | `memory_search`, `memory_get`, `session_history`, `session_search`, `session_list` | 查询对话历史和长期记忆 |
+| `memory` | `memory_search`, `memory_get`, `session_history`, `session_search`, `session_history_search`, `session_list` | 查询对话历史和长期记忆（`session_history_search` 检索应用数据库中的已持久化会话） |
 | `filesystem` | `read_file`, `write_file`, `edit_file`, `glob_files`, `list_files`, `grep_files` | 读写工作区文件 |
 | `execute` | `execute` | 执行 Shell 命令（高危） |
 | `agent` | `call_agent`, `agent_send`, `agent_spawn`, `task_list`, `task_cancel`, `task_output` | 调用其他 Agent |
@@ -938,6 +938,8 @@ agent:
 3. **前端必须实现确认交互**：收到 `REQUIRE_USER_CONFIRM` 后需回传 `confirmResults`
    重新发起请求，否则会话停在挂起点。接口用法见
    [09. API 参考](./09-api-reference.md#require_user_confirm-事件人机确认)。
+
+> **确认轮载荷约束（重要）**：框架在确认轮 `validateAndAcceptConfirmResults` 通过后**直接** `resumeAgent()` 跳进执行阶段、不再补一次推理。因此确认轮随行提交的用户新问题**会被静默丢弃、永远得不到回答**，却会进入上下文。若用户想在确认后追问，必须**等恢复流结束之后另起一次请求**，而不是把新问题塞进确认回传。该约束由 `MemoryInterceptor` 在确认轮剥离用户文本与 `contextData`、仅保留 `METADATA_CONFIRM_RESULTS` 强制保证。
 
 ### 已知限制
 

@@ -35,7 +35,7 @@ public class DatabaseTool {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    @Tool(name = "database_query", description = "执行只读SQL查询，获取数据库数据")
+    @Tool(name = "database_query", readOnly = true, description = "执行只读SQL查询，获取数据库数据")
     public String query(
             @ToolParam(name = "sql", description = "SQL查询语句（仅支持SELECT)") String sql,
             @ToolParam(name = "limit", description = "最大返回行数，默认为500") Integer limit) {

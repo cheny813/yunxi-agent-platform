@@ -3,7 +3,7 @@ package io.yunxi.platform.execution;
 /**
  * 用户可见执行阶段（事件流推导）。
  *
- * <p>由 {@code PhaseTracker} 对 {@code Flux<AgentEvent>} 做纯函数阶段推导
+ * <p>由 {@code AgentPhaseMiddleware} 对 {@code Flux<AgentEvent>} 做纯函数阶段推导
  * （事件类型 → 阶段），仅在阶段切换时以 {@code CustomEvent(name="agent_status")}
  * 形式注入一条阶段标记，SSE 适配器将其转换为 {@code agent_status} 协议负载，
  * 前端据此渲染状态视图。</p>

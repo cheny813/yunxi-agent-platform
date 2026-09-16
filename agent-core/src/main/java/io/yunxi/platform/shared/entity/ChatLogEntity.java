@@ -3,7 +3,7 @@ package io.yunxi.platform.shared.entity;
 /**
  * 会话审计日志实体（对应 agent_chat_logs 表）。
  *
- * <p>由 AuditInterceptor（order=500）在请求收尾时写入：
+ * <p>由对话审计中间件在调用收尾时写入：
  * pre 记录开始时间与请求标识，post 汇总耗时/结果落库。</p>
  *
  * @author yunxi-agent-platform

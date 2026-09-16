@@ -1,0 +1,87 @@
+# ============================================================
+# yunxi-agent-platform 多实例演练编排（与 docker-compose.yml 联合使用）
+# ============================================================
+# 用法（与基础编排合并启动，复用其 Redis / MySQL / Nacos）：
+#   docker compose -f docker-compose.yml -f docker-compose.multi-instance.yml up -d
+# 停止：
+#   docker compose -f docker-compose.yml -f docker-compose.multi-instance.yml down
+#
+# 说明：本文件只定义「两个应用实例 + 负载均衡」，底层 Redis/Mysql/Nacos 由基础编排提供，
+#   二者在同一 yunxi-net 网络中互通。应用镜像由根目录 Dockerfile 本地构建
+#   （先 mvn -pl agent-app -am package -DskipTests 产出 jar）。
+#
+# 演练目标（见 docs/breakpoint-resume-drill.md）：
+#   1) 轨迹跨实例共享 —— 实例 A 写入的轨迹，经 nginx 打到实例 B 也能回放（RedisTraceStore 证明）；
+#   2) 断点续传 —— 会话中断（HITL / 异常）后，同一 userId:sessionId 由另一实例恢复执行。
+services:
+  app1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yunxi-app1
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 40001
+      # 多实例轨迹存储：走 Redis（见 RedisTraceStore.AutoConfiguration）
+      CONVERSATION_TRACE-STORAGE-TYPE: redis
+      # 与 RedisConfig 的 conversation.storage-type 对齐：激活 GenericJackson2JsonRedisSerializer，
+      # 否则默认走 JDK 序列化（轨迹不可读、也无法用 redis-cli 注入合成轨迹做跨实例回放验证）
+      CONVERSATION_STORAGE-TYPE: redis
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
+    ports:
+      - "40011:40001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - yunxi-net
+
+  app2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yunxi-app2
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 40001
+      CONVERSATION_TRACE-STORAGE-TYPE: redis
+      # 与 RedisConfig 的 conversation.storage-type 对齐：激活 GenericJackson2JsonRedisSerializer，
+      # 否则默认走 JDK 序列化（轨迹不可读、也无法用 redis-cli 注入合成轨迹做跨实例回放验证）
+      CONVERSATION_STORAGE-TYPE: redis
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
+    ports:
+      - "40012:40001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+    networks:
+      - yunxi-net
+
+  lb:
+    image: nginx:1.27-alpine
+    container_name: yunxi-lb
+    volumes:
+      - ./scripts/deploy/multi-instance/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "40010:40010"
+    depends_on:
+      - app1
+      - app2
+    networks:
+      - yunxi-net
+
+networks:
+  yunxi-net:
+    driver: bridge

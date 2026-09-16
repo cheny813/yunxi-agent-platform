@@ -28,8 +28,7 @@ import io.yunxi.platform.tracing.LlmMetrics;
  *   <li>会话 ID：无会话入口时以 userId 充当 sessionId。</li>
  * </ul>
  *
- * <p>注：请求级文件 RAG 注入由 {@code RagRetrievalInterceptor}（order=300）
- * 在拦截器链完成，流式/阻塞两通道统一。</p>
+ * <p>注：请求级的文件检索与历史注入由调用入口的请求级中间件统一处理，流式/阻塞两通道一致。</p>
  *
  * @author yunxi-agent-platform
  */
@@ -70,7 +69,9 @@ public class BlockingStrategy implements ExecutionStrategy {
         String sessionId = ctx.getRequest().getConversationId() != null
                 ? ctx.getRequest().getConversationId()
                 : ctx.getRequest().getUserId();
-        RuntimeContext rc = buildRuntimeContext(ctx.getRequest().getUserId(), sessionId);
+        boolean audit = properties != null && properties.getAudit() != null
+                && properties.getAudit().isEnabled();
+        RuntimeContext rc = StrategyContextSupport.build(ctx, sessionId, audit);
         Duration timeout = Duration.ofSeconds(properties.getChatTimeoutSeconds());
 
         // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
@@ -92,14 +93,4 @@ public class BlockingStrategy implements ExecutionStrategy {
         return holder[0];
     }
 
-    private static RuntimeContext buildRuntimeContext(String userId, String sessionId) {
-        RuntimeContext.Builder b = RuntimeContext.builder();
-        if (userId != null && !userId.isBlank()) {
-            b.userId(userId);
-        }
-        if (sessionId != null && !sessionId.isBlank()) {
-            b.sessionId(sessionId);
-        }
-        return b.build();
-    }
 }

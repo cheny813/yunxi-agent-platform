@@ -25,6 +25,9 @@ import io.agentscope.core.message.Msg;
 import io.yunxi.platform.execution.spi.AgentEventAdapter;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import io.yunxi.platform.trace.TraceComposer;
+import io.yunxi.platform.trace.TraceStore;
+import io.yunxi.platform.trace.projection.SseProjection;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
@@ -38,8 +41,6 @@ class AgentExecutionEngineTest {
 
     @Mock
     private DefaultInterceptorChain interceptorChain;
-    @Mock
-    private EventOperatorChain operatorChain;
     @Mock
     private AgentEventAdapter eventAdapter;
     @Mock
@@ -57,8 +58,11 @@ class AgentExecutionEngineTest {
         // 协议生命周期钩子（引擎不再依赖具体协议构建器，start/error 由适配器产出）
         when(eventAdapter.onStart(any())).thenReturn(List.of("start"));
         when(eventAdapter.onError(any(), any())).thenReturn("error");
+        // 阶段归集与指标观测已下沉为 Agent 侧中间件（ObservabilityCapability），
+        // 引擎不再持有这两个关切，构造参数随之收敛。
         engine = new AgentExecutionEngine(
-                interceptorChain, List.of(strategy), operatorChain, eventAdapter, properties);
+                interceptorChain, List.of(strategy), eventAdapter, properties,
+                mock(TraceComposer.class), mock(TraceStore.class), mock(SseProjection.class));
         request = ExecutionRequest.builder()
                 .message("你好")
                 .agentName("agent-a")
@@ -160,7 +164,6 @@ class AgentExecutionEngineTest {
         AgentEvent event = mock(AgentEvent.class);
         Flux<AgentEvent> events = Flux.just(event);
         when(strategy.execute(any())).thenReturn(events);
-        when(operatorChain.apply(any(), any())).thenReturn(events);
         when(eventAdapter.convert(any(), any())).thenReturn(List.of("内容片段"));
 
         ExecutionResult result = engine.execute(request, null);
@@ -169,8 +172,15 @@ class AgentExecutionEngineTest {
         assertThat(result.getStream()).isNotNull();
         assertThat(result.isError()).isFalse();
 
+        // start + content 两条。
+        //
+        // 原期望为 3 条，第三条是流结束时的 DONE 阶段标记（agent_status "处理完成"）。
+        // 该标记现已改由 Agent 侧中间件（AgentPhaseMiddleware）在 onAgent 钩子上注入 ——
+        // 迁移的理由见该中间件类注释：阶段归集是「拦整个 Agent 调用」的关切，放在引擎里
+        // 意味着每种调用入口都要接一次。此处 strategy 为测试替身、不经过真实 Agent，
+        // 故中间件不参与，两条即为正确结果；DONE 标记的产出由 AgentPhaseMiddlewareTest 覆盖。
         StepVerifier.create(result.getStream())
-                .expectNextCount(2) // start + content
+                .expectNextCount(2)
                 .verifyComplete();
 
         // 流完成触发 doFinally 收尾
@@ -193,7 +203,6 @@ class AgentExecutionEngineTest {
         AgentEvent event = mock(AgentEvent.class);
         Flux<AgentEvent> events = Flux.just(event);
         when(strategy.execute(any())).thenReturn(events);
-        when(operatorChain.apply(any(), any())).thenReturn(events);
         when(eventAdapter.convert(any(), any())).thenReturn(List.of("内容片段"));
 
         ExecutionResult result = engine.execute(request, null);
@@ -220,7 +229,6 @@ class AgentExecutionEngineTest {
         when(strategy.supports(any())).thenReturn(true);
         Flux<AgentEvent> events = Flux.error(new RuntimeException("模型调用失败"));
         when(strategy.execute(any())).thenReturn(events);
-        when(operatorChain.apply(any(), any())).thenReturn(events);
 
         ExecutionResult result = engine.execute(request, null);
 

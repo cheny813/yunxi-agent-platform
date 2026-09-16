@@ -1,10 +1,14 @@
-package io.yunxi.platform.execution.interceptors;
+package io.yunxi.platform.agent.middleware;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.util.List;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,67 +20,63 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import io.yunxi.platform.execution.ExecutionContext;
-import io.yunxi.platform.execution.ExecutionRequest;
-import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
-import io.yunxi.platform.shared.config.AgentscopeCoreProperties.AuditProperties;
+import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.middleware.AgentInput;
 import io.yunxi.platform.shared.entity.ChatLogEntity;
 import io.yunxi.platform.shared.mapper.ConversationMapper;
+import reactor.core.publisher.Flux;
 
 /**
- * AuditInterceptor（order=500）：开关、落库与异常隔离测试。
+ * ChatAuditMiddleware：开关、落库内容与异常隔离测试。
  */
-@DisplayName("AuditInterceptor 通用审计")
+@DisplayName("对话审计中间件")
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class AuditInterceptorTest {
+class ChatAuditMiddlewareTest {
 
-    @Mock
-    private AgentscopeCoreProperties properties;
-    @Mock
-    private AuditProperties auditProperties;
     @Mock
     private ConversationMapper conversationMapper;
 
-    private AuditInterceptor interceptor;
-    private ExecutionContext ctx;
+    private ChatAuditMiddleware middleware;
+    private Agent agent;
+    private RuntimeContext enabledCtx;
 
     @BeforeEach
     void setUp() {
-        when(properties.getAudit()).thenReturn(auditProperties);
-        interceptor = new AuditInterceptor(properties, conversationMapper);
-        ExecutionRequest request = ExecutionRequest.builder()
-                .message("审计问题")
-                .agentName("agent-a")
-                .conversationId("conv-1")
+        middleware = new ChatAuditMiddleware(conversationMapper, "agent-a");
+        agent = null;
+        enabledCtx = RuntimeContext.builder()
                 .userId("user-1")
+                .sessionId("conv-1")
                 .build();
-        ctx = new ExecutionContext(request, "conv-1", "user-1", "agent-a");
+        enabledCtx.put(CallContextKeys.AUDIT_ENABLED_KEY, Boolean.TRUE);
+    }
+
+    private static AgentInput inputOf(String text) {
+        return new AgentInput(List.of(Msg.builder().textContent(text).build()));
+    }
+
+    private static Function<AgentInput, Flux<AgentEvent>> okChain() {
+        return in -> Flux.empty();
     }
 
     @Test
-    @DisplayName("审计关闭：pre 不记起始点，post 不落库")
+    @DisplayName("审计关闭：不落库")
     void disabledNoAudit() {
-        when(auditProperties.isEnabled()).thenReturn(false);
+        RuntimeContext off = RuntimeContext.builder().userId("user-1").sessionId("conv-1").build();
 
-        interceptor.preHandle(ctx);
-        interceptor.postHandle(ctx);
+        middleware.onAgent(agent, off, inputOf("审计问题"), okChain()).blockLast();
 
         verify(conversationMapper, never()).insertChatLog(any());
-        assertThat(ctx.<Object>getAttribute(AuditInterceptor.ATTR_START_TIME)).isNull();
     }
 
     @Test
-    @DisplayName("审计开启：成功请求落库 success=true")
+    @DisplayName("审计开启：成功请求落库 success=true 且带用户消息")
     void enabledSuccessPersists() {
-        when(auditProperties.isEnabled()).thenReturn(true);
-
-        interceptor.preHandle(ctx);
-        assertThat(ctx.<String>getAttribute(AuditInterceptor.ATTR_REQUEST_ID)).isNotNull();
-        assertThat(ctx.<Object>getAttribute(AuditInterceptor.ATTR_START_TIME)).isInstanceOf(Long.class);
-
-        ctx.setExecutionError(null);
-        interceptor.postHandle(ctx);
+        middleware.onAgent(agent, enabledCtx, inputOf("审计问题"), okChain()).blockLast();
 
         ArgumentCaptor<ChatLogEntity> captor = ArgumentCaptor.forClass(ChatLogEntity.class);
         verify(conversationMapper).insertChatLog(captor.capture());
@@ -93,11 +93,12 @@ class AuditInterceptorTest {
     @Test
     @DisplayName("审计开启：失败请求落库 success=false 且带错误消息")
     void enabledFailurePersists() {
-        when(auditProperties.isEnabled()).thenReturn(true);
+        Function<AgentInput, Flux<AgentEvent>> failing =
+                in -> Flux.error(new IllegalStateException("模型调用超时"));
 
-        interceptor.preHandle(ctx);
-        ctx.setExecutionError("模型调用超时");
-        interceptor.postHandle(ctx);
+        assertThatCode(() -> middleware.onAgent(agent, enabledCtx, inputOf("审计问题"), failing)
+                .onErrorResume(e -> Flux.empty())
+                .blockLast()).doesNotThrowAnyException();
 
         ArgumentCaptor<ChatLogEntity> captor = ArgumentCaptor.forClass(ChatLogEntity.class);
         verify(conversationMapper).insertChatLog(captor.capture());
@@ -106,34 +107,24 @@ class AuditInterceptorTest {
     }
 
     @Test
-    @DisplayName("pre 未执行（链中断）：post 跳过落库")
-    void postWithoutPreSkips() {
-        when(auditProperties.isEnabled()).thenReturn(true);
-
-        interceptor.postHandle(ctx);
-
-        verify(conversationMapper, never()).insertChatLog(any());
-    }
-
-    @Test
     @DisplayName("落库异常被隔离，不向主流程抛出")
     void persistenceFailureIsolated() {
-        when(auditProperties.isEnabled()).thenReturn(true);
         when(conversationMapper.insertChatLog(any())).thenThrow(new RuntimeException("DB 不可用"));
 
-        interceptor.preHandle(ctx);
-        interceptor.postHandle(ctx); // 不抛出
+        assertThatCode(() -> middleware.onAgent(agent, enabledCtx, inputOf("审计问题"), okChain())
+                .blockLast()).doesNotThrowAnyException();
     }
 
     @Test
     @DisplayName("超长错误消息截断至 500 字符")
     void longErrorMessageTruncated() {
-        when(auditProperties.isEnabled()).thenReturn(true);
         String longError = "E".repeat(1200);
+        Function<AgentInput, Flux<AgentEvent>> failing =
+                in -> Flux.error(new IllegalStateException(longError));
 
-        interceptor.preHandle(ctx);
-        ctx.setExecutionError(longError);
-        interceptor.postHandle(ctx);
+        middleware.onAgent(agent, enabledCtx, inputOf("审计问题"), failing)
+                .onErrorResume(e -> Flux.empty())
+                .blockLast();
 
         ArgumentCaptor<ChatLogEntity> captor = ArgumentCaptor.forClass(ChatLogEntity.class);
         verify(conversationMapper).insertChatLog(captor.capture());

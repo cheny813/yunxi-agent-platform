@@ -20,20 +20,11 @@ spring:
       group: a2a-pipeline-consumer
       topic: a2a-pipeline-topic
 
-  # Redis 配置（用于状态存储和分布式锁）
-  data:
-    redis:
-      host: ${REDIS_HOST:127.0.0.1}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:redispass}
-      database: 2
-      lettuce:
-        pool:
-          max-active: 20
-          max-idle: 10
-          min-idle: 5
-          max-wait: 1000ms
-        shutdown-timeout: 100ms
+  # Redis 配置：全部集中在 config/redis.yml（全平台唯一权威来源），
+  # 本文件不得重复声明 host/port/password/database 或 lettuce 池参数。
+  # 原因：多处写同一个 spring.data.redis.* 键会互相覆盖，且加载顺序不直观，
+  # 一旦分叉就会出现“配置看起来都写了、实际生效的是别人”的排查黑洞。
+  # A2A 需要更大连接池时，改 config/redis.yml 的 lettuce.pool 即可。
 
 # A2A 流水线配置
 a2a:

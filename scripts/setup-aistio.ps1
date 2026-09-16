@@ -6,15 +6,29 @@
 # All upstream edits are idempotent and safe to re-run.
 
 param(
-    [string] $AistioRepoRoot = (Join-Path (Join-Path (Join-Path $PSScriptRoot '..') '..') 'agentscope-java-2.0GA'),
+    # AgentScope-Java repo root. Empty -> auto-detect a sibling dir named
+    # agentscope-java or agentscope-java-2.0GA.
+    [string] $AistioRepoRoot = '',
     [string] $AistioVersion  = '2.0.3-SNAPSHOT',
     [switch] $GitPull
 )
 
 $ErrorActionPreference = 'Stop'
 $nl = [Environment]::NewLine
-$yunxiRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$repoRoot = Resolve-Path $AistioRepoRoot -ErrorAction Stop
+$yunxiRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$siblingRoot = (Resolve-Path (Join-Path $yunxiRoot '..')).Path
+
+if ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
+    foreach ($name in @('agentscope-java', 'agentscope-java-2.0GA')) {
+        $candidate = Join-Path $siblingRoot $name
+        if (Test-Path $candidate) { $AistioRepoRoot = $candidate; break }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($AistioRepoRoot) -or -not (Test-Path $AistioRepoRoot)) {
+    throw "Cannot find the AgentScope-Java repo next to this project (looked for agentscope-java / agentscope-java-2.0GA under $siblingRoot). Clone it there or pass -AistioRepoRoot <path>."
+}
+
+$repoRoot = (Resolve-Path $AistioRepoRoot).Path
 $svcDir = Join-Path $repoRoot 'agentscope-service'
 
 if (-not (Test-Path $svcDir)) {

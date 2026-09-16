@@ -73,7 +73,7 @@ public class ObservabilityAutoConfiguration {
             }
         }
 
-        // 指标导出：与链路追踪共用同一 OTLP 管线。GA 仅做链路追踪（无内置指标模块），
+        // 指标导出：与链路追踪共用同一 OTLP 管线。AgentScope-Java 仅做链路追踪（无内置指标模块），
         // yunxi 的 LlmMetrics 已基于本全局 SDK 的 Meter 采集 token/duration 等指标；
         // 未配置可达的 OTLP 端点时仅构造无导出器的 MeterProvider，指标本地采集、不对外暴露。
         SdkMeterProviderBuilder meterBuilder = SdkMeterProvider.builder()
@@ -178,7 +178,7 @@ public class ObservabilityAutoConfiguration {
     }
 
     /**
-     * 构建 GA 原生 OpenTelemetry 链路追踪 Middleware。
+     * 构建 AgentScope-Java 原生 OpenTelemetry 链路追踪 Middleware。
      *
      * <p>复用 yunxi 在 {@link #openTelemetry()} 中注册为全局实例的 OpenTelemetry SDK；
      * {@link OtelTracingMiddleware} 会读取该全局 SDK，产出 invoke_agent / chat / execute_tool

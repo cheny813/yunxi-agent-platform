@@ -7,11 +7,12 @@
 
 param(
     # yunxi-mcp-servers 仓库根（各 MCP 模块的上级工程）
-    [string]$McpServersRoot = (Resolve-Path (Join-Path (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')) '..') 'yunxi-mcp-servers')).Path,
-    # AgentScope-Service (aistio) 仓库根，供 docker compose 引用
-    [string]$AistioRepoRoot = (Resolve-Path (Join-Path (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')) '..') 'agentscope-java-2.0GA')).Path,
+    [string]$McpServersRoot = '',
+    # AgentScope-Java 仓库根（含 agentscope-service），供 docker compose 引用。
+    # 留空则自动探测同级目录下的 agentscope-java / agentscope-java-2.0GA。
+    [string]$AistioRepoRoot = '',
     # yunxi 仓库根
-    [string]$YunxiRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
+    [string]$YunxiRoot = '',
     [string]$AistioVersion = '2.0.3-SNAPSHOT',
     [switch]$SkipAistio,   # 跳过 aistio 控制面检查/启动
     [switch]$SkipMcp,      # 跳过 5 个 MCP 服务启动
@@ -19,6 +20,29 @@ param(
     [switch]$BuildMcp,     # 若目标 jar 不存在，自动 mvn package 构建
     [switch]$OpenConsole    # 启动完成后用默认浏览器打开 aistio 控制台
 )
+
+# ---------- 同级目录探测 ----------
+# 兼容两种仓库目录命名：官方克隆名 agentscope-java，以及带版本后缀的本地命名。
+function Resolve-SiblingDir {
+    param([string]$Parent, [string[]]$Candidates, [string]$Label)
+    foreach ($name in $Candidates) {
+        $p = Join-Path $Parent $name
+        if (Test-Path $p) { return (Resolve-Path $p).Path }
+    }
+    return $null
+}
+
+if ([string]::IsNullOrWhiteSpace($YunxiRoot)) {
+    $YunxiRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+}
+$SiblingRoot = (Resolve-Path (Join-Path $YunxiRoot '..')).Path
+
+if ([string]::IsNullOrWhiteSpace($McpServersRoot)) {
+    $McpServersRoot = Resolve-SiblingDir -Parent $SiblingRoot -Candidates @('yunxi-mcp-servers') -Label 'yunxi-mcp-servers'
+}
+if ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
+    $AistioRepoRoot = Resolve-SiblingDir -Parent $SiblingRoot -Candidates @('agentscope-java', 'agentscope-java-2.0GA') -Label 'AgentScope-Java'
+}
 
 $ErrorActionPreference = 'Stop'
 
@@ -70,6 +94,10 @@ if (-not $SkipAistio) {
     $aistioUp = (Test-PortListening 8081) -or (Test-PortListening 18080)
     if ($aistioUp) {
         Write-Host '==> aistio control plane already running (8081/18080), skip' -ForegroundColor DarkGray
+    } elseif ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
+        Write-Host '==> WARN: AgentScope-Java repo not found next to this project; skip aistio.' -ForegroundColor Yellow
+        Write-Host '    Clone it to a sibling dir (default names: agentscope-java or agentscope-java-2.0GA),' -ForegroundColor DarkGray
+        Write-Host '    or pass -AistioRepoRoot <path>. Use -SkipAistio to silence this warning.' -ForegroundColor DarkGray
     } else {
         Write-Host '==> bringing up aistio via docker compose (existing images)...' -ForegroundColor Cyan
         $env:AISTIO_SRC = Join-Path $AistioRepoRoot 'agentscope-service'

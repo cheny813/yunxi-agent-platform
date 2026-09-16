@@ -19,12 +19,19 @@ import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
 import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
 import io.agentscope.core.permission.PermissionMode;
+import io.yunxi.platform.agent.capability.AgentCapabilityRegistry;
 import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
+import io.yunxi.platform.agent.middleware.ChatAuditMiddleware;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
+import io.yunxi.platform.agent.middleware.FileContextInjectionMiddleware;
+import io.yunxi.platform.agent.middleware.HistoryInjectionMiddleware;
+import io.yunxi.platform.file.FileUploadService;
+import io.yunxi.platform.shared.mapper.ConversationMapper;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.agent.spi.MuseToolRegistrar;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.config.PermissionConfig;
+import io.yunxi.platform.intent.IntentTool;
 import io.yunxi.platform.security.hitl.HumanToolRegistrar;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
@@ -123,8 +130,17 @@ public class AgentConfigurer implements SmartLifecycle {
     /** MUSE 自进化元工具注册器（可选）：仅当 yunxi.muse.enabled=true 时作为 Bean 存在 */
     private final ObjectProvider<MuseToolRegistrar> museToolRegistrarProvider;
 
-    /** GA 原生 OpenTelemetry 链路追踪 Middleware 提供者（可选） */
+    /** 意图识别工具（可选），模型侧按需调用 intent_classify，由 TraceComposer 归集为 INTENT 节点 */
+    private final ObjectProvider<IntentTool> intentToolProvider;
+
+    /** AgentScope-Java 原生 OpenTelemetry 链路追踪 Middleware 提供者（可选） */
     private final ObjectProvider<OtelTracingMiddleware> otelTracingMiddlewareProvider;
+
+    /** 文件检索服务（可选），供请求级文件上下文注入中间件使用 */
+    private final ObjectProvider<FileUploadService> fileUploadServiceProvider;
+
+    /** 审计落库 Mapper（可选），供对话审计中间件使用 */
+    private final ObjectProvider<ConversationMapper> conversationMapperProvider;
 
     /** Agent 分布式后端（可选），提供 AgentStateStore + BaseStore + SandboxSnapshot 一站式配置 */
     private DistributedStore distributedBackend;
@@ -138,6 +154,9 @@ public class AgentConfigurer implements SmartLifecycle {
 
     /** MCP 协调底座（Nacos）封装，承担目录/广播/监听协调职责 */
     private final McpConfigStore mcpConfigStore;
+
+    /** 能力装配注册表，按顺序应用各类 Agent 能力的装配决策 */
+    private final AgentCapabilityRegistry capabilityRegistry;
 
     /** 跨实例 reconcile 的熔断保护（复用 resilience4j circuitbreaker 防止目标不可达时雪崩） */
     private final CircuitBreaker mcpReconcileCircuitBreaker =
@@ -156,7 +175,7 @@ public class AgentConfigurer implements SmartLifecycle {
      * @param customizerProvider          Agent 自定义扩展提供者（可选）
      * @param modelFactory                模型工厂
      * @param permissionConfig             权限配置构造器，将 HITL 配置映射为框架 PermissionContextState
-     * @param otelTracingMiddlewareProvider OpenTelemetry 链路追踪 Middleware 提供者（可选，GA 原生）
+     * @param otelTracingMiddlewareProvider OpenTelemetry 链路追踪 Middleware 提供者（可选，AgentScope-Java 原生）
      */
     public AgentConfigurer(AgentDefinitionLoader definitionLoader,
             AgentService agentService,
@@ -166,7 +185,11 @@ public class AgentConfigurer implements SmartLifecycle {
             PermissionConfig permissionConfig,
             ObjectProvider<OtelTracingMiddleware> otelTracingMiddlewareProvider,
             ObjectProvider<MuseToolRegistrar> museToolRegistrarProvider,
-            McpConfigStore mcpConfigStore) {
+            ObjectProvider<IntentTool> intentToolProvider,
+            ObjectProvider<FileUploadService> fileUploadServiceProvider,
+            ObjectProvider<ConversationMapper> conversationMapperProvider,
+            McpConfigStore mcpConfigStore,
+            AgentCapabilityRegistry capabilityRegistry) {
         this.definitionLoader = definitionLoader;
         this.agentService = agentService;
         this.coreProperties = coreProperties;
@@ -174,8 +197,12 @@ public class AgentConfigurer implements SmartLifecycle {
         this.modelFactory = modelFactory;
         this.permissionConfig = permissionConfig;
         this.otelTracingMiddlewareProvider = otelTracingMiddlewareProvider;
+        this.fileUploadServiceProvider = fileUploadServiceProvider;
+        this.conversationMapperProvider = conversationMapperProvider;
         this.museToolRegistrarProvider = museToolRegistrarProvider;
+        this.intentToolProvider = intentToolProvider;
         this.mcpConfigStore = mcpConfigStore;
+        this.capabilityRegistry = capabilityRegistry;
     }
 
     /**
@@ -418,6 +445,14 @@ public class AgentConfigurer implements SmartLifecycle {
         }
     }
 
+    /** 若意图识别工具 Bean 存在，把 intent_classify 挂入 toolkit，供模型侧按需调用并经 TraceComposer 归集为 INTENT 节点。 */
+    private void registerIntentTool(Toolkit toolkit) {
+        IntentTool intentTool = intentToolProvider.getIfAvailable();
+        if (intentTool != null) {
+            toolkit.registration().tool(intentTool).apply();
+        }
+    }
+
     private void initializeSingleAgent(AgentDefinition def) {
         try {
             log.info("创建 Agent: {}", def.getName());
@@ -429,6 +464,7 @@ public class AgentConfigurer implements SmartLifecycle {
             // 按 Agent 配置注册 MCP 服务器工具（框架原生 McpClientBuilder / SSE）
             registerMcpServers(toolkit, def);
             registerMuseTools(toolkit);
+            registerIntentTool(toolkit);
 
             // 激活工具组（toolkit 共享，仅执行一次）
             applyToolGroupActivation(toolkit, def);
@@ -487,9 +523,8 @@ public class AgentConfigurer implements SmartLifecycle {
                 .workspace(coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName())
                 .compaction(buildCompactionConfig());
 
-        // 配置 Middleware 链与运行时参数
+        // 配置 Middleware 链
         configureMiddlewares(builder, def, toolkit);
-        configureRuntime(builder, def);
 
         // 配置分布式后端（可选）：stateStore + baseStore + snapshotSpec 一站式配置
         if (distributedBackend != null)
@@ -497,10 +532,10 @@ public class AgentConfigurer implements SmartLifecycle {
 
         // 配置 AgentScope 原生能力：计划模式 / 任务清单 / 技能系统 / 韧性（重试-降级-超时）
         // 全部复用 HarnessAgent.Builder 原生 API，不自建任何等价逻辑
-        configurePlan(builder, def);
-        configureTaskList(builder, def);
+        // 计划模式、任务清单、运行时参数、健壮性四项由能力注册表按顺序装配；
+        // 技能系统因需要在多处复用其装配逻辑，仍在此直接调用。
+        capabilityRegistry.applyAll(builder, def);
         configureSkills(builder, def);
-        configureResilience(builder, def);
 
         // 应用 AgentCustomizer SPI 扩展（如有）
         AgentCustomizer customizer = findCustomizer(def);
@@ -591,6 +626,7 @@ public class AgentConfigurer implements SmartLifecycle {
         // 按 Agent 配置注册 MCP 服务器工具（若有）
         registerMcpServers(toolkit, def);
         registerMuseTools(toolkit);
+        registerIntentTool(toolkit);
         // 将每个专家 Agent 注册为子 Agent 工具
         for (ExpertConfig expert : experts) {
             Agent agent = expertAgents.get(expert.getName());
@@ -655,17 +691,14 @@ public class AgentConfigurer implements SmartLifecycle {
                 .compaction(buildCompactionConfig());
 
         configureMiddlewares(builder, def, toolkit);
-        configureRuntime(builder, def);
 
         // 配置分布式后端（可选）
         if (distributedBackend != null)
             builder.distributedStore(distributedBackend);
 
-        // 配置 AgentScope 原生能力：计划模式 / 任务清单 / 技能系统 / 韧性（与单 Agent 一致，完全复用框架）
-        configurePlan(builder, def);
-        configureTaskList(builder, def);
+        // 配置 AgentScope 原生能力：计划模式 / 任务清单 / 运行时参数 / 韧性（与单 Agent 一致，完全复用框架）
+        capabilityRegistry.applyAll(builder, def);
         configureSkills(builder, def);
-        configureResilience(builder, def);
 
         // 应用 AgentCustomizer SPI 扩展
         AgentCustomizer customizer = findCustomizer(def);
@@ -939,7 +972,7 @@ public class AgentConfigurer implements SmartLifecycle {
      * Middleware 按添加顺序执行，当前配置的 Middleware 顺序：
      * 1. GracefulShutdownMiddleware（优雅关停，必须）
      * 2. ContentFilterMiddleware（内容安全过滤/提示注入检测，必须）
-     * 3. OtelTracingMiddleware（可选，GA 原生 OpenTelemetry 链路追踪）
+     * 3. OtelTracingMiddleware（可选，AgentScope-Java 原生 OpenTelemetry 链路追踪）
      * 4. HITL：通过框架 {@code permissionContext} 注入
      *    并保留 HumanToolRegistrar（人工协作工具注册）
      * </p>
@@ -958,7 +991,20 @@ public class AgentConfigurer implements SmartLifecycle {
         // 必须：内容安全过滤（提示注入检测）
         builder.middleware(new ContentFilterMiddleware());
 
-        // 可选：GA 原生 OpenTelemetry 链路追踪（invoke_agent / chat / execute_tool 三段 span）
+        // 请求级输入处理：历史裁剪 + 文件上下文前置（参数按调用维度经 RuntimeContext 传入）
+        builder.middleware(new HistoryInjectionMiddleware());
+        FileUploadService fileUploadService = fileUploadServiceProvider.getIfAvailable();
+        if (fileUploadService != null) {
+            builder.middleware(new FileContextInjectionMiddleware(fileUploadService));
+        }
+
+        // 调用收尾审计（是否落库由调用方按调用维度声明）
+        ConversationMapper conversationMapper = conversationMapperProvider.getIfAvailable();
+        if (conversationMapper != null) {
+            builder.middleware(new ChatAuditMiddleware(conversationMapper, def.getName()));
+        }
+
+        // 可选：AgentScope-Java 原生 OpenTelemetry 链路追踪（invoke_agent / chat / execute_tool 三段 span）
         if (otelTracingMiddlewareProvider.getIfAvailable() != null) {
             builder.middleware(otelTracingMiddlewareProvider.getIfAvailable());
         }
@@ -1069,128 +1115,6 @@ public class AgentConfigurer implements SmartLifecycle {
     }
 
     // ========== Runtime / Plan 配置 ==========
-
-    /**
-     * 配置 Agent 运行时参数。
-     *
-     * <p>
-     * 包括最大迭代次数（maxIters）和 MetaTool 开关。
-     * maxIters 限制 ReAct 循环的最大迭代次数，防止无限循环。
-     * enableMetaTool 启用后 Agent 可以动态管理自己的工具。
-     * </p>
-     *
-     * @param builder Agent Builder
-     * @param def     Agent 定义配置
-     */
-    private void configureRuntime(HarnessAgent.Builder builder, AgentDefinition def) {
-        if (def.getRuntime() != null) {
-            builder.maxIters(def.getRuntime().getMaxIterations());
-            if (def.getRuntime().isEnableMetaTool()) {
-                builder.enableMetaTool(true);
-            }
-        }
-    }
-
-    /**
-     * 配置 Agent 规划功能（AgentScope PlanMode）。
-     *
-     * <p>
-     * 计划能力完全由
-     * AgentScope {@link PlanModeMiddleware} + {@link PlanModeManager} 托管。
-     * 启用条件取二者之一：YAML 的 {@code plan.enabled=true} 或 全局
-     * {@code agentscope.core.plan.enabled=true}。
-     * {@link PlanModeManager} 需要一个 {@link WorkspaceManager}，复用与
-     * {@code .workspace(path)} 相同的绝对路径构造，确保计划文件落在该 Agent 工作区内。
-     * </p>
-     *
-     * @param builder Agent Builder
-     * @param def     Agent 定义配置
-     */
-    private void configurePlan(HarnessAgent.Builder builder, AgentDefinition def) {
-        boolean yamlEnabled = def.getPlan() != null && def.getPlan().isEnabled();
-        boolean globalEnabled = coreProperties.getPlan().isEnabled();
-        if (!yamlEnabled && !globalEnabled) {
-            return;
-        }
-
-        // 复用与 .workspace(path) 一致的绝对路径，构造 AgentScope 原生 WorkspaceManager
-        String workspacePath = coreProperties.getWorkspaceBasePath() + "/agents/" + def.getName();
-        WorkspaceManager workspaceManager = new WorkspaceManager(Path.of(workspacePath));
-        String planDir = coreProperties.getPlan().getPlanDir();
-
-        // 只读解析器：将配置中的只读工具关键字（逗号分隔）编译为 Predicate，
-        // plan 模式下仅允许这些只读工具 + AgentScope 内置 plan 控制工具（如 plan_write）。
-        Predicate<String> readOnlyResolver = buildReadOnlyResolver(coreProperties.getPlan().getReadOnlyTools());
-
-        builder.middleware(new PlanModeMiddleware(
-                new PlanModeManager(workspaceManager, planDir), readOnlyResolver));
-        log.info("Agent '{}' 已启用 AgentScope PlanMode（planDir={}）", def.getName(), planDir);
-    }
-
-    /**
-     * 配置 Agent 任务清单能力（AgentScope 原生 TodoList）。
-     *
-     * <p>
-     * 能力完全由 AgentScope 提供：{@code ReActAgent.Builder.enableTaskList(true)} 在 build
-     * 阶段注册 {@code todo_write} 工具（操作 {@code AgentState.tasksContext}，全量替换语义）
-     * 与 {@code TaskReminderMiddleware}（每轮推理前重新注入任务列表）。yunxi 不自建工具、
-     * 不自建存储、不新增状态机。
-     * </p>
-     *
-     * <p>
-     * 启用条件与 {@link #configurePlan} 一致，取二者之一：YAML 的
-     * {@code plan.taskList=true} 或 全局 {@code agentscope.core.plan.task-list=true}。
-     * 任务清单与 PlanMode 相互独立——{@code todo_write} 不要求先进入计划模式。
-     * </p>
-     *
-     * <p>
-     * 任务状态持久化于 {@code AgentState.tasksContext}，随 AgentState 由
-     * {@code AgentStateStore} 按 (userId, sessionId) 槽位保存，跨会话续传天然具备。
-     * 默认即有文件持久化——HarnessAgent 在未显式设置时自动装配
-     * {@code JsonFileAgentStateStore}（{@code ~/.agentscope/state/<agentId>/}）；
-     * Redis 仅在跨实例/多副本部署时需要。
-     * </p>
-     *
-     * @param builder Agent Builder
-     * @param def     Agent 定义配置
-     */
-    private void configureTaskList(HarnessAgent.Builder builder, AgentDefinition def) {
-        boolean yamlEnabled = def.getPlan() != null && def.getPlan().isTaskList();
-        boolean globalEnabled = coreProperties.getPlan().isTaskList();
-        if (!yamlEnabled && !globalEnabled) {
-            return;
-        }
-        builder.enableTaskList(true);
-        log.info("Agent '{}' 已启用 AgentScope 任务清单（todo_write + TaskReminderMiddleware）", def.getName());
-    }
-
-    /**
-     * 将配置中的只读工具关键字编译为工具名 Predicate。
-     *
-     * @param readOnlyTools 逗号分隔的工具名关键字（可空）
-     * @return 判定某工具是否只读的谓词（空配置返回始终 false，交由 AgentScope 默认策略）
-     */
-    private Predicate<String> buildReadOnlyResolver(String readOnlyTools) {
-        if (readOnlyTools == null || readOnlyTools.isBlank()) {
-            return name -> false;
-        }
-        Set<String> keywords = new LinkedHashSet<>();
-        for (String kw : readOnlyTools.split("[,，]")) {
-            String t = kw.trim();
-            if (!t.isEmpty()) {
-                keywords.add(t.toLowerCase());
-            }
-        }
-        if (keywords.isEmpty()) {
-            return name -> false;
-        }
-        return name -> {
-            if (name == null) return false;
-            String lower = name.toLowerCase();
-            return keywords.stream().anyMatch(lower::contains);
-        };
-    }
-
     /**
      * 配置 AgentScope 原生技能系统（AgentSkillRepository）。
      *
@@ -1221,38 +1145,6 @@ public class AgentConfigurer implements SmartLifecycle {
             log.info("Agent '{}' 项目级全局技能目录: {}", def.getName(), pgDir);
         }
         log.info("Agent '{}' 技能系统已启用（AgentScope composeSkillRepositories 自动四层装载）", def.getName());
-    }
-
-    /**
-     * 配置 AgentScope 原生韧性能力（重试 / 降级模型 / 拒绝停止 / 超时）。
-     *
-     * <p>
-     * 完全复用 {@link HarnessAgent.Builder} 原生 API，不自建任何重试/降级/超时逻辑：
-     * <ul>
-     *   <li>{@code maxRetries} → 模型调用失败重试次数</li>
-     *   <li>{@code fallbackModel} → 主模型失败时切换的降级模型 ID</li>
-     *   <li>{@code stopOnReject} → 权限被拒时是否停止 Agent</li>
-     *   <li>{@code modelExecutionConfig(ExecutionConfig)} → 注入单次执行超时</li>
-     * </ul>
-     * </p>
-     *
-     * @param builder Agent Builder
-     * @param def     Agent 定义配置
-     */
-    private void configureResilience(HarnessAgent.Builder builder, AgentDefinition def) {
-        AgentscopeCoreProperties.ResilienceProperties r = coreProperties.getResilience();
-        if (r.getMaxRetries() != null) {
-            builder.maxRetries(r.getMaxRetries());
-        }
-        if (r.getFallbackModel() != null && !r.getFallbackModel().isBlank()) {
-            builder.fallbackModel(r.getFallbackModel());
-        }
-        builder.stopOnReject(r.isStopOnReject());
-        if (r.getTimeoutMs() != null && r.getTimeoutMs() > 0) {
-            builder.modelExecutionConfig(ExecutionConfig.builder()
-                    .timeout(java.time.Duration.ofMillis(r.getTimeoutMs()))
-                    .build());
-        }
     }
 
     // ========== Compaction ==========
@@ -1354,7 +1246,7 @@ public class AgentConfigurer implements SmartLifecycle {
     /**
      * 会话级工具组激活（根治点）。
      *
-     * <p>GA 在每次调用期（ReActAgent.activateSlotForContext）会以
+     * <p>AgentScope-Java 在每次调用期（ReActAgent.activateSlotForContext）会以
      * {@code toolkit.setActiveGroups(loaded.getToolContext().getActivatedGroups())}
      * 把会话状态的激活组覆盖到 toolkit 上。若会话状态来自持久化存储（或 v1 遗留空列表），
      * 其激活组为空，MCP 工具组会被反激活，运行时报
@@ -1382,7 +1274,7 @@ public class AgentConfigurer implements SmartLifecycle {
             RuntimeContext rc = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
             AgentState state = agent.getDelegate().getAgentState(rc);
             state.getToolContext().setActivatedGroups(groups);
-            // 关键：stateStore != null 时 GA 每次调用都会从存储重新加载状态并覆盖本地缓存，
+            // 关键：stateStore != null 时 AgentScope-Java 每次调用都会从存储重新加载状态并覆盖本地缓存，
             // 因此必须把修正后的激活组写回存储，否则 activateSlotForContext 重新加载时又会丢失。
             AgentStateStore store = agent.getStateStore();
             if (store != null) {

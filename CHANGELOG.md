@@ -6,6 +6,33 @@
 
 ---
 
+## [2.0.3] - 2026-09-16（架构升级补充）
+
+> 本节记录 **应用智能体架构升级**（One Trace, Many Projections）的落地成果。版本号不变（仍为 2.0.3，与底层 AgentScope-Java 同步）。
+
+### 新增
+
+- **统一推理轨迹（One Trace, Many Projections）**：内核改为只维护一条结构化推理轨迹，SSE 与 AG-UI 都只是它的投影，而不是各自适配。
+  - `ReasoningSpan` 结构化快照 + `TraceComposer` 有状态归集（跨事件持有节点栈与配对键）+ `TraceStore` 存储抽象。
+  - 统一执行引擎成为**唯一归集点**：整条事件流先经 `TraceComposer` 归集为快照流，再由投影消费、落库，消除了此前「拦截器链 / 事件算子链 / 阶段跟踪 / 协议适配器各一套」的四处胶水（胶水指数 4 → 1）。
+  - `TraceStore` 提供内存与 Redis 双实现：Redis 实现（`RedisTraceStore`）使多实例部署下「谁写的轨迹谁都能读到」，并支持断点续传与历史回放。
+- **AG-UI 投影（`AguiProjection`）**：按 AG-UI 协议把轨迹映射为事件流（`TURN→RUN_*`、`TEXT/REASONING→MESSAGE_*`、`TOOL_CALL→TOOL_CALL_*`、`PLAN/TASK→STATE_SNAPSHOT`、`SUBAGENT→SUBAGENT_*`、`HITL→RUN_PAUSED/RUN_RESUMED` 等），新增 `GET /api/traces/{traceId}/ag-ui` 回放端点。AG-UI 1.0 规范仍为草案，per-model usage 暂以 `CUSTOM` 事件占位。
+- **推理轨迹查询 API**：新增 `TraceController`，提供轨迹列表 / 实时流 / 按 traceId 查询 / 回放 / AG-UI 回放 / 删除共 6 个端点（详见 [09. API 参考 · 推理轨迹](./docs/guide/09-api-reference.md)）。
+- **能力装配体系（Capability）**：引入 `AgentCapability` + `AgentCapabilityRegistry`，把 Agent 装配按能力切片自注册 —— 运行时、健壮性、任务清单、计划模式、可观测五类能力各自独立，**新增一类能力只需在 `CapabilityConfiguration` 登记一行，不再需要改装配主流程**。
+- **意图作为轨迹节点（`IntentTool` / `intent_classify`）**：意图分析产物以工具节点形态进入本回合轨迹（`INTENT` span），决策时刻的语义（原始问题 / 改写问题 / 场景 / 域 / 路由）随轨迹留痕，可回放、可评估。
+
+### 修复
+
+- **Redis 配置前缀方向性错误（导致健康检查 503）**：Spring Boot 3.x 起 `RedisProperties` 的绑定前缀是 **`spring.data.redis`**，而平台配置写的是旧的 `spring.redis`，导致整段连接配置被静默忽略、连接退回默认值（`localhost` + 空密码）→ `NOAUTH` → `/actuator/health` 聚合 503。本次统一化改造：`config/redis.yml` 改为 `spring.data.redis.*` 并确立为全平台唯一权威来源；`a2a-pipeline.yml` 删除重复声明；`start.ps1` 改用正确前缀传参；`TraceStoreAutoConfiguration` 改为复用全局 `RedisConnectionFactory`（不再自建）。新增 `ConfigFragmentValidationTest.testRedisConfigUsesBoot3Prefix` 防回归。
+- **`ReasoningSpan` Redis 序列化健壮性**：派生 getter（`isOpen` / `isDelta` / `isClosed`）被 Jackson 误序列化为 `open` 字段，反序列化时 record 无该构造参数而失败。已加 `@JsonIgnore` 与 `@JsonIgnoreProperties(ignoreUnknown = true)`，Redis 跨实例回放恢复正常。
+
+### 变更
+
+- **`ExecutionInterceptor` 定位澄清**：四个拦截器（AuthResolve / Memory / IntentPipeline / RagRetrieval）确认为「单次调用开始前的前置解析与路由」，属编排层、保留在引擎侧；真正迁移为 AgentScope-Java 原生中间件的是横切关切（观测 / 指标 / 审计），已由 `ObservabilityCapability` 统一装配。
+- **计划模式回归框架原生开关**：`PlanModeCapability` 改用 `enablePlanMode` / `planFileDirectory` / `allowShellInPlanMode` 三件套，工具注册交还框架；删除平台自建的「按工具名关键字猜测只读」平行实现，放行判定回归 `@Tool(readOnly = true)` 元数据。
+
+---
+
 ## [2.0.3] - 2026-09-09
 
 ### 新增
@@ -23,18 +50,18 @@
   - 上报 OpenTelemetry 指标 `llm.token.total`（区分 prompt/completion）与 `llm.duration`（耗时直方图），可通过 Prometheus 暴露。
   - `PageAgentService` 打印响应内容摘要（文本 / 推理 / 工具调用 / 数据块）。
   - 修复 OpenAI 兼容代理 `usage` 被硬编码为 0 的问题，现聚合真实 token 消耗。
-- **权限模式全面透传 GA 原生枚举（弃兼容、拥抱底层框架）**：`PermissionConfig` 只保留 `build(hitl, PermissionMode)` 一种形态，把 GA 的 5 种模式（`DEFAULT` / `ACCEPT_EDITS` / `EXPLORE` / `BYPASS` / `DONT_ASK`）完整透传，已删除上一版的 `build(HITLConfig)` 单参兼容入口与 `PermissionRunMode` 封装枚举。yunxi 不封装、不裁剪，调用方（如 `AgentConfigurer`）直接决定要用的 GA 模式——HITL 配了需确认工具即透传 `DEFAULT`（被点名工具执行前挂起返回 `PERMISSION_ASKING`），未配则透传 `BYPASS`。yunxi 仅负责把 HITL（ToolGate / ReasoningReview）配置映射为 ASK 规则；`DONT_ASK` 下不注入 ASK 规则以规避 GA `checkAskRules` 不看 mode 的无人值守死锁；危险路径保护由 GA `ToolBase` / `ToolDangerousPathConstants` 在框架层自动强制 ASK（即便 `BYPASS` 也生效），yunxi 不重复实现。
-- **意图引擎 M2 系列（M2.1-M2.4）**：在 M1 四阶段规则管道（NER → 改写 → 分类 → 映射）基础上补齐识别到路由的完整闭环：
-  - **M2.1 意图路由**（默认关闭，渐进式上线）：`routeHint` 参与会话入口路由决策（advisory——目标 Agent 不存在或分数低于 `min-route-score` 时保持原路由不改道），新增 `routing.enabled` / `routing.min-route-score` 配置。
-  - **M2.2 多域模型**：业务数据按领域隔离（`resolver.domains` + `resolver.rules`），`DomainResolver` 四层判定链（显式 domain → 规则匹配 → default → base 兜底）；旧顶层四文件保留为 `base` 域快捷方式，零迁移。
-  - **M2.3 分类通道**：`classification.mode` 支持 `rule` / `llm` / `hybrid` 三模式，新增 `HybridIntentClassifier`（规则优先、LLM 兜底）与 `LlmIntentClassifier` + `LlmResultCache`（按 `domain|normalizedQuery|whitelistVersion` 缓存，TTL 7 天）；`llm.enabled=false` 时退化纯规则，规则兜底永不失效。
-  - **M2.4 热更新**：actuator 端点 `/actuator/intent/status` / `/actuator/intent/reload` / `/actuator/intent/suggest-words`（LLM 热度建议词，按域过滤）；`IntentFilePoller` 支持 `file:` 前缀资源 mtime 轮询（默认关闭）；reload 全程审计日志，单域失败不阻断其他域。
+- **权限模式全面透传 AgentScope-Java 原生枚举（弃兼容、拥抱底层框架）**：`PermissionConfig` 只保留 `build(hitl, PermissionMode)` 一种形态，把 AgentScope-Java 的 5 种模式（`DEFAULT` / `ACCEPT_EDITS` / `EXPLORE` / `BYPASS` / `DONT_ASK`）完整透传，已删除上一版的 `build(HITLConfig)` 单参兼容入口与 `PermissionRunMode` 封装枚举。yunxi 不封装、不裁剪，调用方（如 `AgentConfigurer`）直接决定要用的 AgentScope-Java 模式——HITL 配了需确认工具即透传 `DEFAULT`（被点名工具执行前挂起返回 `PERMISSION_ASKING`），未配则透传 `BYPASS`。yunxi 仅负责把 HITL（ToolGate / ReasoningReview）配置映射为 ASK 规则；`DONT_ASK` 下不注入 ASK 规则以规避 AgentScope-Java `checkAskRules` 不看 mode 的无人值守死锁；危险路径保护由 AgentScope-Java `ToolBase` / `ToolDangerousPathConstants` 在框架层自动强制 ASK（即便 `BYPASS` 也生效），yunxi 不重复实现。
+- **意图引擎：识别到路由的完整闭环**：在四阶段规则管道（NER → 改写 → 分类 → 映射）基础上补齐端到端能力：
+  - **意图路由**（默认关闭，渐进式上线）：`routeHint` 参与会话入口路由决策（advisory —— 目标 Agent 不存在或分数低于 `min-route-score` 时保持原路由不改道），新增 `routing.enabled` / `routing.min-route-score` 配置。
+  - **多域模型**：业务数据按领域隔离（`resolver.domains` + `resolver.rules`），`DomainResolver` 四层判定链（显式 domain → 规则匹配 → default → base 兜底）；旧顶层四文件保留为 `base` 域快捷方式，零迁移。
+  - **分类通道**：`classification.mode` 支持 `rule` / `llm` / `hybrid` 三模式，新增 `HybridIntentClassifier`（规则优先、LLM 兜底）与 `LlmIntentClassifier` + `LlmResultCache`（按 `domain|normalizedQuery|whitelistVersion` 缓存，TTL 7 天）；`llm.enabled=false` 时退化纯规则，规则兜底永不失效。
+  - **热更新**：actuator 端点 `/actuator/intent/status` / `/actuator/intent/reload` / `/actuator/intent/suggest-words`（LLM 热度建议词，按域过滤）；`IntentFilePoller` 支持 `file:` 前缀资源 mtime 轮询（默认关闭）；reload 全程审计日志，单域失败不阻断其他域。
   - 重构：`TreeSnapshot.build()` 统一两遍扫描工厂、`IntentKeywordMatcher` / `IntentYaml` 共享工具消除跨类重复、reload 监听器 SPI（`IntentReloadListener`）预留。
 - **MCP 动态注册（运行时 REST API + Nacos 协调底座）**：支持运行期通过 REST API 动态注册/注销 MCP 服务器，无需重启即可将工具注入 Agent Toolkit。协调底座基于 Nacos 配置中心：目录条目持久化到 `dataId`（默认 `yunxi.mcp-servers.json`），并通过 Nacos Naming 在 `yunxi-mcp-coordinator` 下跨实例广播；Nacos 未启用时自动退化为本地内存目录。采用「内存权威目录 + Nacos 全量快照」机制避免并发读-改-写竞态；目标不可达时仅 WARN 降级并在首次调用时自动重连，不阻塞 HTTP 请求。接口与配置见 [09. API 参考 · MCP 动态注册](./docs/guide/09-api-reference.md) 与 [06. 配置指南 · MCP 动态注册配置](./docs/guide/06-configuration.md)。
 
 ### 升级
 
-- **底层框架 AgentScope-Java 2.0.0 → 2.0.3**：同步升级底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 至 2.0.3（GA）。可观测性链路追踪中间件由平台自研 `ReActSpanMiddleware` 统一切换为框架原生 `OtelTracingMiddleware`；同步清理遗留的 `AgentGateway`、`HITLConfirmInterceptor`、`PermissionContextInterceptor` 等已不再使用的代码，权限模式全面透传 GA 原生枚举。
+- **底层框架 AgentScope-Java 2.0.0 → 2.0.3**：同步升级底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 至 2.0.3（正式版）。可观测性链路追踪中间件由平台自研 `ReActSpanMiddleware` 统一切换为框架原生 `OtelTracingMiddleware`；同步清理遗留的 `AgentGateway`、`HITLConfirmInterceptor`、`PermissionContextInterceptor` 等已不再使用的代码，权限模式全面透传 AgentScope-Java 原生枚举。
 
 ### 修复
 
@@ -51,11 +78,11 @@
 
 ## [2.0.0] - 2026-07-12
 
-> 本版本对应 AgentScope-Java **2.0.0 正式版（GA）**。
+> 本版本对应 AgentScope-Java **2.0.0 正式版**。
 
 ### ⚠️ 破坏性变更
 
-- 底层框架由 AgentScope-Java 2.0.0-RC3 升级至 **2.0.0 GA**，全面对齐 GA 原生 API。
+- 底层框架由 AgentScope-Java 2.0.0-RC3 升级至 **2.0.0 正式版**，全面对齐 AgentScope-Java 原生 API。
 - 移除 `agent-gateway` 模块（IM 渠道未上线，已由框架原生 channel 覆盖）。
 - 移除 `agent-rule-engine` 模块（暂无实际业务使用）。
 - 多租户隔离改为运行时注入 `RuntimeContext`，移除旧的 `UserWorkspaceService`。

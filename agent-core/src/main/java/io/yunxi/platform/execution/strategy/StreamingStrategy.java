@@ -16,6 +16,7 @@ import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
+import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import reactor.core.publisher.Flux;
 
 /**
@@ -27,7 +28,7 @@ import reactor.core.publisher.Flux;
  *   <li>计算思考事件文本（仅会话 + 非 quick + (useA2A || enableThinking)
  *       时生成，写入 {@code thinkingText} 属性供引擎编排 start/thinking 事件；
  *       无会话/quick 为 null）；</li>
- *   <li>直接返回 {@code streamEvents} 事件流，由引擎统一过算子链 + 适配器。</li>
+ *   <li>直接返回 {@code streamEvents} 事件流，由引擎统一过指标观测、阶段归集与适配器。</li>
  * </ul>
  *
  * @author yunxi-agent-platform
@@ -39,6 +40,13 @@ public class StreamingStrategy implements ExecutionStrategy {
 
     /** 思考事件文本在 ExecutionContext.attributes 中的键 */
     public static final String ATTR_THINKING_TEXT = "thinkingText";
+
+    /** 审计开关来源（配置项，默认关闭） */
+    private final AgentscopeCoreProperties properties;
+
+    public StreamingStrategy(AgentscopeCoreProperties properties) {
+        this.properties = properties;
+    }
 
     @Override
     public boolean supports(ExecutionContext ctx) {
@@ -60,8 +68,7 @@ public class StreamingStrategy implements ExecutionStrategy {
             }
         }
 
-        RuntimeContext rc = buildRuntimeContext(ctx.getRequest().getUserId(),
-                ctx.getRequest().getConversationId());
+        RuntimeContext rc = buildRuntimeContext(ctx);
 
         // 思考事件文本（生成规则见 computeThinkingText）
         String thinkingText = computeThinkingText(ctx, messages.size());
@@ -114,14 +121,12 @@ public class StreamingStrategy implements ExecutionStrategy {
         return String.format("分析: %s", userQuestion);
     }
 
-    private static RuntimeContext buildRuntimeContext(String userId, String sessionId) {
-        RuntimeContext.Builder b = RuntimeContext.builder();
-        if (userId != null && !userId.isBlank()) {
-            b.userId(userId);
-        }
-        if (sessionId != null && !sessionId.isBlank()) {
-            b.sessionId(sessionId);
-        }
-        return b.build();
+    /**
+     * 构造本次调用的运行时上下文，并写入本次调用的输入处理参数。
+     */
+    private RuntimeContext buildRuntimeContext(ExecutionContext ctx) {
+        boolean audit = properties != null && properties.getAudit() != null
+                && properties.getAudit().isEnabled();
+        return StrategyContextSupport.build(ctx, ctx.getRequest().getConversationId(), audit);
     }
 }

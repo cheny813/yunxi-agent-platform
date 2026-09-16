@@ -10,6 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  architecture-guard:
+    name: Architecture Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Framework synonym scan
+        run: python scripts/architecture-guard/agentscope_synonym_scan.py
+
+      - name: Ownership declaration check
+        run: python scripts/architecture-guard/ownership_declaration_check.py
+
   build:
     name: Maven Build (JDK 17)
     runs-on: ubuntu-latest

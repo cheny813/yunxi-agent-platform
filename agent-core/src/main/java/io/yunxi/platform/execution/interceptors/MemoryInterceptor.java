@@ -19,19 +19,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 拦截器 150：记忆模式分支与上下文注入。
+ * 拦截器 150：用户消息构建。
  *
- * <p>职责：根据 {@link MemoryConfig} 决定 {@code inputMessages} 的组装方式：
+ * <p>职责：把请求参数组装成模型可读的用户消息，包含两部分与业务语义强相关的注入：
  * <ul>
- *   <li>{@code isNone()}：无记忆模式，仅单条用户消息；</li>
- *   <li>否则：历史消息 + 当前用户消息（带异常降级为简单模式）；</li>
- *   <li>若请求携带 {@code contextData}，将页面上下文注入用户消息。</li>
+ *   <li>若请求携带 {@code contextData}，将页面上下文格式化后前置到用户消息（见
+ *       {@link #formatContextData}）；</li>
+ *   <li>若请求携带人机确认回传结果，转换为框架的 {@code ConfirmResult} 并写入消息元数据。</li>
  * </ul>
- * 注意：RAG 检索与注入不在本拦截器内完成（避免职责重复）——
- * Agent 级全量注入由 {@code ApplicationRAG} 中间件（onAgent 钩子）承担；
- * 会话型 + 智能记忆的按需文件检索由 {@code RagRetrievalInterceptor}（order=300）
- * 在拦截器链阶段完成（流式/阻塞两通道统一）。
- * </p>
+ * 历史消息的裁剪与拼接不在此处完成，已由请求级中间件在调用入口统一处理。</p>
  *
  * @author yunxi-agent-platform
  */
@@ -50,41 +46,26 @@ public class MemoryInterceptor implements ExecutionInterceptor {
         ExecutionRequest req = ctx.getRequest();
         String message = req.getMessage();
         Map<String, Object> contextData = req.getContextData();
-        MemoryConfig memoryConfig = req.getMemoryConfig();
 
         // 1. 构建基础用户消息（含 contextData 页面上下文注入）
         Msg userMsg = buildUserMessage(message, contextData);
-        // 1.5 注入人机确认（HITL）回传结果：确认结果本质是输入消息的有机组成部分，
-        //     与记忆消息构建一并处理，避免单独维护一条仅做 DTO 转换的拦截器。
+        // 2. 注入人机确认（HITL）回传结果：确认结果是输入消息的有机组成部分，
+        //    与用户消息构建一并处理，避免单独维护一条仅做 DTO 转换的拦截器。
         userMsg = enrichWithConfirmResults(userMsg, req.getConfirmResults(), ctx);
-
-        // 2. 根据记忆模式组装 inputMessages
-        List<Msg> allMessages;
-        if (ctx.getRequest().isQuickMode()) {
-            // QUICK 模式：仅单条用户消息，不组装历史
-            allMessages = new ArrayList<>();
-            allMessages.add(userMsg);
-            log.debug("Memory(QUICK): agentName={}", ctx.getAgentName());
-        } else if (memoryConfig == null || memoryConfig.isNone() || !req.isIncludeHistory()) {
-            allMessages = new ArrayList<>();
-            allMessages.add(userMsg);
-            log.debug("Memory(NONE): agentName={}, includeHistory={}", ctx.getAgentName(), req.isIncludeHistory());
-        } else {
-            try {
-                List<Msg> historyMessages = req.getHistoryMessages();
-                if (historyMessages == null) {
-                    historyMessages = new ArrayList<>();
-                }
-                allMessages = new ArrayList<>(historyMessages);
-                allMessages.add(userMsg);
-                log.debug("Memory(SMART): historyCount={}, contextCount={}, mode={}",
-                        historyMessages.size(), allMessages.size(), memoryConfig.getMemoryMode());
-            } catch (Exception e) {
-                log.error("Memory 智能记忆失败，降级为简单模式: {}", ctx.getAgentName(), e);
-                allMessages = new ArrayList<>();
-                allMessages.add(userMsg);
-            }
+        // 2.1 HITL 恢复轮的载荷约束：确认轮不是一次新的用户发问，而是对上一轮挂起工具调用的
+        //     答复。框架在 validateAndAcceptConfirmResults 通过后直接 return resumeAgent()
+        //     跳进执行阶段（ReActAgent.java:1769-1771），此时调用方若额外提交页面上的一批新
+        //     问题，会因为「直接 resume、不补推理」而永远不被回答。静默丢弃比让用户以为已被
+        //     受理更安全；要追问请等本轮恢复的流结束之后另起一次请求。
+        if (hasConfirmResults(req)) {
+            log.info("[HITL] 确认轮不携带用户新问题，仅回传确认结果: agentName={}, conversationId={}",
+                    ctx.getAgentName(), ctx.getConversationId());
+            userMsg = stripUserText(userMsg);
         }
+
+        // 3. 历史消息的裁剪与拼接由请求级中间件承担，此处只提供单条用户消息
+        List<Msg> allMessages = new ArrayList<>();
+        allMessages.add(userMsg);
 
         ctx.setInputMessage(userMsg);
         ctx.setInputMessages(allMessages);
@@ -106,6 +87,38 @@ public class MemoryInterceptor implements ExecutionInterceptor {
             }
         }
         return Msg.builder().textContent(finalMessage).build();
+    }
+
+    /** 请求是否携带有效的人机确认回传结果（至少一项带 toolCallId）。 */
+    private boolean hasConfirmResults(ExecutionRequest req) {
+        List<ConfirmResultRequest> requests = req.getConfirmResults();
+        if (requests == null || requests.isEmpty()) {
+            return false;
+        }
+        for (ConfirmResultRequest r : requests) {
+            if (r != null && r.getToolCallId() != null && !r.getToolCallId().isBlank()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 去掉消息的文本内容，仅保留元数据（确认结果）。
+     *
+     * <p>框架在确认轮走的是「直接 resume」路径，用户文本不会触发新的推理；把它留在上下文里只
+     * 会污染后续轮次，故此处清空。</p>
+     */
+    private Msg stripUserText(Msg userMsg) {
+        if (userMsg.getContent() == null || userMsg.getContent().isEmpty()) {
+            return userMsg;
+        }
+        return Msg.builder()
+                .id(userMsg.getId())
+                .name(userMsg.getName())
+                .role(userMsg.getRole())
+                .metadata(userMsg.getMetadata())
+                .build();
     }
 
     /**

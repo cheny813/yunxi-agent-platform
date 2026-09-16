@@ -398,11 +398,13 @@ yunxi:
 
 ## 延伸阅读
 
-意图引擎的完整设计理念、四阶段落地明细（NER 识别 → 语义改写 → 场景分类 → 映射路由）、多域模型、分类通道、热更新与意图路由等深入内容，可参考本仓库的 `docs/` 设计文档，或联系项目维护者获取更多信息。
+本文串联了意图引擎的使用侧要点。若想进一步了解各阶段的实现细节，建议按下列顺序读代码：
 
-- 整体架构与降级原则、扩展路线。
-- 四阶段实施明细与验证清单。
-- 多域模型、分类通道、热更新、意图路由的设计与验证清单。
+- **整体链路**：`DefaultIntentEngine` —— 四阶段管道（NER 识别 → 语义改写 → 场景分类 → 映射路由）的编排入口。
+- **各阶段实现**：`RuleBasedNerStage`、`TerminologyProcessor`、`HybridIntentClassifier`、`IntentMappingTable`；以及路由侧的 `IntentAwareAgentResolver`。
+- **配置与热更新**：`IntentFilePoller`（资源变更轮询）、`IntentReloadListener`（reload 监听 SPI），配置项见 [06. 配置指南 · 意图引擎](./06-configuration.md)。
+- **运行期可观测**：`/actuator/intent/status` / `/actuator/intent/reload` / `/actuator/intent/suggest-words` 三个端点，见 [09. API 参考](./09-api-reference.md)。
+- **降级原则**：规则通道永不失效 —— LLM 通道未启用或调用失败时，自动回落纯规则判定。
 
 ---
 

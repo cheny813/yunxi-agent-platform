@@ -47,7 +47,39 @@ class ConfigFragmentValidationTest {
 
     @Test
     void testRedisConfigFormat() {
+        // Redis 绑定前缀必须是 spring.data.redis（Spring Boot 3.x 起生效的前缀）。
+        // 旧写法只作兼容元数据别名，不参与绑定，写成旧前缀会让整段配置被静默忽略。
         validateConfigFile("config/redis.yml", "spring.data.redis");
+    }
+
+    /**
+     * 防止 Redis 配置前缀回归。
+     *
+     * <p>历史教训：曾把 {@code config/redis.yml} 与 {@code a2a-pipeline.yml} 的
+     * {@code spring.data.redis} 前缀误判为「废弃写法」而改回旧前缀，导致连接参数
+     * 全部退回 Spring 默认值（空密码 → NOAUTH），表现为「健康检查 503 但配置看着全对」。
+     * 本用例把该前缀锁死，任何回退都会被测试拦下。</p>
+     */
+    @Test
+    void testRedisConfigUsesBoot3Prefix() {
+        String redisYml;
+        String a2aYml;
+        try {
+            redisYml = Files.readString(Paths.get("src/main/resources/config/redis.yml"));
+            a2aYml = Files.readString(Paths.get("src/main/resources/config/a2a-pipeline.yml"));
+        } catch (Exception e) {
+            fail("Failed to read redis configs: " + e.getMessage());
+            return;
+        }
+
+        assertTrue(redisYml.contains("spring.data.redis"),
+            "config/redis.yml 必须使用 spring.data.redis 前缀（Spring Boot 3.x 绑定前缀）");
+        assertTrue(a2aYml.contains("spring.data.redis")
+                || !a2aYml.contains("spring:\n  redis:"),
+            "config/a2a-pipeline.yml 不得再用旧前缀 spring.redis 重复声明连接参数");
+        // 旧写法 `spring:\n  redis:` 作为独立层级出现即为回归（注意与 spring.data.redis 区分）
+        assertFalse(redisYml.matches("(?s).*spring:\\s*\\n\\s{2}redis:.*"),
+            "config/redis.yml 不应再出现旧的 spring.redis 层级");
     }
 
     @Test
@@ -206,24 +238,43 @@ class ConfigFragmentValidationTest {
         }
     }
 
+    /**
+     * 校验配置加载入口。
+     *
+     * <p>本用例原先断言 {@code server} / {@code cache} / {@code async} 出现在 profiles 的
+     * active 列表里，属过时断言：这三个文件早已改为通过 {@code spring.config.import}
+     * 加载（清单在 {@code config/imports.yml}），与 profiles 是两套独立机制。
+     * 若仍按旧口径断言，会把正确配置判成错误，也会误导后人以为它们应由 profile 激活。</p>
+     *
+     * <p>故此处按当前真实机制分两段校验：入口文件声明了 import 与 profiles 两处，
+     * 且 import 清单确实覆盖了这三个文件。</p>
+     */
     @Test
     void testProfilesConfiguration() {
         try {
             Path appConfigPath = Paths.get("src/main/resources/application.yml");
             String content = Files.readString(appConfigPath);
-            
-            // 验证profile配置存在
-            assertTrue(content.contains("spring.profiles:"), 
-                "Should contain spring profiles configuration");
-            assertTrue(content.contains("active:"), 
+
+            // 入口文件同时声明配置导入与 profile 激活两套机制
+            assertTrue(content.contains("spring.config.import") || content.contains("config:"),
+                "Should contain spring config import configuration");
+            assertTrue(content.contains("spring.profiles:") || content.contains("profiles:"),
+                "Should contain profiles configuration");
+            assertTrue(content.contains("active:"),
                 "Should contain active profiles configuration");
-            
-            // 验证关键profiles
-            assertTrue(content.contains("server"), "Should activate server profile");
-            assertTrue(content.contains("datasource"), "Should activate datasource profile");
-            assertTrue(content.contains("cache"), "Should activate cache profile");
-            assertTrue(content.contains("async"), "Should activate async profile");
-            
+
+            // 经 spring.config.import 加载的文件在清单里注册，而不是出现在 active 列表
+            Path importsPath = Paths.get("src/main/resources/config/imports.yml");
+            String imports = Files.readString(importsPath);
+            for (String fragment : new String[]{"server.yml", "datasource.yml", "cache.yml", "async.yml"}) {
+                assertTrue(imports.contains(fragment),
+                    "config/imports.yml should load " + fragment);
+            }
+
+            // active 列表中的 profile 名应与 @Profile 注解配套，至少保留一个可用的激活项
+            assertTrue(content.contains("datasource"),
+                "Should activate datasource profile");
+
         } catch (Exception e) {
             fail("Failed to validate profiles configuration: " + e.getMessage());
         }

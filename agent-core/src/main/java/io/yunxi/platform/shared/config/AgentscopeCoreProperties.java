@@ -120,7 +120,7 @@ public class AgentscopeCoreProperties {
     /** 执行拦截器配置（阶段二：RagRetrieval 300 等可选拦截器开关） */
     private InterceptorProperties interceptor = new InterceptorProperties();
 
-    /** 通用请求审计配置（阶段二：AuditInterceptor 500，默认关闭） */
+    /** 通用请求审计配置（默认关闭） */
     private AuditProperties audit = new AuditProperties();
 
     /**
@@ -380,11 +380,18 @@ public class AgentscopeCoreProperties {
         private String planDir = "plan";
 
         /**
-         * 只读解析器：判断某工具是否为只读（plan 模式下仅允许只读工具 + plan 控制工具）。
-         * 配置逗号分隔的只读工具名前缀关键字，命中即视为只读。
-         * 留空则使用 AgentScope 默认（仅 plan 控制工具 + agent_spawn 等内部工具）。
+         * 计划模式下是否放行 shell 工具。
+         * <p>
+         * 映射到 {@code HarnessAgent.Builder.allowShellInPlanMode(boolean)}。shell 是双用途工具
+         * （既可以是 {@code grep} 也可以是 {@code rm}），框架在计划模式下默认拒绝它；只有明确需要以
+         * shell 做只读勘察时才打开。
+         * </p>
+         * <p>
+         * 其余工具的放行由框架按工具自身的 {@code readOnly} 元数据判定 —— yunxi 侧在
+         * {@code @Tool(readOnly = true)} 上标注只读工具，不再在此处罗列工具名关键字。
+         * </p>
          */
-        private String readOnlyTools;
+        private boolean allowShellInPlanMode = false;
 
         /**
          * 是否全局启用任务清单（AgentScope 原生 todo_write 工具 + TaskReminderMiddleware）。
@@ -471,7 +478,7 @@ public class AgentscopeCoreProperties {
      */
     @Data
     public static class AuditProperties {
-        /** 是否启用通用请求审计（AuditInterceptor, order=500）。默认关闭；开启后 pre 记录开始、post 落库 agent_chat_logs */
+        /** 是否启用通用请求审计。默认关闭；开启后调用收尾时落库 agent_chat_logs */
         private boolean enabled = false;
     }
 }

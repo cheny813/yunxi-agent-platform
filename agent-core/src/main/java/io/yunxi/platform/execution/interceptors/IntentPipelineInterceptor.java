@@ -67,8 +67,12 @@ public class IntentPipelineInterceptor implements ExecutionInterceptor {
                 null,
                 profile);
 
+        long intentStart = System.currentTimeMillis();
         IntentResult intentResult = intentEngine.analyze(intentContext);
         ctx.setIntentResult(intentResult);
+        // 记录耗时：意图节点要归集进推理轨迹，节点时长只能在此处取得 ——
+        // 归集发生在调用期间，那时意图分析早已结束，无从计时。
+        ctx.setIntentDurationMs(System.currentTimeMillis() - intentStart);
 
         RouteDecision decision = resolver.resolve(agentName, profile, userId, intentResult);
         ctx.setRouteDecision(decision);

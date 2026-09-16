@@ -23,7 +23,7 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- AgentScope GA 核心 + Harness（复用 SkillRepository / AgentSkill / Model / Toolkit / @Tool） -->
+        <!-- AgentScope-Java 核心 + Harness（复用 SkillRepository / AgentSkill / Model / Toolkit / @Tool） -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-core</artifactId>

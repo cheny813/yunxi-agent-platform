@@ -1,6 +1,6 @@
 # 04. 架构设计
 
-> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.3（GA 正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
+> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.3（正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
 
 ## 软件架构理论基础
 
@@ -96,7 +96,7 @@
 
 #### AgentScope 核心运行时（底层）
 
-**定位**：第三方 SDK 依赖（AgentScope-Java 2.0.3 GA），不可修改
+**定位**：第三方 SDK 依赖（AgentScope-Java 2.0.3），不可修改
 
 **职责**：
 - 提供 Agent/Model/Toolkit/Middleware/State 核心抽象

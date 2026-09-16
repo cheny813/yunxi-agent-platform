@@ -29,7 +29,7 @@ import lombok.RequiredArgsConstructor;
  * 会话清单 / 状态 / 上下文 / 历史消息的读取服务。
  *
  * <p>数据源：{@link ActiveSessionRegistry}（会话清单）+ {@link ConversationDomainService}
- * （会话实体、消息）。其中状态推导基于会话最后活跃时间与末条消息角色，区别于 GA PhaseTracker
+ * （会话实体、消息）。其中状态推导基于会话最后活跃时间与末条消息角色，区别于 AgentScope-Java PhaseTracker
  * 的「按 agentName 取最近一次执行」语义。</p>
  */
 @Component

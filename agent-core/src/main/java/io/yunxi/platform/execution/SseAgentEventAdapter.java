@@ -24,7 +24,7 @@ import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.model.ChatUsage;
 import io.yunxi.platform.conversation.ConversationDomainService;
-import io.yunxi.platform.execution.operator.PhaseTracker;
+import io.yunxi.platform.agent.middleware.AgentPhaseMiddleware;
 import io.yunxi.platform.execution.spi.AgentEventAdapter;
 import io.yunxi.platform.shared.entity.ConversationEntity;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
@@ -140,13 +140,13 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
             return handleAgentResult(event, ctx);
         }
 
-        // ── 阶段标记：PhaseTracker 注入的 agent_status 阶段事件 → agent_status 协议负载 ──
+        // ── 阶段标记：执行阶段归集器注入的 agent_status 阶段事件 → agent_status 协议负载 ──
         // 阶段标记以原生事件形式进入适配器，此处转换为 agent_status 消息，
         // 前端据此渲染状态视图（IDLE→THINKING→TOOL_CALL→ANSWER→DONE），不透传原生事件。
         // content 为 JSON 字符串 {"phase","label"}：前端 JSON.parse 得到对象后按 phase 渲染，
         // 与透传分支的纯文本 UX 文案（"正在执行: X" / "X 完成"）并存，各司其职。
         if (type == AgentEventType.CUSTOM && event instanceof CustomEvent customEvent) {
-            if (PhaseTracker.AGENT_STATUS_EVENT_NAME.equals(customEvent.getName())) {
+            if (AgentPhaseMiddleware.AGENT_STATUS_EVENT_NAME.equals(customEvent.getName())) {
                 Object phase = customEvent.getValue().get("phase");
                 Object label = customEvent.getValue().get("label");
                 String statusJson = "{\"phase\":\"" + (phase != null ? phase : "UNKNOWN")
@@ -353,6 +353,7 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
             case "session_history":     return "获取会话历史";
             case "session_list":        return "列出会话";
             case "session_search":      return "搜索会话";
+            case "session_history_search": return "搜索历史会话";
             case "load_skill_through_path": return "加载技能";
             case "todo_write":             return "更新任务清单";
             default:                    return toolName;
