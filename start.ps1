@@ -171,8 +171,9 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-# 大模型密钥请通过环境变量 DASHSCOPE_API_KEY 注入，切勿将真实密钥提交到仓库
-$DASHSCOPE_API_KEY = "sk-dd32b5210d8d08a9e"
+# 大模型密钥通过环境变量 DASHSCOPE_API_KEY 注入；未设置时启动前会给出提示。
+# 请勿把真实密钥写在此处提交到仓库。
+$DASHSCOPE_API_KEY = "sk-your-dashscope-api-key"
 $LLM_MODEL        = "qwen-plus"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
