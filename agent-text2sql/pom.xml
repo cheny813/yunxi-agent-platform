@@ -6,8 +6,8 @@
 
     <parent>
         <groupId>io.yunxi</groupId>
-        <artifactId>yunxi-agent-platform</artifactId>
-        <version>2.0.3</version>
+    <artifactId>yunxi-agent-platform</artifactId>
+    <version>${revision}</version>
     </parent>
 
     <artifactId>agent-text2sql</artifactId>
@@ -15,17 +15,6 @@
 
     <name>Agent Text-to-SQL Engine</name>
     <description>Java implementation of OpenSearch-SQL framework for natural language to SQL conversion</description>
-
-    <properties>
-        <java.version>17</java.version>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring-ai.version>1.0.0-M5</spring-ai.version>
-        <milvus-sdk.version>3.0.1</milvus-sdk.version>
-        <langchain4j.version>0.34.0</langchain4j.version>
-        <jsqlparser.version>4.7</jsqlparser.version>
-    </properties>
 
     <dependencies>
         <!-- Agent Config 模块 (配置集中管理) -->
@@ -52,21 +41,18 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-core</artifactId>
-            <version>${spring-ai.version}</version>
         </dependency>
 
         <!-- Spring AI OpenAI -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
-            <version>${spring-ai.version}</version>
         </dependency>
 
         <!-- LangChain4j (可选） -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-open-ai</artifactId>
-            <version>${langchain4j.version}</version>
             <optional>true</optional>
         </dependency>
 
@@ -74,35 +60,30 @@
         <dependency>
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
-            <version>${milvus-sdk.version}</version>
         </dependency>
 
         <!-- JSqlParser (SQL 解析） -->
         <dependency>
             <groupId>com.github.jsqlparser</groupId>
             <artifactId>jsqlparser</artifactId>
-            <version>${jsqlparser.version}</version>
         </dependency>
 
         <!-- Gson (JSON 处理） -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.10.1</version>
         </dependency>
 
         <!-- OkHttp (HTTP 客户端) -->
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
-            <version>4.12.0</version>
         </dependency>
 
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.30</version>
             <scope>provided</scope>
         </dependency>
 

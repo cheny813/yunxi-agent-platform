@@ -301,7 +301,7 @@ services:
   # aistio-control 须以仓库根为构建上下文（Dockerfile.control 内 COPY agentscope-service/*），
   # 故用 AISTIO_ROOT；其余平面以 agentscope-service 为上下文，用 AISTIO_SRC。
   # 注意：不要通过 AISTIO_SRC/.. 之类推算仓库根，Windows 下混合分隔符会使构建上下文解析为空目录。
-  # 产物版本号由 AISTIO_VERSION 指定（默认 2.0.3，须与本仓库根 pom 的 <revision> 一致；
+  # 产物版本号由 AISTIO_VERSION 指定（默认 2.0.4-SNAPSHOT，须与本仓库根 pom 的 <revision> 一致；
   #   若你的 agentscope-service 仓库 revision 不同，先 export AISTIO_VERSION=<其版本> 再启动）。
   #
   # yunxi 接入（application.yml / 环境变量）：
@@ -358,6 +358,7 @@ services:
       BUILDER_DATA_URL: http://aistio-data:8082
     ports:
       - "8081:8081"
+      - "15010:15010"   # ASDP gRPC 数据面通道：yunxi 经此接收控制面下发的对话轮次（端到端对话流必需）
     healthcheck:
       test: ["CMD", "/aistiod", "--healthcheck"]
       interval: 5s
@@ -375,7 +376,7 @@ services:
       context: ${AISTIO_SRC:-../agentscope-java-2.0GA/agentscope-service}
       dockerfile: docker/Dockerfile.plane
       args:
-        JAR_FILE: service-dataplane/target/service-dataplane-${AISTIO_VERSION:-2.0.3}.jar
+        JAR_FILE: service-dataplane/target/service-dataplane-${AISTIO_VERSION:-2.0.4-SNAPSHOT}.jar
     container_name: yunxi-aistio-data
     restart: unless-stopped
     profiles: ["aistio"]
@@ -410,7 +411,7 @@ services:
       context: ${AISTIO_SRC:-../agentscope-java-2.0GA/agentscope-service}
       dockerfile: docker/Dockerfile.plane
       args:
-        JAR_FILE: service-scheduler/target/service-scheduler-${AISTIO_VERSION:-2.0.3}.jar
+        JAR_FILE: service-scheduler/target/service-scheduler-${AISTIO_VERSION:-2.0.4-SNAPSHOT}.jar
     container_name: yunxi-aistio-scheduler
     restart: unless-stopped
     profiles: ["aistio"]
@@ -445,7 +446,7 @@ services:
       context: ${AISTIO_SRC:-../agentscope-java-2.0GA/agentscope-service}
       dockerfile: docker/Dockerfile.plane
       args:
-        JAR_FILE: service-gateway/target/service-gateway-${AISTIO_VERSION:-2.0.3}.jar
+        JAR_FILE: service-gateway/target/service-gateway-${AISTIO_VERSION:-2.0.4-SNAPSHOT}.jar
     container_name: yunxi-aistio-gateway
     restart: unless-stopped
     profiles: ["aistio"]

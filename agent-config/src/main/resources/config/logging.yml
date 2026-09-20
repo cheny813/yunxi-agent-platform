@@ -1,0 +1,21 @@
+# ============================================================
+# 日志级别配置（全平台 logging.level.* 唯一归属）
+# ============================================================
+# 跨切面段：所有 logging.level.* / logging.level.root 集中在本文件，
+# 禁止在 observability.yml / a2a-pipeline.yml 等其它片段重复写 logging.* 顶层键。
+#
+# 文件落盘、控制台/文件格式由 logback-spring.xml 硬编码接管
+# （CONSOLE_LOG_PATTERN / FILE_LOG_PATTERN），故 Spring 配置里的 logging.pattern.*
+# 对控制台不生效；本文件只定级别，不写 pattern（原 a2a-pipeline.yml 的
+# logging.pattern.console 为死配置，已在此丢弃）。
+#
+# logging.level 跨片段为“合并”语义，集中后消除“基础级在 observability、
+# 模块级在 a2a”的分散，单一真相源便于排查与调级。
+logging:
+  level:
+    # —— 基础级（AgentScope 模型调用层）——
+    io.agentscope.core.model: DEBUG
+    io.agentscope.core.model.transport: INFO
+    # —— A2A 流水线模块专属级（原散落在 a2a-pipeline.yml）——
+    '[io.yunxi.platform.a2a]': INFO
+    '[io.yunxi.platform.a2a.pipeline]': DEBUG

@@ -6,8 +6,8 @@
 
     <parent>
         <groupId>io.yunxi</groupId>
-        <artifactId>yunxi-agent-platform</artifactId>
-        <version>2.0.3</version>
+    <artifactId>yunxi-agent-platform</artifactId>
+    <version>${revision}</version>
     </parent>
 
     <artifactId>agent-core</artifactId>
@@ -104,46 +104,46 @@
             <artifactId>agentscope-extensions-studio</artifactId>
         </dependency>
 
+        <!-- AgentScope-Java 官方 aistio 数据面集成扩展：复用其 GrpcTransport/ContractHttpServer/HttpSelfRegistration
+             承接 aistio 控制面拉起的端到端对话流，避免 yunxi 重复造轮子（框架已有能力一律复用，不自建平行实现） -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-aistio</artifactId>
+        </dependency>
+
         <!-- AgentScope-Java 模型扩展（2.0.0 已将各厂商 ChatModel 由 core.model 拆分到独立 extension 模块） -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-openai</artifactId>
-            <version>${agentscope.version}</version>
         </dependency>
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-dashscope</artifactId>
-            <version>${agentscope.version}</version>
         </dependency>
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-anthropic</artifactId>
-            <version>${agentscope.version}</version>
         </dependency>
 
         <!-- Gemini 模型扩展（2.0.0 已从 core.model 拆分到独立 extension 模块） -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-gemini</artifactId>
-            <version>${agentscope.version}</version>
         </dependency>
 
         <!-- Ollama 模型扩展（ollama:modelName 由 ModelRegistry 内置工厂托管，需扩展模块在 classpath） -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-ollama</artifactId>
-            <version>${agentscope.version}</version>
         </dependency>
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>okhttp</artifactId>
-            <version>${okhttp.version}</version>
         </dependency>
         <!-- Okio 版本锁定（排除 okio-jvm 子模块，避免类冲突） -->
         <dependency>
             <groupId>com.squareup.okio</groupId>
             <artifactId>okio</artifactId>
-            <version>${okio.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.squareup.okio</groupId>
@@ -154,32 +154,26 @@
         <dependency>
             <groupId>io.socket</groupId>
             <artifactId>socket.io-client</artifactId>
-            <version>${socket-io.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
-            <version>${opentelemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
-            <version>${opentelemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk</artifactId>
-            <version>${opentelemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
-            <version>${opentelemetry.version}</version>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-sdk-metrics</artifactId>
-            <version>${opentelemetry.version}</version>
         </dependency>
 
         <!-- RAG：仅保留 rag-simple（提供 io.agentscope.core.embedding.EmbeddingModel，
@@ -234,18 +228,15 @@
         <dependency>
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-circuitbreaker</artifactId>
-            <version>${resilience4j.version}</version>
         </dependency>
         <dependency>
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-ratelimiter</artifactId>
-            <version>${resilience4j.version}</version>
         </dependency>
         <!-- LLM 通道超时控制（TimeLimiter + CircuitBreaker，复用 resilience4j 实现调用熔断与超时） -->
         <dependency>
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-timelimiter</artifactId>
-            <version>${resilience4j.version}</version>
         </dependency>
 
         <!-- 方法级鉴权注解 @PreAuthorize（spring-security-core 仅提供注解，不引入默认拦截链；
@@ -280,7 +271,6 @@
         <dependency>
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
-            <version>${milvus.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.squareup.okio</groupId>
@@ -293,14 +283,12 @@
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>${gson.version}</version>
         </dependency>
 
         <!-- JWT -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
-            <version>${jjwt.version}</version>
         </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
@@ -331,13 +319,40 @@
         <dependency>
             <groupId>com.alibaba.nacos</groupId>
             <artifactId>nacos-client</artifactId>
-            <version>3.2.4</version>
         </dependency>
         <!-- nacos-api 提供 ConfigService/NamingService 及 listener 抽象（nacos-client 未传递引入） -->
         <dependency>
             <groupId>com.alibaba.nacos</groupId>
             <artifactId>nacos-api</artifactId>
-            <version>3.2.4</version>
+        </dependency>
+
+        <!-- CEL 表达式引擎（CEL 规范 Java 移植，与服务端 cel-go 语义对齐）：用于编排图 condition 节点的 CEL 表达式本地编译校验。
+             cel-core 将多数模块标为 optional，不会传递，需显式声明运行时实际依赖。 -->
+        <dependency>
+            <groupId>org.projectnessie.cel</groupId>
+            <artifactId>cel-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectnessie.cel</groupId>
+            <artifactId>cel-generated-pb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectnessie.cel</groupId>
+            <artifactId>cel-generated-antlr</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.agrona</groupId>
+            <artifactId>agrona</artifactId>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 
@@ -354,7 +369,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.4.2</version>
                 <executions>
                     <execution>
                         <id>test-jar</id>
@@ -367,7 +381,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>

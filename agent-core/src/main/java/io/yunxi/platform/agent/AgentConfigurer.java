@@ -576,9 +576,11 @@ public class AgentConfigurer implements SmartLifecycle {
      * @param def Agent 定义配置
      */
     private void createOrchestratedAgent(AgentDefinition def) {
+        // 编排模式大小写不敏感：统一转小写后再分发
         String pattern = def.getOrchestration().getPattern();
+        String normalized = pattern == null ? "" : pattern.toLowerCase();
         log.info("创建编排 Agent: {} (pattern={})", def.getName(), pattern);
-        switch (pattern) {
+        switch (normalized) {
             case "supervisor" -> createSupervisorAgent(def);
             case "pipeline" -> createPipelineAgent(def);
             case "routing" -> createRoutingAgent(def);

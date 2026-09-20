@@ -132,7 +132,9 @@ public class AgentDefinitionLoader {
         }
         // 校验编排模式配置
         if (def.getOrchestration() != null) {
-            String pattern = def.getOrchestration().getPattern();
+            // 编排模式大小写不敏感：统一转小写后再比对，避免 WORKFLOW/Workflow 等写法被误判为不支持
+            String rawPattern = def.getOrchestration().getPattern();
+            String pattern = rawPattern == null ? null : rawPattern.toLowerCase();
             if ("supervisor".equals(pattern)) {
                 if (def.getOrchestration().getExperts() == null
                         || def.getOrchestration().getExperts().isEmpty()) {
@@ -148,8 +150,11 @@ public class AgentDefinitionLoader {
                         || def.getOrchestration().getExperts().isEmpty()) {
                     errors.add("routing 模式必须配置 experts 列表");
                 }
+            } else if ("workflow".equals(pattern)) {
+                // workflow 模式：编排图经 orchestration.mounts[].body.graph 声明，
+                // 由 WorkflowArtifactExporter 翻译期独立校验，加载阶段不校验节点
             } else if (!"single".equals(pattern)) {
-                errors.add("不支持的编排模式: " + pattern + "（可选: single/supervisor/pipeline/routing）");
+                errors.add("不支持的编排模式: " + rawPattern + "（可选: single/supervisor/pipeline/routing/workflow，大小写不敏感）");
             }
         }
         return errors;

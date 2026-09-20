@@ -154,7 +154,7 @@ public class TraceController {
     }
 
     /**
-     * 把一条已落库轨迹投影为 AG-UI 协议事件流回放（M5）。
+     * 把一条已落库轨迹投影为 AG-UI 协议事件流回放。
      *
      * <p>与 SSE 投影共用同一落库快照，但输出 AG-UI 事件 JSON（{@code data} 字段为事件体，
      * 消费者按 {@code type} 分发），供 AG-UI 兼容前端直接消费。</p>

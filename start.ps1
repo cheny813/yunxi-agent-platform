@@ -12,6 +12,7 @@
     .\启动项目.ps1 -Clean    # 清理并重新打包启动
     .\启动项目.ps1 -NoSync   # 跳过 sdk-js 静态资源同步
     .\启动项目.ps1 -NoPause  # 非交互/后台启动时不阻塞在结尾“按任意键继续”
+    .\启动项目.ps1 -Web       # 一并拉起前端 dev server（vite，日志收口至 logs/nutritionist-web）
 #>
 
 param(
@@ -19,11 +20,16 @@ param(
     [switch]$Maven,
     [switch]$Clean,
     [switch]$NoSync,
-    [switch]$NoPause
+    [switch]$NoPause,
+    [switch]$Web
 )
 
 # 设置控制台输出编码为 UTF-8，解决 Maven/javac 中文警告乱码
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Maven 调起的 javac 默认用系统编码（中文 Windows 为 GBK）输出编译警告，
+# 与上方 UTF-8 控制台渲染不一致会中文乱码；让 Maven/JVM 也输出 UTF-8 以对齐。
+$env:MAVEN_OPTS = "-Dfile.encoding=UTF-8"
 
 # ===== 辅助函数 =====
 
@@ -32,16 +38,18 @@ function Stop-ProcessByPort {
     param([int]$Port)
     try {
         $lines = netstat -ano | Select-String ":$Port\s" | Where-Object { $_ -match 'LISTENING' }
-        $pids = @()
+        $procIds = @()
         foreach ($l in $lines) {
-            if ($l -match '\s+(\d+)\s*$') { $pids += $Matches[1] }
+            if ($l -match '\s+(\d+)\s*$') { $procIds += $Matches[1] }
         }
-        $pids = $pids | Sort-Object -Unique
-        foreach ($pid in $pids) {
-            if ($pid -and [int]$pid -ne $PID) {
-                Write-Host "[INFO] 端口 $Port 被 PID $pid 占用，正在终止..." -ForegroundColor Yellow
+        $procIds = $procIds | Sort-Object -Unique
+        # 注意：$pid 与 PowerShell 自动只读变量 $PID 不区分大小写，循环变量必须用其他名字（如 $procId），
+        # 否则赋值会抛“无法覆盖变量 PID，因为该变量为只读变量或常量”，导致端口检测被跳过。
+        foreach ($procId in $procIds) {
+            if ($procId -and [int]$procId -ne $PID) {
+                Write-Host "[INFO] 端口 $Port 被 PID $procId 占用，正在终止..." -ForegroundColor Yellow
                 # 先温和终止，1 秒后仍未退出再强制结束
-                Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
             }
         }
     } catch {
@@ -171,10 +179,9 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-# 大模型密钥通过环境变量 DASHSCOPE_API_KEY 注入；未设置时启动前会给出提示。
-# 请勿把真实密钥写在此处提交到仓库。
-$DASHSCOPE_API_KEY = "sk-your-dashscope-api-key"
-$LLM_MODEL        = "qwen-plus"
+# 大模型密钥请通过环境变量 DASHSCOPE_API_KEY 注入，切勿将真实密钥提交到仓库
+$DASHSCOPE_API_KEY = "sk-dd32b520d60d8d08a9e"
+$LLM_MODEL        = "qwen3.8-27b"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
 $MILVUS_PORT     = "19530"
@@ -192,6 +199,22 @@ Write-Host "       Service port: $SERVER_PORT"
 Write-Host "       向量Database: $MILVUS_HOST`:$MILVUS_PORT"
 Write-Host "       Cache: $REDIS_HOST`:$REDIS_PORT db=$REDIS_DATABASE"
 Write-Host ""
+
+# ===== 前端 dev server（可选）=====
+# 通过 -Web 开关一并拉起营养顾问前端（vite）。vite 的 stdout/stderr 由
+# agent-nutritionist-web/start-web.ps1 统一重定向到 logs/nutritionist-web/，
+# 不在前端目录散落 dev.out.log / dev.err.log。该脚本以 -WindowStyle Hidden
+# 后台启动，不阻塞后端启动。
+if ($Web) {
+    $webScript = Join-Path $scriptDir "agent-nutritionist-web\start-web.ps1"
+    if (Test-Path $webScript) {
+        Write-Host "[INFO] 拉起前端 dev server（日志收口至 logs/nutritionist-web）..." -ForegroundColor Cyan
+        & $webScript
+        Write-Host ""
+    } else {
+        Write-Host "[WARN] 未找到前端启动脚本: $webScript，跳过前端启动" -ForegroundColor Yellow
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($DASHSCOPE_API_KEY)) {
     Write-Host "[WARN] DASHSCOPE_API_KEY is not set - the app will start but chat will fail with 'no available model'." -ForegroundColor Yellow
@@ -269,6 +292,8 @@ $configArgs = @(
     "-Dspring.data.redis.port=$REDIS_PORT",
     "-Dspring.data.redis.password=$REDIS_PASSWORD",
     "-Dspring.data.redis.database=$REDIS_DATABASE",
+    # aistio 控制面地址：心跳接口仅暴露在 control(8081)，gateway(18080) 不转发，故必须指向 8081
+    "-Dyunxi.aistio.control-plane-url=http://127.0.0.1:8081",
     "-Dotel.service.name=$OTEL_SERVICE_NAME"
 )
 # OTLP 导出到 Jaeger（确保 docker-compose 已启动 collector）

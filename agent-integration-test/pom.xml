@@ -4,8 +4,8 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <groupId>io.yunxi</groupId>
-        <artifactId>yunxi-agent-platform</artifactId>
-        <version>2.0.3</version>
+    <artifactId>yunxi-agent-platform</artifactId>
+    <version>${revision}</version>
     </parent>
 
     <modelVersion>4.0.0</modelVersion>
@@ -15,9 +15,6 @@
     <packaging>jar</packaging>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 默认跳过集成测试，避免每次 mvn test 都真实调用 LLM。
              需运行时加 -Pintegration 激活。 -->
         <skip.integration.tests>true</skip.integration.tests>

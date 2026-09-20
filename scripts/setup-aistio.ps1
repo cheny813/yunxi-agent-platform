@@ -9,7 +9,7 @@ param(
     # AgentScope-Java repo root. Empty -> auto-detect a sibling dir named
     # agentscope-java or agentscope-java-2.0GA.
     [string] $AistioRepoRoot = '',
-    [string] $AistioVersion  = '2.0.3-SNAPSHOT',
+    [string] $AistioVersion  = '2.0.4-SNAPSHOT',
     [switch] $GitPull
 )
 

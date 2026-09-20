@@ -1,0 +1,56 @@
+# 验证范本：镜像 agent-config 中 resident-nutrition-assistant.yml 内联的「营养配餐工作流」挂载，
+# 用于证明该声明式 workflow 定义可被 WorkflowArtifactExporter 翻译导出且预校验无硬阻断。
+# 与 production 定义保持图结构一致（agentId / approverRef 为占位 UUID，上线前替换为已注册实体）。
+agent:
+  name: 营养配餐工作流验证
+  description: 验证 resident-nutrition-assistant.yml 内联 workflow 挂载可导出的范本
+  prompt: 验证用，无需真实执行
+  enabled: true
+  orchestration:
+    pattern: workflow
+    mounts:
+      - name: nutrition-recipe-review
+        group: 营养配餐
+        description: 检索候选菜品→营养评分→达标直接归档，未达标走人工复核
+        body:
+          kind: workflow
+          mode: auto
+          graph:
+            nodes:
+              - key: collect
+                type: agent
+                agentId: b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1
+              - key: evaluate
+                type: agent
+                agentId: b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2
+              - key: gate
+                type: condition
+                condition: "score >= 80"
+              - key: approve
+                type: approval
+                approval:
+                  approverType: role
+                  approverRef: b9b9b9b9-b9b9-b9b9-b9b9-b9b9b9b9b9b9
+                  prompt: 营养方案综合评分低于 80，请复核并确认调整方向
+              - key: done
+                type: join
+                join:
+                  mode: all
+              - key: publish
+                type: agent
+                agentId: b3b3b3b3-b3b3-b3b3-b3b3-b3b3b3b3b3b3
+            edges:
+              - from: collect
+                to: evaluate
+              - from: evaluate
+                to: gate
+              - from: gate
+                to: done
+                condition: "score >= 80"
+              - from: gate
+                to: approve
+                condition: "score < 80"
+              - from: approve
+                to: done
+              - from: done
+                to: publish

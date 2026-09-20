@@ -241,6 +241,161 @@ yunxiChat({
 
 ---
 
+## 声明式 Workflow 编排图挂载
+
+yunxi 支持在 Agent 定义里以声明式 YAML 描述一张 DAG 编排图（底层框架官方称 **Workflow**，yunxi 文档亦称「编排图挂载」），由平台在装配期翻译成 AgentScope Service **编排定义 Artifact** 供 AgentScope Service 管控面导入（导出与推送配置见 [06. 配置指南 - aistio](./06-configuration.md#aistio) 的「术语对照」与「编排图导出与自动推送」两节）。编排图由若干「节点 + 有向边」组成，节点类型覆盖 Agent 派发、条件分支、人工审批（Approval）、汇聚、定时等待、外部信号等，适合把"多步骤、需审批或需等待外部事件"的业务流程固化成可复用的编排。
+
+> 编排引擎本身运行在 AgentScope Service 管控面（完整 DAG 引擎）。yunxi 侧只做「YAML 声明 → Artifact 翻译」与挂载装配，不新建编排运行时。
+
+### 1. 最小声明（内联图）
+
+```yaml
+agent:
+  name: purchase-review-agent
+  orchestration:
+    pattern: workflow
+    mounts:
+      - name: purchase-review
+        group: 采购审批
+        description: 小额免审、大额走人工审批的采购复核流程
+        body:
+          kind: workflow
+          mode: auto
+          graph:
+            nodes:
+              - key: fetch
+                type: agent
+                agentId: 11111111-1111-1111-1111-111111111111
+              - key: check
+                type: condition
+                condition: "amount < 1000"
+              - key: approve
+                type: approval
+                approval:
+                  approverType: role
+                  approverRef: 99999999-9999-9999-9999-999999999999
+                  prompt: 请复核该采购单
+              - key: done
+                type: join
+                join:
+                  mode: all
+              - key: archive
+                type: agent
+                agentId: 22222222-2222-2222-2222-222222222222
+            edges:
+              - from: fetch
+                to: check
+              - from: check
+                to: approve
+                condition: "amount < 1000"
+              - from: check
+                to: done
+                condition: "amount >= 1000"
+              - from: approve
+                to: done
+              - from: done
+                to: archive
+```
+
+### 2. 两种挂载写法
+
+- **内联图**：`body.graph` 直接写节点与边（上例）。
+- **引用顶层图**：挂载的 `body.definition` 指向同一文件 `orchestration.graph` 里以该名字导出的图，便于多个挂载复用同一张图：
+
+```yaml
+agent:
+  orchestration:
+    pattern: workflow
+    mounts:
+      - name: order-fulfillment-ref
+        group: 订单履约
+        body:
+          kind: workflow
+          mode: auto
+          definition: order-fulfillment   # 引用下方 orchestration.graph 中名为 order-fulfillment 的图
+    graph:
+      nodes:
+        - key: intake
+          type: agent
+          agentId: 33333333-3333-3333-3333-333333333333
+        - key: gate
+          type: condition
+          condition: "input.priority == \"high\""
+        - key: manual
+          type: approval
+          approval:
+            approverType: user
+            approverRef: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+            prompt: 高优先级订单需人工确认
+        - key: merge
+          type: join
+          join:
+            mode: any
+        - key: wait
+          type: timer
+          timer:
+            durationSeconds: 30
+        - key: notify
+          type: signal
+          signalName: fulfilled
+      edges:
+        - from: intake
+          to: gate
+        - from: gate
+          to: manual
+          condition: "input.priority == \"high\""
+        - from: gate
+          to: merge
+          condition: "input.priority != \"high\""
+        - from: manual
+          to: merge
+        - from: merge
+          to: wait
+        - from: wait
+          to: notify
+```
+
+### 3. 节点类型
+
+| 类型 | 关键字段 | 说明 |
+|------|----------|------|
+| `agent` | `agentId`（UUID） | 派发单个已注册 Agent 执行 |
+| `team` | `teamRef`（UUID） | 团队协作执行 |
+| `approval` | `approval.approverType` / `approval.approverRef` / `approval.prompt` | 人工审批（HITL） |
+| `condition` | `condition`（CEL 表达式） | 条件分支，按表达式真假走不同边 |
+| `join` | `join.mode` ∈ `all` / `any` / `quorum`；`quorum` 时 `join.quorum > 0` | 汇聚多路输入 |
+| `timer` | `timer.at`（绝对时间）或 `timer.durationSeconds`（相对秒数） | 定时等待 |
+| `signal` | `signalName` | 等待外部信号唤醒 |
+| `subrun` | `definitionRevisionId`（UUID） | 嵌套子图（定义级复用） |
+
+通用字段（任意节点可用）：`timeoutSeconds`（超时秒数）、`retry`（含 `maxAttempts` / `backoffSeconds`）、`failurePolicy` ∈ `fail_fast` / `continue` / `partial_success`。
+
+边（`edges`）字段：`from` / `to`（节点 key）、`condition`（CEL，`true` 时走该边）、`on`（仅接受终态，如 `succeeded`）。
+
+### 4. 条件表达式（CEL）
+
+条件节点与边的 `condition` 使用 CEL 语法，可用变量仅 `run` / `issue` / `trigger` / `nodes`。**引用上游节点输出必须用 `nodes.<nodeKey>.<field>` 形式，不能写裸变量名**。例如：
+
+```yaml
+- key: risk-gate
+  type: condition
+  condition: "nodes.extract.risk > 0.7"
+```
+
+```yaml
+- from: risk-gate
+  to: wait-window
+  condition: "trigger.highRisk != true"
+```
+
+约束：表达式长度上限 4096 字节；编排图为无环 DAG（不允许自环与环）；节点 key 必须非空且唯一。
+
+### 5. 与导出的关系
+
+声明好 `orchestration.mounts` 后，开启 `yunxi.aistio.workflow.export-enabled=true` 即可在启动期把每张图翻译为 DefinitionSpec Artifact 落盘（默认 `./workflow-artifacts`），并在配置 `push-token` 后自动推送到 AgentScope Service 管控面。完整可抄写范本见 [`agent-definitions/workflow-export-example.yml`](../../agent-config/src/main/resources/agent-definitions/workflow-export-example.yml)（默认 `enabled: false`，仅作格式参考、不触发加载）。推送与导出的配置细节见 [06. 配置指南 - aistio](./06-configuration.md#aistio) 的「编排图导出与自动推送」小节。
+
+---
+
 ## Agent 上下文
 
 Agent 上下文由 AgentScope 框架的 `HarnessAgent.workspaceFor(userId, sessionId)` 管理，通过 `RuntimeContext` 透传 `userId`/`sessionId`。yunxi 不提供自定义上下文的 SPI 扩展点——上下文数据经由 AgentScope 框架的 Middleware（如 `WorkspaceContextMiddleware`）和 `AgentStateStore` 管理。

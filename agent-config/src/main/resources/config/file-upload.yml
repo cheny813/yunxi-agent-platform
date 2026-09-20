@@ -6,7 +6,7 @@
 file-upload:
   enabled: true
   storage-type: local  # local|oss|minio
-  max-file-size: 10MB
+  max-file-size: ${FILE_UPLOAD_MAX_SIZE:10MB}            # 与 server.yml 的 spring.servlet.multipart 共享同一占位符，改一处即可
   allowed-types:
     - image
     - audio

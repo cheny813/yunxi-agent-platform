@@ -92,7 +92,7 @@ public class SessionInventoryService {
                 : (meta != null ? toIso(meta.createdAt()) : null));
         state.setStatus(entity != null ? deriveStatus(entity) : "idle");
 
-        // plan-mode 实时状态（Phase 3 plan-mode 能力）
+        // plan-mode 实时状态（aistio plan-mode 能力）
         boolean planActive = false;
         if (meta != null && meta.agentName() != null) {
             planActive = agentResolver.resolve(meta.agentName())

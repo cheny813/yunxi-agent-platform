@@ -138,6 +138,58 @@ agent:
         description: 页面设计生成助手，擅长仪表盘、数据报告等前端页面的自动生成
         forwardEvents: false   # 页面由主 Agent 汇总后统一输出，避免子 Agent 原始内容被重复透传
 
+    # 编排图挂载：营养配餐工作流（声明式，可被 WorkflowArtifactExporter 导出为 aistio artifact）
+    # 说明：仅作编排图声明/控制台导入用途；运行时仍由上方 supervisor 专家协作驱动。
+    # 下方 collect/evaluate/publish 三个 agentId 指向 dev aistio 已注册的真实 agent
+    # （yunxi-agent-platform / yunxi-m0-p2 / yunxi-m0-probe-agent），仅用于端到端自动推送验证；
+    # 生产环境请替换为对应业务 agent 的真实 UUID。approverRef 不参与服务端依赖校验，保留占位即可。
+    mounts:
+      - name: nutrition-recipe-review
+        group: 营养配餐
+        description: 检索候选菜品→营养评分→达标直接归档，未达标走人工复核
+        body:
+          kind: workflow
+          mode: auto
+          graph:
+            nodes:
+              - key: collect
+                type: agent
+                agentId: 5335bc02-cf05-431b-8416-44a40c26daef
+              - key: evaluate
+                type: agent
+                agentId: b9de13a1-671a-479b-8cb6-bcfe1442032a
+              - key: gate
+                type: condition
+                condition: "nodes.evaluate.score >= 80"
+              - key: approve
+                type: approval
+                approval:
+                  approverType: role
+                  approverRef: b9b9b9b9-b9b9-b9b9-b9b9-b9b9b9b9b9b9
+                  prompt: 营养方案综合评分低于 80，请复核并确认调整方向
+              - key: done
+                type: join
+                join:
+                  mode: all
+              - key: publish
+                type: agent
+                agentId: aed2b831-28af-400a-9ce4-3fd65d97d8b1
+            edges:
+              - from: collect
+                to: evaluate
+              - from: evaluate
+                to: gate
+              - from: gate
+                to: done
+                condition: "nodes.evaluate.score >= 80"
+              - from: gate
+                to: approve
+                condition: "nodes.evaluate.score < 80"
+              - from: approve
+                to: done
+              - from: done
+                to: publish
+
   # 模型配置
   model:
     provider: dashscope
@@ -172,24 +224,24 @@ agent:
           - name: "分析需求和约束"
             description: "分析营养标准、预算约束、人群年龄和口味偏好"
             expectedOutcome: "需求和约束分析报告"
-            pattern: SUPERVISOR
+            pattern: supervisor
             agents: ["nutrition-evaluator"]
           - name: "生成第1周食谱模板"
             description: "基于分析结果生成第一周的食谱模板"
             expectedOutcome: "第1周食谱草案"
-            pattern: PIPELINE
+            pattern: pipeline
           - name: "验证营养标准和预算"
             description: "对第1周食谱进行营养评分和预算验证，不达标则调整"
             expectedOutcome: "验证通过的第1周食谱"
-            pattern: WORKFLOW
+            pattern: workflow
           - name: "扩展到全月食谱"
             description: "将第1周模式扩展到4周，确保食材多样性"
             expectedOutcome: "完整的月度食谱"
-            pattern: PIPELINE
+            pattern: pipeline
           - name: "生成采购清单"
             description: "根据全月食谱汇总生成食材采购清单"
             expectedOutcome: "采购清单"
-            pattern: PIPELINE
+            pattern: pipeline
 
       - match: "一周食谱"
         name: "制定周食谱规划"
@@ -198,16 +250,16 @@ agent:
           - name: "分析需求"
             description: "分析营养标准和预算约束"
             expectedOutcome: "需求分析报告"
-            pattern: SUPERVISOR
+            pattern: supervisor
             agents: ["nutrition-evaluator"]
           - name: "生成7天食谱"
             description: "生成一周的每日食谱"
             expectedOutcome: "一周食谱"
-            pattern: PIPELINE
+            pattern: pipeline
           - name: "验证和调整"
             description: "营养评分验证，不达标则调整"
             expectedOutcome: "验证通过的一周食谱"
-            pattern: WORKFLOW
+            pattern: workflow
 
   # 工具配置
   toolsGroup:

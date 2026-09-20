@@ -25,7 +25,7 @@ intent-mappings:
     tool-groups: [nutrition]
     skills: [recipe-planning]
   - intent: recipe.single
-    agent: resident-nutrition-assistant
+    agent: recipe-composer
     tool-groups: [nutrition]
   - intent: recipe.ingredient-substitute
     agent: resident-nutrition-assistant

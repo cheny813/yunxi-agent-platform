@@ -202,8 +202,8 @@ public class AgentExecutionEngine {
         Flux<String> thinkingFlux = toFlux(eventAdapter.onThinking(thinkingText, ctx));
 
         // 一次调用 = 一棵轨迹树 = 一个归集会话。会话持有跨事件的归集状态（节点栈、配对键、
-        // 未决计数），必须复用而非逐事件重建 —— 那正是 M1 修复过的缺陷（见 §G V10-21）。
-        // 整条事件流先经归集器成为语义快照流，再由协议投影消费（M2 切换点：
+        // 未决计数），必须复用而非逐事件重建 —— 那正是此前修复过的缺陷（跨通道重复计数的回归）。
+        // 整条事件流先经归集器成为语义快照流，再由协议投影消费（切换点：
         // 归集结果直接供投影消费），同时旁路落库。
         String traceId = resolveTraceId(ctx);
         TraceComposer.Session session = traceId == null ? null : composer.session(traceId);

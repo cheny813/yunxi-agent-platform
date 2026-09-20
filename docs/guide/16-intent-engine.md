@@ -128,14 +128,13 @@
 
 ### 原则一：业务数据与框架代码分离（两级数据模型）
 
-所有业务规则都沉淀在 YAML 数据文件中，**Java 代码不含任何业务词条**。数据采用两级模型：
+所有业务规则都沉淀在 YAML 数据文件中，**Java 代码不含任何业务词条**。配置集中化整改后，intent 数据统一位于 `agent-config/src/main/resources/intent/`，由 `classpath:intent/*` 加载（单一来源；agent-core 不再保留兜底集）：
 
 | 层级 | 位置 | 定位 |
 |------|------|------|
-| 框架最小演示集 | `agent-core/src/main/resources/intent/*.yml` | 每个文件 2-4 条中性示例，演示引擎能力、支撑开箱即用冒烟验证；**框架发布后不应被修改** |
-| 部署业务数据 | `agent-config/src/main/resources/config/intent/*.yml` | yunxi 默认部署的完整业务词典（校园餐/居民营养），随 `agent-app` 打包；业务方按需替换 |
+| 集中配置集（业务数据） | `agent-config/src/main/resources/intent/*.yml` | yunxi 默认部署的完整业务词典（校园餐/居民营养），随 `agent-app` 打包；业务方按需替换 |
 
-两级数据通过 `yunxi.intent.*` 配置项切换：`agent-config` 的 `intent.yml` 显式指向 `config/intent/*.yml`（部署数据）；若某配置项缺失，框架回落到 `agent-core` 内置演示集（兜底）。
+数据通过 `yunxi.intent.*` 配置项切换：`agent-config` 的 `intent.yml` 显式指向 `intent/*.yml`（部署数据）；如后续需要框架演示集，可经 `classpath:intent/*` 在 agent-config 内统一管理。
 
 | 文件 | 内容 | 前缀配置项 |
 |------|------|-----------|

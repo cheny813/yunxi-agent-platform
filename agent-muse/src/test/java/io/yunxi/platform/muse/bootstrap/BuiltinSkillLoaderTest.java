@@ -19,9 +19,11 @@ class BuiltinSkillLoaderTest {
 
     @Test
     void testSkillStructureIntegrity() throws Exception {
-        // 验证 resources/builtin-skills 下每个技能都有完整的 SKILL.md + tests/
+        // 验证 builtin-skills 下每个技能都有完整的 SKILL.md + tests/
+        // 注：内建技能配置已集中到 agent-config 模块（见配置集中化整改），
+        // 故此处从 agent-config 的 resources 路径校验落地完整性。
         String[] skills = {"data_stats", "text_clean"};
-        Path base = Path.of("src/main/resources/builtin-skills");
+        Path base = Path.of("../agent-config/src/main/resources/builtin-skills");
 
         for (String skill : skills) {
             Path skillDir = base.resolve(skill);

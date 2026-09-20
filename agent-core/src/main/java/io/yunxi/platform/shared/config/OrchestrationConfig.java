@@ -1,5 +1,6 @@
 package io.yunxi.platform.shared.config;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -88,5 +89,34 @@ public class OrchestrationConfig {
 
     public void setFailFast(Boolean failFast) {
         this.failFast = failFast;
+    }
+
+    /**
+     * 挂载定义列表：声明可供触发编排的入口。
+     * <p>绑定 YAML 路径 {@code orchestration.mounts}。其中 workflow 类型且内联 graph 的挂载，
+     * 会由 translator 校验并导出 aistio DefinitionSpec artifact 供控制台导入。</p>
+     */
+    private List<MountConfig> mounts = new ArrayList<>();
+
+    /**
+     * 顶层编排图定义：当某个 workflow 挂载以 definition key 引用、而非内联 graph 时，
+     * 该 key 应对应此处声明的图。绑定 YAML 路径 {@code orchestration.graph}。
+     */
+    private GraphConfig graph;
+
+    public List<MountConfig> getMounts() {
+        return mounts;
+    }
+
+    public void setMounts(List<MountConfig> mounts) {
+        this.mounts = mounts;
+    }
+
+    public GraphConfig getGraph() {
+        return graph;
+    }
+
+    public void setGraph(GraphConfig graph) {
+        this.graph = graph;
     }
 }

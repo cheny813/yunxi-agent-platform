@@ -1052,9 +1052,22 @@ yunxi:
 
 ---
 
-## AgentScope-Service（aistio）管控面配置<a name="aistio"></a>
+## AgentScope Service 管控面配置（yunxi 集成模块名 aistio）<a name="aistio"></a>
 
-yunxi 通过应用内 `io.yunxi.platform.aistio` 适配层接入外部 AgentScope-Service 管控面（设计见 `docs/agentscope-service-integration-design.md`），补齐 **Agent 管控 / 治理可视化 / 会话干预** 能力。该能力默认关闭，需显式开启并指向一个已运行的 aistio 控制面（见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)）。
+yunxi 通过应用内 `io.yunxi.platform.aistio` 适配层接入底层框架的 **AgentScope Service** 管控面，补齐 **Agent 管控 / 治理可视化 / 会话干预** 能力。该能力默认关闭，需显式开启并指向一个已运行的 AgentScope Service 控制面（见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)）。
+
+### 术语对照（yunxi 模块名 ↔ 底层框架官方名）
+
+本章出现的 "aistio" 是 yunxi 对 AgentScope-Java 生态 **AgentScope Service** 管控面的集成模块命名，同时也是 AgentScope Service 后端（`agentscope-service` 仓库）自身的部署代号（Go 二进制 `aistiod`、平面 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`，容器间经 `BUILDER_DATA_URL=http://aistio-data:8082` 等硬编码主机名互联）。因此代码层沿用 `yunxi.aistio.*` 配置前缀与 `io.yunxi.platform.aistio` 适配包、docker 服务名沿用 `aistio-gateway` / `aistio-scheduler` / `aistio-data`，以与真实后端保持一致，不可改名。底层框架对外发布的官方产品名为 **AgentScope Service**（官方文档：<https://java.agentscope.io/v2/zh/service>，当前为预览版，且官方站点称 "AgentScope Service"、源码与容器称 "aistio"，二者同源）。为降低开源后的学习门槛，本章行文统一使用框架官方概念名，关键映射如下：
+
+| yunxi 文档用语 | AgentScope Service 官方概念 |
+| --- | --- |
+| aistio 管控面 / 控制面 | AgentScope Service 管控面（Control Plane） |
+| 编排图挂载（workflow 挂载） | Workflow（步骤、依赖、分支与人工关口） |
+| 编排定义 artifact | Artifact（编排定义导出物） |
+| 人工审批节点 | Approval（人工关口） |
+| 命名空间 | Namespace |
+| 控制台 / 网关 | AgentScope Service 控制台 / 网关 |
 
 ### 配置项
 
@@ -1074,7 +1087,18 @@ yunxi:
 | `yunxi.aistio.enabled` | `false` | 是否启用管控面接入；开启后平台向 aistio 注册 Agent、上报会话事件并接收干预指令 |
 | `yunxi.aistio.control-plane-url` | — | aistio 网关地址；docker-compose 默认发布到主机 `18080`，故填 `http://localhost:18080` |
 | `yunxi.aistio.internal-token` | — | 内部令牌，须与 aistio 各平面的 `BUILDER_INTERNAL_TOKEN` 环境变量完全一致（compose 本地默认 `compose-local-internal-token-at-least-32chars`） |
-| `yunxi.aistio.base-url` | — | yunxi 自身对外可达的基座地址，供管控面回调控本平台会话使用，应填本机 IP 或对外域名（如 `http://<host-ip>:40001/agentscope`） |
+| `yunxi.aistio.base-url` | `http://localhost:40001` | yunxi 数据面**对管控面可达**的基座地址，用于两处：① 管控面 prober 轮询 `base-url/agentscope/health` 探活；② 管控面回调本平台会话。注意此处是从**管控面容器视角**解析的地址，**绝不能填 `localhost`**——当管控面运行在 Docker 中、yunxi 运行在宿主机时，容器内的 `localhost` 指向容器自身而非宿主机，prober 连接被拒，Agent 全部显示 `unavailable`。正确填法：Windows/Mac Docker Desktop 用 `http://host.docker.internal:40001/agentscope`，或宿主机局域网 IP `http://<host-ip>:40001/agentscope`（如 `http://192.168.x.x:40001/agentscope`） |
+| `yunxi.aistio.agent-key` | `yunxi-agent-platform` | 本数据面在管控面目录中的稳定标识（Agent key）；同名 Agent 已存在时复用并新建 instance |
+| `yunxi.aistio.agent-name` | `yunxi-agent-platform` | 数据面展示名（displayName），仅用于控制台显示 |
+| `yunxi.aistio.tenant` | `default` | 上报至管控面的租户 |
+| `yunxi.aistio.namespace` | `default` | 上报至管控面的命名空间 |
+
+> **Agent key 是什么（与 yunxi 工作流 `agentId` 的区别）**：管控面「新建 Agent」表单的 **Agent key** 是该 Agent 在 `(tenant, namespace)` 范围内的**稳定身份 slug**，格式仅含小写字母、数字、`-`、`_`（建议 kebab-case，如 `purchase-review-agent`）。它在同一 `(tenant, namespace)` 内唯一，且不随显示名（displayName）变更而变；与后端自动生成的 UUID `id`、显示名均属不同概念。
+>
+> - **yunxi 自动注册，通常无需手动建**：开启 `yunxi.aistio.enabled=true` 后，yunxi 在启动期通过 AgentScope-Java 原生 `aistio` 扩展的 `HttpSelfRegistration` 向管控面 `POST /api/v1/agent-registrations` 注册自身数据面，并完成周期心跳与握手身份回填（由 `AistioGrpcConnector` 装配 `AistioConfig.startHttpRegister(true)` 触发）。所用 Agent key 即 `yunxi.aistio.agent-key`（默认 `yunxi-agent-platform`），落在 `yunxi.aistio.tenant` / `yunxi.aistio.namespace`（均默认 `default`）。因此一般不必在控制台手动新建同名 Agent；该表单用于注册**其他** Agent（托管 Agent 或额外外部数据面）。手动建 Agent 时其 key 不要与 `yunxi-agent-platform` 冲突，否则会被复用而非新建。
+> - **yunxi 工作流引用的是 UUID，不是 Agent key**：yunxi 编排图挂载中 `type: agent` 节点的 `agentId` 填的是 Agent 的 UUID（控制台目录详情页的 `id`），**不是** Agent key slug。在控制台手动建的 Agent 若要被 yunxi 工作流引用，须从目录详情页复制其 UUID `id` 填入 `agentId`，切勿填 Agent key。
+
+> **Agent 在控制台显示 `unavailable` 的根因**：状态由管控面 **prober 轮询数据面 `base-url/agentscope/health`** 决定，连不通即 `unavailable`，与你在控制台怎么填 Agent key / 显示名无关。最常见原因有二：① `yunxi.aistio.base-url` 填了 `localhost` 而管控面在 Docker 中（见上表，容器内 `localhost` 不等于宿主机）——把 base-url 改为 `host.docker.internal` 或宿主机 IP 后重启 yunxi 即可；② 该 Agent 没有真实运行的数据面认领它（例如仅在控制台建了目录条目、却无 yunxi 或上游 dataplane 实例在跑）。yunxi 自身的 `yunxi-agent-platform` 要 available，前提是 yunxi 已启动且 `yunxi.aistio.enabled=true`，并以容器可达的 base-url 注册。修复后 prober 下一轮轮询才会翻绿，非即时生效。
 
 ### 接入步骤（docker-compose 方式）
 
@@ -1085,6 +1109,47 @@ yunxi:
 5. 浏览器访问 `http://localhost:18080` 打开管控面，验证 Agent 注册与会话干预。
 
 > 生产环境务必替换默认的 `internal-token` 与数据库弱口令（`builder/builder`），并避免将 `aistio-db` 的 `5432` 端口直接映射到公网。
+
+### 编排图导出与自动推送（Workflow Artifact Exporter）
+
+yunxi 启动期（`@PostConstruct`）扫描所有 Agent 定义里 `kind: workflow` 的编排挂载，把内联或引用的编排图校验并翻译为 AgentScope Service **编排定义 Artifact**（`*.definition.json` + `*.manifest.json`），供 AgentScope Service 管控面导入。开启 `push-enabled` 后还会把这些 Artifact 自动 `POST` 到管控面，免去 AgentScope Service 控制台手工导入。该能力默认关闭，由 `yunxi.aistio.workflow.*` 控制（默认配置见 `config/aistio-workflow-export.yml`）。
+
+> 它属于 yunxi 平台侧能力，不修改 AgentScope-Java 框架本身；仅复用框架已暴露的控制台账号通道（控制台 PAT）推送 artifact。
+
+**与「AgentScope Service 管控面接入」的关系**：`yunxi.aistio.enabled` 负责 Agent 注册 / 会话干预 / 治理可视化（数据面接入）；`yunxi.aistio.workflow.*` 负责把声明式 workflow 挂载导出为编排定义并推送到管控面（Artifact 分发）。两者相互独立开关，后者不依赖前者开启。
+
+**配置项**
+
+```yaml
+yunxi:
+  aistio:
+    workflow:
+      export-enabled: false            # 启动期导出总开关（默认 false，零额外开销）
+      export-dir: ./workflow-artifacts # artifact 落盘目录（相对进程工作目录）
+      registered-entity-ids: []        # 已注册实体 UUID 白名单（节点 agentId / teamRef 等）；空=跳过 E3 拦截
+      push-enabled: false              # 导出后是否自动推送到管控面（默认 false）
+      push-token: ""                   # 推送所用的控制台账号令牌（PAT，Authorization: Bearer）；空=不推送
+      push-namespace: ""               # 推送目标命名空间；空=default 命名空间
+```
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `yunxi.aistio.workflow.export-enabled` | `false` | 启动期是否扫描 workflow 挂载并产出 Artifact |
+| `yunxi.aistio.workflow.export-dir` | `./workflow-artifacts` | Artifact 落盘目录（相对进程工作目录） |
+| `yunxi.aistio.workflow.registered-entity-ids` | `[]` | 已注册实体 UUID 白名单；非空时 translator 据此做节点引用 E3 校验，空集合则跳过、依赖 AgentScope Service 导入期校验 |
+| `yunxi.aistio.workflow.push-enabled` | `false` | 导出完成后是否自动推送每个 `definition.json` 到管控面 |
+| `yunxi.aistio.workflow.push-token` | `""` | 推送鉴权用的控制台账号令牌（PAT）；为空则不推送 |
+| `yunxi.aistio.workflow.push-namespace` | `""` | 推送目标命名空间；留空落到 `default`（管控面 global 命名空间） |
+
+**推送鉴权（重要）**：编排定义创建端点要求**登录账号身份**，数据面内部令牌（`X-Builder-Internal-Token`）不足以创建编排定义。因此自动推送使用 **AgentScope Service 控制台 PAT**（`push-token`），由运维在 AgentScope Service 控制台一次性签发后配置于此；进程启动即自动推送，无需手工导入。
+
+> 受「增强类改动不得修改框架本体」约束，本推送只能复用框架已暴露的控制台账号通道，不能改动服务端鉴权。
+
+**命名空间**：管控面个人命名空间形如 `personal-<hash>`（非 `ns-<userId>`），无法从 PAT 的 JWT 声明推导。留空推送到 `default`（PAT 拥有者通常具备 developer / operator 写权限）；若需推送到个人命名空间，须显式配置 `push-namespace` 真实名称，否则管控面返回 403。
+
+**行为**：推送在后台线程执行，失败仅记 WARN 并有限重试（最多 3 次、间隔 10s），**绝不阻塞启动**；推送异常不影响 Artifact 落盘，仍可稍后在 AgentScope Service 控制台手工导入。校验未通过的挂载（如节点引用了本环境未注册实体、或编排图语法错误）会被跳过并记 ERROR。
+
+**完整声明格式**：见 [`agent-definitions/workflow-export-example.yml`](../../agent-config/src/main/resources/agent-definitions/workflow-export-example.yml)（模板，默认 `enabled: false` 不被加载），演示了内联图（`body.graph`）与引用顶层图（`body.definition`）两种挂载写法，以及 `agent` / `condition` / `approval` / `join` / `timer` / `signal` 等节点类型。编排图中的条件表达式遵循 AgentScope Service 的 CEL 语法（条件节点只声明 `run` / `issue` / `trigger` / `nodes` 变量，引用上游节点输出须用 `nodes.<nodeKey>.<field>` 而非裸变量名）。
 
 ---
 

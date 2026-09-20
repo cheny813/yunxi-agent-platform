@@ -12,7 +12,7 @@
 
     <groupId>io.yunxi</groupId>
     <artifactId>yunxi-agent-platform</artifactId>
-    <version>2.0.3</version>
+    <version>${revision}</version>
     <name>yunxi-agent-platform</name>
     <description>AgentScope Platform - Simplified Agent Management Framework</description>
 
@@ -32,7 +32,11 @@
 
     <properties>
         <java.version>17</java.version>
-        <agentscope.version>2.0.3</agentscope.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- 项目自身版本：所有模块统一引用该属性，升级版本时只需改此处一处，
+             无需逐模块修改 <parent><version>。install/deploy 时由 flatten-maven-plugin 解析为具体版本号。 -->
+        <revision>2.0.4-SNAPSHOT</revision>
+        <agentscope.version>2.0.4-SNAPSHOT</agentscope.version>
         <jacoco.version>0.8.12</jacoco.version>
         <!-- surefire argLine 默认空串：未声明 jacoco 的模块 fork JVM 不带覆盖率 agent；
              声明 jacoco 的模块由 prepare-agent 覆盖该属性注入 -javaagent -->
@@ -52,6 +56,27 @@
         <!-- 覆盖 Spring Boot 默认的 protobuf 3.x：micrometer-registry-otlp 与 opentelemetry 的 OTLP proto 由 protobuf 4.x 生成，
              运行时需要 RuntimeVersion 类（protobuf-java 4.26+ 才有），否则启动报 NoClassDefFoundError: com/google/protobuf/RuntimeVersion$RuntimeDomain -->
         <protobuf.version>4.36.1</protobuf.version>
+        <!-- 以下第三方依赖版本集中管理，子模块引用时不再写 <version> -->
+        <nacos.version>3.2.4</nacos.version>
+        <cel.version>0.8.0</cel.version>
+        <guava.version>33.6.0-jre</guava.version>
+        <agrona.version>2.5.0</agrona.version>
+        <spring-ai.version>1.0.0-M5</spring-ai.version>
+        <langchain4j.version>0.34.0</langchain4j.version>
+        <jsqlparser.version>4.7</jsqlparser.version>
+        <!-- 以下依赖在 BOM 之外显式锁定版本，亦集中为属性 -->
+        <mybatis-spring-boot.version>3.0.3</mybatis-spring-boot.version>
+        <mysql-connector.version>8.3.0</mysql-connector.version>
+        <lombok.version>1.18.30</lombok.version>
+        <rocketmq-spring-boot.version>2.2.3</rocketmq-spring-boot.version>
+        <!-- 以下构建插件版本集中为属性，统一在 pluginManagement 引用 -->
+        <exec-maven.version>3.1.0</exec-maven.version>
+        <maven-compiler.version>3.11.0</maven-compiler.version>
+        <maven-resources.version>3.3.1</maven-resources.version>
+        <maven-jar.version>3.4.2</maven-jar.version>
+        <maven-surefire.version>3.2.5</maven-surefire.version>
+        <maven-pmd.version>3.21.0</maven-pmd.version>
+        <flatten-maven.version>1.6.0</flatten-maven.version>
     </properties>
 
     <!-- 依赖管理（只管理第三方依赖，Spring Boot 依赖由 parent 管理） -->
@@ -68,14 +93,14 @@
             <dependency>
                 <groupId>org.mybatis.spring.boot</groupId>
                 <artifactId>mybatis-spring-boot-starter</artifactId>
-                <version>3.0.3</version>
+                <version>${mybatis-spring-boot.version}</version>
             </dependency>
 
             <!-- MySQL Driver -->
             <dependency>
                 <groupId>com.mysql</groupId>
                 <artifactId>mysql-connector-j</artifactId>
-                <version>8.3.0</version>
+                <version>${mysql-connector.version}</version>
             </dependency>
 
             <!-- AgentScope Core -->
@@ -156,7 +181,7 @@
             <dependency>
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
-                <version>1.18.30</version>
+                <version>${lombok.version}</version>
                 <scope>provided</scope>
             </dependency>
 
@@ -199,7 +224,7 @@
             <dependency>
                 <groupId>org.apache.rocketmq</groupId>
                 <artifactId>rocketmq-spring-boot-starter</artifactId>
-                <version>2.2.3</version>
+                <version>${rocketmq-spring-boot.version}</version>
             </dependency>
 
             <!-- protobuf 强制锁定 4.x：micrometer-registry-otlp 与 opentelemetry 的 OTLP proto
@@ -209,12 +234,166 @@
             <dependency>
                 <groupId>com.google.protobuf</groupId>
                 <artifactId>protobuf-java</artifactId>
-                <version>4.36.1</version>
+                <version>${protobuf.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.google.protobuf</groupId>
                 <artifactId>protobuf-java-util</artifactId>
-                <version>4.36.1</version>
+                <version>${protobuf.version}</version>
+            </dependency>
+
+            <!-- AgentScope aistio 数据面集成扩展（agent-core 引用，统一锁定 ${agentscope.version}） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-aistio</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+
+            <!-- AgentScope 模型扩展（2.0.0 起 ChatModel 由 core.model 拆分到独立 extension 模块，agent-core / agent-muse 引用） -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-model-openai</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-model-dashscope</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-model-anthropic</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-model-gemini</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-extensions-model-ollama</artifactId>
+                <version>${agentscope.version}</version>
+            </dependency>
+
+            <!-- OpenTelemetry SDK（agent-core 引用，统一锁定 ${opentelemetry.version}） -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-sdk</artifactId>
+                <version>${opentelemetry.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-sdk-extension-autoconfigure</artifactId>
+                <version>${opentelemetry.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-sdk-metrics</artifactId>
+                <version>${opentelemetry.version}</version>
+            </dependency>
+
+            <!-- Okio（okhttp 传递依赖，agent-core 显式锁定） -->
+            <dependency>
+                <groupId>com.squareup.okio</groupId>
+                <artifactId>okio</artifactId>
+                <version>${okio.version}</version>
+            </dependency>
+
+            <!-- Resilience4j 限流器 / 超时器（agent-core 引用，统一锁定 ${resilience4j.version}） -->
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-ratelimiter</artifactId>
+                <version>${resilience4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-timelimiter</artifactId>
+                <version>${resilience4j.version}</version>
+            </dependency>
+
+            <!-- JWT（jjwt 三件套，统一锁定 ${jjwt.version}） -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+
+            <!-- Nacos 客户端（MCP 动态注册协调底座，统一锁定 ${nacos.version}） -->
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-client</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-api</artifactId>
+                <version>${nacos.version}</version>
+            </dependency>
+
+            <!-- CEL 表达式引擎（编排图 condition 节点本地校验，统一锁定 ${cel.version}） -->
+            <dependency>
+                <groupId>org.projectnessie.cel</groupId>
+                <artifactId>cel-core</artifactId>
+                <version>${cel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.projectnessie.cel</groupId>
+                <artifactId>cel-generated-pb</artifactId>
+                <version>${cel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.projectnessie.cel</groupId>
+                <artifactId>cel-generated-antlr</artifactId>
+                <version>${cel.version}</version>
+            </dependency>
+
+            <!-- Guava / Agrona（agent-core 引用，统一锁定属性版本） -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.agrona</groupId>
+                <artifactId>agrona</artifactId>
+                <version>${agrona.version}</version>
+            </dependency>
+
+            <!-- Spring AI（agent-text2sql 引用，统一锁定 ${spring-ai.version}） -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-core</artifactId>
+                <version>${spring-ai.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+                <version>${spring-ai.version}</version>
+            </dependency>
+
+            <!-- LangChain4j（agent-text2sql 可选依赖，统一锁定 ${langchain4j.version}） -->
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-open-ai</artifactId>
+                <version>${langchain4j.version}</version>
+            </dependency>
+
+            <!-- JSqlParser（SQL 解析，统一锁定 ${jsqlparser.version}） -->
+            <dependency>
+                <groupId>com.github.jsqlparser</groupId>
+                <artifactId>jsqlparser</artifactId>
+                <version>${jsqlparser.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -258,7 +437,7 @@
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>exec-maven-plugin</artifactId>
-                    <version>3.1.0</version>
+                    <version>${exec-maven.version}</version>
                     <configuration>
                         <mainClass>io.yunxi.platform.AgentPlatformApplication</mainClass>
                         <cleanupDaemonThreads>false</cleanupDaemonThreads>
@@ -268,7 +447,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.11.0</version>
+                    <version>${maven-compiler.version}</version>
                     <configuration>
                         <source>${java.version}</source>
                         <target>${java.version}</target>
@@ -281,7 +460,7 @@
                             <path>
                                 <groupId>org.projectlombok</groupId>
                                 <artifactId>lombok</artifactId>
-                                <version>1.18.30</version>
+                                <version>${lombok.version}</version>
                             </path>
                         </annotationProcessorPaths>
                         <compilerArgs>
@@ -293,7 +472,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-resources-plugin</artifactId>
-                    <version>3.3.1</version>
+                    <version>${maven-resources.version}</version>
                     <configuration>
                         <encoding>UTF-8</encoding>
                     </configuration>
@@ -301,8 +480,14 @@
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven-jar.version}</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.2.5</version>
+                    <version>${maven-surefire.version}</version>
                     <configuration>
                         <!-- ${argLine} 默认空串（见 <properties>），由 jacoco prepare-agent 注入时覆盖为覆盖率 agent 参数；
                              显式挂载 mockito-core agent 替代运行时 self-attach（JDK 21+ 动态加载警告） -->
@@ -314,7 +499,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-pmd-plugin</artifactId>
-                    <version>3.21.0</version>
+                    <version>${maven-pmd.version}</version>
                     <configuration>
                         <rulesets>
                             <ruleset>rulesets/java/quickstart.xml</ruleset>
@@ -388,5 +573,39 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <!-- CI 友好版本：模块版本统一引用 ${revision} 属性（根 pom 一处定义），
+             升级版本时只需修改根 pom 的 <revision>，无需逐模块改 <parent><version>。
+             flatten-maven-plugin 在 install/deploy 阶段将 ${revision} 解析为具体版本号，
+             避免发布到仓库的 POM 残留 ${revision} 占位符导致下游无法解析坐标。 -->
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>flatten-maven-plugin</artifactId>
+                    <version>${flatten-maven.version}</version>
+                <configuration>
+                    <updatePomFile>false</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                    <!-- 产物写到 target/（已被 .gitignore 覆盖），避免 .flattened-pom.xml 散落在源码树根目录被误提交 -->
+                    <outputDirectory>${project.basedir}/target</outputDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

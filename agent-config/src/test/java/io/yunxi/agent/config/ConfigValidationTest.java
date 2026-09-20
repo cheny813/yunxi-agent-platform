@@ -62,7 +62,12 @@ class ConfigValidationTest {
             assertTrue(content.contains("spring:"), "Should contain spring configuration");
             assertTrue(content.contains("config:"), "Should contain config section");
             assertTrue(content.contains("import:"), "Should contain import directive");
-            assertTrue(content.contains("management:"), "Should contain management configuration");
+            // application.yml 是纯入口，只含 spring.config.import 与 jackson 引导项；
+            // management（监控端点）配置分散在被引入的 config/ 片段（observability.yml 等）。
+            // 故监控配置只需存在于 application.yml 或被引入片段其一即可。
+            assertTrue(content.contains("management:")
+                    || configFragmentsContainManagement(),
+                    "Should contain management configuration (in application.yml or an imported config fragment)");
         } catch (Exception e) {
             fail("Failed to validate application.yml structure: " + e.getMessage());
         }
@@ -82,6 +87,31 @@ class ConfigValidationTest {
             }
         } catch (Exception e) {
             fail("Failed to validate config import order: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 被引入的 config/ 片段中是否存在 management 顶层配置。
+     * application.yml 是纯入口，监控端点配置（management.*）按约定落在
+     * observability.yml / resilience.yml 等片段，统一由 config/imports.yml 引入。
+     */
+    private boolean configFragmentsContainManagement() {
+        Path configDir = Paths.get("src/main/resources/config");
+        if (!Files.isDirectory(configDir)) {
+            return false;
+        }
+        try (var stream = Files.list(configDir)) {
+            return stream
+                    .filter(p -> p.toString().endsWith(".yml"))
+                    .anyMatch(p -> {
+                        try {
+                            return Files.readString(p).contains("management:");
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    });
+        } catch (Exception e) {
+            return false;
         }
     }
 }

@@ -21,7 +21,7 @@ public class SessionState {
     @JsonProperty("message_count")
     private int messageCount;
 
-    /** plan-mode 是否激活（Phase 3 plan-mode 能力） */
+    /** plan-mode 是否激活（aistio plan-mode 能力） */
     @JsonProperty("plan_mode_active")
     private boolean planModeActive;
 

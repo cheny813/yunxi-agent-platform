@@ -14,7 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 配置文件片段验证测试
- * 验证所有YAML配置文件格式正确性和关键配置项
+ * 验证所有YAML配置文件格式正确性和关键配置项，并守住配置治理红线：
+ *  - config/imports.yml 是片段清单唯一真相源，必选模块缺失即应启动失败（此处断言其存在）；
+ *  - application.yml 只作纯入口，不得再写顶层 yunxi:/management:/logging: 等业务配置；
+ *  - aistio-workflow-export.yml 只允许写 yunxi.aistio.workflow.*，禁止写顶层 aistio 键。
  */
 class ConfigFragmentValidationTest {
 
@@ -52,6 +55,75 @@ class ConfigFragmentValidationTest {
         validateConfigFile("config/redis.yml", "spring.data.redis");
     }
 
+    @Test
+    void testLLMConfigFormat() {
+        validateConfigFile("config/llm.yml", "io.yunxi.platform.llm");
+    }
+
+    @Test
+    void testMilvusConfigFormat() {
+        validateConfigFile("config/milvus.yml", "io.yunxi.platform.milvus");
+    }
+
+    @Test
+    void testEmbeddingConfigFormat() {
+        validateConfigFile("config/embedding.yml", "io.yunxi.platform.embedding");
+    }
+
+    @Test
+    void testResilienceConfigFormat() {
+        validateConfigFile("config/resilience.yml", "resilience4j");
+    }
+
+    @Test
+    void testRateLimitConfigFormat() {
+        // 限流配置前缀必须是顶层 rate-limit（RateLimitInterceptor 的 @Value 绑定），
+        // 而非旧 cache.yml 里误写的 api.rate-limit.*（从未被绑定，属死配置）。
+        validateConfigFile("config/rate-limit.yml", "rate-limit");
+    }
+
+    @Test
+    void testA2APipelineConfigFormat() {
+        validateConfigFile("config/a2a-pipeline.yml", "a2a.pipeline");
+    }
+
+    @Test
+    void testFileUploadConfigFormat() {
+        validateConfigFile("config/file-upload.yml", "file-upload");
+    }
+
+    @Test
+    void testPersistenceConfigFormat() {
+        validateConfigFile("config/persistence.yml", "spring.jpa");
+    }
+
+    @Test
+    void testMCPServerConfigFormat() {
+        validateConfigFile("config/mcp-core.yml", "mcp");
+    }
+
+    @Test
+    void testAgentScopeConfigFormat() {
+        validateConfigFile("config/agentscope.yml", "io.yunxi.platform.agentscope");
+    }
+
+    // ---- 平台/集成片段 ----
+
+    @Test
+    void testPlatformConfigFormat() {
+        validateConfigFile("config/platform.yml", "yunxi.observability");
+    }
+
+    @Test
+    void testAistioConfigFormat() {
+        validateConfigFile("config/aistio.yml", "yunxi.aistio");
+    }
+
+    @Test
+    void testObservabilityConfigFormat() {
+        validateConfigFile("config/observability.yml", "management");
+    }
+
     /**
      * 防止 Redis 配置前缀回归。
      *
@@ -74,127 +146,79 @@ class ConfigFragmentValidationTest {
 
         assertTrue(redisYml.contains("spring.data.redis"),
             "config/redis.yml 必须使用 spring.data.redis 前缀（Spring Boot 3.x 绑定前缀）");
-        assertTrue(a2aYml.contains("spring.data.redis")
-                || !a2aYml.contains("spring:\n  redis:"),
-            "config/a2a-pipeline.yml 不得再用旧前缀 spring.redis 重复声明连接参数");
         // 旧写法 `spring:\n  redis:` 作为独立层级出现即为回归（注意与 spring.data.redis 区分）
         assertFalse(redisYml.matches("(?s).*spring:\\s*\\n\\s{2}redis:.*"),
             "config/redis.yml 不应再出现旧的 spring.redis 层级");
+        assertFalse(a2aYml.contains("spring:\n  redis:"),
+            "config/a2a-pipeline.yml 不得再用旧前缀 spring.redis 重复声明连接参数");
     }
 
+    // ---- 配置治理红线 ----
+
+    /**
+     * application.yml 必须保持纯入口：不得再写顶层业务配置
+     * （yunxi:/management:/logging:），这些已分别收进 config/platform.yml、
+     * config/aistio.yml、config/observability.yml。
+     */
     @Test
-    void testLLMConfigFormat() {
-        validateConfigFile("config/llm.yml", "io.yunxi.platform.llm");
-    }
-
-    @Test
-    void testMilvusConfigFormat() {
-        validateConfigFile("config/milvus.yml", "io.yunxi.platform.milvus");
-    }
-
-    @Test
-    void testEmbeddingConfigFormat() {
-        validateConfigFile("config/embedding.yml", "io.yunxi.platform.embedding");
-    }
-
-    @Test
-    void testResilienceConfigFormat() {
-        validateConfigFile("config/resilience.yml", "resilience4j");
-    }
-
-    @Test
-    void testGatewayConfigFormat() {
-        validateConfigFile("config/gateway.yml", "spring.cloud.gateway");
-    }
-
-    @Test
-    void testMCPServerConfigFormat() {
-        validateConfigFile("config/mcp-core.yml", "mcp");
-    }
-
-    @Test
-    void testSkillConfigFormat() {
-        validateConfigFile("config/skill.yml", "skill");
-    }
-
-    @Test
-    void testA2APipelineConfigFormat() {
-        validateConfigFile("config/a2a-pipeline.yml", "a2a.pipeline");
-    }
-
-    @Test
-    void testFileUploadConfigFormat() {
-        validateConfigFile("config/file-upload.yml", "spring.servlet.multipart");
-    }
-
-    @Test
-    void testText2SQLConfigFormat() {
-        validateConfigFile("config/text2sql.yml", "text2sql");
-    }
-
-    @Test
-    void testPersistenceConfigFormat() {
-        validateConfigFile("config/persistence.yml", "spring.jpa");
-    }
-
-    @Test
-    void testMCPServerExternalConfigFormat() {
-        validateConfigFile("config/mcp-external.yml", "mcp.external");
-    }
-
-    @Test
-    void testMCPServerBusinessConfigFormat() {
-        validateConfigFile("config/mcp-business.yml", "mcp.business");
-    }
-
-    @Test
-    void testAgentScopeConfigFormat() {
-        validateConfigFile("config/agentscope.yml", "io.yunxi.platform.agentscope");
-    }
-
-    @SuppressWarnings("unchecked")
-    private void validateConfigFile(String filePath, String expectedRootKey) {
+    void testApplicationYmlIsPureHub() {
         try {
-            Path configPath = Paths.get("src/main/resources", filePath);
-            
-            if (!Files.exists(configPath)) {
-                System.out.println("Config file not found: " + configPath);
-                return; // 跳过不存在的配置文件
-            }
-            
-            try (InputStream input = Files.newInputStream(configPath)) {
-                Object data = yaml.load(input);
-                
-                assertNotNull(data, "Config file " + filePath + " should not be empty");
-                
-                if (data instanceof Map) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> configMap = (Map<String, Object>) data;
-                    
-                    // 验证配置文件结构
-                    assertFalse(configMap.isEmpty(), 
-                        "Config file " + filePath + " should contain configuration");
-                    
-                    // 验证关键根配置项（如果存在）
-                    if (expectedRootKey != null) {
-                        String[] keyParts = expectedRootKey.split("\\.");
-                        Map<String, Object> currentLevel = configMap;
-                        
-                        for (String keyPart : keyParts) {
-                            if (currentLevel.containsKey(keyPart)) {
-                                Object value = currentLevel.get(keyPart);
-                                if (value instanceof Map) {
-                                    currentLevel = (Map<String, Object>) value;
-                                }
-                            }
-                        }
-                        
-                        System.out.println("Validated config file: " + filePath);
-                    }
-                }
+            String content = Files.readString(Paths.get("src/main/resources/application.yml"));
+            assertFalse(content.contains("\nyunxi:"),
+                "application.yml 不得再写顶层 yunxi: 业务配置，应下沉到 config/ 对应片段");
+            assertFalse(content.contains("\nmanagement:"),
+                "application.yml 不得再写 management: 段，应统一在 config/observability.yml");
+            assertFalse(content.contains("\nlogging:"),
+                "application.yml 不得再写 logging: 段，级别统一在 config/logging.yml");
+            assertTrue(content.contains("spring.config.import"),
+                "application.yml 必须保留 spring.config.import 指向 imports.yml");
+        } catch (Exception e) {
+            fail("Failed to read application.yml: " + e.getMessage());
+        }
+    }
+
+    /**
+     * imports.yml 是清单唯一真相源：必选模块不得带 optional:（除 aistio-workflow-export.yml）。
+     * 防止“配置写了但没加载”的静默黑洞回归。
+     */
+    @Test
+    void testImportsMandatoryModulesNotOptional() {
+        try {
+            String imports = Files.readString(Paths.get("src/main/resources/config/imports.yml"));
+            long optionalCount = imports.lines()
+                .filter(l -> l.trim().startsWith("optional:classpath:"))
+                .count();
+            assertEquals(1, optionalCount,
+                "imports.yml 应仅 aistio-workflow-export.yml 带 optional:，其余必选模块缺失必须启动失败");
+            for (String mandatory : new String[]{"server.yml", "datasource.yml", "cache.yml", "async.yml",
+                    "redis.yml", "llm.yml", "milvus.yml", "embedding.yml", "persistence.yml", "mcp-core.yml",
+                    "mcp-external.yml", "resilience.yml", "rate-limit.yml", "file-upload.yml", "a2a-pipeline.yml",
+                    "agentscope.yml", "muse.yml", "intent.yml", "platform.yml", "aistio.yml", "observability.yml"}) {
+                assertTrue(imports.contains("classpath:config/" + mandatory),
+                    "imports.yml 必须注册必选片段 " + mandatory);
+                assertFalse(imports.contains("optional:classpath:config/" + mandatory),
+                    "必选片段 " + mandatory + " 不得带 optional: 前缀");
             }
         } catch (Exception e) {
-            fail("Failed to load or parse config file: " + filePath + " - " + e.getMessage());
+            fail("Failed to read imports.yml: " + e.getMessage());
+        }
+    }
+
+    /**
+     * aistio-workflow-export.yml 只许写 yunxi.aistio.workflow.* 子树，
+     * 禁止写顶层 aistio 键（enabled/control-plane-url 等），
+     * 否则会静默覆盖 config/aistio.yml 的顶层值。
+     */
+    @Test
+    void testAistioWorkflowExportNoTopLevelKeys() {
+        try {
+            String wf = Files.readString(Paths.get("src/main/resources/config/aistio-workflow-export.yml"));
+            assertFalse(wf.contains("control-plane-url"),
+                "aistio-workflow-export.yml 不得写顶层 aistio 键 control-plane-url（会覆盖 config/aistio.yml）");
+            assertFalse(wf.contains("\nenabled:"),
+                "aistio-workflow-export.yml 不得写顶层 enabled:，开关在 config/aistio.yml");
+        } catch (Exception e) {
+            fail("Failed to read aistio-workflow-export.yml: " + e.getMessage());
         }
     }
 
@@ -203,80 +227,38 @@ class ConfigFragmentValidationTest {
         // 验证应用主配置文件存在
         assertTrue(Files.exists(Paths.get("src/main/resources/application.yml")),
             "Main application.yml should exist");
-        
+
         // config/*.yml 已按功能拆分到 config/ 子目录，通过 application.yml 的
         // spring.config.import 机制加载（参见 config/imports.yml）
-        assertTrue(Files.exists(Paths.get("src/main/resources/config/async.yml")),
-            "Async config should exist under config/");
-        
-        assertTrue(Files.exists(Paths.get("src/main/resources/config/cache.yml")),
-            "Cache config should exist under config/");
-        
-        assertTrue(Files.exists(Paths.get("src/main/resources/config/server.yml")),
-            "Server config should exist under config/");
-    }
-
-    @Test
-    void testConfigImportOrder() {
-        try {
-            Path appConfigPath = Paths.get("src/main/resources/application.yml");
-            String content = Files.readString(appConfigPath);
-            
-            // 验证config.import配置存在
-            assertTrue(content.contains("spring:"), "Should contain spring configuration");
-            assertTrue(content.contains("config:"), "Should contain config section");
-            assertTrue(content.contains("import:"), "Should contain import directive");
-            
-            // 验证关键配置文件的加载顺序
-            assertTrue(content.contains("server.yml"), "Should import server.yml");
-            assertTrue(content.contains("datasource.yml"), "Should import datasource.yml");
-            assertTrue(content.contains("cache.yml"), "Should import cache.yml");
-            assertTrue(content.contains("async.yml"), "Should import async.yml");
-            
-        } catch (Exception e) {
-            fail("Failed to validate config import order: " + e.getMessage());
+        for (String f : new String[]{"async.yml", "cache.yml", "server.yml", "platform.yml",
+                "aistio.yml", "observability.yml"}) {
+            assertTrue(Files.exists(Paths.get("src/main/resources/config/" + f)),
+                "Config " + f + " should exist under config/");
         }
     }
 
     /**
      * 校验配置加载入口。
      *
-     * <p>本用例原先断言 {@code server} / {@code cache} / {@code async} 出现在 profiles 的
-     * active 列表里，属过时断言：这三个文件早已改为通过 {@code spring.config.import}
-     * 加载（清单在 {@code config/imports.yml}），与 profiles 是两套独立机制。
-     * 若仍按旧口径断言，会把正确配置判成错误，也会误导后人以为它们应由 profile 激活。</p>
-     *
-     * <p>故此处按当前真实机制分两段校验：入口文件声明了 import 与 profiles 两处，
-     * 且 import 清单确实覆盖了这三个文件。</p>
+     * <p>入口文件只声明 {@code spring.config.import}，真正的片段清单在
+     * {@code config/imports.yml}（不再像旧版那样在 application.yml 里列 server.yml 等文件名）。
+     * 若仍按旧口径断言 application.yml 包含各片段文件名，会把正确配置判成错误。</p>
      */
     @Test
-    void testProfilesConfiguration() {
+    void testConfigImportOrder() {
         try {
-            Path appConfigPath = Paths.get("src/main/resources/application.yml");
-            String content = Files.readString(appConfigPath);
+            String app = Files.readString(Paths.get("src/main/resources/application.yml"));
+            String imports = Files.readString(Paths.get("src/main/resources/config/imports.yml"));
 
-            // 入口文件同时声明配置导入与 profile 激活两套机制
-            assertTrue(content.contains("spring.config.import") || content.contains("config:"),
-                "Should contain spring config import configuration");
-            assertTrue(content.contains("spring.profiles:") || content.contains("profiles:"),
-                "Should contain profiles configuration");
-            assertTrue(content.contains("active:"),
-                "Should contain active profiles configuration");
-
-            // 经 spring.config.import 加载的文件在清单里注册，而不是出现在 active 列表
-            Path importsPath = Paths.get("src/main/resources/config/imports.yml");
-            String imports = Files.readString(importsPath);
-            for (String fragment : new String[]{"server.yml", "datasource.yml", "cache.yml", "async.yml"}) {
+            assertTrue(app.contains("spring.config.import"),
+                "application.yml 应声明 spring.config.import");
+            for (String fragment : new String[]{"server.yml", "datasource.yml", "cache.yml", "async.yml",
+                    "platform.yml", "aistio.yml", "observability.yml", "logging.yml"}) {
                 assertTrue(imports.contains(fragment),
                     "config/imports.yml should load " + fragment);
             }
-
-            // active 列表中的 profile 名应与 @Profile 注解配套，至少保留一个可用的激活项
-            assertTrue(content.contains("datasource"),
-                "Should activate datasource profile");
-
         } catch (Exception e) {
-            fail("Failed to validate profiles configuration: " + e.getMessage());
+            fail("Failed to validate config import order: " + e.getMessage());
         }
     }
 
@@ -287,7 +269,7 @@ class ConfigFragmentValidationTest {
         validateYamlFile("config/async.yml");
         validateYamlFile("config/cache.yml");
         validateYamlFile("config/server.yml");
-        
+
         // 验证配置目录中的所有文件
         try {
             Path configDir = Paths.get("src/main/resources/config");
@@ -302,6 +284,50 @@ class ConfigFragmentValidationTest {
     }
 
     @SuppressWarnings("unchecked")
+    private void validateConfigFile(String filePath, String expectedRootKey) {
+        try {
+            Path configPath = Paths.get("src/main/resources", filePath);
+
+            if (!Files.exists(configPath)) {
+                System.out.println("Config file not found: " + configPath);
+                return; // 跳过不存在的配置文件
+            }
+
+            try (InputStream input = Files.newInputStream(configPath)) {
+                Object data = yaml.load(input);
+
+                assertNotNull(data, "Config file " + filePath + " should not be empty");
+
+                if (data instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> configMap = (Map<String, Object>) data;
+
+                    assertFalse(configMap.isEmpty(),
+                        "Config file " + filePath + " should contain configuration");
+
+                    if (expectedRootKey != null) {
+                        String[] keyParts = expectedRootKey.split("\\.");
+                        Map<String, Object> currentLevel = configMap;
+
+                        for (String keyPart : keyParts) {
+                            if (currentLevel.containsKey(keyPart)) {
+                                Object value = currentLevel.get(keyPart);
+                                if (value instanceof Map) {
+                                    currentLevel = (Map<String, Object>) value;
+                                }
+                            }
+                        }
+
+                        System.out.println("Validated config file: " + filePath);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            fail("Failed to load or parse config file: " + filePath + " - " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private void validateYamlFile(String fileName) {
         try {
             Path filePath = Paths.get("src/main/resources", fileName);
@@ -309,12 +335,11 @@ class ConfigFragmentValidationTest {
                 System.out.println("File not found: " + fileName);
                 return;
             }
-            
+
             try (InputStream input = Files.newInputStream(filePath)) {
                 Object data = yaml.load(input);
                 assertNotNull(data, "YAML file " + fileName + " should parse correctly");
-                
-                // 如果是Map，验证至少包含一些配置
+
                 if (data instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> mapData = (Map<String, Object>) data;

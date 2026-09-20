@@ -1,163 +1,21 @@
 # ============================================================
-# yunxi Agent Platform 配置文件总入口
+# yunxi Agent Platform 配置总入口（纯入口，不做具体功能配置）
 # ============================================================
-#
-# 【如何找到要改的配置】
-# 每个配置项按功能拆分到 config/ 目录下的独立文件。
-# 下表列出常见修改需求的查找位置：
-#
-# ┌─────────────────────┬──────────────────────────────────┐
-# │ 想修改               │ 在哪个文件                        │
-# ├─────────────────────┼──────────────────────────────────┤
-# │ 服务端口             │ config/server.yml                │
-# │ 数据库连接           │ config/datasource.yml             │
-# │ Redis 缓存          │ config/redis.yml                 │
-# │ LLM 模型/ApiKey    │ config/llm.yml 或环境变量         │
-# │ Milvus 向量库       │ config/milvus.yml                │
-# │ 线程池大小           │ config/async.yml                 │
-# │ 熔断/限流/重试      │ config/resilience.yml             │
-# │ 文件上传限制         │ config/file-upload.yml           │
-# │ A2A 协议            │ config/a2a-pipeline.yml          │
-# │ MCP 服务端          │ config/mcp-core/external/business │
-# │ 技能/工具注册        │ config/agentscope.yml + .agentscope/workspace/skills/ │
-# │ 健康检查/监控        │ 本文件（management 段）            │
-# │ 各 Agent 定义       │ agent-definitions/*.yml          │
-# │ 日志级别/格式        │ logback-spring.xml               │
-# └─────────────────────┴──────────────────────────────────┘
-#
-# 【配置文件目录结构】
-# agent-config/src/main/resources/
-# ├── application.yml          ← 本文件：总入口 + 全局开关
-# ├── logback-spring.xml       ← 日志配置
-# ├── config/
-# │   ├── imports.yml          ← 配置导入清单（新增文件在这里注册）
-# │   ├── server.yml           ← HTTP 服务（端口、Tomcat、连接数）
-# │   ├── datasource.yml       ← 数据库连接池（MySQL/PostgreSQL）
-# │   ├── redis.yml            ← Redis 缓存（主机、端口、密码）
-# │   ├── cache.yml            ← 二级缓存（Caffeine + Redis）
-# │   ├── async.yml            ← 异步线程池（核心/IO/CPU）
-# │   ├── llm.yml              ← 语言模型（API Key、模型名）
-# │   ├── milvus.yml           ← 向量数据库
-# │   ├── embedding.yml        ← 向量嵌入服务
-# │   ├── persistence.yml      ← 持久化策略
-# │   ├── resilience.yml       ← 熔断器/限流/重试
-# │   ├── mcp-core.yml         ← MCP 核心服务端
-# │   ├── mcp-external.yml     ← 外部 MCP 服务
-# │   ├── mcp-business.yml     ← 业务 MCP 服务
-# │   ├── skill.yml            ← 技能系统（已废弃，统一在 agentscope.yml）
-# │   ├── file-upload.yml      ← 文件上传
-# │   ├── a2a-pipeline.yml     ← Agent-to-Agent 协议
-# │   ├── agentscope.yml       ← AgentScope 框架
-# │   ├── gateway.yml          ← 消息网关
-# │   ├── text2sql.yml         ← 自然语言转 SQL
-# │   └── (sync-pipelines 已迁移至 mcp-nutrition 模块)
-# ├── agent-definitions/       ← 各 Agent 定义（名称/提示词/工具）
-# ├── prompts/                 ← 提示词模板
-# ├── .agentscope/workspace/skills/  ← 技能目录（框架唯一识别）
-# ├── mapper/                  ← MyBatis SQL 映射
-# └── static/                  ← 前端静态资源
-#
-# 【配置覆盖优先级】
-# JVM 参数 > 环境变量 > application.yml > config/*.yml > Spring Boot 默认
-# 例：-Dserver.port=8080 会覆盖 server.yml 中的端口设置
-#
+# 所有具体配置按功能拆分在 config/ 下的独立片段，统一由 config/imports.yml
+# 注册与加载。本文件只保留“必须留在根层”的引导项：
+#   - spring.config.import：指向 imports.yml（片段清单的唯一真相源）
+#   - spring.jackson：全局反序列化兼容开关
+# 任何业务配置（服务端口、DB、Redis、aistio、MCP、监控端点等）都去 config/ 对应文件改，
+# 不要写回本文件，否则会出现“本文件与片段两处都可写、互相覆盖”的坑。
+# 各片段职责见 config/imports.yml 头部注释与每个片段文件头的红线说明。
 # ============================================================
 
 spring:
   config:
-    import: optional:classpath:config/imports.yml
+    import: classpath:config/imports.yml
   # 反序列化时忽略未知属性。AgentScope 的 ChatUsage 序列化会写出 derived 字段 totalTokens，
   # 但反序列化构造器不含该参数，默认会抛 UnrecognizedPropertyException（导致含 usage 的会话/缓存反序列化失败）。
   # 关闭该开关使读写对框架模型字段演进保持兼容。
   jackson:
     deserialization:
       fail-on-unknown-properties: false
-
-  # 激活的 profile 列表。
-  # 注意：config/*.yml 是通过 imports.yml（spring.config.import）加载的，与这里的 profiles 无关。
-  # 此列表仅用于激活 @Profile 注解的 Spring Bean（目前多数模块未使用这些 profile 名隔离，
-  # 保留以便日后按需按 profile 隔离自定义配置）。
-  # 可用 profile 名见 docs/guide/06-configuration.md。
-  profiles:
-    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,mcp-business,skill,resilience,file-upload,a2a-pipeline,gateway,business,text2sql
-
-# ============================================================
-# 日志配置
-# ============================================================
-logging:
-  file:
-    path: ${LOG_DIR:logs}
-  # 开启 AgentScope 模型调用层 DEBUG 日志（含请求/响应与 usage 相关信息）。
-  # 注意：DEBUG 级别会打印较完整的模型请求/响应体，生产环境可按需关闭。
-  level:
-    io.agentscope.core.model: DEBUG
-    # 流式响应与长连接保活会把每个 SSE data chunk 都打一条 DEBUG（"Received SSE data chunk"），
-    # 一次对话可达数百条且与业务无关，单独收敛；连接级异常仍以 INFO/WARN 透出。
-    io.agentscope.core.model.transport: INFO
-
-# ============================================================
-# yunxi 业务配置
-# ============================================================
-yunxi:
-  observability:
-    enabled: true
-
-  # ============================================================
-  # aistio 集成（agentscope-service 控制面观测 / 治理对接）
-  # 默认关闭；开启后暴露 /agentscope/* 契约端点并启动时注册数据面。
-  # 详见 docs/agentscope-service-integration-design.md
-  # ============================================================
-  aistio:
-    enabled: false
-    control-plane-url: http://localhost:18080
-    internal-token: compose-local-internal-token-at-least-32chars
-    # 注意：routingKey（契约基址）= base-url + /agentscope，故此处只填 host:port，不要带 /agentscope。
-    # aistio 控制面容器需能访问到此地址：yunxi 在宿主机、aistio 在 docker 时，用 host.docker.internal；
-    # 若二者同处一个 docker 网络，改为对应服务名或容器间 localhost。
-    base-url: http://host.docker.internal:40001
-    agent-name: yunxi-agent-platform
-    namespace: default
-    contract-level: 3
-    advertise-context: true
-    advertise-subagents: true
-    advertise-workspaces: true
-    command-enabled: false
-    context-window: 20
-
-  # ============================================================
-  # MCP 动态注册协调底座（Nacos 3.2.4）
-  # 单机验证：server-addr 指向 docker 启动的 Nacos 8848；集群部署改此处即可。
-  # ============================================================
-  mcp:
-    nacos:
-      enabled: true
-      server-addr: 127.0.0.1:8848
-      namespace: ""
-      username: ""
-      password: ""
-      data-id: yunxi.mcp-servers.json
-      group: YUNXI_MCP_GROUP
-      service-name: yunxi-mcp-coordinator
-
-# ============================================================
-# 运维端点和健康检查
-# ============================================================
-management:
-  endpoint:
-    health:
-      show-details: when_authorized
-  health:
-    elasticsearch:
-      enabled: false                   # 未安装 ES，避免 WARN
-
-  # ============================================================
-  # Micrometer 指标导出（与 OTel 共用同一 OTLP 后端）
-  #   - pipeline / text2sql / @Timed 等 Micrometer 指标，在配置了 OTLP 端点时
-  #     一并经 OTLP 导出；未配置端点则仅保留 Spring Actuator 本地采集。
-  #   - 端点复用 otel.exporter.otlp.endpoint（与链路追踪、LlmMetrics 同源）。
-  # ============================================================
-  metrics:
-    export:
-      otlp:
-        enabled: true
-        endpoint: ${otel.exporter.otlp.endpoint:}

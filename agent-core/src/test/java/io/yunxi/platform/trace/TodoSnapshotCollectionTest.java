@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 /**
  * 任务清单归集测试：{@code todo_write} 调用的清单快照入树。
  *
- * <p>本类守护的约束是 M4 的一项验收：<b>清单内容不在事件流里，必须从 AgentState 旁路读取</b>。
+ * <p>本类守护的约束是 todo_write 清单归集的一项验收：<b>清单内容不在事件流里，必须从 AgentState 旁路读取</b>。
  * 这一点很反直觉 —— {@code todo_write} 明明是工具调用，事件流里也有它的
  * {@code TOOL_CALL_START}，但该事件<b>只带标识与名称、不带工具参数</b>，
  * 模型提交的完整清单落在 {@code AgentState.tasksContext}。若只依赖事件归集，

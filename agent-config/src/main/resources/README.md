@@ -4,30 +4,33 @@
 
 ```
 agent-config/src/main/resources/
-├── application.yml                    # 配置入口，导入所有 config/*.yml
+├── application.yml                    # 配置总入口，通过 config/imports.yml 导入所有片段（纯入口，不含业务配置）
 ├── logback-spring.xml                 # 日志配置 (Logback)
 │
-├── config/                            # 【系统配置】通过 spring.config.import 加载
-│   ├── agentscope.yml                 #   API密钥、默认模型、A2A、技能系统、记忆存储
-│   ├── server.yml                     #   Tomcat 端口、线程池、连接数
+├── config/                            # 【系统配置】通过 spring.config.import 加载（清单见 config/imports.yml）
+│   ├── imports.yml                    #   片段注册清单（唯一真相源）；必选模块缺失即启动失败
+│   ├── server.yml                     #   Tomcat 端口、线程池、连接数、上传大小
 │   ├── datasource.yml                 #   数据库连接池 (HikariCP)
-│   ├── redis.yml                      #   Redis 缓存
-│   ├── cache.yml                      #   二级缓存 (Caffeine + Redis)
+│   ├── redis.yml                      #   Redis 缓存（spring.data.redis 唯一权威来源）
+│   ├── cache.yml                      #   二级缓存 (Spring redis + yunxi cache.type/caffeine)
 │   ├── async.yml                      #   异步线程池配置
 │   ├── llm.yml                        #   LLM 服务参数
-│   ├── milvus.yml                     #   向量数据库
+│   ├── milvus.yml                      #   向量数据库
 │   ├── embedding.yml                  #   向量嵌入服务
 │   ├── persistence.yml                #   持久化配置
 │   ├── mcp-core.yml                   #   MCP 核心服务器
 │   ├── mcp-external.yml               #   MCP 外部服务器
 │   ├── resilience.yml                 #   熔断/限流/重试
-│   ├── gateway.yml                    #   API 网关路由
-│   ├── text2sql.yml                   #   Text2SQL 配置
 │   ├── a2a-pipeline.yml               #   A2A Pipeline 配置
-│   └── file-upload.yml                #   文件上传
-│
-├── core/                              # 【核心叠加配置】加载于 config 之后覆盖
-│   └── application.yml
+│   ├── file-upload.yml                #   文件上传 + 多媒体 RAG
+│   ├── agentscope.yml                 #   AgentScope 框架、API密钥、默认模型、技能、记忆
+│   ├── muse.yml                       #   MUSE 自进化引擎
+│   ├── intent.yml                     #   意图引擎开关/路径（数据在 config/intent/）
+│   ├── platform.yml                   #   yunxi 平台级开关（observability / mcp.nacos 协调底座）
+│   ├── aistio.yml                     #   aistio 控制面集成（顶层）；workflow 子树见下
+│   ├── observability.yml              #   运维端点/指标导出（management 唯一归属）
+│   ├── logging.yml                   #   日志级别（logging.level.* 全平台唯一归属）
+│   └── aistio-workflow-export.yml     #   aistio 工作流导出（optional，默认关闭）
 │
 ├── agent-definitions/                 # 【Agent 定义】由 AgentDefinitionLoader 加载
 │   ├── resident-nutrition-assistant.yml #  居民营养配餐助手 (Supervisor + 3 专家，唯一对外食谱 Agent)
@@ -35,8 +38,9 @@ agent-config/src/main/resources/
 │   ├── safety-assistant.yml           #   食品安全助手
 │   ├── dish-searcher.yml              #   菜品搜索专家 (内部子 Agent，hidden)
 │   ├── nutrition-evaluator.yml        #   营养评估专家 (内部子 Agent，hidden)
-│   └── recipe-composer.yml            #   食谱编排专家 (内部子 Agent，hidden)
+│   ├── recipe-composer.yml            #   食谱编排专家 (内部子 Agent，hidden)
 │
+│   └── workflow-export-example.yml    #   编排图导出示例范本（enabled:false，仅作格式参考，不被加载）
 ├── page-configs/                      # 【Page Agent 配置】由 PageAgentService 加载
 │   └── page-agent-config.yml          #   页面类型提示词 + 工具定义，非 Agent
 │
@@ -54,12 +58,6 @@ agent-config/src/main/resources/
 │
 ├── a2a/                               # 【A2A 工作流定义】
 │   └── code-fix-workflow-state.yml
-├── debate/                            # 【辩论模式配置】
-│   └── nutrition-debate.yml
-│
-├── gateway/                           # 【网关配置】
-│   ├── application-gateway.yml
-│   └── spring/
 │
 ├── mapper/                            # 【MyBatis 映射文件】
 │   ├── AgentMapper.xml
@@ -73,8 +71,6 @@ agent-config/src/main/resources/
 │   ├── chat.html                      #   聊天页面
 │   ├── page-agent-recipe.html         #   Page Agent 页面
 │   └── js/
-│
-└── a2a-code-pipeline-dynamic.yml      # A2A Pipeline 动态配置
 
 ---
 
@@ -85,7 +81,7 @@ agent-config/src/main/resources/
 ```
 application.yml
     │
-    └── spring.config.import → config/*.yml (按列表顺序加载)
+    └── spring.config.import → config/imports.yml → config/*.yml (按列表顺序加载)
                                     │
                                     ├── server.yml → 先加载
                                     ├── datasource.yml
@@ -94,6 +90,10 @@ application.yml
 ```
 
 **后加载的会覆盖先加载的**，所以 `agentscope.yml` 中的 `server.port` 可以覆盖 `server.yml` 中的值。
+
+> 配置治理红线：`config/imports.yml` 是片段清单的唯一真相源；每个片段只拥有约定好的根前缀、只服务一个模块；
+> 跨切面段各归其位：`management` 在 `config/observability.yml`、`logging.*` 在 `config/logging.yml`，禁止在其它片段重复。
+> 新增片段必须满足：在 imports.yml 注册 + 在 `ConfigFragmentValidationTest` 补存在性断言，否则改名后静默失效。
 
 ### Agent 定义加载
 

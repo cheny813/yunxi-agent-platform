@@ -22,7 +22,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 import io.agentscope.core.message.ToolResultState;
 
 /**
- * 跨实例轨迹共享演练（V10-38 待交付项的存储层证明）。
+ * 跨实例轨迹共享演练（多实例部署下轨迹存储共享能力的存储层证明）。
  *
  * <p>证明：两个独立 Redis 连接（模拟两个应用实例）指向同一 Redis 时，实例 A {@code append} 的轨迹
  * 能被实例 B {@code read} 到 —— 即负载均衡下「谁写的都能被谁读到」，多实例部署轨迹不丢。</p>

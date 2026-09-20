@@ -9,8 +9,8 @@
 
     <!-- 链路追踪工具类 -->
     <conversionRule conversionWord="traceId" class="ch.qos.logback.classic.pattern.MDCConverter">
-        <param name="key" value="traceId"/>
-        <param name="defaultValue" value="-"/>
+        <key>traceId</key>
+        <defaultValue>-</defaultValue>
     </conversionRule>
 
     <!-- 控制台日志格式 - 统一MDC显示 -->

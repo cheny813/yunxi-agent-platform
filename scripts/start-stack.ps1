@@ -13,7 +13,7 @@ param(
     [string]$AistioRepoRoot = '',
     # yunxi 仓库根
     [string]$YunxiRoot = '',
-    [string]$AistioVersion = '2.0.3-SNAPSHOT',
+    [string]$AistioVersion = '2.0.4-SNAPSHOT',
     [switch]$SkipAistio,   # 跳过 aistio 控制面检查/启动
     [switch]$SkipMcp,      # 跳过 5 个 MCP 服务启动
     [switch]$Force,        # 强制重启（MCP 端口占用则先 kill；不强制重建 aistio 容器）

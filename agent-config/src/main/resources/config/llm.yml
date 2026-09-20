@@ -23,7 +23,7 @@ agentscope:
     # Provider 专属配置
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
-      model: ${DASHSCOPE_MODEL:qwen-plus}
+      model: ${DASHSCOPE_MODEL:qwen3.8-27b}
       base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
       timeout: ${DASHSCOPE_TIMEOUT:60000}
 

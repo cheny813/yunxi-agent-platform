@@ -40,7 +40,8 @@ class SelfEvolutionEngineTest {
         SkillRefiner refiner = new SkillRefiner(null, null, config);
 
         engine = new SelfEvolutionEngine(evaluator, refiner, pruner, config);
-        skillsRoot = "src/main/resources/builtin-skills";
+        // 内建技能配置已集中到 agent-config 模块（见配置集中化整改）
+        skillsRoot = "../agent-config/src/main/resources/builtin-skills";
     }
 
     @Test

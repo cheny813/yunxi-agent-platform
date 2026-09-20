@@ -17,7 +17,7 @@ import io.agentscope.core.message.ToolResultState;
 import org.junit.jupiter.api.Test;
 
 /**
- * M5 AguiProjection 映射测试：覆盖 §6 五族同构 + §6.1 反压定案的主要种类。
+ * AguiProjection 映射测试：覆盖推理轨迹快照到 AG-UI 五类运行态同构与反压定案的主要种类。
  *
  * @author yunxi-agent-platform
  */

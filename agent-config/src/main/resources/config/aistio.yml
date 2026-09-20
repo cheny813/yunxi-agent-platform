@@ -1,0 +1,35 @@
+# ============================================================
+# aistio 集成（agentscope-service 控制面观测 / 治理对接）
+# 默认关闭；开启后暴露 /agentscope/* 契约端点并启动时注册数据面。
+# 详见 docs/agentscope-service-integration-design.md
+# ============================================================
+# 红线：本文件只配 yunxi.aistio 顶层字段。workflow 子树在
+#   config/aistio-workflow-export.yml（独立 optional 片段），禁止在此写 workflow.*，
+#   也禁止在 workflow 片段写顶层 enabled/control-plane-url（会静默覆盖本文件）。
+yunxi:
+  aistio:
+    enabled: true
+    control-plane-url: http://localhost:8081
+    internal-token: compose-local-internal-token-at-least-32chars
+    # routingKey（契约基址）= 本值本身（裸 host:port，yunxi 侧不再拼 /agentscope）。
+    # aistio 在其上自行拼接 /agentscope/health、/agentscope/sessions 等，故此处只填 host:port。
+    # aistio 控制面容器需能访问到此地址：yunxi 在宿主机、aistio 在 docker 时，用 host.docker.internal；
+    # 若二者同处一个 docker 网络，改为对应服务名或容器间 localhost。
+    base-url: http://host.docker.internal:40001
+    agent-name: yunxi-agent-platform
+    namespace: default
+    contract-level: 3
+    advertise-context: true
+    advertise-subagents: true
+    advertise-workspaces: true
+    command-enabled: true
+    context-window: 20
+    # 端到端对话流（复用 AgentScope-Java agentscope-extensions-aistio 的 GrpcTransport）
+    # grpc-enabled 默认 false；置 true 后 AistioGrpcConnector 在 HTTP 注册成功后启动 gRPC 对话长连接。
+    grpc-enabled: true
+    # 数据面经此 gRPC 地址接收控制面下发的对话轮次；对应 aistio-control 容器 ASDP gRPC 绑定 :15010（已发布到宿主机）
+    grpc-control-plane-url: http://localhost:15010
+    # 对话轮次调用的 yunxi agent 定义名（agent-config 下 <name>.yml，bean 名 <name>-agent）
+    chat-agent-name: safety-assistant
+    # 控制台对话会话统一落入的多租户 userId（不同 aistio 会话由唯一 sessionId 隔离）
+    console-user-id: aistio-console

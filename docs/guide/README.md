@@ -130,6 +130,7 @@
 - **运行时技能**: `.agentscope/workspace/skills/` 内置技能（框架 `project-global-dir` 唯一识别路径）
 - **MUSE 自进化引擎**: 详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)；模块实现见 [agent-muse README](../../agent-muse/README.md)
 - **实战示例：食谱生成智能体**: 完整后端协作、MCP 协议与前端设计见 [07. 开发指南 - 实战示例](./07-development.md#实战示例食谱生成智能体)；官方示例与学习资源见同章 [官方示例与学习资源](./07-development.md#官方示例与学习资源) 小节
+- **编排图导出与自动推送（Workflow Artifact Exporter）**: 见 [06. 配置指南 - aistio](./06-configuration.md#aistio) 的「编排图导出与自动推送」小节
 
 ---
 

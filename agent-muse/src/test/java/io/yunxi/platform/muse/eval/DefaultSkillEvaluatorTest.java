@@ -22,8 +22,8 @@ class DefaultSkillEvaluatorTest {
                 new LocalSubprocessSandboxRunner(), config);
         evaluator = eval;
 
-        // 内建技能测试走 classpath 资源目录
-        skillsRoot = "src/main/resources/builtin-skills";
+        // 内建技能测试走 agent-config 模块的资源目录（配置已集中到 agent-config）
+        skillsRoot = "../agent-config/src/main/resources/builtin-skills";
     }
 
     @Test

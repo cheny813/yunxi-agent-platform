@@ -62,6 +62,7 @@ yunxi 站在经过生产验证的 AgentScope-Java 2.0.3 运行时之上，为企
 | **Text2SQL** | 自然语言查询数据库 |
 | **A2A 协议** | 跨服务 Agent 协作，分布式编排 |
 | **可观测性** | OpenTelemetry 链路追踪，标准 Actuator 健康检查 |
+| **编排图导出与自动推送** | 启动期扫描 Agent 定义的 `kind: workflow` 编排挂载，校验并翻译为 AgentScope Service 编排定义 Artifact，可选通过控制台 PAT 自动推送到管控面，免去控制台手工导入（默认关闭，见 `docs/guide/06-configuration.md#aistio`） |
 
 ---
 
@@ -204,6 +205,8 @@ yunxi:
 ```
 
 重启后 Web 控制台由 aistio 提供（访问 `http://localhost:8081`），yunxi 经网关 `http://localhost:18080` 注册并接管 Agent。控制台种子用户（`admin` / `admin` 等，详见 aistio `seed.go`）首次启动自动注入。**生产环境务必替换默认 `internal-token`、控制台弱口令与数据库弱口令。**
+
+> **编排图自动推送（可选）**：若要把 Agent 定义的 workflow 编排挂载自动导出为管控面编排定义，在同一处开启 `yunxi.aistio.workflow.*`（见 [06. 配置指南 - aistio](docs/guide/06-configuration.md#aistio) 的「编排图导出与自动推送」小节）。推送使用 AgentScope Service 控制台 PAT（`push-token`），由运维在 AgentScope Service 控制台签发后配置；进程启动即自动推送，无需手工导入。
 
 > 若启动 yunxi 时 MCP 服务尚未就绪，平台会记连接告警但**不会崩溃**，对应 MCP 工具暂时不可用；等 `start-stack.ps1` 拉起对应服务后，调用工具时会自动重连恢复，无需重启 yunxi。
 

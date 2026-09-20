@@ -94,10 +94,10 @@ class AistioContractE2ETest {
         mvc = MockMvcBuilders.standaloneSetup(controller).addInterceptors(interceptor).build();
     }
 
-    // ---- Phase 1：只读契约 ----
+    // ---- 只读契约 ----
 
     @Test
-    void info_declaresPhase3Capabilities() throws Exception {
+    void info_declaresLevel3Capabilities() throws Exception {
         mvc.perform(get("/agentscope/info"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.capabilities").isArray())

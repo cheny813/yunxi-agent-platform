@@ -50,7 +50,7 @@ mvn -pl agent-muse test     # 32 个全链路测试，无需 LLM 或 Docker
 启动后 `BuiltinSkillLoader` 自动把 classpath `builtin-skills/` 下的技能落地到 `.agentscope/workspace/skills/`（AgentScope 运行时技能目录）：
 
 ```
-agent-muse/src/main/resources/builtin-skills/
+agent-config/src/main/resources/builtin-skills/
 ├── data_stats/
 │   ├── SKILL.md                       # "数据描述性统计技能"
 │   └── tests/

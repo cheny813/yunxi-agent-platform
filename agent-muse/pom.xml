@@ -6,8 +6,8 @@
 
     <parent>
         <groupId>io.yunxi</groupId>
-        <artifactId>yunxi-agent-platform</artifactId>
-        <version>2.0.3</version>
+    <artifactId>yunxi-agent-platform</artifactId>
+    <version>${revision}</version>
     </parent>
 
     <artifactId>agent-muse</artifactId>
@@ -23,6 +23,14 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Agent Config 模块（配置集中管理：builtin-skills 等资源现位于此，
+             直接依赖以便在 MUSE 自身测试期从 classpath 解析，运行时由 agent-app 聚合） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-config</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- AgentScope-Java 核心 + Harness（复用 SkillRepository / AgentSkill / Model / Toolkit / @Tool） -->
         <dependency>
             <groupId>io.agentscope</groupId>
@@ -35,7 +43,6 @@
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-model-openai</artifactId>
-            <version>${agentscope.version}</version>
         </dependency>
 
         <!-- Spring Boot -->
@@ -89,7 +96,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>

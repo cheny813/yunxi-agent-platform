@@ -39,11 +39,11 @@ import lombok.RequiredArgsConstructor;
  *
  * <p>覆盖 aistio 契约的全部端点：
  * <ul>
- *   <li>Phase 1：/info、/health、/sessions、/sessions/{id}/state|context|messages、
+ *   <li>基础契约端点：/info、/health、/sessions、/sessions/{id}/state|context|messages、
  *       /subagents、/workspaces</li>
- *   <li>Phase 2：/sessions/{id}/compress、/sessions/{id}/terminate（session-command，受
+ *   <li>会话写操作：/sessions/{id}/compress、/sessions/{id}/terminate（session-command，受
  *       {@code command-enabled} 闸门保护）</li>
- *   <li>Phase 3：/sessions/{id}/plan-mode、/sessions/{id}/tasks、/sessions/{id}/subagent-tasks、
+ *   <li>高级治理与协作：/sessions/{id}/plan-mode、/sessions/{id}/tasks、/sessions/{id}/subagent-tasks、
  *       DELETE /sessions/{id}/subagent-tasks/{taskId}、/teams/join</li>
  * </ul>
  * 仅当 {@code yunxi.aistio.enabled=true} 时装配。</p>

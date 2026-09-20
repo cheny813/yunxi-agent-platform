@@ -35,52 +35,52 @@ a2a:
       type: ${A2A_ENGINE_TYPE:local}  # local / distributed
       worker-count: ${A2A_WORKER_COUNT:4}
       queue-capacity: ${A2A_QUEUE_CAPACITY:100}
-      
+
     # 分布式锁配置
     distributed-lock:
       enabled: ${A2A_DISTRIBUTED_LOCK_ENABLED:true}
       lock-wait-timeout: 30s
       lock-lease-time: 60s
-      
+
     # 状态存储配置
     state-storage:
       type: ${A2A_STATE_STORAGE:redis}  # memory / redis
       retention-days: 30
-      
+
     # 重试配置
     retry:
       max-attempts: 3
       initial-interval: 1000ms
       multiplier: 2.0
       max-interval: 30000ms
-      
+
     # 超时配置
     timeout:
       code-review: 300s
       code-fix: 600s
       test-execution: 900s
       deployment: 600s
-      
+
     # 人工审核配置
     manual-approval:
       enabled: true
       timeout: 24h
       notify-channels: [email, dingtalk]
-      
+
     # 通知配置
     notification:
       enabled: true
       on-success: true
       on-failure: true
       on-approval-required: true
-      
+
   # Agent 注册中心配置
   registry:
     type: ${A2A_REGISTRY_TYPE:redis}  # memory / redis / consul
     heartbeat-interval: 30s
     heartbeat-timeout: 90s
     cleanup-interval: 300s
-    
+
   # 安全配置
   security:
     enabled: true
@@ -108,19 +108,16 @@ pipeline:
       security-scan:
         enabled: true
         tools: [dependency-check, snyk]
-      
     # 代码修复配置
     code-fix:
       max-iterations: 5
       auto-commit: false
       require-approval: true
-      
     # 测试执行配置
     test-execution:
       parallel: true
       max-parallelism: 4
       coverage-threshold: 80
-      
     # 部署配置
     deployment:
       strategy: blue-green  # blue-green / canary / rolling
@@ -130,33 +127,3 @@ pipeline:
         interval: 10s
         timeout: 300s
         retries: 30
-
-# 监控配置
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus,a2a-pipeline
-  endpoint:
-    health:
-      show-details: when_authorized
-      probes:
-        enabled: true
-  prometheus:
-    metrics:
-      export:
-        enabled: true
-  metrics:
-    tags:
-      application: ${spring.application.name}
-    distribution:
-      slo:
-        '[a2a.pipeline.execution.time]': 100ms,500ms,1s,5s,10s,30s,60s
-
-# 日志配置
-logging:
-  level:
-    '[io.yunxi.platform.a2a]': INFO
-    '[io.yunxi.platform.a2a.pipeline]': DEBUG
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{pipelineId}] [%X{taskId}] %-5level %logger{36} - %msg%n"

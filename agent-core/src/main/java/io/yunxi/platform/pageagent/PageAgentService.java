@@ -723,7 +723,25 @@ public class PageAgentService {
                 if (pt == null)
                     continue;
 
+                // systemPrompt 解析：优先 agentRef 引用 AgentScope Agent 定义，
+                // 实现页面配置与 Agent 定义的单一真相源（去重营养等领域知识）。
                 String sp = (String) agent.get("systemPrompt");
+                String agentRef = (String) agent.get("agentRef");
+                String resolvedPrompt;
+                if (agentRef != null && !agentRef.isBlank()) {
+                    String refPrompt = resolveAgentDefinitionPrompt(agentRef);
+                    if (refPrompt != null && !refPrompt.isBlank()) {
+                        resolvedPrompt = refPrompt;
+                        log.info("pageType={} 经 agentRef={} 解析 systemPrompt（{} 字符），不再内联副本",
+                                pt, agentRef, refPrompt.length());
+                    } else {
+                        log.warn("pageType={} 的 agentRef={} 解析为空，回退内联 systemPrompt", pt, agentRef);
+                        resolvedPrompt = sp != null ? sp : "";
+                    }
+                } else {
+                    resolvedPrompt = sp != null ? sp : "";
+                }
+
                 Map<String, Object> tools = new LinkedHashMap<>();
 
                 var toolsConfig = (Map<String, Map<String, Object>>) agent.get("tools");
@@ -737,12 +755,47 @@ public class PageAgentService {
                 }
 
                 pageAgentConfigs.put(pt, Map.of(
-                        "systemPrompt", sp != null ? sp : "",
+                        "systemPrompt", resolvedPrompt,
                         "tools", tools));
             }
             log.info("Loaded {} page-agent configs: {}", pageAgentConfigs.size(), pageAgentConfigs.keySet());
         } catch (Exception e) {
                 log.error("Failed to load page-agent-config.yml", e);
+        }
+    }
+
+    /**
+     * 从 AgentScope Agent 定义解析 system prompt，供 page 配置经 agentRef 复用，
+     * 避免页面配置内联维护营养等领域知识副本（单一真相源）。
+     *
+     * @param agentRef Agent 定义名（对应 agent-definitions 下文件名，不含 .yml 后缀）
+     * @return agent.prompt 文本；文件缺失或解析失败返回 null
+     */
+    private String resolveAgentDefinitionPrompt(String agentRef) {
+        try {
+            var resource = new org.springframework.core.io.ClassPathResource(
+                    "agent-definitions/" + agentRef + ".yml");
+            if (!resource.exists()) {
+                log.warn("agent-definitions/{}.yml 不存在，无法解析 agentRef", agentRef);
+                return null;
+            }
+            var yaml = new org.yaml.snakeyaml.Yaml();
+            Map<String, Object> root = yaml.load(resource.getInputStream());
+            if (root == null) {
+                return null;
+            }
+            var agentNode = (Map<String, Object>) root.get("agent");
+            if (agentNode == null) {
+                return null;
+            }
+            Object prompt = agentNode.get("prompt");
+            if (prompt instanceof String s) {
+                return s;
+            }
+            return prompt != null ? prompt.toString() : null;
+        } catch (Exception e) {
+            log.error("解析 agentRef={} 失败", agentRef, e);
+            return null;
         }
     }
 

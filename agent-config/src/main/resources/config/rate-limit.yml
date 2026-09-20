@@ -1,0 +1,19 @@
+#############################
+# API 限流配置（限流拦截器唯一权威来源）
+#############################
+# 本文件是限流拦截器（RateLimitInterceptor）配置的唯一权威来源。
+#
+# 【前缀必须为顶层 rate-limit，不是 api.rate-limit】
+# RateLimitInterceptor 通过 @Value("${rate-limit.ip.requests-per-second:10}")、
+# @Value("${rate-limit.user.requests-per-second:50}")、@Value("${rate-limit.enabled:true}")
+# 读取顶层 rate-limit.*。旧 cache.yml 里误写成 api.rate-limit.*（多了一层 api），
+# 从未被任何代码绑定，是死配置，已删除；此处用正确前缀外置，使活配置可经 YAML 调整。
+rate-limit:
+  # 是否启用限流
+  enabled: true
+  # IP 每秒请求限制
+  ip:
+    requests-per-second: 10
+  # 用户每秒请求限制
+  user:
+    requests-per-second: 50

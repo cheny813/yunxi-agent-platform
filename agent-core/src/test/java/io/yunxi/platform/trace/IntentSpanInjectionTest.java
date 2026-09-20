@@ -26,7 +26,7 @@ import static org.mockito.Mockito.when;
 /**
  * 意图节点归集测试：验证意图产物成为轨迹树节点。
  *
- * <p>M3 改造后，意图节点由模型侧 intent_classify 工具调用产生（其 TOOL_CALL 事件经
+ * <p>意图节点归集改造后，意图节点由模型侧 intent_classify 工具调用产生（其 TOOL_CALL 事件经
  * {@code TraceComposer} 重分类为 SpanKind.INTENT，天然携带 toolCallId），
  * 不再由运行时合成注入。本类对应三条验收要求：
  * ① 意图节点与回合节点同层，不制造第二个 root；

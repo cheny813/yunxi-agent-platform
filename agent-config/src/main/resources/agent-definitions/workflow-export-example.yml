@@ -1,0 +1,119 @@
+# ============================================================================
+# 编排图导出示例（格式范本 —— NOT 真实可运行的 Agent）
+# ----------------------------------------------------------------------------
+# 本文件演示「yunxi 编排图 -> aistio DefinitionSpec artifact」的完整声明方式，
+# 供运维/开发照抄。enabled: false 表示它仅作格式参考，
+# 不会被 AgentDefinitionLoader 当成真实 Agent 加载（也不触发任何运行）。
+#
+# 若要基于此范本产出真实 artifact，请：
+#   1) 复制本文件为新 agent 定义，enabled 改为 true；
+#   2) 将各节点 agentId / 审批人 approverRef 替换为目标环境已注册的 UUID；
+#   3) 开启 yunxi.aistio.workflow.export-enabled=true 后启动进程，
+#      artifact 会落盘到 yunxi.aistio.workflow.export-dir。
+#
+# 两种挂载写法均已演示：
+#   - purchase-review：图直接内联在 body.graph；
+#   - order-fulfillment-ref：body.definition 引用顶层 orchestration.graph。
+# ============================================================================
+agent:
+  name: workflow-export-example
+  displayName: 编排图导出示例（模板）
+  description: 演示 workflow 编排挂载如何被翻译并导出为 aistio DefinitionSpec artifact
+  enabled: false
+  prompt: |
+    你是一个演示用的编排入口 Agent。本定义仅用于展示 orchestration.mounts 中
+    workflow 类型挂载的声明方式，不会被实际加载运行。
+  orchestration:
+    pattern: workflow
+    # ---- 挂载列表：声明两个可触发入口 ----
+    mounts:
+      # 挂载一：内联图（body.graph 直接写图）
+      - name: purchase-review
+        group: 采购审批
+        description: 小额免审、大额走人工审批的采购复核流程
+        body:
+          kind: workflow
+          mode: auto
+          graph:
+            nodes:
+              - key: fetch
+                type: agent
+                agentId: 11111111-1111-1111-1111-111111111111
+              - key: check
+                type: condition
+                condition: "amount < 1000"
+              - key: approve
+                type: approval
+                approval:
+                  approverType: role
+                  approverRef: 99999999-9999-9999-9999-999999999999
+                  prompt: 请复核该采购单
+              - key: done
+                type: join
+                join:
+                  mode: all
+              - key: archive
+                type: agent
+                agentId: 22222222-2222-2222-2222-222222222222
+            edges:
+              - from: fetch
+                to: check
+              - from: check
+                to: approve
+                condition: "amount < 1000"
+              - from: check
+                to: done
+                condition: "amount >= 1000"
+              - from: approve
+                to: done
+              - from: done
+                to: archive
+      # 挂载二：引用顶层 orchestration.graph（body.definition 指向导出 key）
+      - name: order-fulfillment-ref
+        group: 订单履约
+        description: 引用顶层 orchestration.graph 的订单履约流程
+        body:
+          kind: workflow
+          mode: auto
+          definition: order-fulfillment
+    # ---- 顶层图：被上面 definition: order-fulfillment 引用 ----
+    graph:
+      nodes:
+        - key: intake
+          type: agent
+          agentId: 33333333-3333-3333-3333-333333333333
+        - key: gate
+          type: condition
+          condition: "input.priority == \"high\""
+        - key: manual
+          type: approval
+          approval:
+            approverType: user
+            approverRef: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+            prompt: 高优先级订单需人工确认
+        - key: merge
+          type: join
+          join:
+            mode: any
+        - key: wait
+          type: timer
+          timer:
+            durationSeconds: 30
+        - key: notify
+          type: signal
+          signalName: fulfilled
+      edges:
+        - from: intake
+          to: gate
+        - from: gate
+          to: manual
+          condition: "input.priority == \"high\""
+        - from: gate
+          to: merge
+          condition: "input.priority != \"high\""
+        - from: manual
+          to: merge
+        - from: merge
+          to: wait
+        - from: wait
+          to: notify

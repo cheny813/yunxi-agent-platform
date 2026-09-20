@@ -55,7 +55,7 @@ public class AistioInfoService {
         if (properties.isAdvertiseWorkspaces()) {
             capabilities.add("workspace-inventory");
         }
-        // Phase 3 高级治理 / 协作能力（contractLevel >= 3 默认开启）
+        // 高级治理 / 协作能力（contractLevel >= 3 默认开启）
         if (properties.getContractLevel() >= 3) {
             capabilities.add("task-query");
             capabilities.add("plan-mode");

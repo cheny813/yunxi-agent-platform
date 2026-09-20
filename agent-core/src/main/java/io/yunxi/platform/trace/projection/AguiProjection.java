@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 /**
  * AG-UI 投影：把推理轨迹快照流映射为 AG-UI 协议事件（JSON 文本）。
  *
- * <p>映射遵循 {@code docs/application-agent-architecture-upgrade.md} §6 的五族同构 + §6.1 四项反压定案：
+ * <p>映射遵循 AG-UI 协议五类运行态与原生推理事件流的同构关系，并落实反压（back-pressure）定案：
  * <ul>
  *   <li>A′ model/provider 来自中间件注入通道（{@code SpanAttributeBag}），由 composer 是否入 payload 决定；
  *       当前 composer 尚未把该通道读入 span payload，故投影按 payload 是否携带防御性读取，缺失则省略（不阻塞）。</li>
@@ -98,7 +98,7 @@ public class AguiProjection implements TraceProjection<String> {
             } else {
                 ObjectNode f = ev("RUN_FINISHED");
                 f.put("runId", span.traceId());
-                // §6.1 B：未决终态 INTERRUPTED → AG-UI outcome=interrupted；
+                // 未决终态 INTERRUPTED → AG-UI outcome=interrupted；
                 // 框架 ToolResultState 无 CANCELLED 常量，取消以 INTERRUPTED 表达（草案未冻结，按现状映射）
                 f.put("outcome", status != null && status.name().equals("INTERRUPTED") ? "interrupted" : "success");
                 out.add(json(f));

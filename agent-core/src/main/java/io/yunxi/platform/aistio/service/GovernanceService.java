@@ -30,7 +30,7 @@ import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Mono;
 
 /**
- * 治理动作服务（Phase 2 + Phase 3 写 / 管理端点）。
+ * 治理动作服务（会话写操作与管理端点）。
  *
  * <p>覆盖：强制压缩（{@code /compress}）、会话终止（{@code /terminate}）、plan-mode 切换
  * （{@code /plan-mode}）、任务清单读取 / 取消（{@code /tasks}、{@code /subagent-tasks}）、

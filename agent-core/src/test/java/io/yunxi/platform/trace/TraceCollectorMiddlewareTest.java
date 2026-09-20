@@ -25,7 +25,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * {@link TraceCollectorMiddleware} 单元测试：M1 的接线点。
+ * {@link TraceCollectorMiddleware} 单元测试：归集中间件的运行时接线点。
  *
  * <p>本类守护的核心约束是<b>归集状态必须跨事件存活</b>。最初的实现按事件逐个调用
  * {@code composer.compose(Flux.just(event))}，而该方法内部每次新建归集状态，
