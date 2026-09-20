@@ -2,7 +2,7 @@
 
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)](https://spring.io/projects/spring-boot)
-[![AgentScope](https://img.shields.io/badge/AgentScope--Java-2.0.3-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
+[![AgentScope](https://img.shields.io/badge/AgentScope--Java-2.0.4--SNAPSHOT-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
 [![GitCode](https://img.shields.io/badge/GitCode-chenyao813%2Fyunxi--agent--platform-blue)](https://gitcode.com/chenyao813/yunxi-agent-platform)
 [![GitHub](https://img.shields.io/badge/GitHub-Mirror-lightgrey?logo=github)](https://github.com/chenyao813/yunxi-agent-platform)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -12,22 +12,22 @@
 [![OpenTelemetry](https://img.shields.io/badge/Observability-OpenTelemetry-9cf)](https://opentelemetry.io)
 [![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-success)](CHANGELOG.md)
 
-**yunxi Agent Platform** 是基于 **AgentScope-Java 2.0.3（正式版）** 构建的企业级多智能体协作平台，以**意图引擎**为决策核心，开箱即用地提供多 Agent 编排、MCP 协议集成、记忆系统与技能自进化（MUSE）等能力。
+**yunxi Agent Platform** 是基于 **AgentScope-Java 2.0.4-SNAPSHOT** 构建的企业级多智能体协作平台，以**意图引擎**为决策核心，开箱即用地提供多 Agent 编排、MCP 协议集成、记忆系统与技能自进化（MUSE）等能力。
 
 > **yunxi（云曦）—— 让多智能体像晨曦一样自然涌现、协同共生。**
 
-> **版本策略**：版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 同步，当前 **2.0.3** 基于其正式版。完整变更见 [CHANGELOG](CHANGELOG.md)。
+> **版本策略**：版本号与底层 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 同步，当前 **2.0.4-SNAPSHOT** 基于其开发快照构建（含 #3134 记忆后台任务取消等上游修复）。完整变更见 [CHANGELOG](CHANGELOG.md)。
 
 ## 项目介绍
 
-yunxi 站在经过生产验证的 AgentScope-Java 2.0.3 运行时之上，为企业级落地补齐「编排 · 决策 · 治理 · 可观测」能力，让开发者专注业务而非底层胶水代码。
+yunxi 站在经过生产验证的 AgentScope-Java 2.0.4-SNAPSHOT 运行时之上，为企业级落地补齐「编排 · 决策 · 治理 · 可观测」能力，让开发者专注业务而非底层胶水代码。
 
 其**意图引擎**将「该调用哪个 Agent、走哪条链路」前置为一套可配置、可热更新的决策中枢：经 NER 识别 → 语义改写 → 场景分类 → 映射路由四阶段，自动将请求分派到最合适的 Agent。配合 **MCP 动态注册**（运行期接入 30+ 工具、无需重启）、**技能自进化 MUSE**（沙箱评估 → LLM 修补 → 剪枝合并闭环）与 **OpenTelemetry 全链路追踪**，一个 Agent 应用从原型走向生产往往只需改配置、不碰代码。
 
 ## 为什么选择 yunxi
 
 - **决策中枢：意图引擎** — NER → 改写 → 分类 → 映射四阶段前置管道，自动路由到最合适的 Agent，告别硬编码 if-else 编排。
-- **官方稳定底座** — 直接复用 AgentScope-Java 2.0.3 的 Model / Toolkit / Middleware / DistributedStore 体系。
+- **官方稳定底座** — 直接复用 AgentScope-Java 2.0.4-SNAPSHOT 的 Model / Toolkit / Middleware / DistributedStore 体系。
 - **协议与工具开箱即用** — 原生 MCP 集成，支持运行期动态注册（Nacos 持久化、目标不可达自动重连），一键接入 30+ MCP 服务生态。
 - **技能自进化（MUSE）** — 沙箱评估 → LLM 修补 → 剪枝合并闭环，让技能自我判断、修补、进化。
 - **生产级保障** — OpenTelemetry 全链路追踪、提示注入防护、HITL 人机确认、工具最小权限。
@@ -41,7 +41,7 @@ yunxi 站在经过生产验证的 AgentScope-Java 2.0.3 运行时之上，为企
 | **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
 | **意图引擎** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型、rule/llm/hybrid 分类通道、actuator 热更新、意图路由，业务数据可配置替换 |
 | **执行引擎** | `AgentExecutionEngine` 门面统一收口同步 / 流式 / 结构化 / 取消四类调用入口；调用前经 4 个前置解析拦截器（AuthResolve → Memory → IntentPipeline → RagRetrieval），事件流经统一轨迹归集后由投影消费（新增协议只需实现一个 Projection） |
-| **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.3，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
+| **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.4-SNAPSHOT，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **统一推理轨迹（One Trace, Many Projections）** | 内核只维护一条结构化轨迹（`TraceComposer` → `ReasoningSpan` → `TraceStore`），SSE / AG-UI 只是它的投影（`SseProjection` / `AguiProjection`）；轨迹可落 Redis 跨实例共享，支持历史回放与断点续传 |
 | **能力装配（Capability）** | `AgentCapability` + `AgentCapabilityRegistry` 能力切片自注册，新增一类能力只需登记一行，无需改动装配主流程 |
 | **Spring Boot 原生** | `SmartLifecycle` 有序启停，Agent 实例 `prototype` 作用域，`@ConditionalOnClass` 按需加载 |
@@ -159,7 +159,7 @@ docker compose up -d
 > ```
 > 若不使用 aistio，`start-stack.ps1` 会在 aistio 镜像缺失时仅告警跳过，不影响 5 个 MCP 服务。手动构建则需在 AgentScope-Java 仓库执行 `mvn -pl agentscope-service -am install -DskipTests` 生成 `target/*.jar`。
 >
-> **重要**：aistio 构建时留在 `main` 分支，不要用 `v2.0.3` 标签 / `release/2.0.3` 分支——其前端引用了并不存在的 `features/build` 模块，会编译报 `TS2307: Cannot find module`。脚本默认构建 `main`，产物版本 `2.0.3-SNAPSHOT`。
+> **重要**：aistio 构建时留在 `main` 分支，不要用 `v2.0.4` 标签 / `release/2.0.4` 分支——其前端引用了并不存在的 `features/build` 模块，会编译报 `TS2307: Cannot find module`。脚本默认构建 `main`，产物版本 `2.0.4-SNAPSHOT`（由 `scripts/setup-aistio.ps1` 的 `$AistioVersion` 指定，与底层 AgentScope-Java 2.0.4-SNAPSHOT 对齐）。
 
 > **路径约定**：`McpServersRoot` / `AistioRepoRoot` / `YunxiRoot` 默认从脚本位置自动推导为与 `yunxi-agent-platform` 同级目录（如 `../yunxi-mcp-servers`、`../agentscope-java`），目录布局不同时用 `-McpServersRoot` / `-AistioRepoRoot` 指定。若你的 AgentScope-Java 源码目录名不同（例如带版本后缀），用 `-AistioRepoRoot` 显式指向即可。
 
@@ -281,7 +281,7 @@ Vite 通过 `/api`、`/v1`、`/js` 代理到后端 `localhost:40001`（可用 `B
 └───────────────────────────────▼──────────────────────────────┘
 
 ┌────────────────────────────────┐   ┌──────────────────────────────┐
-│            MCP 协议            │   │     AgentScope-Java 2.0.3    │
+│            MCP 协议            │   │AgentScope-Java 2.0.4-SNAPSHOT│
 │30+ 工具 · SPI 扩展             │   │Model / Toolkit / Memory      │
 │运行期动态注册 (Nacos)          │   │Middleware / State            │
 └────────────────────────────────┘   └──────────────────────────────┘
@@ -397,10 +397,10 @@ yunxi 的运行时完全建立在 [AgentScope-Java](https://github.com/agentscop
 
 ### 版本兼容说明
 
-yunxi 编译期只依赖已发布的 AgentScope-Java（当前 `2.0.3`），`#3134` 的取消能力在运行时按需探测：
+yunxi 编译期依赖 AgentScope-Java（当前 `2.0.4-SNAPSHOT`，已包含 #3134），记忆后台任务取消能力在编译期即可用：
 
-- 使用 **>= 2.0.4**（含 #3134）时，Agent 关闭会自动取消遗留的记忆后台模型调用并释放槽位；
-- 使用 **2.0.3** 时，退化为"等待后台任务自然结束"，其余功能不受影响。
+- 使用 **2.0.4-SNAPSHOT（含 #3134）** 时，Agent 关闭会自动取消遗留的记忆后台模型调用并释放槽位；
+- 若退回 **2.0.3** 正式版，则退化为"等待后台任务自然结束"，其余功能不受影响。
 
 探测逻辑集中在 `MemoryBackgroundTaskReaper`，上游发布后可整体删除，无需改动业务代码。
 
