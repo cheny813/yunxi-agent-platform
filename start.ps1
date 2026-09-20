@@ -180,8 +180,12 @@ $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
 # 大模型密钥请通过环境变量 DASHSCOPE_API_KEY 注入，切勿将真实密钥提交到仓库
-$DASHSCOPE_API_KEY = "sk-dd32b521e0d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b52d60d8d08a9e"
 $LLM_MODEL        = "qwen3.8-27b"
+# 导出为同名环境变量，供 llm.yml 的 ${DASHSCOPE_API_KEY:} / ${DASHSCOPE_MODEL:} 占位符读取。
+# 注意：PowerShell 变量 ≠ 环境变量，不导出则 YAML 回落空值（api-key 空 → 401）。
+$env:DASHSCOPE_API_KEY = $DASHSCOPE_API_KEY
+$env:DASHSCOPE_MODEL   = $LLM_MODEL
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
 $MILVUS_PORT     = "19530"
@@ -280,8 +284,8 @@ $configArgs = @(
     "-DMYSQL_DATABASE=$MYSQL_DATABASE",
     "-DMYSQL_USERNAME=$MYSQL_USERNAME",
     "-DMYSQL_PASSWORD=$MYSQL_PASSWORD",
-    "-Dagentscope.core.api-key=$DASHSCOPE_API_KEY",
-    "-Dagentscope.core.model-name=$LLM_MODEL",
+    # api-key / model 经 $env:DASHSCOPE_API_KEY / $env:DASHSCOPE_MODEL 注入（见顶部导出），
+    # 对应 llm.yml 的 ${DASHSCOPE_API_KEY:} / ${DASHSCOPE_MODEL:} 占位符，无需在此重复传 -D。
     "-Dmilvus.host=$MILVUS_HOST",
     "-Dmilvus.port=$MILVUS_PORT",
     "-Dmilvus.username=$MILVUS_USERNAME",

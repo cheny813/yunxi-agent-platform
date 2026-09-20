@@ -52,9 +52,9 @@ yunxi:
       rule-confidence-threshold: 0.6         # hybrid 模式规则高分直出阈值
       llm:
         enabled: true                        # LLM 通道总开关（true 才发模型调用）
-        # 分类模型跟随对话模型（AGENTSCOPE_MODEL 环境变量，默认 qwen-plus）获取，
-        # 与对话模型同源，避免分类器写死独立模型名导致 key 不一致（401 降级 unknown）
-        model: ${AGENTSCOPE_MODEL:qwen-plus} # 与对话模型同源（默认 qwen-plus）
+        # 分类模型与对话模型同源（DASHSCOPE_MODEL 环境变量，默认 qwen-plus），
+        # 由 start.ps1 统一经 $LLM_MODEL 管控，避免分类器写死独立模型名导致 key 不一致（401 降级 unknown）
+        model: ${DASHSCOPE_MODEL:qwen-plus} # 与对话模型同源（默认 qwen-plus）
         timeout-ms: 2000                     # 超时（resilience4j TimeLimiter）
         min-confidence: 0.5                  # LLM 输出最低采纳置信度
         max-intents: 30                      # 白名单上限，超限按查询关键词粗筛 Top-N

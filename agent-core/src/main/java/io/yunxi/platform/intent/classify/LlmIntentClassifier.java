@@ -17,11 +17,14 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.model.ChatResponse;
+import io.agentscope.core.model.ChatUsage;
 import io.agentscope.core.model.Model;
+import reactor.core.publisher.Flux;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.timelimiter.TimeLimiter;
@@ -182,7 +185,7 @@ public class LlmIntentClassifier {
                 () -> CompletableFuture.supplyAsync(() -> {
                     try {
                         Model model = modelFactory.create(modelConfig);
-                        return model.stream(messages, null, null).blockFirst();
+                        return accumulate(model.stream(messages, null, null));
                     } catch (Exception e) {
                         throw new CompletionException(e);
                     }
@@ -212,8 +215,73 @@ public class LlmIntentClassifier {
                 .collect(java.util.stream.Collectors.joining());
     }
 
+    /**
+     * 将流式增量 ChatResponse 收口为完整响应。
+     *
+     * <p>Model.stream 返回的是多个增量分片（每个分片 content 仅含部分文本），原先
+     * blockFirst() 只取首片（例如首片正好为 "{"），导致 extractText 拿到残缺 JSON、
+     * readTree 抛异常降级 unknown。这里按到达顺序拼接所有 TextBlock 文本，构造一个
+     * 聚合后的完整 ChatResponse，与框架 TextAccumulator 的增量累积语义一致。</p>
+     */
+    private ChatResponse accumulate(Flux<ChatResponse> flux) {
+        List<ChatResponse> parts = flux.collectList().block();
+        if (parts == null || parts.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        String id = null;
+        ChatUsage usage = null;
+        String finishReason = null;
+        for (ChatResponse p : parts) {
+            if (p.getId() != null) {
+                id = p.getId();
+            }
+            if (p.getUsage() != null) {
+                usage = p.getUsage();
+            }
+            if (p.getFinishReason() != null) {
+                finishReason = p.getFinishReason();
+            }
+            if (p.getContent() != null) {
+                for (ContentBlock b : p.getContent()) {
+                    if (b instanceof TextBlock tb && tb.getText() != null) {
+                        sb.append(tb.getText());
+                    }
+                }
+            }
+        }
+        List<ContentBlock> content = List.of(TextBlock.builder().text(sb.toString()).build());
+        return new ChatResponse(id, content, usage, null, finishReason);
+    }
+
+    /**
+     * 清理 LLM 输出中的非 JSON 噪声，提升解析健壮性：
+     * 1) 去掉推理模型的思维链标签 &lt;think&gt;...&lt;/think&gt;；
+     * 2) 去掉 markdown 代码围栏；
+     * 3) 截取首个 { 到末个 } 之间的 JSON 子串（容忍前后解释文字）。
+     */
+    private String cleanJson(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim();
+        t = t.replaceAll("(?s)<think>.*?</think>", "");
+        t = t.replaceAll("^```[a-zA-Z]*\\s*", "").replaceAll("\\s*```$", "");
+        t = t.trim();
+        int start = t.indexOf('{');
+        int end = t.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            t = t.substring(start, end + 1);
+        }
+        return t;
+    }
+
     /** 解析 JSON 响应并三重校验；任一不过返回 unknown */
     private Intent parseResult(String text, List<IntentTree.Node> whitelist) {
+        if (text == null || text.isBlank()) {
+            return Intent.unknown();
+        }
+        text = cleanJson(text);
         if (text == null || text.isBlank()) {
             return Intent.unknown();
         }
