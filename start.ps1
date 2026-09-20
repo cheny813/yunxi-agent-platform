@@ -180,7 +180,7 @@ $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
 # 大模型密钥请通过环境变量 DASHSCOPE_API_KEY 注入，切勿将真实密钥提交到仓库
-$DASHSCOPE_API_KEY = "sk-dd32b520d60d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-dd32b521ea86488c972a0d60d8d08a9e"
 $LLM_MODEL        = "qwen3.8-27b"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"

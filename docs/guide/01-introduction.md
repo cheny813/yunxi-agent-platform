@@ -250,6 +250,17 @@ ReAct 循环：
 - **安全性**：工具可以独立部署，通过认证控制访问
 - **可扩展性**：新增工具无需修改 Agent 代码
 
+### 关键术语对照
+
+为降低阅读门槛，先说明本指南反复出现的几个命名与底层框架的关系：
+
+| 文档中的命名 | 真实含义 | 说明 |
+|------|------|------|
+| **aistio**（含 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`、`yunxi.aistio.*` 配置前缀、`io.yunxi.platform.aistio` 适配包） | AgentScope Service 管控面（Control Plane） | aistio 是 AgentScope-Java 生态 **AgentScope Service**（`agentscope-service` 仓库）的部署代号，yunxi 复用其命名，并非自创私有代号。框架官方产品名为 **AgentScope Service**，源码与容器则称 aistio，二者同源 |
+| **AgentScope Service** | 框架官方的 Agent 管控 / 治理可视化 / 会话干预平台 | 预览版，官方站点与 aistio 为同一产品 |
+
+> 配置键与包名（如 `yunxi.aistio.*`、`io.yunxi.platform.*`）是代码中的真实命名，与源码保持一致以便对照。完整术语映射见 [06. 配置指南 - aistio 管控面](./06-configuration.md#aistio)。
+
 ### 3. 领域驱动设计 (DDD)
 
 **理论来源**：Eric Evans 的《领域驱动设计》
