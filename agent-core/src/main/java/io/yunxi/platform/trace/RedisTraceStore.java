@@ -1,13 +1,17 @@
 package io.yunxi.platform.trace;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -139,6 +143,37 @@ public class RedisTraceStore implements TraceStore {
         if (sink != null) {
             sink.tryEmitComplete();
         }
+    }
+
+    /**
+     * 枚举最近活跃的轨迹标识。
+     *
+     * <p>用 {@code SCAN} 匹配键前缀而非 {@code KEYS}：{@code KEYS} 会遍历整个键空间并阻塞
+     * Redis 单线程，在轨迹量大的实例上会拖垮全部请求；{@code SCAN} 是游标式增量遍历，
+     * 单次成本有界。取够 {@code limit} 条即停止遍历，不做全量扫描。</p>
+     *
+     * <p>顺序不保证严格按活跃时间：{@code SCAN} 的返回序取决于哈希槽分布。消费方若需
+     * 严格时序，应在读取快照后按时间自行排序——这里只承诺「集合语义」与「不阻塞」。</p>
+     */
+    @Override
+    public List<String> recentTraceIds(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>(Math.min(limit, 128));
+        try (Cursor<byte[]> cursor = redisTemplate.getConnectionFactory().getConnection()
+                .scan(ScanOptions.scanOptions().match(KEY_PREFIX + "*").count(256).build())) {
+            while (cursor.hasNext() && result.size() < limit) {
+                String key = new String(cursor.next(), StandardCharsets.UTF_8);
+                if (key.startsWith(KEY_PREFIX) && key.length() > KEY_PREFIX.length()) {
+                    result.add(key.substring(KEY_PREFIX.length()));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("轨迹枚举 Redis 失败: {}", e.getMessage());
+            return List.of();
+        }
+        return result;
     }
 
     private static String keyOf(String traceId) {

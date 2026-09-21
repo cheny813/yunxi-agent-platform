@@ -18,6 +18,7 @@ import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
 import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
+import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
 import io.yunxi.platform.agent.capability.AgentCapabilityRegistry;
 import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
@@ -25,6 +26,8 @@ import io.yunxi.platform.agent.middleware.ChatAuditMiddleware;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
 import io.yunxi.platform.agent.middleware.FileContextInjectionMiddleware;
 import io.yunxi.platform.agent.middleware.HistoryInjectionMiddleware;
+import io.yunxi.platform.agent.middleware.UserProfileEvolverMiddleware;
+import io.yunxi.platform.agent.middleware.UserProfileMiddleware;
 import io.yunxi.platform.file.FileUploadService;
 import io.yunxi.platform.shared.mapper.ConversationMapper;
 import io.yunxi.platform.agent.model.ModelFactory;
@@ -39,13 +42,16 @@ import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.config.ProfileDefinition;
 import io.yunxi.platform.shared.config.ExpertConfig;
 import io.yunxi.platform.shared.config.ExtensionConfig;
-import io.yunxi.platform.shared.config.StageConfig;
+import io.yunxi.platform.shared.config.OrchestrationConfig;
 import io.yunxi.platform.shared.config.ToolsGroupConfig;
 import io.yunxi.platform.shared.config.HITLConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 
 import io.yunxi.platform.agent.mcp.McpConfigStore;
+import io.yunxi.platform.profile.ProfileEvolutionThrottle;
+import io.yunxi.platform.profile.RedisUserProfileStore;
+import io.yunxi.platform.spi.UserProfileEvolver;
 
 import io.agentscope.core.tracing.OtelTracingMiddleware;
 import org.slf4j.Logger;
@@ -98,6 +104,17 @@ public class AgentConfigurer implements SmartLifecycle {
      * MCP 工具 "Unauthorized ... is not available" 问题。
      */
     private static final Map<String, List<String>> AGENT_ACTIVE_GROUPS = new ConcurrentHashMap<>();
+
+    /**
+     * 构建期捕获的「Agent 名称 -> 权限上下文」快照。
+     *
+     * <p>与 {@link #AGENT_ACTIVE_GROUPS} 同源动机：权限上下文只在<b>新建会话</b>时从构建期模板
+     * 生成，已有会话从持久化状态加载旧快照，框架不比对模板是否变更。因此权限模板一旦调整
+     * （例如新增平台级工具放行），存量会话会继续按旧规则运行，表现为「改了规则但调用仍被拒」。
+     * 供 {@link #activateSessionToolGroups} 在每次调用前把最新模板写回会话状态。</p>
+     */
+    private static final Map<String, PermissionContextState> AGENT_PERMISSION_CONTEXTS =
+            new ConcurrentHashMap<>();
 
     /**
      * 运行时动态注册的 MCP 工具组名集合（构建期快照之外的增量）。
@@ -157,6 +174,9 @@ public class AgentConfigurer implements SmartLifecycle {
 
     /** 能力装配注册表，按顺序应用各类 Agent 能力的装配决策 */
     private final AgentCapabilityRegistry capabilityRegistry;
+    private final ObjectProvider<RedisUserProfileStore> userProfileStoreProvider;
+    private final ObjectProvider<UserProfileEvolver> userProfileEvolverProvider;
+    private final ObjectProvider<ProfileEvolutionThrottle> profileEvolutionThrottleProvider;
 
     /** 跨实例 reconcile 的熔断保护（复用 resilience4j circuitbreaker 防止目标不可达时雪崩） */
     private final CircuitBreaker mcpReconcileCircuitBreaker =
@@ -189,7 +209,10 @@ public class AgentConfigurer implements SmartLifecycle {
             ObjectProvider<FileUploadService> fileUploadServiceProvider,
             ObjectProvider<ConversationMapper> conversationMapperProvider,
             McpConfigStore mcpConfigStore,
-            AgentCapabilityRegistry capabilityRegistry) {
+            AgentCapabilityRegistry capabilityRegistry,
+            ObjectProvider<RedisUserProfileStore> userProfileStoreProvider,
+            ObjectProvider<UserProfileEvolver> userProfileEvolverProvider,
+            ObjectProvider<ProfileEvolutionThrottle> profileEvolutionThrottleProvider) {
         this.definitionLoader = definitionLoader;
         this.agentService = agentService;
         this.coreProperties = coreProperties;
@@ -203,6 +226,9 @@ public class AgentConfigurer implements SmartLifecycle {
         this.intentToolProvider = intentToolProvider;
         this.mcpConfigStore = mcpConfigStore;
         this.capabilityRegistry = capabilityRegistry;
+        this.userProfileStoreProvider = userProfileStoreProvider;
+        this.userProfileEvolverProvider = userProfileEvolverProvider;
+        this.profileEvolutionThrottleProvider = profileEvolutionThrottleProvider;
     }
 
     /**
@@ -232,7 +258,7 @@ public class AgentConfigurer implements SmartLifecycle {
      * 1. 加载所有 Agent 定义
      * 2. 初始化所有 Agent 的工作空间
      * 3. 先创建非编排型 Agent（独立 Agent）
-     * 4. 再创建编排型 Agent（Supervisor/Pipeline/Routing），因为编排型依赖独立 Agent
+     * 4. 再创建编排型 Agent（当前已接线的只有 Supervisor），因为编排型依赖独立 Agent
      * </p>
      */
     @Override
@@ -253,12 +279,19 @@ public class AgentConfigurer implements SmartLifecycle {
 
         // 先创建非编排型 Agent，因为编排型 Agent 可能依赖它们
         for (AgentDefinition def : definitions) {
+            if (isDeclarationOnly(def)) {
+                log.info("跳过声明型定义 [{}]（pattern=workflow）：不产生运行时 Agent 实例，编排图由 WorkflowArtifactExporter 导出",
+                        def.getName());
+                continue;
+            }
             if (!isOrchestrated(def))
                 initializeSingleAgent(def);
         }
 
-        // 再创建编排型 Agent（Supervisor/Pipeline/Routing）
+        // 再创建编排型 Agent（当前仅 Supervisor 已接线）
         for (AgentDefinition def : definitions) {
+            if (isDeclarationOnly(def))
+                continue;
             if (isOrchestrated(def))
                 createOrchestratedAgent(def);
         }
@@ -405,18 +438,36 @@ public class AgentConfigurer implements SmartLifecycle {
     }
 
     /**
-     * 判断 Agent 定义是否为编排型。
+     * 判断 Agent 定义是否需要在运行期构建 Supervisor 实例（含 subagents）。
      *
      * <p>
-     * 编排型 Agent 的 orchestration.pattern 不为 null 且不等于 "single"，
-     * 包括 supervisor、pipeline、routing 三种模式。
+     * 运行期不再按 orchestration.pattern 分支构建 Agent：
+     * pattern 只是编译期草稿标记，真相源在 aistio 控制面 definitionRef。本仓运行期只识别一种需要本地构建的
+     * 编排形态——Supervisor（AgentScope-Java 原生 HarnessAgent + subagents），其判定信号是
+     * orchestration.experts 非空，而非 pattern 字符串。pipeline / routing / handoffs 在加载期即被拒绝，
+     * 不会到达此分支；workflow 为声明型（isDeclarationOnly），在装配循环中被跳过。
      * </p>
      *
      * @param def Agent 定义
-     * @return true 表示是编排型 Agent
+     * @return true 表示该定义需要构建 Supervisor 实例
      */
-    private boolean isOrchestrated(AgentDefinition def) {
-        return def.getOrchestration() != null && !"single".equals(def.getOrchestration().getPattern());
+    static boolean isOrchestrated(AgentDefinition def) {
+        OrchestrationConfig oc = def.getOrchestration();
+        if (oc == null) {
+            return false;
+        }
+        List<ExpertConfig> experts = oc.getExperts();
+        return experts != null && !experts.isEmpty();
+    }
+
+    /**
+     * 是否为声明型定义：只承载编排图供导出，不产生运行时 Agent 实例（当前仅 pattern=workflow）。
+     *
+     * @param def Agent 定义配置
+     * @return 声明型返回 true（此类定义必须跳过实例化，否则会被当成普通单 Agent 创建）
+     */
+    private boolean isDeclarationOnly(AgentDefinition def) {
+        return def.getOrchestration() != null && def.getOrchestration().isDeclarationOnly();
     }
 
     // ========== 创建单 Agent ==========
@@ -567,25 +618,18 @@ public class AgentConfigurer implements SmartLifecycle {
      * 根据编排模式创建编排型 Agent。
      *
      * <p>
-     * 支持三种编排模式：
-     * - supervisor：监督者模式，由 Supervisor Agent 调度子 Agent
-     * - pipeline：流水线模式，Agent 按阶段顺序执行
-     * - routing：路由模式，根据输入选择合适的 Agent
+     * 运行时已接线的编排模式只有 supervisor（监督者模式，由 Supervisor Agent 调度子 Agent）。
+     * pipeline / routing / handoffs 的调度尚未接线，已被 AgentDefinitionLoader 在加载期拒绝；
+     * 走到这里说明门禁被绕过，按错误处理而非静默降级。
      * </p>
      *
      * @param def Agent 定义配置
      */
     private void createOrchestratedAgent(AgentDefinition def) {
-        // 编排模式大小写不敏感：统一转小写后再分发
-        String pattern = def.getOrchestration().getPattern();
-        String normalized = pattern == null ? "" : pattern.toLowerCase();
-        log.info("创建编排 Agent: {} (pattern={})", def.getName(), pattern);
-        switch (normalized) {
-            case "supervisor" -> createSupervisorAgent(def);
-            case "pipeline" -> createPipelineAgent(def);
-            case "routing" -> createRoutingAgent(def);
-            default -> log.warn("不支持的编排模式: {} (Agent: {})", pattern, def.getName());
-        }
+        // 运行期仅构建 Supervisor 一种编排形态（专家非空已在 isOrchestrated 校验），不再按 pattern 分发。
+        // pattern 是编译期草稿标记，编排真相源在 aistio 控制面 definitionRef；本方法只构建经加载期校验过的 Supervisor 形态。
+        log.info("创建 Supervisor 编排 Agent: {}", def.getName());
+        createSupervisorAgent(def);
     }
 
     /**
@@ -707,48 +751,6 @@ public class AgentConfigurer implements SmartLifecycle {
         Agent supervisor = customizer != null ? customizer.customize(def, builder.build()) : builder.build();
 
         agentService.registerAgentInstance(instanceName, supervisor);
-    }
-
-    /**
-     * 创建 Pipeline 编排 Agent。
-     *
-     * <p>
-     * Pipeline 模式：Agent 按照预定义的阶段顺序执行，
-     * 当前仅验证各阶段的 Agent 是否存在，实际调度由上层逻辑处理。
-     * </p>
-     *
-     * @param def Agent 定义配置
-     */
-    private void createPipelineAgent(AgentDefinition def) {
-        List<StageConfig> stages = def.getOrchestration().getStages();
-        if (stages == null || stages.isEmpty())
-            return;
-        // 验证每个阶段的 Agent 是否已注册
-        for (StageConfig s : stages) {
-            try {
-                agentService.getAgentInstance(s.getAgent());
-            } catch (Exception e) {
-                log.warn("Pipeline [{}] 的 Agent 不存在: {}", def.getName(), s.getAgent());
-            }
-        }
-        log.info("Pipeline [{}] 验证通过，共 {} 个阶段", def.getName(), stages.size());
-    }
-
-    /**
-     * 创建 Routing 编排 Agent。
-     *
-     * <p>
-     * Routing 模式：根据输入内容路由到不同的专家 Agent，
-     * 当前仅验证路由专家列表是否配置，实际路由逻辑由上层处理。
-     * </p>
-     *
-     * @param def Agent 定义配置
-     */
-    private void createRoutingAgent(AgentDefinition def) {
-        List<ExpertConfig> experts = def.getOrchestration().getExperts();
-        if (experts == null || experts.isEmpty())
-            return;
-        log.info("Routing [{}] 验证通过，共 {} 个路由 Agent", def.getName(), experts.size());
     }
 
     // ========== Toolkit 构建 ==========
@@ -1004,6 +1006,16 @@ public class AgentConfigurer implements SmartLifecycle {
         ConversationMapper conversationMapper = conversationMapperProvider.getIfAvailable();
         if (conversationMapper != null) {
             builder.middleware(new ChatAuditMiddleware(conversationMapper, def.getName()));
+            userProfileStoreProvider.ifAvailable(store -> builder.middleware(new UserProfileMiddleware(store)));
+        }
+
+        // 画像演进（收尾异步抽取）：读侧 UserProfileMiddleware 注入提示词，写侧本中间件落库，
+        // 二者对称；节流与降级由 ProfileEvolutionThrottle / UserProfileEvolver 各自兜底。
+        RedisUserProfileStore profileStore = userProfileStoreProvider.getIfAvailable();
+        UserProfileEvolver profileEvolver = userProfileEvolverProvider.getIfAvailable();
+        ProfileEvolutionThrottle profileThrottle = profileEvolutionThrottleProvider.getIfAvailable();
+        if (profileStore != null && profileEvolver != null && profileThrottle != null) {
+            builder.middleware(new UserProfileEvolverMiddleware(profileStore, profileEvolver, profileThrottle));
         }
 
         // 可选：AgentScope-Java 原生 OpenTelemetry 链路追踪（invoke_agent / chat / execute_tool 三段 span）
@@ -1016,6 +1028,35 @@ public class AgentConfigurer implements SmartLifecycle {
 
         // 构建期工具引用校验（best-effort）：allowedTools/deniedTools 是否存在于已注册 toolkit
         validateToolReferences(def, toolkit);
+    }
+
+    /**
+     * 解析 Agent 的权限上下文（构建期唯一判定点）。
+     *
+     * <p>从 {@link #injectHITLMiddlewares} 抽出，使「构建期注入」与「调用期写回」共用同一份
+     * 判定逻辑，避免两处漂移。返回结果同时被 {@link #AGENT_PERMISSION_CONTEXTS} 快照。</p>
+     *
+     * @param def Agent 定义配置
+     * @return 该 Agent 的权限上下文
+     */
+    private PermissionContextState resolvePermissionContext(AgentDefinition def) {
+        ExtensionConfig extensions = def.getExtensions();
+        if (extensions == null || extensions.getHitl() == null) {
+            return permissionConfig.unattendedContext();
+        }
+        var hitlConfig = extensions.getHitl();
+        if (PermissionConfig.hasAskTools(hitlConfig)) {
+            // 注入了需人工确认工具 → DEFAULT 模式，执行前挂起向用户确认
+            return permissionConfig.build(hitlConfig, PermissionMode.DEFAULT);
+        }
+        if (hitlConfig.getAllowedTools() != null && !hitlConfig.getAllowedTools().isEmpty()) {
+            // 声明了无人值守可调用工具白名单 → DONT_ASK + 显式 ALLOW，避免业务工具被兜底 DENY
+            return permissionConfig.unattendedContext(hitlConfig.getAllowedTools());
+        }
+        // 未配置白名单 → 黑名单模式（BYPASS 默认全放行，仅拒绝 deniedTools 中显式列出的工具）。
+        // 不传入平台级基线：未在黑名单中列出的工具（如 node_command）一律放行，
+        // 只有 Agent 自己在 deniedTools 里写明的才被 DENY。适用于"禁止的少、允许的多"。
+        return permissionConfig.blacklistContext(hitlConfig.getDeniedTools(), null);
     }
 
     /**
@@ -1050,30 +1091,24 @@ public class AgentConfigurer implements SmartLifecycle {
         // 会使 readOnly=false 的 todo_write 被直接 DENY，导致任务清单功能失效。
         // 完整权衡见 PermissionConfig#unattendedContext。
         // 注：McpTool 在 DONT_ASK 下并不会被框架自检自动放行，业务工具需在 HITL.allowedTools 中显式声明。
-        if (extensions == null || extensions.getHitl() == null) {
-            builder.permissionContext(permissionConfig.unattendedContext());
-            return;
-        }
-
-        var hitlConfig = extensions.getHitl();
-        if (PermissionConfig.hasAskTools(hitlConfig)) {
-            // 注入了需人工确认工具 → DEFAULT 模式，执行前挂起向用户确认
-            builder.permissionContext(permissionConfig.build(hitlConfig, PermissionMode.DEFAULT));
-        } else if (hitlConfig.getAllowedTools() != null && !hitlConfig.getAllowedTools().isEmpty()) {
-            // 声明了无人值守可调用工具白名单 → DONT_ASK + 显式 ALLOW，避免业务工具被兜底 DENY
-            builder.permissionContext(permissionConfig.unattendedContext(hitlConfig.getAllowedTools()));
-        } else {
-            // 未配置白名单 → 黑名单模式（BYPASS 默认全放行，仅拒绝 deniedTools 中显式列出的工具）。
-            // 不传入平台级基线：未在黑名单中列出的工具（如 node_command）一律放行，
-            // 只有 Agent 自己在 deniedTools 里写明的才被 DENY。适用于"禁止的少、允许的多"。
-            builder.permissionContext(permissionConfig.blacklistContext(hitlConfig.getDeniedTools(), null));
+        PermissionContextState permCtx = resolvePermissionContext(def);
+        builder.permissionContext(permCtx);
+        // 捕获构建期权限上下文快照，供会话级钩子 activateSessionToolGroups 在每次调用前
+        // 写回会话状态——否则持久化会话会一直沿用旧权限快照，权限模板变更（如新增平台级
+        // 工具放行）对存量会话不生效，表现为「改了规则但调用仍被拒」。
+        if (def.getName() != null) {
+            AGENT_PERMISSION_CONTEXTS.put(def.getName(), permCtx);
+            log.info("[permission-snapshot] 构建期权限上下文已快照 agent={} mode={}",
+                    def.getName(), permCtx.getMode());
         }
 
         // 注册人工工具（HumanTool 注册当前仅支持 schema 注册，无需绑定具体 Toolkit）
-        if (hitlConfig.getHumanTool() != null && hitlConfig.getHumanTool().isEnabled()) {
+        if (extensions != null && extensions.getHitl() != null
+                && extensions.getHitl().getHumanTool() != null
+                && extensions.getHitl().getHumanTool().isEnabled()) {
             // HumanToolRegistrar 仅注册 ToolSchema，可在没有 Toolkit 的情况下工作
             // registerTools(null) 会跳过注册（registerTools 内有 null guard）
-            new HumanToolRegistrar(hitlConfig.getHumanTool()).registerTools(null);
+            new HumanToolRegistrar(extensions.getHitl().getHumanTool()).registerTools(null);
         }
     }
 
@@ -1224,9 +1259,18 @@ public class AgentConfigurer implements SmartLifecycle {
         if (activeGroups.isEmpty())
             activeGroups.add("memory");
 
+        // MUSE 元工具组（自进化）为全局能力，只要注册了就激活：
+        // 它的启用开关是 yunxi.muse.enabled（决定 Bean 是否存在），与 Agent 的
+        // toolsGroup 白名单无关；不在此并入会导致「注册了但模型看不到」。
+        if (toolkit.getToolGroup("muse") != null && !activeGroups.contains("muse")) {
+            activeGroups.add("muse");
+        }
+
         // 先禁用所有已知组，再激活配置中指定的组
         // 只操作通过 createToolGroup() 创建的应用层组，不影响框架内置的未分组工具
-        List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "page", "general");
+        // muse 组为全局自进化元工具（yunxi.muse.enabled=true 时才创建），不随 Agent 的
+        // 工具组白名单裁剪，否则元工具注册了却永不激活、模型侧看不到该工具。
+        List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "page", "general", "muse");
         for (String group : knownGroups) {
             if (toolkit.getToolGroup(group) != null) {
                 toolkit.updateToolGroups(List.of(group), false);
@@ -1276,17 +1320,48 @@ public class AgentConfigurer implements SmartLifecycle {
             RuntimeContext rc = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
             AgentState state = agent.getDelegate().getAgentState(rc);
             state.getToolContext().setActivatedGroups(groups);
+            // 权限上下文写回：与工具组同理——权限上下文只在新建会话时取自构建期模板，
+            // 已有会话从持久化状态加载旧快照且框架不比对模板。不写回则权限模板变更
+            // （如新增平台级工具放行）对存量会话永不生效。
+            PermissionContextState permCtx = resolveBuildTimePermissionContext(agent.getName());
+            if (permCtx != null) {
+                state.setPermissionContext(permCtx);
+            }
             // 关键：stateStore != null 时 AgentScope-Java 每次调用都会从存储重新加载状态并覆盖本地缓存，
             // 因此必须把修正后的激活组写回存储，否则 activateSlotForContext 重新加载时又会丢失。
             AgentStateStore store = agent.getStateStore();
             if (store != null) {
                 store.save(userId, sessionId, "agent_state", state);
             }
-            log.debug("[toolgroup-activate] agent={} user={} session={} saved activatedGroups={}",
-                    agent.getName(), userId, sessionId, groups);
+            log.debug("[toolgroup-activate] agent={} user={} session={} saved activatedGroups={} permCtx={}",
+                    agent.getName(), userId, sessionId, groups, permCtx != null);
         } catch (Exception e) {
             log.warn("会话级工具组激活失败 (agent={}, user={}): {}", agent.getName(), userId, e.getMessage());
         }
+    }
+
+    /**
+     * 解析运行时 Agent 名称对应的构建期权限上下文快照。
+     *
+     * <p>与 {@link #resolveBuildTimeGroups} 同样的 Profile 回退规则：构建期快照以「基础 Agent 名」
+     * 为键，运行时被路由命中的可能是 Profile 实例（{@code 基础名#profile}），故先按精确名查找，
+     * 未命中时回退到 {@code #} 之前的基础名。</p>
+     *
+     * @param agentName 运行时 Agent 名称（基础名或 {@code 基础名#profile}）
+     * @return 构建期权限上下文；无快照时返回 null（调用方应跳过写回）
+     */
+    private static PermissionContextState resolveBuildTimePermissionContext(String agentName) {
+        if (agentName == null) {
+            return null;
+        }
+        PermissionContextState ctx = AGENT_PERMISSION_CONTEXTS.get(agentName);
+        if (ctx == null) {
+            int idx = agentName.indexOf('#');
+            if (idx > 0) {
+                ctx = AGENT_PERMISSION_CONTEXTS.get(agentName.substring(0, idx));
+            }
+        }
+        return ctx;
     }
 
     /**

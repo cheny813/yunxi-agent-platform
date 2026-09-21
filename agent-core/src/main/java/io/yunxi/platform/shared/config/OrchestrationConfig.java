@@ -6,8 +6,14 @@ import java.util.List;
 /**
  * 编排模式配置 - 取代旧的 BuiltinMode 枚举和 ModeResolver
  * <p>
- * 定义 Agent 的多 Agent 协作模式，支持 supervisor / routing / pipeline / workflow / handoffs / single。
- * 80% 的场景只需配置 pattern 和 experts/stages，框架自动装配。
+ * 定义 Agent 的多 Agent 协作模式。**运行时已接线的模式只有 single 与 supervisor**：
+ * 80% 的场景只需配置 pattern 和 experts，框架自动装配。
+ * </p>
+ * <p>
+ * 其余模式的处理：{@code workflow} 是**声明型**（只承载编排图定义，由
+ * {@code WorkflowArtifactExporter} 导出后交由 aistio 执行，**不产生 yunxi 运行时 Agent 实例**）；
+ * {@code pipeline} / {@code routing} / {@code handoffs} 的调度**尚未接线**，由
+ * {@link AgentDefinitionLoader} 在加载期直接拒绝 —— 不允许维持"配得上、跑不起来"的中间态。
  * </p>
  *
  * <pre>
@@ -24,17 +30,24 @@ import java.util.List;
 public class OrchestrationConfig {
 
     /**
-     * 编排模式
+     * 编排模式（大小写不敏感）
      * <ul>
-     *   <li>single - 单 Agent（默认），无协作</li>
-     *   <li>supervisor - Supervisor + 专家 Agent，LLM 自主决定调用哪个专家</li>
-     *   <li>routing - 路由器分发，由路由器 Agent 分类转发</li>
-     *   <li>pipeline - 流水线，按阶段顺序执行</li>
-     *   <li>workflow - 自定义工作流（StateGraph）</li>
-     *   <li>handoffs - 控制权转移，Agent 可自主转交对话</li>
+     *   <li>single - 单 Agent（默认），无协作 —— 运行时已接线</li>
+     *   <li>supervisor - Supervisor + 专家 Agent，LLM 自主决定调用哪个专家 —— 运行时已接线</li>
+     *   <li>workflow - 声明型：编排图定义载体，仅供导出，不产生运行时实例</li>
      * </ul>
+     * pipeline / routing / handoffs 的调度尚未接线，配置后在加载期即被拒绝。
      */
     private String pattern = "single";
+
+    /**
+     * 是否为声明型编排：只承载编排图定义供导出，不产生运行时 Agent 实例。
+     *
+     * @return pattern 为 workflow 时返回 true
+     */
+    public boolean isDeclarationOnly() {
+        return "workflow".equalsIgnoreCase(pattern);
+    }
 
     /** Supervisor / Routing 模式下，专家 Agent 列表 */
     private List<ExpertConfig> experts;

@@ -29,7 +29,7 @@ import io.agentscope.core.message.ToolResultState;
  *
  * <p>门禁：仅当本机 Redis（localhost:6379，密码 redispass，见 docker-compose.yml）可达时运行；
  * 不可达时整类跳过（{@code assumeTrue}），不污染单元回归。真实多实例 + 断点续传端到端演练
- * 仍需要 docker-compose.multi-instance.yml + 人工按 docs/breakpoint-resume-drill.md 执行。</p>
+ * 仍需要 docker-compose.multi-instance.yml + 人工执行多实例断点续传演练（详见该编排文件顶部说明）。</p>
  *
  * @author yunxi-agent-platform
  */

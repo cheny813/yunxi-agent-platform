@@ -3,6 +3,7 @@ package io.yunxi.platform.aistio.orchestration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
+import io.yunxi.platform.aistio.client.AistioControlPlaneClient;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import io.yunxi.platform.shared.config.GraphConfig;
@@ -12,12 +13,7 @@ import io.yunxi.platform.shared.config.OrchestrationConfig;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import jakarta.annotation.PostConstruct;
 
@@ -25,7 +21,6 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,26 +34,28 @@ import java.util.Set;
  * 控制面（{@code POST /api/v1/orchestration-definitions}），从而消除控制台手工导入这一步。
  * 推送采用控制台账号令牌（PAT，{@code Authorization: Bearer}），由 {@link AistioIntegrationProperties.WorkflowExportConfig#getPushToken()}
  * 配置。推送失败仅 WARN 并有限重试，<b>绝不阻塞启动</b>。</p>
+ *
+ * <p>推送走统一的 {@link AistioControlPlaneClient}（适配层）：控制面地址、鉴权头、超时与重试策略集中于一处，
+ * PAT 作为方法参数传入，不固化为共享状态（凭据一律作参数、不外渗产品平面核心）。</p>
  */
 @Service
 public class WorkflowArtifactExporter {
 
     private static final Logger log = LoggerFactory.getLogger(WorkflowArtifactExporter.class);
 
-    private static final int MAX_PUSH_ATTEMPTS = 3;
-    private static final long PUSH_RETRY_DELAY_MS = 10_000L;
     private static final String DEFINITION_SUFFIX = ".definition.json";
 
     private final AgentDefinitionLoader loader;
     private final AistioIntegrationProperties props;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final AistioControlPlaneClient client;
 
     public WorkflowArtifactExporter(AgentDefinitionLoader loader, AistioIntegrationProperties props,
             ObjectMapper objectMapper) {
         this.loader = loader;
         this.props = props;
         this.objectMapper = objectMapper;
+        this.client = new AistioControlPlaneClient(props.getControlPlaneUrl(), objectMapper);
     }
 
     @PostConstruct
@@ -141,6 +138,7 @@ public class WorkflowArtifactExporter {
 
     /**
      * 导出完成后，把每个 definition.json 后台推送至 aistio 控制面（开启且已配置 PAT 时）。
+     * 推送经 {@link AistioControlPlaneClient}，凭据作参数，超时重试统一。
      */
     private void pushIfEnabled(List<Path> written) {
         AistioIntegrationProperties.WorkflowExportConfig cfg = props.getWorkflow();
@@ -154,7 +152,6 @@ public class WorkflowArtifactExporter {
             log.warn("yunxi.aistio.control-plane-url 未配置，跳过编排图自动推送");
             return;
         }
-        String url = props.getControlPlaneUrl().replaceAll("/+$", "") + "/api/v1/orchestration-definitions";
         List<Path> definitions = written.stream()
                 .filter(p -> p.getFileName() != null && p.getFileName().toString().endsWith(DEFINITION_SUFFIX))
                 .toList();
@@ -163,48 +160,19 @@ public class WorkflowArtifactExporter {
         }
         new Thread(() -> {
             for (Path defPath : definitions) {
-                pushOne(url, defPath, cfg);
+                pushOne(defPath, cfg);
             }
         }, "aistio-workflow-push").start();
     }
 
-    private void pushOne(String url, Path defPath, AistioIntegrationProperties.WorkflowExportConfig cfg) {
+    private void pushOne(Path defPath, AistioIntegrationProperties.WorkflowExportConfig cfg) {
         try {
             Object draftSpec = objectMapper.readValue(defPath.toFile(), Object.class);
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("tenant", props.getTenant());
-            // namespace 是端点的必填项：createOrchestrationDefinition 在 body 绑定后即校验 namespace 非空，
-            // 协作身份中间件不会回填请求体，故推送体必须显式携带。优先使用显式配置的 pushNamespace；
-            // 否则回退到 default 命名空间（控制面 global 命名空间，PAT 拥有者通常具备 developer/operator 写权限）。
-            // 注意：控制面的个人命名空间形如 personal-<hash>（非 ns-<userId>），无法从 PAT 的 JWT 声明直接推导，
-            // 若需推送到个人命名空间，运维须显式配置 pushNamespace。
-            body.put("namespace", resolvePushNamespace(cfg));
-            String name = defPath.getFileName().toString()
-                    .replace(DEFINITION_SUFFIX, "");
-            body.put("name", name);
-            body.put("draftSpec", draftSpec);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(cfg.getPushToken());
-
-            for (int attempt = 1; attempt <= MAX_PUSH_ATTEMPTS; attempt++) {
-                try {
-                    ResponseEntity<String> resp =
-                            restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
-                    if (resp.getStatusCode().is2xxSuccessful()) {
-                        log.info("已自动推送编排图到 aistio 控制面: {} (name={})", defPath, name);
-                        return;
-                    }
-                    log.warn("编排图推送返回非成功状态码 {}: {} (name={})", resp.getStatusCode(), defPath, name);
-                } catch (Exception e) {
-                    log.warn("编排图推送失败（第 {} 次）: {} (name={})", attempt, e.getMessage(), name);
-                }
-                if (attempt < MAX_PUSH_ATTEMPTS) {
-                    Thread.sleep(PUSH_RETRY_DELAY_MS);
-                }
-            }
-            log.warn("编排图推送在 {} 次重试后仍失败，可稍后在 aistio 控制台手工导入：{}", MAX_PUSH_ATTEMPTS, defPath);
+            String name = defPath.getFileName().toString().replace(DEFINITION_SUFFIX, "");
+            // 推送体由 AistioControlPlaneClient 统一封装（tenant / namespace / name / draftSpec），
+            // 凭据 PAT 仅作参数传入；失败重试亦在客户端内完成，此处只兜底记录异常，不阻塞启动。
+            client.pushOrchestrationDefinition(props.getTenant(), resolvePushNamespace(cfg), name,
+                    draftSpec, cfg.getPushToken());
         } catch (Exception e) {
             log.error("编排图推送异常: {}", defPath, e);
         }

@@ -35,6 +35,8 @@ public class InMemoryTraceStore implements TraceStore {
 
     private final Map<String, CopyOnWriteArrayList<ReasoningSpan>> traces = new ConcurrentHashMap<>();
     private final Map<String, Sinks.Many<ReasoningSpan>> sinks = new ConcurrentHashMap<>();
+    /** 轨迹活跃顺序：新轨迹追加到尾部，用于 {@link #recentTraceIds(int)} 取最近活跃者。 */
+    private final java.util.Deque<String> activityOrder = new java.util.concurrent.ConcurrentLinkedDeque<>();
     private final int maxSpansPerTrace;
 
     public InMemoryTraceStore() {
@@ -51,8 +53,12 @@ public class InMemoryTraceStore implements TraceStore {
             return;
         }
         try {
+            boolean isNew = !traces.containsKey(span.traceId());
             CopyOnWriteArrayList<ReasoningSpan> list =
                     traces.computeIfAbsent(span.traceId(), k -> new CopyOnWriteArrayList<>());
+            if (isNew) {
+                activityOrder.addLast(span.traceId());
+            }
             list.add(span);
             if (list.size() > maxSpansPerTrace) {
                 list.remove(0);
@@ -93,10 +99,29 @@ public class InMemoryTraceStore implements TraceStore {
             return;
         }
         traces.remove(traceId);
+        activityOrder.remove(traceId);
         Sinks.Many<ReasoningSpan> sink = sinks.remove(traceId);
         if (sink != null) {
             sink.tryEmitComplete();
         }
+    }
+
+    /**
+     * 枚举最近活跃的轨迹标识，按加入顺序由新到旧返回。
+     *
+     * <p>顺序由 {@link #activityOrder} 维护：新轨迹追加到尾部，故从尾部反向取即为最近活跃者。</p>
+     */
+    @Override
+    public List<String> recentTraceIds(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>(Math.min(limit, activityOrder.size()));
+        java.util.Iterator<String> it = activityOrder.descendingIterator();
+        while (it.hasNext() && result.size() < limit) {
+            result.add(it.next());
+        }
+        return result;
     }
 
 }

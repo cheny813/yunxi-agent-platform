@@ -11,7 +11,11 @@ agentscope:
     api-key: ${DASHSCOPE_API_KEY:}
 
     # 默认模型名称（可选）
-    model-name: ${AGENTSCOPE_MODEL:qwen-plus}
+    # 这是真正生效的对话模型名：ModelFactory.create() 取 coreProperties.getModelName()
+    # 拼 modelId（provider:modelName），再交给 ModelRegistry 工厂，详见 ModelFactory.java:230-233。
+    # 占位符统一为 DASHSCOPE_MODEL（与 key 的 DASHSCOPE_API_KEY 成对），由 start.ps1 经
+    # -DDASHSCOPE_MODEL 注入；改模型名改这一个变量即可同时覆盖对话模型与 intent.yml 分类模型。
+    model-name: ${DASHSCOPE_MODEL:qwen-plus}
 
     # 模型提供商（可选）
     provider: ${AGENTSCOPE_PROVIDER:dashscope}

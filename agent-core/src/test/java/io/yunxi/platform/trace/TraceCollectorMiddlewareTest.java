@@ -213,6 +213,11 @@ class TraceCollectorMiddlewareTest {
             @Override
             public void clear(String traceId) {
             }
+
+            @Override
+            public List<String> recentTraceIds(int limit) {
+                return List.of();
+            }
         };
         TraceCollectorMiddleware resilient =
                 new TraceCollectorMiddleware(new TraceComposer(), failing);

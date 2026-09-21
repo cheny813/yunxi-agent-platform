@@ -22,7 +22,13 @@ agentscope:
 
     # Provider 专属配置
     dashscope:
+      # api-key 是这一段唯一被代码消费的字段：ModelFactory.java:109-113 取
+      # getDashscope().getApiKey()，优先级 Agent 覆盖 > provider 级 > 全局 > 环境变量。
       api-key: ${DASHSCOPE_API_KEY:}
+      # 注意：本 provider 级 model 当前【不被消费】——ModelFactory.create() 用
+      # coreProperties.getModelName()（即 agentscope.yml 的 agentscope.core.model-name）
+      # 拼 modelId，而非取 getDashscope().getModel()。要换对话模型请改 agentscope.yml
+      # 的 model-name 或其占位符 DASHSCOPE_MODEL，改这里无效。保留仅为 provider 级扩展预留。
       model: ${DASHSCOPE_MODEL:qwen3.8-27b}
       base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com}
       timeout: ${DASHSCOPE_TIMEOUT:60000}

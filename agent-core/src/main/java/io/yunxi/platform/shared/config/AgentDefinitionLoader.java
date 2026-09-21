@@ -120,9 +120,20 @@ public class AgentDefinitionLoader {
     }
 
     /**
-     * 校验 Agent 定义的必要字段和逻辑正确性
+     * 校验 Agent 定义的必要字段和逻辑正确性。
+     *
+     * <p><b>编排模式门禁</b>：只放行运行时真正接线的模式（single / supervisor）与声明型的
+     * workflow；pipeline / routing / handoffs 的调度尚未接线，一律在加载期拒绝 ——
+     * 否则会出现「YAML 配得上、运行时没有实例」的中间态（Agent 列表里有名字、调用时 not found）。
+     * 接线一个，放开一个。
+     *
+     * <p>包内可见以便单元测试直接校验各模式的准入结论。
+     *
+     * @param def      待校验的 Agent 定义
+     * @param filename 来源文件名（当前仅用于日志上下文）
+     * @return 错误列表，为空表示校验通过
      */
-    private List<String> validateDefinition(AgentDefinition def, String filename) {
+    List<String> validateDefinition(AgentDefinition def, String filename) {
         List<String> errors = new java.util.ArrayList<>();
         if (def.getName() == null || def.getName().isBlank()) {
             errors.add("缺少必填字段: name");
@@ -132,29 +143,30 @@ public class AgentDefinitionLoader {
         }
         // 校验编排模式配置
         if (def.getOrchestration() != null) {
-            // 编排模式大小写不敏感：统一转小写后再比对，避免 WORKFLOW/Workflow 等写法被误判为不支持
-            String rawPattern = def.getOrchestration().getPattern();
-            String pattern = rawPattern == null ? null : rawPattern.toLowerCase();
+            OrchestrationConfig orch = def.getOrchestration();
+            // 编排模式大小写不敏感：统一转小写后再比对，避免 WORKFLOW/Workflow 等写法被误判为不支持；
+            // 未显式配置（null/空白）即默认 single
+            String rawPattern = orch.getPattern();
+            String pattern = (rawPattern == null || rawPattern.isBlank()) ? "single" : rawPattern.toLowerCase();
             if ("supervisor".equals(pattern)) {
-                if (def.getOrchestration().getExperts() == null
-                        || def.getOrchestration().getExperts().isEmpty()) {
+                if (orch.getExperts() == null || orch.getExperts().isEmpty()) {
                     errors.add("supervisor 模式必须配置 experts 列表");
                 }
-            } else if ("pipeline".equals(pattern)) {
-                if (def.getOrchestration().getStages() == null
-                        || def.getOrchestration().getStages().isEmpty()) {
-                    errors.add("pipeline 模式必须配置 stages 列表");
+            } else if (orch.isDeclarationOnly()) {
+                // workflow 是声明型：不产生运行时 Agent 实例，唯一用途是被 WorkflowArtifactExporter
+                // 导出为 aistio 编排图。因此必须至少声明一个 kind=workflow 的挂载，
+                // 否则这份定义既不运行也无图可导出，属无效配置。
+                boolean hasWorkflowMount = orch.getMounts() != null && orch.getMounts().stream()
+                        .anyMatch(m -> m.getBody() != null && "workflow".equalsIgnoreCase(m.getBody().getKind()));
+                if (!hasWorkflowMount) {
+                    errors.add("workflow 是声明型模式（不产生运行时 Agent 实例，仅供导出），"
+                            + "必须至少声明一个 body.kind: workflow 的 mounts 挂载");
                 }
-            } else if ("routing".equals(pattern)) {
-                if (def.getOrchestration().getExperts() == null
-                        || def.getOrchestration().getExperts().isEmpty()) {
-                    errors.add("routing 模式必须配置 experts 列表");
-                }
-            } else if ("workflow".equals(pattern)) {
-                // workflow 模式：编排图经 orchestration.mounts[].body.graph 声明，
-                // 由 WorkflowArtifactExporter 翻译期独立校验，加载阶段不校验节点
+                // 图节点本身的合法性由 OrchestrationTranslator 在导出期校验
             } else if (!"single".equals(pattern)) {
-                errors.add("不支持的编排模式: " + rawPattern + "（可选: single/supervisor/pipeline/routing/workflow，大小写不敏感）");
+                errors.add("编排模式调度未接线，暂不可配置: " + rawPattern
+                        + "（运行时可用: single / supervisor；声明型: workflow（仅导出，不产生运行时实例）。"
+                        + "pipeline / routing / handoffs 的调度尚未接线，接线完成前不允许配置）");
             }
         }
         return errors;

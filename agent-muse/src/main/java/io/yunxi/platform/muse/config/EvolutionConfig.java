@@ -108,5 +108,37 @@ public class EvolutionConfig {
         private int minUsage = 1;
         /** 技能库上限，超出触发剪枝 */
         private int maxSkills = 200;
+        /** 画像驱动的剪枝判据（用户画像作为只读输入） */
+        @NestedConfigurationProperty
+        private ProfileAware profileAware = new ProfileAware();
+    }
+
+    /**
+     * 画像驱动的剪枝判据配置。
+     *
+     * <p>开关关闭或画像数据缺失时，剪枝行为与未引入本特性时完全一致（只有下面两条原有规则）。</p>
+     */
+    @Data
+    public static class ProfileAware {
+        /**
+         * 是否启用画像驱动判据。默认开启；关闭后仅保留使用率与相似度两条原有规则。
+         */
+        private boolean enabled = true;
+
+        /**
+         * 轨迹枚举上限。聚合需枚举近期轨迹后逐个过滤（轨迹存储无按技能反查能力），
+         * 该值是对扫描成本的护栏，超长历史下聚合结果为近似。
+         */
+        private int scanLimit = 500;
+
+        /**
+         * 单一使用者高频使用阈值：去重使用者数为 1 且调用次数达到该值，判为过拟合（需泛化）。
+         */
+        private int overfitUsageThreshold = 5;
+
+        /**
+         * 使用者广度阈值：去重使用者数达到该值，视为具备通用价值，强化保留。
+         */
+        private int generalUsageThreshold = 3;
     }
 }

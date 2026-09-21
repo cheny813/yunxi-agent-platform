@@ -26,6 +26,40 @@ class PermissionConfigTest {
     private final PermissionConfig permissionConfig = new PermissionConfig();
 
     @Nested
+    @DisplayName("平台级治理工具放行（任务清单 + MUSE 元工具）")
+    class PlatformToolAllowRules {
+
+        @Test
+        @DisplayName("unattendedContext() → 放行 todo_write 与三个 MUSE 元工具")
+        void unattendedAllowsPlatformTools() {
+            PermissionContextState state = permissionConfig.unattendedContext();
+
+            assertThat(state.getMode()).isEqualTo(PermissionMode.DONT_ASK);
+            assertThat(state.getAllowRules()).containsKeys(
+                    "todo_write", "muse_skill_eval", "muse_skill_evolve", "muse_skill_prune");
+        }
+
+        @Test
+        @DisplayName("unattendedContext(白名单) → 业务白名单之外仍放行平台级工具")
+        void allowlistedUnattendedStillAllowsPlatformTools() {
+            // 业务白名单只列一个业务工具，平台级治理工具不应被兜底 DENY
+            PermissionContextState state =
+                    permissionConfig.unattendedContext(List.of("search_public_dishes"));
+
+            assertThat(state.getAllowRules()).containsKeys(
+                    "search_public_dishes", "todo_write", "muse_skill_prune");
+        }
+
+        @Test
+        @DisplayName("静态实例访问点：构造后可由 instance() 取得（供静态会话钩子读取模板）")
+        void staticInstanceAccessible() {
+            PermissionConfig fresh = new PermissionConfig();
+
+            assertThat(PermissionConfig.instance()).isSameAs(fresh);
+        }
+    }
+
+    @Nested
     @DisplayName("build(HITLConfig, PermissionMode) — 模式透传 + ASK 规则")
     class PassthroughScenarios {
 

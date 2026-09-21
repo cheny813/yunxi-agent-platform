@@ -38,6 +38,7 @@ spring:
       classpath:config/agentscope.yml,
       classpath:config/muse.yml,
       classpath:config/intent.yml,
+      classpath:config/profile.yml,
       classpath:config/platform.yml,
       classpath:config/aistio.yml,
       classpath:config/observability.yml,

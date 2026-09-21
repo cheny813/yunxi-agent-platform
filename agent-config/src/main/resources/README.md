@@ -122,7 +122,8 @@ agent:
   name: resident-nutrition-assistant
   prompt: "你是一个营养助手..."
   orchestration:
-    pattern: supervisor          # supervisor | pipeline | routing | single
+    pattern: supervisor          # 运行时已接线：single | supervisor；声明型（仅导出）：workflow
+                                 # pipeline / routing / handoffs 调度未接线，配置后加载期报错
     experts:
       - name: dish-searcher
         description: "搜索菜品"

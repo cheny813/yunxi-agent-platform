@@ -179,13 +179,23 @@ $MYSQL_DATABASE = "yunxi_agent_platform"
 $MYSQL_USERNAME = "root"
 $MYSQL_PASSWORD = "root"
 # 【AI 大模型服务】
-# 大模型密钥请通过环境变量 DASHSCOPE_API_KEY 注入，切勿将真实密钥提交到仓库
+# 大模型密钥请勿提交到仓库；此处仅为本地开发默认值。
+# 下方 $configArgs 中以 -D<占位符名>=值的形式注入 JVM（-D 走 systemProperties，优先级高于环境变量
+# 与配置文件），YAML 里的 ${XXX:默认值} 占位符即可读到；占位符未设变量时自动回落到冒号后的默认值。
+#   -DDASHSCOPE_API_KEY  → agentscope.yml / llm.yml 的 api-key（ModelFactory.java:109-113）
+#   -DDASHSCOPE_MODEL    → agentscope.yml 的 core.model-name，真正生效的对话模型（ModelFactory.java:230-233）
+#   -DINTENT_MODEL       → intent.yml 的分类模型（每轮都跑，建议用快模型）
+#   -DINTENT_TIMEOUT_MS  → intent.yml 的分类超时，超时即降级 unknown
 $DASHSCOPE_API_KEY = "sk-dd32b52d60d8d08a9e"
-$LLM_MODEL        = "qwen3.8-27b"
-# 导出为同名环境变量，供 llm.yml 的 ${DASHSCOPE_API_KEY:} / ${DASHSCOPE_MODEL:} 占位符读取。
-# 注意：PowerShell 变量 ≠ 环境变量，不导出则 YAML 回落空值（api-key 空 → 401）。
-$env:DASHSCOPE_API_KEY = $DASHSCOPE_API_KEY
-$env:DASHSCOPE_MODEL   = $LLM_MODEL
+$LLM_MODEL         = "qwen3.8-27b"
+# 意图分类单独用变量：分类每轮都跑一次，建议用快模型（如 qwen-turbo / qwen-plus）省时延和成本。
+# 2026-09-21 由 qwen3.7-flash-2026-07-15 改为 qwen-turbo：前者单次响应常超 2000ms 分类超时，
+# 导致每轮都降级 unknown（意图识别事实性失效）。同时把 intent.yml 的 timeout-ms 放宽到 10000ms，
+# 两者叠加后分类应恢复正常，不再出现 "[INTENT] LLM 分类 超时" 告警。
+$INTENT_MODEL      = "qwen-turbo"
+# 意图分类超时（毫秒，resilience4j TimeLimiter）。分类每轮都跑，超时即降级 unknown；
+# 2s 对多数模型过紧，故放宽到 10s（与 intent.yml 的 ${INTENT_TIMEOUT_MS:10000} 默认值一致）。
+$INTENT_TIMEOUT_MS = "10000"
 # 【向量数据库】
 $MILVUS_HOST     = "127.0.0.1"
 $MILVUS_PORT     = "19530"
@@ -205,19 +215,46 @@ Write-Host "       Cache: $REDIS_HOST`:$REDIS_PORT db=$REDIS_DATABASE"
 Write-Host ""
 
 # ===== 前端 dev server（可选）=====
-# 通过 -Web 开关一并拉起营养顾问前端（vite）。vite 的 stdout/stderr 由
+# 通过 -Web 开关一并拉起营养顾问前端（vite，默认端口 5173）。vite 的 stdout/stderr 由
 # agent-nutritionist-web/start-web.ps1 统一重定向到 logs/nutritionist-web/，
 # 不在前端目录散落 dev.out.log / dev.err.log。该脚本以 -WindowStyle Hidden
 # 后台启动，不阻塞后端启动。
-if ($Web) {
+#
+# 注意：前端是独立的前端工程，后端 JAR 不含其页面——不加 -Web 时浏览器访问 5173 会连不上，
+# 属预期行为（不是后端故障）。访问协议为 http（vite 未启用 https），写成 https 会握手失败。
+$WEB_PORT = "5173"
+function Start-WebDevServer {
     $webScript = Join-Path $scriptDir "agent-nutritionist-web\start-web.ps1"
-    if (Test-Path $webScript) {
-        Write-Host "[INFO] 拉起前端 dev server（日志收口至 logs/nutritionist-web）..." -ForegroundColor Cyan
-        & $webScript
-        Write-Host ""
-    } else {
+    if (-not (Test-Path $webScript)) {
         Write-Host "[WARN] 未找到前端启动脚本: $webScript，跳过前端启动" -ForegroundColor Yellow
+        return
     }
+    # 幂等：端口已在监听说明前端已在运行，直接复用，避免重复拉起多个 vite 进程
+    $running = netstat -ano | Select-String ":$WEB_PORT\s" | Where-Object { $_ -match 'LISTENING' }
+    if ($running) {
+        Write-Host "[INFO] 前端 dev server 已在运行（端口 $WEB_PORT），跳过重复启动" -ForegroundColor Green
+        Write-Host "       访问地址：http://localhost:$WEB_PORT/" -ForegroundColor Cyan
+        return
+    }
+    Write-Host "[INFO] 拉起前端 dev server（日志收口至 logs/nutritionist-web）..." -ForegroundColor Cyan
+    & $webScript
+    # 等待端口就绪（最多 30s），让同屏提示的地址是可访问的
+    $waited = 0
+    while ($waited -lt 30) {
+        $up = netstat -ano | Select-String ":$WEB_PORT\s" | Where-Object { $_ -match 'LISTENING' }
+        if ($up) { break }
+        Start-Sleep -Seconds 1; $waited++
+    }
+    if ($waited -ge 30) {
+        Write-Host "[WARN] 等待前端端口 $WEB_PORT 就绪超时，请查看日志：logs\nutritionist-web\dev.err.log" -ForegroundColor Yellow
+    } else {
+        Write-Host "[INFO] 前端已就绪（等待 ${waited}s）：http://localhost:$WEB_PORT/" -ForegroundColor Green
+    }
+}
+
+if ($Web) {
+    Start-WebDevServer
+    Write-Host ""
 }
 
 if ([string]::IsNullOrWhiteSpace($DASHSCOPE_API_KEY)) {
@@ -284,8 +321,13 @@ $configArgs = @(
     "-DMYSQL_DATABASE=$MYSQL_DATABASE",
     "-DMYSQL_USERNAME=$MYSQL_USERNAME",
     "-DMYSQL_PASSWORD=$MYSQL_PASSWORD",
-    # api-key / model 经 $env:DASHSCOPE_API_KEY / $env:DASHSCOPE_MODEL 注入（见顶部导出），
-    # 对应 llm.yml 的 ${DASHSCOPE_API_KEY:} / ${DASHSCOPE_MODEL:} 占位符，无需在此重复传 -D。
+    # 名字必须与 YAML 里的占位符同名（-D 走 systemProperties，优先级高于环境变量与配置文件）。
+    # 注意：不要写成 -Dagentscope.core.dashscope.model——那是 Spring 绑定属性名而非占位符名，
+    # 会被 ModelFactory 忽略（它只读 coreProperties.getModelName()），造成"改了没生效"。
+    "-DDASHSCOPE_API_KEY=$DASHSCOPE_API_KEY",
+    "-DDASHSCOPE_MODEL=$LLM_MODEL",
+    "-DINTENT_MODEL=$INTENT_MODEL",
+    "-DINTENT_TIMEOUT_MS=$INTENT_TIMEOUT_MS",
     "-Dmilvus.host=$MILVUS_HOST",
     "-Dmilvus.port=$MILVUS_PORT",
     "-Dmilvus.username=$MILVUS_USERNAME",

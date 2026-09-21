@@ -1,7 +1,7 @@
 # ============================================================
 # aistio 集成（agentscope-service 控制面观测 / 治理对接）
 # 默认关闭；开启后暴露 /agentscope/* 契约端点并启动时注册数据面。
-# 详见 docs/agentscope-service-integration-design.md
+# 启用后对接 aistio（AgentScope-Service）控制面，提供管控 / 治理可视化 / 会话干预能力。
 # ============================================================
 # 红线：本文件只配 yunxi.aistio 顶层字段。workflow 子树在
 #   config/aistio-workflow-export.yml（独立 optional 片段），禁止在此写 workflow.*，

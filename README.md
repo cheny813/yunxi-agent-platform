@@ -38,7 +38,7 @@ yunxi 站在经过生产验证的 AgentScope-Java 2.0.4-SNAPSHOT 运行时之上
 
 | 特性 | 说明 |
 |------|------|
-| **多 Agent 编排** | Supervisor、Agent 路由、Pipeline 编排 |
+| **多 Agent 编排** | Supervisor 多专家编排（已接线）；`workflow` 为声明型（编排图导出至 aistio 执行，不产生运行时实例）；`pipeline` / `routing` / `handoffs` 调度未接线，加载期即被拒绝 |
 | **意图引擎** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型、rule/llm/hybrid 分类通道、actuator 热更新、意图路由，业务数据可配置替换 |
 | **执行引擎** | `AgentExecutionEngine` 门面统一收口同步 / 流式 / 结构化 / 取消四类调用入口；调用前经 4 个前置解析拦截器（AuthResolve → Memory → IntentPipeline → RagRetrieval），事件流经统一轨迹归集后由投影消费（新增协议只需实现一个 Projection） |
 | **AgentScope 深度集成** | 基于 AgentScope-Java 2.0.4-SNAPSHOT，复用 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
@@ -49,7 +49,7 @@ yunxi 站在经过生产验证的 AgentScope-Java 2.0.4-SNAPSHOT 运行时之上
 | **MCP 动态注册** | 运行期通过 REST API 注册/注销 MCP 服务器，基于 Nacos 配置中心实现目录持久化与跨实例广播，工具即时注入 Agent Toolkit，无需重启；目标不可达时自动重连降级 |
 | **记忆系统** | Harness 内置双层文件系统记忆，支持 Redis 跨实例共享 |
 | **技能系统** | 复用 AgentScope-Java 2.0 原生 `AgentSkillRepository`（文件系统 + 项目级全局目录），由框架 `DynamicSkillMiddleware` 自动装载。默认关闭，需将 `agentscope.core.skill.enabled` 设为 `true` 启用 |
-| **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并闭环 |
+| **技能自进化（MUSE）** | 沙箱评估→LLM 修补→剪枝合并闭环；剪枝判据含**使用者广度**维度（只读用户画像，区分「多人各用一次」与「单人高频」，避免误杀小众领域核心技能） |
 | **流式事件** | `Model.stream()` 与 `Agent.streamEvents()` 双通道，均按 `AgentEventType` 过滤 |
 | **任务清单（TodoList）** | Agent 维护结构化步骤清单（x/y 进度经 `todo_update` 事件实时同步），状态随会话持久化、可断点续跑，复用原生 `todo_write` 工具 |
 | **人机确认（HITL）** | 危险工具执行前经 `REQUIRE_USER_CONFIRM` 事件请求确认，未配置 HITL 的 Agent 则直接降级为拒绝 |
@@ -186,6 +186,7 @@ docker compose up -d
 ```powershell
 .\启动项目.ps1          # 推荐：首次会自动 mvn 编译并启动（端口 40001，约数分钟）
 # .\启动项目.ps1 -Fast  # 已编译过则跳过打包直接启动
+# .\启动项目.ps1 -Web   # 同时拉起前端 dev server（http://localhost:5173/）
 # mvn spring-boot:run -pl agent-app   # 备选：需先 set DASHSCOPE_API_KEY（见上一步 LLM 配置）
 ```
 
@@ -226,13 +227,24 @@ curl -X POST http://localhost:40001/api/conversations/chat \
 
 ### 体验前端示例（可选）
 
-`agent-nutritionist-web` 是可运行的前端示例（智能配餐工作台，展示「表单 + AI 助手」完整交互），基于 Vite，`npm run dev` 拉起常驻后台开发服务器：
+`agent-nutritionist-web` 是可运行的前端示例（智能配餐工作台，展示「表单 + AI 助手」完整交互），基于 Vite，`npm run dev` 拉起常驻后台开发服务器。
+
+**推荐：随后端一并拉起**（`-Web` 开关，幂等——已在运行则自动跳过，并等待端口就绪后打印地址）：
+
+```powershell
+.\启动项目.ps1 -Web          # 后端 40001 + 前端 5173 一起起
+.\启动项目.ps1 -Web -Clean   # 重新打包后一起起
+```
+
+也可单独启动：
 
 ```bash
 cd agent-nutritionist-web
 npm install      # 首次或依赖变更后执行
 npm run dev      # 监听 http://localhost:5173
 ```
+
+> **注意**：前端是**独立工程**，后端 JAR 不含其页面——不加 `-Web` 时访问 5173 会连不上，属预期行为，**不是后端故障**。访问协议为 **http**（Vite 未启用 https），写成 `https://localhost:5173` 会握手失败。前端日志收口在 `logs/nutritionist-web/`（`dev.out.log` / `dev.err.log`），不散落在前端目录。
 
 | 页面 | 地址 | 说明 |
 |------|------|------|

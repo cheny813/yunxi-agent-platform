@@ -78,7 +78,8 @@ agent-spi → agent-config → agent-core
 | `SelfEvolutionEngine` | 闭环编排：评估→修补→再评估，首轮全通过立即返回，连续无进展提前停止 |
 | `DefaultSkillEvaluator` | 沙箱评估器：子进程/Docker 跑 Java 自测，退出码判通过 |
 | `SkillRefiner` | LLM 修补器：注入失败用例名+stderr/stdout 到提示词，经 Model.stream 迭代修补 |
-| `DefaultSkillPruner` | 技能剪枝：按使用率归档 + CJK 二元切分 TF-IDF 余弦相似度自动合并重复技能 |
+| `DefaultSkillPruner` | 技能剪枝：按使用率归档 + CJK 二元切分 TF-IDF 余弦相似度自动合并重复技能 + 画像驱动判据（使用者广度） |
+| `UsageProfileAggregator` | 只读聚合调用轨迹与用户画像，产出技能的使用者画像特征（`UsageProfile`），供剪枝参考 |
 | `BuiltinSkillLoader` | 内建技能落地：启动时把 classpath 内建技能拷贝到 AgentScope 运行时技能目录 |
 | `SkillEvalTool` / `SkillRefineTool` / `SkillPruneTool` | 元工具：把以上能力挂给 LLM，Agent 自主调用自进化 |
 
@@ -100,6 +101,7 @@ yunxi:
 - **零侵入**：通过 SPI 接口 + `ObjectProvider` 懒注入，不修改 AgentScope 框架代码
 - **升级友好**：内部调用全部走 AgentScope 公开 API，不依赖框架内部实现类
 - **自包含**：中文分词（CJK 二元切分）+ TF-IDF + 余弦相似度，零外部依赖
+- **画像只读**：剪枝可参考使用者画像（使用者广度维度），但方向严格单向——MUSE 只**读**画像，不回写；画像抽取链路也不读剪枝结果。二者是消费关系，不是双向挂钩
 
 详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 和 [agent-muse README](../../agent-muse/README.md)。
 

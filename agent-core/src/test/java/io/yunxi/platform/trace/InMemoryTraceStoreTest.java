@@ -104,6 +104,38 @@ class InMemoryTraceStoreTest {
     }
 
     @Test
+    @DisplayName("枚举最近轨迹：按加入顺序由新到旧返回")
+    void recentTraceIdsNewestFirst() {
+        store.append(ReasoningSpan.open("t1", "a", "e1", SpanKind.TEXT, null));
+        store.append(ReasoningSpan.open("t2", "a", "e2", SpanKind.TEXT, null));
+        store.append(ReasoningSpan.open("t3", "a", "e3", SpanKind.TEXT, null));
+
+        List<String> ids = store.recentTraceIds(2);
+
+        assertThat(ids).containsExactly("t3", "t2");
+    }
+
+    @Test
+    @DisplayName("枚举最近轨迹：非正上限返回空，且不重复计入同一轨迹")
+    void recentTraceIdsEdgeCases() {
+        store.append(ReasoningSpan.open("t1", "a", "e1", SpanKind.TEXT, null));
+        store.append(ReasoningSpan.open("t1", "b", "e2", SpanKind.TEXT, null));
+
+        assertThat(store.recentTraceIds(0)).isEmpty();
+        assertThat(store.recentTraceIds(-1)).isEmpty();
+        assertThat(store.recentTraceIds(10)).containsExactly("t1");
+    }
+
+    @Test
+    @DisplayName("清理后不再出现在最近轨迹枚举中")
+    void clearRemovesFromRecent() {
+        store.append(ReasoningSpan.open("t1", "a", "e1", SpanKind.TEXT, null));
+        store.clear("t1");
+
+        assertThat(store.recentTraceIds(10)).isEmpty();
+    }
+
+    @Test
     @DisplayName("写入空快照或无轨迹标识的快照不生效，且不抛异常")
     void invalidAppendIsIgnored() {
         assertThatCode(() -> {

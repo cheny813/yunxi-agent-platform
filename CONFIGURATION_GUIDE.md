@@ -89,7 +89,8 @@ set MYSQL_DATABASE=agent_platform
 ```bash
 # DashScope
 set DASHSCOPE_API_KEY=your_api_key
-set AGENTSCOPE_MODEL=qwen-plus
+set DASHSCOPE_MODEL=qwen-plus
+set INTENT_MODEL=qwen-plus
 
 # OpenAI
 set OPENAI_API_KEY=your_api_key

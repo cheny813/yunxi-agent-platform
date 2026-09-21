@@ -6,7 +6,9 @@ import org.springframework.stereotype.Component;
 import lombok.Data;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * aistio 集成配置（绑定 {@code yunxi.aistio.*}）。
@@ -22,6 +24,24 @@ public class AistioIntegrationProperties {
 
     /** 总开关，默认关闭（符合「零新增基建、不侵入主线」原则） */
     private boolean enabled = false;
+
+    /**
+     * 数据面实例标识（必须全局唯一，且不能在每次重连/重启时重新生成）。
+     *
+     * <p>留空时由 {@code ${spring.application.name}-${hostname}-${server.port}} 推导。
+     * 同一 instanceKey 重复注册会被控制面 upsert 为同一行并 {@code generation+1}，导致 attempt 归属错位；
+     * 而随机生成的 key 会让「generation&gt;1」这个唯一可观测的冲突信号永远不出现，故默认走稳定推导。</p>
+     */
+    private String instanceKey = "";
+
+    /** 优雅下线时在跑 attempt 的最长等待秒数（超时即强制关闭，避免停机挂死） */
+    private int shutdownWaitSec = 30;
+
+    /**
+     * workspace 定义物化根目录（控制面下发的 definition 会在此为每个 attempt 建临时工作区）。
+     * 留空时用 {@code ${java.io.tmpdir}/yunxi-aistio-workspaces}。
+     */
+    private String workspaceRoot = "";
 
     /** aistio 控制面地址（aistiod HTTP，默认 :8081），用于启动时自动注册数据面 */
     private String controlPlaneUrl = "http://localhost:8081";
@@ -86,6 +106,41 @@ public class AistioIntegrationProperties {
      * 将内联图校验并导出为 DefinitionSpec artifact，供控制台导入。
      */
     private WorkflowExportConfig workflow = new WorkflowExportConfig();
+
+    /**
+     * 编排触发配置（automation webhook）。默认关闭 —— 编排定义与 automation 须由运维在 aistio
+     * 控制台创建并把 secret 下发到此处后，yunxi 才具备触发能力（数据面身份对编排资源一律 403）。
+     */
+    private TriggerConfig trigger = new TriggerConfig();
+
+    /**
+     * 编排触发：definitionKey → automation 绑定。
+     *
+     * <p>按场景拆分绑定（§3.3.5）：webhook 限流是 60 次/分钟、按 {@code automationId + ClientIP} 共享，
+     * 且 secret 是 automation 级；所有场景共用一个 automation 会让单一场景打满配额，且泄露影响面波及全部场景。</p>
+     */
+    @Data
+    public static class TriggerConfig {
+
+        /** 是否启用编排触发，默认关闭 */
+        private boolean enabled = false;
+
+        /** definitionKey → automation 绑定（key 为 yunxi 侧定义引用名，非服务端 definitionId） */
+        private Map<String, AutomationBinding> automations = new LinkedHashMap<>();
+
+        @Data
+        public static class AutomationBinding {
+
+            /** 控制台创建的 automation ID */
+            private String automationId;
+
+            /** 该 automation 下 type=webhook 的 trigger ID */
+            private String triggerId;
+
+            /** 控制台创建时一次性下发的 webhook secret */
+            private String secret;
+        }
+    }
 
     @Data
     public static class WorkflowExportConfig {

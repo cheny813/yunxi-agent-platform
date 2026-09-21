@@ -226,13 +226,39 @@ MUSE 代码位于 `agent-muse` 模块，核心类职责：
 | `SelfEvolutionEngine` | 闭环编排入口（`@Component`），串联 evaluate → refine → 再 evaluate，直到测试全过或达到 `refine.max-iterations` |
 | `SkillEvaluator`（接口）/ `DefaultSkillEvaluator`（实现） | 在沙箱中执行技能自带的测试脚本，产出 `EvalReport`（通过率、失败信息） |
 | `SkillRefiner` | 调用 LLM，依据 `EvalReport` 生成修补后的技能正文，并写回磁盘/技能仓库 |
-| `SkillPruner`（接口）/ `DefaultSkillPruner`（实现） | 基于使用率与相似度，合并（`SimpleSkillMerger`）/删除冗余技能 |
+| `SkillPruner`（接口）/ `DefaultSkillPruner`（实现） | 基于使用率与相似度，合并（`SimpleSkillMerger`）/删除冗余技能；并支持**画像驱动判据**（见下） |
+| `UsageProfileAggregator` | 从调用轨迹（`TraceStore`）与用户画像（`RedisUserProfileStore`）**只读**聚合出技能的使用者画像特征（`UsageProfile`），供剪枝参考 |
 | `SandboxRunner`（接口）/ `LocalSubprocessSandboxRunner`、`DockerSandboxRunner`（实现） | 隔离执行环境，确保修补过程不影响主进程 |
 | `BuiltinSkillLoader` | 应用启动时把 classpath 内 `builtin-skills/` 落地到 `builtin-export-dir`（默认 `.agentscope/workspace/skills`） |
 | `MuseToolRegistrarImpl` | 注册 MUSE 元工具组（`SkillEvalTool` / `SkillRefineTool` / `SkillPruneTool`）供 Agent 调用 |
 | `MuseAutoConfiguration` | 仅在 `yunxi.muse.enabled=true` 时通过 `@ComponentScan` 装配上述组件，对框架零侵入 |
 
 `EvalReport` 是闭环的"事实来源"：eval 产出它，refine 消费它，prune 也参考它的执行统计。
+
+### 画像驱动的剪枝判据
+
+`SkillMeta.usageCount` 是**全局累计计数**，本身分不清两种本质不同的情况：
+
+| 情形 | 单看 `usageCount` | 实际应有判定 |
+|------|------------------|--------------|
+| 10 个用户各用 1 次 | 看起来"高频" | 通用技能，保留 |
+| 1 个用户用了 10 次 | 看起来"高频" | 单一用户过拟合，**标记需泛化** |
+| 新人刚用 1 次 | 看起来"低频" | 样本不足，不应归档 |
+
+因此剪枝引入**使用者广度**维度：把「使用次数」升级为「谁在用」。数据来源是两处**只读**输入——调用轨迹（`TraceStore`）与用户画像（`RedisUserProfileStore`），由 `UsageProfileAggregator` 聚合为 `UsageProfile`：
+
+- `distinctUsers`：去重使用者数（区分「多人各一次」与「单人多次」）
+- `categoryDistribution`：画像类别 → 覆盖的不同用户数
+- `successCalls`：轨迹终态为成功的调用数
+
+聚合链路：轨迹标识格式为 `userId:sessionId`，使用者身份可直接从中解析（无需扩展轨迹结构）；轨迹中技能调用表现为 `TOOL_CALL` 节点，按负载里的工具名匹配。
+
+**两类处置**（在原有两条规则之上追加，**只做修正、不新增删除**，避免误杀小众领域的核心技能）：
+
+1. **撤销归档**：某技能被第一遍判为低使用率，但去重使用者数达到 `general-usage-threshold` → 多用户使用证明有通用价值，移除其归档决定。
+2. **标记过拟合**：去重使用者数为 1 且调用次数达到 `overfit-usage-threshold` → 标记为 `OVERFIT`（需泛化），**不删除**——「只有一类用户在用」可能恰恰是该行业的核心技能。
+
+**边界与降级**：开关关闭或画像/轨迹数据缺失时，聚合返回空值，剪枝**退化为原有两条规则**，行为与未引入该特性时一致；聚合过程异常一律隔离，不影响剪枝产出。轨迹存储只提供「枚举」而非「按技能反查」，故聚合需枚举近期轨迹后逐个过滤，扫描量受 `scan-limit` 约束，超长历史下结果为近似。
 
 ### 配置
 
@@ -258,6 +284,12 @@ yunxi:
       similarity-threshold: 0.85        # 余弦相似度超过该值则建议合并
       min-usage: 1                      # 使用次数低于该值标记为可剪枝
       max-skills: 200                   # 技能库上限，超出触发剪枝
+      # 画像驱动判据（只读用户画像，不反向修改画像）；关闭或数据缺失时退化为上面两条规则
+      profile-aware:
+        enabled: true
+        scan-limit: 500                 # 轨迹枚举上限（性能护栏，超长历史下结果为近似）
+        overfit-usage-threshold: 5      # 单一使用者高频阈值 → 标记过拟合（需泛化）
+        general-usage-threshold: 3      # 使用者广度阈值 → 撤销低使用率归档
 ```
 
 ### 接入方式
@@ -270,7 +302,7 @@ MUSE 严格依赖框架的 `AgentSkillRepository` 标准接口读写技能，不
 
 ### 下一步建议
 
-在具备 LLM + 沙箱的运行节点上，对 `data_stats` / `text_clean` 跑通 `muse_skill_evolve` 最小闭环；据真实返回微调 `SkillRefiner` 提示词与 `EvalReport` 解析；接入 `SkillPruner` 的定时调度（按使用率/相似度合并剪枝）。
+在具备 LLM + 沙箱的运行节点上，对 `data_stats` / `text_clean` 跑通 `muse_skill_evolve` 最小闭环；据真实返回微调 `SkillRefiner` 提示词与 `EvalReport` 解析；接入 `SkillPruner` 的**定时调度**（当前剪枝仅在显式调用 `muse_skill_prune` 时触发，尚未挂定时任务，按使用率/相似度/使用者广度合并剪枝）。
 
 ---
 

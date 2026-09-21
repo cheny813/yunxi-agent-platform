@@ -1,5 +1,8 @@
 package io.yunxi.platform.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.agentscope.core.permission.PermissionBehavior;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
@@ -39,6 +42,29 @@ import java.util.Set;
 @Component
 public class PermissionConfig {
 
+    /**
+     * Spring 装配后的单例引用，供静态的会话级状态修正钩子
+     * （{@code AgentConfigurer#activateSessionToolGroups}）读取权限模板。
+     *
+     * <p>本类是<b>无状态纯函数组件</b>（仅含静态常量与将配置翻译为权限上下文的纯方法），
+     * 因此以静态引用暴露不引入共享可变状态。这样做的原因是：会话级修正钩子为静态方法
+     * （由多个调用期策略类直接静态调用），无法通过实例注入拿到本组件。</p>
+     */
+    private static volatile PermissionConfig instance;
+
+    public PermissionConfig() {
+        instance = this;
+    }
+
+    /**
+     * 返回 Spring 装配的实例；未装配（如单元测试直构）时为 {@code null}。
+     *
+     * @return 组件实例或 null
+     */
+    public static PermissionConfig instance() {
+        return instance;
+    }
+
     /** 权限规则来源标识，便于在 AgentScope 权限引擎日志/状态中区分 yunxi 注入的规则 */
     private static final String RULE_SOURCE = "yunxi-hitl";
 
@@ -54,6 +80,24 @@ public class PermissionConfig {
      * AgentScope 内置任务清单工具名（由 {@code HarnessAgent.Builder.enableTaskList(true)} 注册）。
      */
     private static final String TODO_WRITE_TOOL = "todo_write";
+
+    /**
+     * MUSE 自进化元工具名（由 {@code MuseToolRegistrarImpl} 注册到 {@code muse} 工具组）。
+     * 属平台级治理能力，需在所有权限模式下放行；仅在 {@code yunxi.muse.enabled=true} 时注册。
+     */
+    private static final List<String> MUSE_META_TOOLS = List.of(
+            "muse_skill_eval", "muse_skill_evolve", "muse_skill_prune");
+
+    /** 平台级放行工具全集（任务清单 + MUSE 元工具），仅用于诊断日志输出。 */
+    private static final List<String> PLATFORM_ALLOW_TOOLS;
+    static {
+        List<String> all = new java.util.ArrayList<>();
+        all.add(TODO_WRITE_TOOL);
+        all.addAll(MUSE_META_TOOLS);
+        PLATFORM_ALLOW_TOOLS = List.copyOf(all);
+    }
+
+    private static final Logger log = LoggerFactory.getLogger(PermissionConfig.class);
 
     /**
      * 判断 HITL 配置是否包含需要人工确认（ASK）的工具。
@@ -97,7 +141,7 @@ public class PermissionConfig {
     public PermissionContextState build(HITLConfig hitl, PermissionMode mode) {
         PermissionContextState.Builder builder = PermissionContextState.builder();
         builder.mode(mode);
-        addTodoWriteAllowRule(builder);
+        addPlatformToolAllowRules(builder);
         if (mode != PermissionMode.DONT_ASK) {
             addAskRules(builder, hitl);
         }
@@ -142,8 +186,11 @@ public class PermissionConfig {
     public PermissionContextState unattendedContext() {
         PermissionContextState.Builder builder = PermissionContextState.builder();
         builder.mode(PermissionMode.DONT_ASK);
-        addTodoWriteAllowRule(builder);
-        return builder.build();
+        addPlatformToolAllowRules(builder);
+        PermissionContextState state = builder.build();
+        log.info("[permission] unattendedContext 构建完成 mode=DONT_ASK allowTools={}",
+                PLATFORM_ALLOW_TOOLS);
+        return state;
     }
 
     /**
@@ -164,7 +211,7 @@ public class PermissionConfig {
     public PermissionContextState unattendedContext(List<String> allowedTools) {
         PermissionContextState.Builder builder = PermissionContextState.builder();
         builder.mode(PermissionMode.DONT_ASK);
-        addTodoWriteAllowRule(builder);
+        addPlatformToolAllowRules(builder);
         if (allowedTools != null) {
             for (String tool : allowedTools) {
                 if (tool != null && !tool.isBlank()) {
@@ -252,6 +299,34 @@ public class PermissionConfig {
     private void addTodoWriteAllowRule(PermissionContextState.Builder builder) {
         builder.addAllowRule(TODO_WRITE_TOOL,
                 new PermissionRule(TODO_WRITE_TOOL, null, PermissionBehavior.ALLOW, RULE_SOURCE));
+    }
+
+    /**
+     * 平台级治理工具放行：任务清单工具与 MUSE 自进化元工具。
+     *
+     * <p>这些工具不属于任何单个业务 Agent 的职责，而是平台治理能力，因此不参与
+     * Agent 的业务工具白名单/黑名单——白名单模式下若不一并放行，会被兜底 DENY 拒绝，
+     * 出现「工具已注册、工具组已激活，但模型调用时报 permission denied」的现象。</p>
+     *
+     * <p><b>安全性</b>：MUSE 三工具（{@code muse_skill_eval} / {@code muse_skill_evolve} /
+     * {@code muse_skill_prune}）作用于技能库元数据与技能目录，不触碰用户业务数据；
+     * 其入参为技能描述与技能正文，且执行范围受技能目录约束。是否可用由
+     * {@code yunxi.muse.enabled} 决定（关闭时这些工具根本不注册，规则无副作用）。
+     * 与 {@code node_command} 等有外部副作用的工具不同，故不纳入人工确认范围。</p>
+     *
+     * <p>注：本规则为 ALLOW 而非 ASK，不受「{@code DONT_ASK} 模式不注入 ASK 规则」约束。</p>
+     *
+     * <p><b>变更生效范围（重要）</b>：权限上下文只在<b>新建会话</b>时从此处模板生成；
+     * 已有会话从持久化的会话状态加载旧权限快照，框架不比对模板是否变更。因此修改本方法后，
+     * <b>存量会话仍按旧规则运行</b>，表现为「改了规则但调用仍被拒」。验证与灰度时请用全新
+     * userId/conversationId 发起调用，或先清空会话状态，勿依赖热更新。</p>
+     */
+    private void addPlatformToolAllowRules(PermissionContextState.Builder builder) {
+        addTodoWriteAllowRule(builder);
+        for (String tool : MUSE_META_TOOLS) {
+            builder.addAllowRule(tool,
+                    new PermissionRule(tool, null, PermissionBehavior.ALLOW, RULE_SOURCE));
+        }
     }
 
     /**

@@ -1,0 +1,34 @@
+# ============================================================
+# 用户画像抽取配置（yunxi.profile 前缀唯一真相源）
+# ============================================================
+# 画像抽取由 LLM 自由归纳（category 由模型判定，零行业词典、零硬编码）。
+# 为控制 token 与延迟，与对话大模型解耦：走更便宜的专用快模型 + 输入滚动窗口封顶。
+#
+# 切换模型：start.ps1 经 -DPROFILE_MODEL=... 一处管控，不污染对话链路。
+# ============================================================
+yunxi:
+  profile:
+    llm:
+      # 抽取专用模型（默认快模型；对话模型是 agentscope.core.model-name，二者独立）
+      model: ${PROFILE_MODEL:qwen-turbo}
+      # 单次抽取超时（毫秒），超时即降级为「不更新画像」
+      timeout-ms: ${PROFILE_TIMEOUT_MS:2000}
+      # 输入滚动窗口：只取最近 N 条消息，封住每轮 token 上限
+      max-window-messages: ${PROFILE_MAX_WINDOW_MESSAGES:16}
+      # 拼接文本超过该字符数只保留尾部，确保输入 token 有硬上限
+      max-window-chars: ${PROFILE_MAX_WINDOW_CHARS:4000}
+      # 抽取是确定性任务，固定低温
+      temperature: ${PROFILE_TEMPERATURE:0.0}
+      # 输出 token 硬上限
+      max-tokens: ${PROFILE_MAX_TOKENS:600}
+      # 低于该置信度的身份不纳入画像（值级兜底，非降级判定）
+      min-confidence: ${PROFILE_MIN_CONFIDENCE:0.3}
+    # 自动演进：挂在调用收尾阶段（onAgent）异步抽取，不阻塞用户响应。
+    # 节流避免每轮都抽导致 token 成本随轮数线性增长；时间与轮次为「或」关系，任一达成即触发。
+    evolution:
+      # 是否启用收尾自动抽取（关闭后仅保留手动 evolve 端点）
+      enabled: ${PROFILE_EVOLUTION_ENABLED:true}
+      # 距上次抽取的最小间隔（秒）；0 表示不按时间节流
+      min-interval-seconds: ${PROFILE_EVOLUTION_MIN_INTERVAL_SECONDS:60}
+      # 距上次抽取需累积的最小轮次数；0 表示不按轮次节流
+      min-turns: ${PROFILE_EVOLUTION_MIN_TURNS:3}

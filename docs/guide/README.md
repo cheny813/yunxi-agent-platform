@@ -121,6 +121,18 @@
 **我要排查生产问题**
 → 查看 [12. 常见问题](./12-faq.md) 和 [15. 可观测性](./15-observability.md)
 
+**意图识别总是 unknown / 日志报分类超时**
+→ 查看 [16. 意图引擎](./16-intent-engine.md) 的「分类超时」说明，可经 `-DINTENT_MODEL` / `-DINTENT_TIMEOUT_MS` 调整
+
+**我要调整技能剪枝策略（含"只有一个人在用"的技能怎么办）**
+→ 查看 [10. 技能系统 - 画像驱动的剪枝判据](./10-skills.md#画像驱动的剪枝判据) 与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)
+
+**我改了权限规则但调用仍被拒**
+→ 查看 [06. 配置指南 - 权限规则变更的生效范围](./06-configuration.md#权限规则变更的生效范围)
+
+**我想同时启动前后端**
+→ `.\启动项目.ps1 -Web`，见 [02. 快速开始](./02-quickstart.md)
+
 ---
 
 ## 其他资源
@@ -128,7 +140,7 @@
 - **代码仓库**: 各模块代码和详细实现
 - **开发规范**: [11. 最佳实践](./11-best-practices.md) 与 `CONTRIBUTING.md`（提交/分支规范）
 - **运行时技能**: `.agentscope/workspace/skills/` 内置技能（框架 `project-global-dir` 唯一识别路径）
-- **MUSE 自进化引擎**: 详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)；模块实现见 [agent-muse README](../../agent-muse/README.md)
+- **MUSE 自进化引擎**: 详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎)（含 [画像驱动的剪枝判据](./10-skills.md#画像驱动的剪枝判据)）与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)；模块实现见 [agent-muse README](../../agent-muse/README.md)
 - **实战示例：食谱生成智能体**: 完整后端协作、MCP 协议与前端设计见 [07. 开发指南 - 实战示例](./07-development.md#实战示例食谱生成智能体)；官方示例与学习资源见同章 [官方示例与学习资源](./07-development.md#官方示例与学习资源) 小节
 - **编排图导出与自动推送（Workflow Artifact Exporter）**: 见 [06. 配置指南 - aistio](./06-configuration.md#aistio) 的「编排图导出与自动推送」小节
 

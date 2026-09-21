@@ -46,16 +46,19 @@ yunxi:
     # recipe.single 才能改道到 recipe-composer），纯规则模式对不含关键词的口语必然判 unknown
     # 导致改道失效，故启用 hybrid。LLM 超时/熔断/异常一律降级 unknown，由调用方回落默认 agent。
     # web 路径每轮本就调用 analyze()，切 hybrid 仅把规则换成「规则+LLM 兜底」，且 web 路由仍受
-    # routing.enabled=false 闸门控制（不会真改道），代价为每轮多一次对话模型（AGENTSCOPE_MODEL）分类调用（~2s）。
+    # routing.enabled=false 闸门控制（不会真改道），代价为每轮多一次对话模型（DASHSCOPE_MODEL）分类调用（~2s）。
     classification:
       mode: hybrid                           # rule | llm | hybrid
       rule-confidence-threshold: 0.6         # hybrid 模式规则高分直出阈值
       llm:
         enabled: true                        # LLM 通道总开关（true 才发模型调用）
-        # 分类模型与对话模型同源（DASHSCOPE_MODEL 环境变量，默认 qwen-plus），
-        # 由 start.ps1 统一经 $LLM_MODEL 管控，避免分类器写死独立模型名导致 key 不一致（401 降级 unknown）
-        model: ${DASHSCOPE_MODEL:qwen-plus} # 与对话模型同源（默认 qwen-plus）
-        timeout-ms: 2000                     # 超时（resilience4j TimeLimiter）
+        # 分类模型与对话模型解耦：占位符 ${INTENT_MODEL:...} 自带兜底值（不设变量也能起），
+        # 由 start.ps1 经 -DINTENT_MODEL=$INTENT_MODEL 注入。推荐用快模型（分类是每轮一次的轻量调用）。
+        model: ${INTENT_MODEL:qwen-plus}
+        # 超时（resilience4j TimeLimiter）；可用 -DINTENT_TIMEOUT_MS 覆盖。
+        # 2026-09-21 由 2000 放宽到 10000：2s 对多数模型过紧，超时即降级 unknown，
+        # 使意图识别事实性失效（规则未命中的自由措辞永远判 unknown）。放宽后分类可正常完成。
+        timeout-ms: ${INTENT_TIMEOUT_MS:10000}
         min-confidence: 0.5                  # LLM 输出最低采纳置信度
         max-intents: 30                      # 白名单上限，超限按查询关键词粗筛 Top-N
         cache:

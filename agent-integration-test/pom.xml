@@ -43,6 +43,12 @@
             <artifactId>agent-text2sql</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- 跨模块：验证「用户画像 → MUSE 剪枝」的只读消费链路 -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-muse</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!-- 测试依赖 -->
         <dependency>

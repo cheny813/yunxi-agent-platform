@@ -119,7 +119,8 @@
 关键语义：
 
 - `classification.llm.enabled=false` 时，即使 mode 为 `llm` / `hybrid` 也**退化为纯规则通道**（不调 LLM、不读缓存），实现"规则兜底永不失效"。
-- LLM 通道（`LlmIntentClassifier`）使用低成本快模型（默认 `qwen-turbo`），经 resilience4j TimeLimiter 限时（默认 2s），输出低于 `min-confidence`（默认 0.5）不采纳；白名单超过 `max-intents`（默认 30）时按重写后 query 关键词规则粗筛留 Top-N。
+- LLM 通道（`LlmIntentClassifier`）使用低成本快模型（默认 `qwen-turbo`），经 resilience4j TimeLimiter 限时（默认 **10s**；由 `2000` 放宽而来，见下方说明），输出低于 `min-confidence`（默认 0.5）不采纳；白名单超过 `max-intents`（默认 30）时按重写后 query 关键词规则粗筛留 Top-N。
+  > **超时为何放宽到 10s**：分类是**每轮对话都跑**的轻量调用，但原 2000ms 对多数模型过紧——超时即降级为 `unknown`，使规则未命中的自由措辞**永远判不出意图**（表现为告警 `[INTENT] LLM 分类 超时（2000ms），降级 unknown`，意图识别事实性失效）。放宽后可正常完成分类。模型与超时均可由启动参数覆盖：`-DINTENT_MODEL`（模型）、`-DINTENT_TIMEOUT_MS`（超时），见 [02. 快速开始](./02-quickstart.md)。
 - **LLM 结果缓存**（`LlmResultCache`）：key = `domain|normalizedQuery|whitelistVersion`——查询改写、领域规则版本任一变化即失效；TTL 默认 7 天、LRU 上限 10000；`hotEntries(domain, topN)` 按域过滤热度建议词，供运营侧观察高频未命中样本。
 
 ## 框架通用性设计
@@ -178,8 +179,8 @@ yunxi:
       rule-confidence-threshold: 0.6    # hybrid 模式规则高分直出阈值
       llm:
         enabled: false             # LLM 通道总开关（true 才发模型调用）
-        model: qwen-turbo          # 低成本快模型
-        timeout-ms: 2000           # 超时（resilience4j TimeLimiter）
+        model: ${INTENT_MODEL:qwen-plus}   # 低成本快模型（可用 -DINTENT_MODEL 覆盖）
+        timeout-ms: ${INTENT_TIMEOUT_MS:10000}   # 超时（resilience4j TimeLimiter，可用 -D 覆盖）
         min-confidence: 0.5        # LLM 输出最低采纳置信度
         max-intents: 30            # 白名单上限，超限按查询关键词粗筛 Top-N
         cache:
@@ -245,8 +246,8 @@ yunxi:
 | `yunxi.intent.classification.mode` | `rule` | `rule` / `llm` / `hybrid` |
 | `yunxi.intent.classification.rule-confidence-threshold` | `0.6` | hybrid 模式规则高分直出阈值 |
 | `yunxi.intent.classification.llm.enabled` | `false`（部署默认；代码字段默认 `true`，但 `mode=rule` 时不装配） | LLM 通道总开关（false 时 llm/hybrid 退化为纯规则） |
-| `yunxi.intent.classification.llm.model` | `qwen-turbo` | 低成本快模型 |
-| `yunxi.intent.classification.llm.timeout-ms` | `2000` | 模型调用超时（resilience4j TimeLimiter） |
+| `yunxi.intent.classification.llm.model` | `${INTENT_MODEL:qwen-plus}` | 低成本快模型；`start.ps1` 经 `-DINTENT_MODEL` 注入（当前为 `qwen-turbo`） |
+| `yunxi.intent.classification.llm.timeout-ms` | `${INTENT_TIMEOUT_MS:10000}` | 模型调用超时（resilience4j TimeLimiter）；原为 `2000`，因过紧致分类恒降级 `unknown` 已放宽，可用 `-DINTENT_TIMEOUT_MS` 覆盖 |
 | `yunxi.intent.classification.llm.min-confidence` | `0.5` | LLM 输出最低采纳置信度 |
 | `yunxi.intent.classification.llm.max-intents` | `30` | 白名单上限，超限按查询关键词粗筛 Top-N |
 | `yunxi.intent.classification.llm.cache.ttl-days` | `7` | LLM 结果缓存 TTL |

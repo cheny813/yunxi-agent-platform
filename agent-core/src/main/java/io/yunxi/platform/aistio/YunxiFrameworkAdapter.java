@@ -15,6 +15,8 @@ import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.extensions.aistio.FrameworkAdapter;
 import io.agentscope.extensions.aistio.adapter.AgentScopeAdapter;
+import io.agentscope.extensions.aistio.adapter.AgentTaskStarter;
+import io.agentscope.extensions.aistio.model.AgentTaskAssignment;
 import io.agentscope.extensions.aistio.model.ContextSnapshot;
 import io.agentscope.extensions.aistio.model.SessionEvent;
 import io.yunxi.platform.agent.service.AgentService;
@@ -22,6 +24,7 @@ import io.yunxi.platform.intent.IntentContext;
 import io.yunxi.platform.intent.IntentEngine;
 import io.yunxi.platform.intent.IntentResult;
 import io.yunxi.platform.intent.RouteHint;
+import io.yunxi.platform.aistio.task.AistioTaskBridge;
 
 /**
  * yunxi 的 aistio 框架适配实现。
@@ -49,6 +52,12 @@ public class YunxiFrameworkAdapter implements FrameworkAdapter {
 
     /** 复用官方参考实现处理契约/上下文等通用能力 */
     private final AgentScopeAdapter delegate = new AgentScopeAdapter();
+
+    /** 消费 workspace 定义的能力标识：漏声明会让控制面对带 definition 的派发永久 skip 本实例 */
+    private static final String CAP_WORKSPACE_DEFINITION = "workspace-definition-v1";
+
+    /** yunxi 侧 AgentTask 接活桥（包装框架 HarnessAgentTaskStarter）；未装配时不声明接活能力 */
+    private AgentTaskStarter taskStarter;
 
     private final AgentService agentService;
     private final IntentEngine intentEngine;
@@ -96,10 +105,43 @@ public class YunxiFrameworkAdapter implements FrameworkAdapter {
         return delegate.buildAgentConfig();
     }
 
+    /**
+     * 装配 AgentTask 接活桥（ASDP 下推的编排任务）。
+     *
+     * <p>传入后由本适配器转交官方 {@link AgentScopeAdapter}：它的 {@code handleAgentTask}
+     * 会驱动该 starter，并在 {@link #capabilities()} 中追加 {@code agent-task} 能力
+     * （若 starter 消费 workspace 定义，还会追加 {@code workspace-definition-v1}）。
+     * 不装配就不声明接活能力——避免"声明了却接不住"。</p>
+     *
+     * @param starter 接活桥（yunxi 侧包装框架 {@code HarnessAgentTaskStarter}）
+     */
+    public void setTaskStarter(AgentTaskStarter starter) {
+        this.taskStarter = starter;
+        delegate.setAgentTaskStarter(starter);
+    }
+
+    @Override
+    public Mono<Void> handleAgentTask(AgentTaskAssignment assignment) {
+        if (taskStarter == null) {
+            return Mono.error(new UnsupportedOperationException(
+                    "yunxi 数据面未装配 AgentTaskStarter，无法承接编排任务（检查 yunxi.aistio 配置与装配链）"));
+        }
+        return delegate.handleAgentTask(assignment);
+    }
+
     @Override
     public Set<String> capabilities() {
-        // 仅声明端到端对话所需能力；避免过度声明导致控制面出现会失败的治理按钮
-        return Set.of(CAP_CONVERSATION_INBOUND);
+        // 只声明对话能力 + 官方适配器按实际装配推导出的能力（接活能力来自 taskStarter）。
+        // 过度声明会让控制面出现会失败的治理按钮，故未装配 starter 时不追加任何接活能力。
+        Set<String> caps = new java.util.HashSet<>(Set.of(CAP_CONVERSATION_INBOUND));
+        if (taskStarter != null) {
+            caps.addAll(delegate.capabilities());
+            // 官方适配器用 instanceof HarnessAgentTaskStarter 判定该能力，包装类透不过去，故在此显式声明
+            if (taskStarter instanceof AistioTaskBridge bridge && bridge.consumesWorkspaceDefinition()) {
+                caps.add(CAP_WORKSPACE_DEFINITION);
+            }
+        }
+        return caps;
     }
 
     @Override

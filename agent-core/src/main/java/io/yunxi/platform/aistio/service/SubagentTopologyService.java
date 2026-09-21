@@ -33,6 +33,11 @@ public class SubagentTopologyService {
     public List<SubagentInfo> getTopology() {
         List<SubagentInfo> out = new ArrayList<>();
         for (AgentDefinition def : definitionLoader.getAgentDefinitions()) {
+            // 声明型定义（pattern=workflow）没有运行时实例，不得对外暴露为可调度 Agent，
+            // 否则 aistio 会把它当成可调用子 Agent（配得上、跑不起来的中间态）
+            if (def.getOrchestration() != null && def.getOrchestration().isDeclarationOnly()) {
+                continue;
+            }
             out.add(toInfo(def));
         }
         return out;

@@ -50,4 +50,19 @@ public interface TraceStore {
      * @param traceId 轨迹标识
      */
     void clear(String traceId);
+
+    /**
+     * 枚举最近活跃的轨迹标识，按活跃时间由近到远返回。
+     *
+     * <p>轨迹键本身不携带技能/工具等语义，故本方法只提供「枚举」能力，不提供「反查」——
+     * 需要按技能筛选消费方仍须逐个 {@link #read(String)} 后自行过滤。之所以只做枚举，
+     * 是因为写入侧未维护任何倒排索引，而倒排索引属于独立的演进项，不在本接口职责内。</p>
+     *
+     * <p>返回数量受 {@code limit} 约束，避免全量载入。实现须保证不阻塞（Redis 实现用
+     * {@code SCAN} 而非 {@code KEYS}）。</p>
+     *
+     * @param limit 最多返回的轨迹数；非正数时返回空列表
+     * @return 轨迹标识列表；无记录时返回空列表
+     */
+    List<String> recentTraceIds(int limit);
 }

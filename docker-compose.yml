@@ -289,7 +289,7 @@ services:
   # ============================================================
   # AgentScope-Service（aistio）管控面 — 可选 Profile: aistio
   # ------------------------------------------------------------
-  # 用途：补齐「Agent 管控 / 治理可视化 / 会话干预」能力（设计见 docs/agentscope-service-integration-design.md）。
+  # 用途：补齐「Agent 管控 / 治理可视化 / 会话干预」能力（对接 aistio / AgentScope-Service 控制面）。
   # 默认不启动（保持单机版低配开箱即用）；需要时执行：
   #   docker compose --profile aistio up -d
   #

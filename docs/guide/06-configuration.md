@@ -927,7 +927,15 @@ agent:
 | 未配置 HITL | `DONT_ASK` | **直接拒绝** | 无人值守场景，把"请求确认"降级为"拒绝"，避免永久挂起 |
 
 > 因此**未配置 HITL 不会导致卡死**：未命中放行规则的工具被直接拒绝，而非挂起等待。
-> 注意平台已为任务清单工具 `todo_write` 内置放行规则，它在两种模式下均可执行。
+
+**平台级治理工具的内置放行**：以下工具不属于任何单个业务 Agent 的职责，而是平台治理能力，因此平台在所有权限模式下统一放行，**不参与 Agent 的业务工具白/黑名单**——否则会出现「工具已注册、工具组已激活，但模型调用时报 permission denied」：
+
+| 工具 | 用途 | 生效条件 |
+|------|------|----------|
+| `todo_write` | 任务清单（TodoList） | 始终放行 |
+| `muse_skill_eval` / `muse_skill_evolve` / `muse_skill_prune` | MUSE 自进化元工具 | `yunxi.muse.enabled: true` 时注册并放行 |
+
+> 若业务 Agent 声明了 `hitl.allowedTools` 白名单，白名单**只约束业务工具**；上表中的平台级工具在白名单之外仍被放行。
 
 ### 注意事项（易踩坑）
 
@@ -940,6 +948,13 @@ agent:
    [09. API 参考](./09-api-reference.md#require_user_confirm-事件人机确认)。
 
 > **确认轮载荷约束（重要）**：框架在确认轮 `validateAndAcceptConfirmResults` 通过后**直接** `resumeAgent()` 跳进执行阶段、不再补一次推理。因此确认轮随行提交的用户新问题**会被静默丢弃、永远得不到回答**，却会进入上下文。若用户想在确认后追问，必须**等恢复流结束之后另起一次请求**，而不是把新问题塞进确认回传。该约束由 `MemoryInterceptor` 在确认轮剥离用户文本与 `contextData`、仅保留 `METADATA_CONFIRM_RESULTS` 强制保证。
+
+### 权限规则变更的生效范围
+
+权限上下文在框架侧只在**新建会话（fresh state）**时从构建期模板生成；已有会话从持久化的会话状态加载权限快照，框架**不做模板版本比对**。为避免「改了权限规则但调用仍被拒」，平台在**每次调用前**把最新模板写回会话状态（复用工具组激活的同一条会话级修正钩子），因此：
+
+- **权限规则变更即时生效**：修改 `PermissionConfig` 或 `hitl` 配置并重启后，**存量会话**（同一 `userId`）下次调用即按新规则执行，无需清空会话、无需更换 `userId`。
+- 若你自定义了调用入口而未走平台的会话级修正钩子，则仍可能出现「旧会话沿用旧规则」，此时用全新 `userId` 即可区分「规则没配对」与「旧会话未刷新」。
 
 ### 已知限制
 
@@ -976,9 +991,24 @@ yunxi:
       similarity-threshold: 0.85
       min-usage: 1
       max-skills: 200
+      # 画像驱动判据：把「使用次数」升级为「使用者广度」（只读用户画像）
+      profile-aware:
+        enabled: true
+        scan-limit: 500                 # 轨迹枚举上限（性能护栏）
+        overfit-usage-threshold: 5      # 单一使用者高频 → 标记过拟合（需泛化）
+        general-usage-threshold: 3      # 使用者广度达标 → 撤销低使用率归档
 ```
 
 在 `config/muse.yml` 中设置 `yunxi.muse.enabled: true` 即可全局启用，无需改动 Agent 定义 YAML。
+
+| 配置项 | 默认 | 说明 |
+|--------|------|------|
+| `pruner.profile-aware.enabled` | `true` | 是否启用画像驱动剪枝判据；关闭后仅保留使用率与相似度两条原有规则 |
+| `pruner.profile-aware.scan-limit` | `500` | 轨迹枚举上限（轨迹存储无按技能反查能力，此为扫描成本护栏；超长历史下聚合为近似） |
+| `pruner.profile-aware.overfit-usage-threshold` | `5` | 去重使用者数为 1 且调用次数达到该值 → 标记 `OVERFIT`（需泛化，不删除） |
+| `pruner.profile-aware.general-usage-threshold` | `3` | 去重使用者数达到该值 → 视为有通用价值，撤销低使用率归档 |
+
+> **数据来源与降级**：画像驱动判据只**读**调用轨迹与用户画像，绝不回写画像。画像或轨迹数据缺失、或 `enabled: false` 时，聚合返回空值，剪枝退化为原有两条规则，行为与未引入该特性时一致。详见 [10. 技能系统 - 画像驱动的剪枝判据](./10-skills.md#画像驱动的剪枝判据)。
 
 ## 意图引擎配置
 
@@ -1004,8 +1034,8 @@ yunxi:
       rule-confidence-threshold: 0.6    # hybrid 模式规则高分直出阈值
       llm:
         enabled: false                  # LLM 通道总开关（false 时 llm/hybrid 退化为纯规则）
-        model: qwen-turbo               # 低成本快模型
-        timeout-ms: 2000                # 超时（resilience4j TimeLimiter）
+        model: ${INTENT_MODEL:qwen-plus}          # 低成本快模型（-DINTENT_MODEL 可覆盖）
+        timeout-ms: ${INTENT_TIMEOUT_MS:10000}    # 超时（-DINTENT_TIMEOUT_MS 可覆盖）
         min-confidence: 0.5             # LLM 输出最低采纳置信度
         max-intents: 30                 # 白名单上限
         cache: { ttl-days: 7, max-size: 10000 }   # LLM 结果缓存

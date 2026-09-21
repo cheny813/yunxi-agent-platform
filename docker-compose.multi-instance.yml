@@ -10,7 +10,7 @@
 #   二者在同一 yunxi-net 网络中互通。应用镜像由根目录 Dockerfile 本地构建
 #   （先 mvn -pl agent-app -am package -DskipTests 产出 jar）。
 #
-# 演练目标（见 docs/breakpoint-resume-drill.md）：
+# 演练目标：
 #   1) 轨迹跨实例共享 —— 实例 A 写入的轨迹，经 nginx 打到实例 B 也能回放（RedisTraceStore 证明）；
 #   2) 断点续传 —— 会话中断（HITL / 异常）后，同一 userId:sessionId 由另一实例恢复执行。
 services:
