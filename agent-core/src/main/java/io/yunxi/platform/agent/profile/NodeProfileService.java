@@ -2,6 +2,8 @@ package io.yunxi.platform.agent.profile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.yunxi.platform.desktop.model.NodeInfo;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +31,7 @@ public class NodeProfileService {
      */
     public NodeProfileService(NodeProfileMapper profileMapper) {
         this.profileMapper = profileMapper;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = CodecSpec.storage();
     }
 
     /**

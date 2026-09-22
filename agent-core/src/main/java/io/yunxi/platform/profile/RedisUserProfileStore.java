@@ -1,81 +1,84 @@
 package io.yunxi.platform.profile;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import io.yunxi.platform.spi.profile.UserProfileProvider.Identity;
+import io.yunxi.platform.shared.codec.RedisTemplates;
+import io.yunxi.platform.shared.codec.RedisValueCodec;
 import io.yunxi.platform.spi.profile.UserProfileProvider.UserProfile;
 
 /**
  * UserProfile 存储：优先 Redis（多实例共享），无 Redis 时回退进程内 Map（开发/单测）。
  *
- * <p>SPI 结构类 {@link UserProfile} 是无默认构造器的嵌套类，直接交给 GenericJackson 反序列化会失败，
- * 故这里手写 JSON 编解码，只搬运其字段，避免改动 agent-spi 既定义约。</p>
+ * <p>编解码统一交由 {@link RedisValueCodec}。存储通道为明文字符串：画像需要能被外部工具
+ * 直接查看与修复，明文值是这个数据面的既定契约。</p>
+ *
+ * @author yunxi-agent-platform
  */
 @Service
 public class RedisUserProfileStore {
 
     private static final String KEY_PREFIX = "yunxi:user-profile:";
     private static final Duration TTL = Duration.ofDays(180);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private final RedisTemplate<String, String> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
+    private final RedisValueCodec codec;
     private final boolean redisEnabled;
     private final Map<String, UserProfile> memoryFallback = new ConcurrentHashMap<>();
 
-    public RedisUserProfileStore(ObjectProvider<RedisConnectionFactory> factoryProvider) {
-        RedisConnectionFactory factory = factoryProvider.getIfAvailable();
-        if (factory != null) {
-            RedisTemplate<String, String> tpl = new RedisTemplate<>();
-            tpl.setConnectionFactory(factory);
-            tpl.setKeySerializer(StringRedisSerializer.UTF_8);
-            tpl.setValueSerializer(StringRedisSerializer.UTF_8);
-            tpl.afterPropertiesSet();
-            this.redisTemplate = tpl;
-            this.redisEnabled = true;
-        } else {
-            this.redisTemplate = null;
-            this.redisEnabled = false;
-        }
+    /**
+     * 构造画像存储。
+     *
+     * <p>连接工厂由容器提供；缺失时（开发/单测）退回进程内映射。此处不新建连接工厂，
+     * 连接参数只允许有一个来源。</p>
+     *
+     * @param factoryProvider 连接工厂提供者
+     * @param codec           统一编解码器
+     */
+    public RedisUserProfileStore(ObjectProvider<RedisConnectionFactory> factoryProvider,
+                                 RedisValueCodec codec) {
+        this.codec = codec;
+        this.redisTemplate = RedisTemplates.stringTemplate(factoryProvider.getIfAvailable());
+        this.redisEnabled = this.redisTemplate != null;
     }
 
+    /**
+     * 读取用户画像。
+     *
+     * @param userId 用户标识
+     * @return 画像；不存在或解码失败返回 null
+     */
     public UserProfile getProfile(String userId) {
         if (userId == null) {
             return null;
         }
         if (redisEnabled) {
             String json = redisTemplate.opsForValue().get(KEY_PREFIX + userId);
-            if (json == null) {
-                return null;
-            }
-            try {
-                return fromJson(json);
-            } catch (Exception ignored) {
-                return null;
-            }
+            return codec.read(json, UserProfile.class, RedisValueCodec.SCENE_PROFILE);
         }
         return memoryFallback.get(userId);
     }
 
+    /**
+     * 保存用户画像。
+     *
+     * @param userId  用户标识
+     * @param profile 画像
+     */
     public void saveProfile(String userId, UserProfile profile) {
         if (userId == null || profile == null) {
             return;
         }
         if (redisEnabled) {
             try {
-                redisTemplate.opsForValue().set(KEY_PREFIX + userId, toJson(profile), TTL);
+                redisTemplate.opsForValue().set(KEY_PREFIX + userId,
+                        codec.write(profile, RedisValueCodec.SCENE_PROFILE), TTL);
             } catch (Exception ignored) {
                 // 存储故障不阻断对话执行
             }
@@ -84,76 +87,12 @@ public class RedisUserProfileStore {
         }
     }
 
+    /**
+     * 是否使用 Redis 存储。
+     *
+     * @return 使用 Redis 返回 true
+     */
     public boolean isRedisEnabled() {
         return redisEnabled;
-    }
-
-    private String toJson(UserProfile p) throws Exception {
-        Map<String, Object> root = new LinkedHashMap<>();
-        root.put("userId", p.getUserId());
-        root.put("updatedAt", p.getUpdatedAt());
-        root.put("personalContext", p.getPersonalContext());
-        root.put("socialRelations", p.getSocialRelations());
-        List<Map<String, Object>> ids = new ArrayList<>();
-        if (p.getIdentities() != null) {
-            for (Identity id : p.getIdentities()) {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("name", id.getName());
-                m.put("displayName", id.getDisplayName());
-                m.put("category", id.getCategory());
-                m.put("confidence", id.getConfidence());
-                m.put("keywords", id.getKeywords());
-                m.put("attributes", id.getAttributes());
-                ids.add(m);
-            }
-        }
-        root.put("identities", ids);
-        return MAPPER.writeValueAsString(root);
-    }
-
-    @SuppressWarnings("unchecked")
-    private UserProfile fromJson(String json) throws Exception {
-        Map<String, Object> root = MAPPER.readValue(json, Map.class);
-        List<Identity> ids = new ArrayList<>();
-        Object idObj = root.get("identities");
-        if (idObj instanceof List<?> list) {
-            for (Object o : list) {
-                if (o instanceof Map<?, ?> raw) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> m = (Map<String, Object>) raw;
-                    Map<String, String> attrs = parseAttributes(m.get("attributes"));
-                    ids.add(new Identity(
-                            str(m.get("name")), str(m.get("displayName")),
-                            str(m.get("category")), dbl(m.get("confidence")),
-                            (List<String>) m.getOrDefault("keywords", List.of()),
-                            attrs));
-                }
-            }
-        }
-        Map<String, String> pc = (Map<String, String>) root.getOrDefault("personalContext", Map.of());
-        Map<String, String> sr = (Map<String, String>) root.getOrDefault("socialRelations", Map.of());
-        long updatedAt = root.get("updatedAt") instanceof Number n ? n.longValue() : System.currentTimeMillis();
-        return new UserProfile(str(root.get("userId")), ids, pc, sr, updatedAt);
-    }
-
-    private static String str(Object o) {
-        return o == null ? null : o.toString();
-    }
-
-    private static double dbl(Object o) {
-        return o instanceof Number n ? n.doubleValue() : 0.0;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, String> parseAttributes(Object o) {
-        if (!(o instanceof Map<?, ?> raw)) {
-            return Map.of();
-        }
-        Map<String, Object> m = (Map<String, Object>) raw;
-        Map<String, String> result = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> e : m.entrySet()) {
-            result.put(e.getKey(), e.getValue() == null ? null : e.getValue().toString());
-        }
-        return result;
     }
 }

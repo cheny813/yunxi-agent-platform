@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -62,7 +64,7 @@ public class SqlGenerator {
                 .readTimeout(java.time.Duration.ofSeconds(120))
                 .writeTimeout(java.time.Duration.ofSeconds(30))
                 .build();
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = CodecSpec.storage();
     }
 
     /**

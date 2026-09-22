@@ -11,6 +11,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 /**
  * SSE 消息构建器
  * <p>
@@ -24,8 +26,7 @@ public class SseMessageBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(SseMessageBuilder.class);
 
-    private static final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule());
+    private static final ObjectMapper objectMapper = CodecSpec.storage();
 
     /**
      * 构建 SSE 消息

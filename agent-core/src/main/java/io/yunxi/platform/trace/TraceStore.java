@@ -65,4 +65,16 @@ public interface TraceStore {
      * @return 轨迹标识列表；无记录时返回空列表
      */
     List<String> recentTraceIds(int limit);
+
+    /**
+     * 描述本存储实现指向的位置，供诊断接口与装配日志确认「是否命中了同一个实例」。
+     *
+     * <p>平台所有 Redis 使用方（会话存储、轨迹存储、画像、节流）共用同一全局连接工厂，
+     * 但各 {@code RedisTemplate} 对象独立，名字不同极易被误判为两套库。返回实际端点
+     * （如 {@code 127.0.0.1:6379}）可让运维在运行时接口上直接比对轨迹库与预期实例是否一致，
+     * 避免把应用连接到的 Redis 与 docker 容器 {@code yunxi-redis} 当成两个独立库去查。</p>
+     *
+     * @return 存储端点描述；内存实现返回内存标识，便于与 Redis 端点区分
+     */
+    String storeEndpoint();
 }

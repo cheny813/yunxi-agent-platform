@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentEventType;
 import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.Msg;
@@ -16,6 +17,8 @@ import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import io.yunxi.platform.trace.TraceCollector;
+import io.yunxi.platform.trace.TraceComposer;
 import io.yunxi.platform.tracing.LlmMetrics;
 
 /**
@@ -24,9 +27,14 @@ import io.yunxi.platform.tracing.LlmMetrics;
  * <p>阻塞通道的消息组装与收尾语义：</p>
  * <ul>
  *   <li>从 ExecutionContext 取拦截器已组装的 inputMessages（含历史/实体注入/RAG 注入）；</li>
- *   <li>streamEvents 阻塞收尾（收集 AGENT_RESULT → Msg），usage 记录；</li>
+ *   <li>订阅事件流，逐事件归集轨迹（与流式通道共用同一归集器），同时收集 AGENT_RESULT 得到 Msg；</li>
  *   <li>会话 ID：无会话入口时以 userId 充当 sessionId。</li>
  * </ul>
+ *
+ * <p><b>为何这里也要归集轨迹</b>：轨迹归集挂在「事件流」上，而不是挂在某个通道上。
+ * 阻塞通道同样消费完整事件流，若在此跳过归集，走阻塞接口的调用就永远没有轨迹 ——
+ * 观测数据的有无取决于调用方选了哪个接口，这是不可接受的差异。归集逻辑统一由
+ * {@link TraceCollector} 提供，本类只负责在事件流上调用它。</p>
  *
  * <p>注：请求级的文件检索与历史注入由调用入口的请求级中间件统一处理，流式/阻塞两通道一致。</p>
  *
@@ -37,11 +45,14 @@ public class BlockingStrategy implements ExecutionStrategy {
 
     private final LlmMetrics llmMetrics;
     private final AgentscopeCoreProperties properties;
+    private final TraceCollector traceCollector;
 
     public BlockingStrategy(LlmMetrics llmMetrics,
-                            AgentscopeCoreProperties properties) {
+                            AgentscopeCoreProperties properties,
+                            TraceCollector traceCollector) {
         this.llmMetrics = llmMetrics;
         this.properties = properties;
+        this.traceCollector = traceCollector;
     }
 
     @Override
@@ -77,14 +88,21 @@ public class BlockingStrategy implements ExecutionStrategy {
         // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
         AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, rc.getUserId(), rc.getSessionId());
 
+        // 轨迹归集会话：与流式通道同一份归集器，保证「有事件流就有轨迹」不随通道而变化
+        String traceId = StrategyContextSupport.resolveTraceId(ctx, rc.getSessionId());
+        TraceComposer.Session session = traceCollector.openSession(traceId);
+
         // 注意：共享 Agent 实例生命周期由框架管理，绝不可 close（内联转换避免 JDT resource-leak 误报）
         final Msg[] holder = new Msg[1];
         ((HarnessAgent) agent).streamEvents(messages, rc)
                 .timeout(timeout)
+                .doOnNext(event -> collect(event, session, rc))
                 .filter(event -> event.getType() == AgentEventType.AGENT_RESULT)
                 .ofType(AgentResultEvent.class)
                 .doOnNext(event -> holder[0] = event.getResult())
                 .blockLast();
+
+        traceCollector.close(session);
 
         // usage 记录：以原始 agentName 作维度
         if (holder[0] != null && holder[0].getUsage() != null) {
@@ -93,4 +111,8 @@ public class BlockingStrategy implements ExecutionStrategy {
         return holder[0];
     }
 
+    /** 逐事件归集：归集失败不影响执行（归集器内部已吞异常） */
+    private void collect(AgentEvent event, TraceComposer.Session session, RuntimeContext rc) {
+        traceCollector.accept(session, event, rc);
+    }
 }

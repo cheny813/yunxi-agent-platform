@@ -330,6 +330,7 @@ Vite 通过 `/api`、`/v1`、`/js` 代理到后端 `localhost:40001`（可用 `B
 | [14. A2A 协议](docs/guide/14-a2a-protocol.md) | 架构师 |
 | [15. 可观测性](docs/guide/15-observability.md) | 运维工程师 |
 | [16. 意图引擎](docs/guide/16-intent-engine.md) | 架构师、开发者 |
+| [17. 统一 JSON 编解码机制](docs/guide/17-data-codec.md) | 架构师、开发者 |
 
 [📖 查看完整文档](docs/guide/README.md)
 

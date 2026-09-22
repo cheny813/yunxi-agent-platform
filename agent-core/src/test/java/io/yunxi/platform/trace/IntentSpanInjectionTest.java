@@ -8,7 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentEvent;
@@ -17,11 +16,7 @@ import io.agentscope.core.event.ToolCallEndEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.message.ToolResultState;
-import io.agentscope.core.middleware.AgentInput;
 import reactor.core.publisher.Flux;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * 意图节点归集测试：验证意图产物成为轨迹树节点。
@@ -37,27 +32,20 @@ import static org.mockito.Mockito.when;
 class IntentSpanInjectionTest {
 
     private InMemoryTraceStore store;
-    private TraceCollectorMiddleware middleware;
+    private TraceCollector collector;
 
     @BeforeEach
     void setUp() {
         store = new InMemoryTraceStore();
-        middleware = new TraceCollectorMiddleware(new TraceComposer(), store);
+        collector = new TraceCollector(new TraceComposer(TestCodecs.newCodec()), store);
     }
 
-    private static Agent agentNamed(String name) {
-        Agent agent = mock(Agent.class);
-        when(agent.getName()).thenReturn(name);
-        return agent;
-    }
-
-    /** 跑一次 onAgent（意图来自 intent_classify 工具调用，而非合成注入）。 */
+    /** 跑一次归集（意图来自 intent_classify 工具调用，而非合成注入）。 */
     private void run(Flux<AgentEvent> events) {
-        RuntimeContext.Builder b = RuntimeContext.builder().userId("u1").sessionId("s1");
-        java.util.function.Function<AgentInput, Flux<AgentEvent>> next = input -> events;
-        middleware.onAgent(agentNamed("agent-a"), b.build(), new AgentInput(List.of()), next)
-                .collectList()
-                .block();
+        RuntimeContext ctx = RuntimeContext.builder().userId("u1").sessionId("s1").build();
+        TraceComposer.Session session = collector.openSession("u1:s1");
+        events.toIterable().forEach(event -> collector.accept(session, event, ctx));
+        collector.close(session);
     }
 
     private static Flux<AgentEvent> turnWithIntentTool() {

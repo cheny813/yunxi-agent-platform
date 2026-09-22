@@ -1,6 +1,8 @@
 package io.yunxi.platform.a2a;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.config.AgentscopeExtensionProperties.A2AConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -91,7 +93,7 @@ public A2AClient(ObjectProvider<A2AConfig> configProvider, @Autowired A2ARegistr
         this.config = resolvedConfig != null ? resolvedConfig : createDefaultConfig();
         this.registry = registry;
         this.restClient = RestClient.builder().build();
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = CodecSpec.storage();
 
         log.info("A2A 客户端初始化完成，注册中心类型: {}", this.config.getRegistryType());
     }

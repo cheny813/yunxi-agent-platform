@@ -17,7 +17,7 @@
         <result property="agentName" column="agent_name"/>
         <result property="userId" column="user_id"/>
         <result property="title" column="title"/>
-        <result property="messages" column="messages" typeHandler="io.yunxi.platform.shared.typehandler.MsgListTypeHandler"/>
+        <result property="messages" column="messages" typeHandler="io.yunxi.platform.conversation.MsgListTypeHandler"/>
         <result property="messageCount" column="message_count"/>
         <result property="createdAt" column="created_at"/>
         <result property="lastUpdatedAt" column="last_updated_at"/>
@@ -40,7 +40,7 @@
     <insert id="save" parameterType="io.yunxi.platform.shared.entity.ConversationEntity">
         INSERT INTO agent_conversations (id, agent_name, user_id, title, messages, message_count,
                                    created_at, last_updated_at, expires_at)
-        VALUES (#{id}, #{agentName}, #{userId}, #{title}, #{messages, typeHandler=io.yunxi.platform.shared.typehandler.MsgListTypeHandler}, #{messageCount},
+        VALUES (#{id}, #{agentName}, #{userId}, #{title}, #{messages, typeHandler=io.yunxi.platform.conversation.MsgListTypeHandler}, #{messageCount},
                 #{createdAt}, #{lastUpdatedAt}, #{expiresAt})
         ON DUPLICATE KEY UPDATE
             agent_name = VALUES(agent_name),

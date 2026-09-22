@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import io.yunxi.platform.muse.engine.SelfEvolutionEngine;
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.muse.prune.SkillPruner.PruneDecision;
 import io.yunxi.platform.muse.prune.SkillPruner.SkillMeta;
 import io.yunxi.platform.muse.prune.UsageProfile;
@@ -31,7 +32,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SkillPruneTool {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** 绑定器取自全平台唯一配置来源，与持久化侧共用同一套字段容忍策略 */
+    private static final ObjectMapper MAPPER = CodecSpec.storage();
     private final SelfEvolutionEngine engine;
     /** 使用者画像聚合器；MUSE 关闭或组件缺失时为空，此时跳过画像补充。 */
     private final ObjectProvider<UsageProfileAggregator> aggregatorProvider;
@@ -65,7 +67,6 @@ public class SkillPruneTool {
      */
     private void enrichWithUsageProfile(List<SkillMeta> metas) {
         UsageProfileAggregator aggregator = aggregatorProvider.getIfAvailable();
-        log.info("[muse] 画像补充入口: skills={}, aggregatorPresent={}", metas.size(), aggregator != null);
         if (aggregator == null) {
             return;
         }
@@ -75,15 +76,11 @@ public class SkillPruneTool {
             }
             try {
                 UsageProfile up = aggregator.aggregate(meta.getName());
-                log.info("[muse] 技能 {} 画像聚合结果: {}", meta.getName(),
-                        up == null ? "null(降级)" : ("distinctUsers=" + up.getDistinctUsers()
-                                + ", successCalls=" + up.getSuccessCalls()
-                                + ", categories=" + up.getCategoryDistribution()));
                 if (up != null) {
                     meta.setUsageProfile(up);
                 }
             } catch (Exception e) {
-                log.warn("[muse] 技能 {} 画像聚合异常: {}", meta.getName(), e.getMessage());
+                log.debug("[muse] 技能 {} 画像聚合跳过: {}", meta.getName(), e.getMessage());
             }
         }
     }

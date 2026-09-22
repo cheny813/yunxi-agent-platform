@@ -16,8 +16,7 @@ import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.ConfirmResultRequest;
 import io.yunxi.platform.shared.entity.ConversationEntity;
-import io.yunxi.platform.trace.TraceComposer;
-import io.yunxi.platform.trace.TraceStore;
+import io.yunxi.platform.trace.TraceCollector;
 import io.yunxi.platform.trace.projection.SseProjection;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -109,8 +108,7 @@ class AgentExecutionE2ETest {
                 List.of(strategy),
                 mock(AgentEventAdapter.class),
                 mock(AgentscopeCoreProperties.class),
-                mock(TraceComposer.class),
-                mock(TraceStore.class),
+                mock(TraceCollector.class),
                 mock(SseProjection.class));
     }
 

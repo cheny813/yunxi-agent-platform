@@ -14,6 +14,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 /**
  * 分布式请求管理器（基于 Redis）
  *
@@ -114,7 +116,7 @@ public class DistributedRequestManager {
      */
     public DistributedRequestManager(RedisTemplate<String, Object> redisTemplate) {
         this.redisTemplate = redisTemplate;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = CodecSpec.storage();
         log.info("初始化分布式请求管理服务（基于Redis）");
     }
 

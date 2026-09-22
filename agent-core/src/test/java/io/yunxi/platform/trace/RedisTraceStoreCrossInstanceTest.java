@@ -16,10 +16,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import io.agentscope.core.message.ToolResultState;
+import io.yunxi.platform.shared.codec.CodecMetrics;
+import io.yunxi.platform.shared.codec.RedisValueCodec;
 
 /**
  * 跨实例轨迹共享演练（多实例部署下轨迹存储共享能力的存储层证明）。
@@ -38,6 +39,14 @@ class RedisTraceStoreCrossInstanceTest {
     private static final String HOST = "localhost";
     private static final int PORT = 6379;
     private static final String PASSWORD = "redispass";
+
+    /**
+     * 两个实例共用同一个编解码器实例：跨实例可见性的前提是编解码契约一致，
+     * 故演练必须固定同一套编解码器，而非各自配置。
+     */
+    private static final RedisValueCodec CODEC = new RedisValueCodec(new CodecMetrics(
+            new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                    .getBeanProvider(io.micrometer.core.instrument.MeterRegistry.class)));
 
     private static RedisConnectionFactory factoryA;
     private static RedisConnectionFactory factoryB;
@@ -87,16 +96,17 @@ class RedisTraceStoreCrossInstanceTest {
         RedisTemplate<String, Object> t = new RedisTemplate<>();
         t.setConnectionFactory(factory);
         t.setKeySerializer(new StringRedisSerializer());
-        t.setValueSerializer(new GenericJackson2JsonRedisSerializer());
         t.setHashKeySerializer(new StringRedisSerializer());
+        t.setValueSerializer(CODEC);
+        t.setHashValueSerializer(CODEC);
         t.afterPropertiesSet();
         return t;
     }
 
     @Test
     void instanceAWriteVisibleToInstanceB() {
-        RedisTraceStore storeA = new RedisTraceStore(templateA);
-        RedisTraceStore storeB = new RedisTraceStore(templateB);
+        RedisTraceStore storeA = new RedisTraceStore(templateA, CODEC);
+        RedisTraceStore storeB = new RedisTraceStore(templateB, CODEC);
 
         String traceId = "cross-inst:" + System.nanoTime();
         ReasoningSpan turn = ReasoningSpan.open(traceId, "TURN|-|TURN|r1", "e1", SpanKind.TURN, null);

@@ -13,7 +13,8 @@ import io.yunxi.platform.execution.interceptors.RagRetrievalInterceptor;
 import io.yunxi.platform.intent.IntentResult;
 import io.yunxi.platform.intent.routing.RouteDecision;
 import io.yunxi.platform.shared.config.MemoryConfig;
-import io.yunxi.platform.trace.TraceCollectorMiddleware;
+import io.yunxi.platform.trace.TraceContextKeys;
+import io.yunxi.platform.trace.TraceContextKeys.IntentSpanData;
 
 /**
  * 执行策略共用的运行时上下文构造支持。
@@ -21,9 +22,12 @@ import io.yunxi.platform.trace.TraceCollectorMiddleware;
  * <p>三种执行策略（流式、阻塞、结构化阻塞）都需要把本次调用的输入处理参数写入框架的
  * 运行时上下文，供请求级中间件读取。装配期无法获知这些参数，因此统一在此处按调用解析。</p>
  *
+ * <p>本类同时是<b>轨迹标识的唯一生成点</b>：归集、投影与存储三处必须共用同一套标识规则，
+ * 故该规则对外可见，供执行引擎复用。</p>
+ *
  * @author yunxi-agent-platform
  */
-final class StrategyContextSupport {
+public final class StrategyContextSupport {
 
     private StrategyContextSupport() {
     }
@@ -102,8 +106,8 @@ final class StrategyContextSupport {
                 && !intent.rewrittenQuery().equals(intent.originalQuery())) {
             payload.put("queryRewritten", true);
         }
-        b.put(TraceCollectorMiddleware.INTENT_SPAN_KEY,
-                new TraceCollectorMiddleware.IntentSpanData(payload, ctx.getIntentDurationMs()));
+        b.put(TraceContextKeys.INTENT_SPAN_KEY,
+                new IntentSpanData(payload, ctx.getIntentDurationMs()));
     }
 
     /**
@@ -132,6 +136,36 @@ final class StrategyContextSupport {
     static String resolveRagQuery(ExecutionContext ctx) {
         Object value = ctx.getAttributes().get(RagRetrievalInterceptor.ATTR_RAG_QUERY);
         return value instanceof String query && !query.isBlank() ? query : null;
+    }
+
+    /**
+     * 解析轨迹标识：按 {@code userId:sessionId} 组合，与存储键一致。
+     *
+     * <p>全平台唯一的轨迹标识生成点。归集、投影、存储三处若各自拼装这个标识，
+     * 一旦某一处规则不同就会出现「写进去了但读不出来」—— 因此此处是唯一实现。</p>
+     *
+     * <p>无会话标识时返回 null，表示本次调用不归集（无身份则无法为轨迹分桶）。</p>
+     *
+     * @param ctx       执行上下文
+     * @param sessionId 本次调用的会话标识
+     * @return 轨迹标识；无会话标识时返回 null
+     */
+    public static String resolveTraceId(ExecutionContext ctx, String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        String userId = ctx.getRequest().getUserId();
+        return (userId == null || userId.isBlank()) ? sessionId : userId + ":" + sessionId;
+    }
+
+    /**
+     * 解析轨迹标识，会话标识取自执行上下文。
+     *
+     * @param ctx 执行上下文
+     * @return 轨迹标识；无会话标识时返回 null
+     */
+    public static String resolveTraceId(ExecutionContext ctx) {
+        return resolveTraceId(ctx, ctx.getConversationId());
     }
 
 }

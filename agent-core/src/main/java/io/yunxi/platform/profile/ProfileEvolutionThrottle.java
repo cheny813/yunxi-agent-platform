@@ -5,11 +5,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import io.yunxi.platform.profile.config.ProfileProperties;
+import io.yunxi.platform.shared.codec.RedisTemplates;
 
 /**
  * 画像自动演进的节流器：决定「本次调用收尾时是否真的触发抽取」。
@@ -29,26 +29,24 @@ public class ProfileEvolutionThrottle {
     private static final String KEY_PREFIX = "yunxi:profile-throttle:";
 
     private final ProfileProperties properties;
-    private final RedisTemplate<String, String> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final boolean redisEnabled;
     private final ConcurrentHashMap<String, LocalState> memoryFallback = new ConcurrentHashMap<>();
 
+    /**
+     * 构造节流器。
+     *
+     * <p>连接工厂由容器提供；缺失时（开发/单测）退回进程内计数。节流状态是纯数字文本，
+     * 走字符串模板，不涉及对象编解码。</p>
+     *
+     * @param properties      画像配置
+     * @param factoryProvider 连接工厂提供者
+     */
     public ProfileEvolutionThrottle(ProfileProperties properties,
             ObjectProvider<RedisConnectionFactory> factoryProvider) {
         this.properties = properties;
-        RedisConnectionFactory factory = factoryProvider.getIfAvailable();
-        if (factory != null) {
-            RedisTemplate<String, String> tpl = new RedisTemplate<>();
-            tpl.setConnectionFactory(factory);
-            tpl.setKeySerializer(StringRedisSerializer.UTF_8);
-            tpl.setValueSerializer(StringRedisSerializer.UTF_8);
-            tpl.afterPropertiesSet();
-            this.redisTemplate = tpl;
-            this.redisEnabled = true;
-        } else {
-            this.redisTemplate = null;
-            this.redisEnabled = false;
-        }
+        this.redisTemplate = RedisTemplates.stringTemplate(factoryProvider.getIfAvailable());
+        this.redisEnabled = this.redisTemplate != null;
     }
 
     /**
@@ -84,8 +82,8 @@ public class ProfileEvolutionThrottle {
         String key = KEY_PREFIX + userId;
         try {
             // 轮次计数用 HINCRBY，时间戳用 HSET，读-判-写在一个轻量往返内完成。
-            String lastAtRaw = (String) redisTemplate.opsForHash().get(key, "lastAt");
-            String turnsRaw = (String) redisTemplate.opsForHash().get(key, "turns");
+            String lastAtRaw = redisTemplate.<String, String>opsForHash().get(key, "lastAt");
+            String turnsRaw = redisTemplate.<String, String>opsForHash().get(key, "turns");
             long lastAt = parseLong(lastAtRaw, 0L);
             int turns = (int) parseLong(turnsRaw, 0L);
 

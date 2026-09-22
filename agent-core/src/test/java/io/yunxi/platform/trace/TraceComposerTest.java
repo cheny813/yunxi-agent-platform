@@ -25,7 +25,7 @@ class TraceComposerTest {
 
     private static final String TRACE = "trace-1";
 
-    private final TraceComposer composer = new TraceComposer();
+    private final TraceComposer composer = new TraceComposer(TestCodecs.newCodec());
 
     private List<ReasoningSpan> compose(List<AgentEvent> events) {
         return composer.compose(Flux.fromIterable(events), TRACE).collectList().block();

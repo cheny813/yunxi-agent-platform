@@ -16,14 +16,15 @@
     <name>yunxi-agent-platform</name>
     <description>AgentScope Platform - Simplified Agent Management Framework</description>
 
-    <!-- 多模块结构 -->
+    <!-- 多模块结构（顺序即构建顺序：agent-codec 是最底层，无内部模块依赖） -->
     <modules>
+        <module>agent-codec</module>
         <module>agent-config</module>
         <module>agent-spi</module>
+        <module>agent-text2sql</module>
         <module>agent-core</module>
         <module>agent-muse</module>
         <module>agent-app</module>
-        <module>agent-text2sql</module>
         <module>agent-integration-test</module>
     </modules>
 
@@ -83,6 +84,11 @@
     <dependencyManagement>
         <dependencies>
             <!-- 内部模块 -->
+            <dependency>
+                <groupId>io.yunxi</groupId>
+                <artifactId>agent-codec</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>io.yunxi</groupId>
                 <artifactId>agent-text2sql</artifactId>

@@ -24,6 +24,8 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 import io.yunxi.platform.embedding.EmbeddingProvider;
 
 /**
@@ -40,7 +42,7 @@ public class HuaweiEmbeddingProvider implements EmbeddingProvider {
 
     private static final Logger log = LoggerFactory.getLogger(HuaweiEmbeddingProvider.class);
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = CodecSpec.storage();
 
     @Value("${agentscope.extensions.embedding.huawei.api-key:}")
     private String apiKey;

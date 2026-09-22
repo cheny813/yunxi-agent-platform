@@ -24,6 +24,8 @@ import io.agentscope.core.model.ChatResponse;
 import io.agentscope.core.model.ChatUsage;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.ToolSchema;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -108,7 +110,7 @@ public class HuaweiModelProvider extends ChatModelBase {
                 .readTimeout(Duration.ofSeconds(60))
                 .writeTimeout(Duration.ofSeconds(30))
                 .build();
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = CodecSpec.storage();
         // 声明上下文窗口，使 compaction 中间件可基于 token 预算精准触发
         setContextWindowSize(resolveContextWindowSize(modelName));
     }

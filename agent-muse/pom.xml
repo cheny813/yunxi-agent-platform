@@ -16,6 +16,12 @@
         仅实现 AgentScope 未覆盖的自进化闭环，复用 AgentScope 的 SkillRepository / ModelProvider / CompactionMiddleware / AgentStateStore。</description>
 
     <dependencies>
+        <!-- 编解码机制（全平台唯一 JSON 绑定配置来源） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-codec</artifactId>
+        </dependency>
+
         <!-- yunxi 核心（复用 ModelFactory / HarnessAgent 接入约定 / 业务工具风格） -->
         <dependency>
             <groupId>io.yunxi</groupId>

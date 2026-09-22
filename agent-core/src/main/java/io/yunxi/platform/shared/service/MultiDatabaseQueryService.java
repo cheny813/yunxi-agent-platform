@@ -3,6 +3,8 @@ package io.yunxi.platform.shared.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.yunxi.platform.shared.config.MultiDatabaseConfig;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.shared.util.TextParserUtil;
 import io.yunxi.platform.shared.util.nlq.NaturalLanguageQueryParser;
 import io.yunxi.platform.shared.service.ExternalDbQueryService;
@@ -33,7 +35,7 @@ public class MultiDatabaseQueryService {
     private ExternalDbQueryService externalDbQueryService;
 
     private final Map<String, NaturalLanguageQueryParser> parserCache = new HashMap<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = CodecSpec.storage();
 
     /**
      * 根据自然语言描述查询数据

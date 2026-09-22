@@ -15,6 +15,8 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import io.agentscope.core.message.ToolResultState;
+import io.yunxi.platform.shared.codec.CodecMetrics;
+import io.yunxi.platform.shared.codec.RedisValueCodec;
 import reactor.core.publisher.Flux;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -40,6 +42,7 @@ class RedisTraceStoreTest {
 
     private RedisTemplate<String, Object> redisTemplate;
     private ListOperations<String, Object> listOps;
+    private RedisValueCodec codec;
     private RedisTraceStore store;
 
     @SuppressWarnings("unchecked")
@@ -48,7 +51,10 @@ class RedisTraceStoreTest {
         redisTemplate = mock(RedisTemplate.class);
         listOps = mock(ListOperations.class);
         when(redisTemplate.opsForList()).thenReturn(listOps);
-        store = new RedisTraceStore(redisTemplate, 100, Duration.ofDays(1));
+        codec = new RedisValueCodec(new CodecMetrics(
+                new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                        .getBeanProvider(io.micrometer.core.instrument.MeterRegistry.class)));
+        store = new RedisTraceStore(redisTemplate, codec, 100, Duration.ofDays(1));
     }
 
     private static ReasoningSpan span(String key) {
@@ -101,14 +107,61 @@ class RedisTraceStoreTest {
     }
 
     @Test
-    @DisplayName("读取：混入非快照类型时过滤掉，不抛类型转换异常")
-    void readFiltersForeignTypes() {
+    @DisplayName("读取：混入无法解析的元素时跳过该条，其余仍可读")
+    void readSkipsUnparsableElements() {
         List<Object> raw = new ArrayList<>();
         raw.add(span("k1"));
         raw.add("这不是快照");
         when(listOps.range(anyString(), anyLong(), anyLong())).thenReturn(raw);
 
         assertThat(store.read("t1")).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("读取：元素退化为普通映射（负载含框架对象导致类型还原失败）时仍能还原快照")
+    void readCoercesDegradedMapElements() {
+        // 复现真实缺陷：负载里嵌过框架领域对象（如模型用量），存储读回时元素被降级成映射、
+        // 不再是目标类型。此前这种元素会被整体滤掉，表现为「轨迹有大量快照却读出为空」。
+        Map<String, Object> degraded = new java.util.LinkedHashMap<>();
+        degraded.put("traceId", "t1");
+        degraded.put("stableKey", "MODEL_CALL|-|r|abc");
+        degraded.put("eventId", "e1");
+        degraded.put("kind", "MODEL_CALL");
+        degraded.put("depth", 0);
+        degraded.put("snapshot", "CLOSED");
+        degraded.put("status", "success");
+        degraded.put("durationMs", 1411);
+        degraded.put("payload", Map.of("usage", Map.of("inputTokens", 7009, "outputTokens", 68)));
+        degraded.put("at", 1790038374499L);
+
+        List<Object> raw = new ArrayList<>();
+        raw.add(degraded);
+        when(listOps.range(anyString(), anyLong(), anyLong())).thenReturn(raw);
+
+        List<ReasoningSpan> spans = store.read("t1");
+
+        assertThat(spans).as("退化映射应被还原为快照，而非被丢弃").hasSize(1);
+        ReasoningSpan restored = spans.get(0);
+        assertThat(restored.traceId()).isEqualTo("t1");
+        assertThat(restored.kind()).isEqualTo(SpanKind.MODEL_CALL);
+        assertThat(restored.snapshot()).isEqualTo(Snapshot.CLOSED);
+        assertThat(restored.payload()).containsKey("usage");
+    }
+
+    @Test
+    @DisplayName("读取：一条坏元素不拖垮整条轨迹（逐条容错）")
+    void readOneBadElementDoesNotBreakWholeTrace() {
+        List<Object> raw = new ArrayList<>();
+        raw.add(span("k1"));
+        raw.add(java.util.Collections.singletonMap("kind", "不存在的枚举值"));
+        raw.add(span("k2"));
+        when(listOps.range(anyString(), anyLong(), anyLong())).thenReturn(raw);
+
+        List<ReasoningSpan> spans = store.read("t1");
+
+        assertThat(spans).as("两条有效快照应保留，坏的那条跳过").hasSize(2);
+        assertThat(spans.get(0).stableKey()).isEqualTo("k1");
+        assertThat(spans.get(1).stableKey()).isEqualTo("k2");
     }
 
     @Test
@@ -167,7 +220,7 @@ class RedisTraceStoreTest {
     @Test
     @DisplayName("容量参数非正时回落到默认值（防误配导致列表不裁剪）")
     void invalidCapacityFallsBackToDefault() {
-        RedisTraceStore fallback = new RedisTraceStore(redisTemplate, 0, null);
+        RedisTraceStore fallback = new RedisTraceStore(redisTemplate, codec, 0, null);
         fallback.append(span("k1"));
 
         // 默认上限 10000，故 trim 的起始索引应为 -10000
@@ -177,7 +230,7 @@ class RedisTraceStoreTest {
     @Test
     @DisplayName("过期时间非正时回落到默认值（防误配导致键永不过期）")
     void invalidTtlFallsBackToDefault() {
-        RedisTraceStore fallback = new RedisTraceStore(redisTemplate, 10, Duration.ZERO);
+        RedisTraceStore fallback = new RedisTraceStore(redisTemplate, codec, 10, Duration.ZERO);
         fallback.append(span("k1"));
 
         verify(redisTemplate).expire(eq("yunxi:trace:t1"), any(Duration.class));

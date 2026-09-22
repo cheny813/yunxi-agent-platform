@@ -25,8 +25,7 @@ import io.agentscope.core.message.Msg;
 import io.yunxi.platform.execution.spi.AgentEventAdapter;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
-import io.yunxi.platform.trace.TraceComposer;
-import io.yunxi.platform.trace.TraceStore;
+import io.yunxi.platform.trace.TraceCollector;
 import io.yunxi.platform.trace.projection.SseProjection;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
@@ -62,7 +61,7 @@ class AgentExecutionEngineTest {
         // 引擎不再持有这两个关切，构造参数随之收敛。
         engine = new AgentExecutionEngine(
                 interceptorChain, List.of(strategy), eventAdapter, properties,
-                mock(TraceComposer.class), mock(TraceStore.class), mock(SseProjection.class));
+                mock(TraceCollector.class), mock(SseProjection.class));
         request = ExecutionRequest.builder()
                 .message("你好")
                 .agentName("agent-a")

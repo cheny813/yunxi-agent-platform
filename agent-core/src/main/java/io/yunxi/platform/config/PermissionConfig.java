@@ -187,10 +187,7 @@ public class PermissionConfig {
         PermissionContextState.Builder builder = PermissionContextState.builder();
         builder.mode(PermissionMode.DONT_ASK);
         addPlatformToolAllowRules(builder);
-        PermissionContextState state = builder.build();
-        log.info("[permission] unattendedContext 构建完成 mode=DONT_ASK allowTools={}",
-                PLATFORM_ALLOW_TOOLS);
-        return state;
+        return builder.build();
     }
 
     /**

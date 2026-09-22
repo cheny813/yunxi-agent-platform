@@ -8,9 +8,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -122,6 +119,11 @@ public class InMemoryTraceStore implements TraceStore {
             result.add(it.next());
         }
         return result;
+    }
+
+    @Override
+    public String storeEndpoint() {
+        return "(内存，仅本进程可见，重启即失；未配置 Redis 的降级模式)";
     }
 
 }

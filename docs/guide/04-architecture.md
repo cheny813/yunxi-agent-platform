@@ -685,6 +685,8 @@ agentscope:
 
 三个存储层各司其职，不重复。Session 负责运行时恢复，ChatAppService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
 
+> **Redis 值编解码统一**：yunxi 自有 Redis 值（会话存储、推理轨迹、用户画像、画像演进节流）的 JSON 编解码已统一收口到 `CodecSpec`（`ObjectMapper` 唯一来源）→ `RedisValueCodec`（Redis 值序列化唯一真相源）→ `RedisTemplates`（模板唯一构造入口），全平台禁止散落的 `new ObjectMapper()` / 自行配置 `RedisSerializer`。四项复用同一全局 `RedisConnectionFactory`；键空间与序列化约定各自独立。详见 [17. 统一 JSON 编解码机制](./17-data-codec.md)。
+
 ---
 
 ## 设计理念

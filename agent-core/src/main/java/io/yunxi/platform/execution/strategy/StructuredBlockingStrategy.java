@@ -15,6 +15,8 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.agent.AgentConfigurer;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.structured.SchemaClassRegistry;
@@ -53,7 +55,7 @@ public class StructuredBlockingStrategy implements ExecutionStrategy {
 
     private final SchemaClassRegistry schemaClassRegistry;
     private final LlmMetrics llmMetrics;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = CodecSpec.storage();
 
     /** 审计开关（配置项，默认关闭） */
     @Value("${agentscope.core.audit.enabled:false}")
@@ -92,6 +94,9 @@ public class StructuredBlockingStrategy implements ExecutionStrategy {
         Msg inputMessage = ctx.getInputMessage();
         Duration timeout = Duration.ofSeconds(conversationTimeoutSeconds);
 
+        // 结构化调用只有「返回结构化结果」的重载，没有返回事件流的重载，
+        // 因此本通道无法归集轨迹 —— 归集挂在事件流上，而事件流在此不可得。
+        // 这是框架 API 表面所限，已在架构文档的缺口台账中登记，不在本类内绕过。
         Msg response;
         if (target.schemaNode() != null) {
             // 内联 JSON Schema：调用无 RuntimeContext 重载的 agent.call

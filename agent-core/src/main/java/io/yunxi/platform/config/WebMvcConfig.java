@@ -65,14 +65,16 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     .addPathPatterns("/api/**")
                     .excludePathPatterns(
                             "/api/health",
-                            "/api/actuator/**");
+                            "/api/actuator/**",
+                            "/api/traces/diagnostics");
         }
         if (rateLimitInterceptorProvider.getIfAvailable() != null) {
             registry.addInterceptor(rateLimitInterceptorProvider.getIfAvailable())
                     .addPathPatterns("/api/**")
                     .excludePathPatterns(
                             "/api/health",
-                            "/api/actuator/**");
+                            "/api/actuator/**",
+                            "/api/traces/diagnostics");
         }
     }
 

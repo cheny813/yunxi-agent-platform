@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 /**
  * 外部数据库查询服务
  * <p>
@@ -27,7 +29,7 @@ public class ExternalDbQueryService {
 
     private static final Logger log = LoggerFactory.getLogger(ExternalDbQueryService.class);
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = CodecSpec.storage();
 
     /** 缓存 DataSource 避免重复创建连接池（按 JDBC URL 缓存） */
     private final Map<String, HikariDataSource> dataSourceCache = new ConcurrentHashMap<>();

@@ -1,6 +1,5 @@
 package io.yunxi.platform.muse.prune;
 
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -78,8 +77,6 @@ public class UsageProfileAggregator {
         }
         try {
             List<String> traceIds = traceStore.recentTraceIds(cfg.getScanLimit());
-            log.info("[muse] 聚合诊断: skill={}, scanLimit={}, traceIds={}",
-                    skillName, cfg.getScanLimit(), traceIds.size());
             if (traceIds.isEmpty()) {
                 return null;
             }
@@ -94,7 +91,6 @@ public class UsageProfileAggregator {
                 }
                 List<ReasoningSpan> spans = traceStore.read(traceId);
                 if (spans.isEmpty()) {
-                    log.info("[muse] 聚合诊断: traceId={} 读取为空", traceId);
                     continue;
                 }
                 boolean hitInTrace = false;

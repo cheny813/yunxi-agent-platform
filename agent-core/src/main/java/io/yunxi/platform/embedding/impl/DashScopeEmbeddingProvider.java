@@ -2,6 +2,8 @@ package io.yunxi.platform.embedding.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.embedding.EmbeddingProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +32,7 @@ public class DashScopeEmbeddingProvider implements EmbeddingProvider {
 
     private static final Logger log = LoggerFactory.getLogger(DashScopeEmbeddingProvider.class);
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = CodecSpec.storage();
 
     @Value("${agentscope.extensions.embedding.dashscope.api-key:}")
     private String apiKey;

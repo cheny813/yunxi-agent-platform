@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentEvent;
+import io.yunxi.platform.shared.codec.RedisValueCodec;
 import io.agentscope.core.event.AgentEventType;
 import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.event.AgentStartEvent;
@@ -73,6 +74,13 @@ public class TraceComposer {
     /** 节点稳定标识的分隔符 */
     private static final char KEY_SEPARATOR = '|';
 
+    /** 统一编解码器：负载收窄规则与存储侧共用同一实现 */
+    private final RedisValueCodec codec;
+
+    public TraceComposer(RedisValueCodec codec) {
+        this.codec = codec;
+    }
+
     /**
      * 归集一次运行的事件流。
      *
@@ -81,7 +89,7 @@ public class TraceComposer {
      * @return 轨迹节点快照流
      */
     public Flux<ReasoningSpan> compose(Flux<AgentEvent> events, String traceId) {
-        ComposerState state = new ComposerState(traceId);
+        ComposerState state = new ComposerState(traceId, codec);
         return events.concatMap(event -> Flux.fromIterable(state.accept(event)))
                 .concatWith(Flux.defer(() -> Flux.fromIterable(state.close())));
     }
@@ -100,7 +108,7 @@ public class TraceComposer {
      * @return 归集会话
      */
     public Session session(String traceId) {
-        return new Session(traceId);
+        return new Session(traceId, codec);
     }
 
     /**
@@ -110,8 +118,8 @@ public class TraceComposer {
 
         private final ComposerState state;
 
-        private Session(String traceId) {
-            this.state = new ComposerState(traceId);
+        private Session(String traceId, RedisValueCodec codec) {
+            this.state = new ComposerState(traceId, codec);
         }
 
         /**
@@ -178,9 +186,13 @@ public class TraceComposer {
         /** 编排层注入节点的序号，按种类分别计数，保证同一运行内标识唯一 */
         private final Map<SpanKind, Integer> injectedSeq = new LinkedHashMap<>();
 
-        ComposerState(String traceId) {
+        ComposerState(String traceId, RedisValueCodec codec) {
             this.traceId = traceId;
+            this.codec = codec;
         }
+
+        /** 统一编解码器：负载收窄规则与存储侧共用同一实现 */
+        private final RedisValueCodec codec;
 
         /** 意图工具名：模型侧意图分类工具，其调用归类为 INTENT 节点（见 {@link #accept}）。 */
         private static final String INTENT_TOOL_NAME = "intent_classify";
@@ -631,16 +643,61 @@ public class TraceComposer {
         }
 
         /**
+         * 把模型用量转为纯数据类型。
+         *
+         * <p>字段含义：输入/输出/缓存命中 token 数与耗时（秒）；并附带总量便于消费方直接取用。</p>
+         *
+         * <p>显式逐字段搬运而非整体转换：用量是全轨迹里被消费得最细的一处（协议投影要按
+         * 模型维度上报），显式列字段使契约一目了然，字段增删在编译期即可发现。</p>
+         *
+         * @param usage 框架用量对象
+         * @return 仅含基础类型的用量映射
+         */
+        private static Map<String, Object> usageToMap(Object usage) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            if (!(usage instanceof io.agentscope.core.model.ChatUsage u)) {
+                return map;
+            }
+            map.put("inputTokens", u.getInputTokens());
+            map.put("outputTokens", u.getOutputTokens());
+            map.put("cachedTokens", u.getCachedTokens());
+            map.put("time", u.getTime());
+            map.put("totalTokens", u.getInputTokens() + u.getOutputTokens());
+            return map;
+        }
+
+        /**
+         * 把任意值收窄为仅含 JSON 原生类型的结构。
+         *
+         * <p>收窄规则统一由 {@link RedisValueCodec#toNative(Object)} 定义，此处只做场景标识的
+         * 绑定 —— 负载是持久化对象的一部分，收窄必须与存储侧使用同一套规则，不得各自实现。</p>
+         *
+         * @param value 原始值
+         * @return 仅含 JSON 原生类型的值
+         */
+        private Object toNative(Object value) {
+            return codec.toNative(value, RedisValueCodec.SCENE_TRACE);
+        }
+
+        /**
          * 快照携带的负载（开启与关闭共用）。
          *
          * <p>为何开启快照也要带负载：消费者（协议投影、前端）构造「工具调用开始」消息时就需要
          * 工具标识与名称，不能等到关闭时才有。若只有关闭快照带负载，投影要么回查历史、
          * 要么自己解析稳定键格式 —— 两条路都把内部表示泄漏给了消费方。</p>
+         *
+         * <p>所有取值一律经 {@link #toNative(Object)} 收窄：负载会被持久化，任何框架领域对象
+         * 直接入负载都会带来「读取侧必须能实例化该类型」的脆弱耦合。</p>
          */
         private Map<String, Object> payloadOf(AgentEvent event) {
             Map<String, Object> payload = new LinkedHashMap<>();
             if (event instanceof ModelCallEndEvent e && e.getUsage() != null) {
-                payload.put("usage", e.getUsage());
+                payload.put("usage", usageToMap(e.getUsage()));
+            }
+            // 开始快照先落一个空用量占位：协议投影据此知道「本节点是一次模型调用」，
+            // 从而在关闭快照到达前就能按模型维度开一条上报；具体数值由关闭快照补齐。
+            if (event instanceof ModelCallStartEvent) {
+                payload.put("usage", Map.of());
             }
             // 工具调用标识：虽已编码进 stableKey，但消费者（协议投影、前端）需要的是可直接使用的
             // 字段值，不应要求它们去解析内部键格式。开快照与关快照都带上，使投影无需回查。
@@ -673,30 +730,30 @@ public class TraceComposer {
                 }
             }
             if (event instanceof RequireUserConfirmEvent e) {
-                payload.put("toolCalls", e.getToolCalls());
+                payload.put("toolCalls", toNative(e.getToolCalls()));
             }
             if (event instanceof RequireExternalExecutionEvent e) {
-                payload.put("toolCalls", e.getToolCalls());
+                payload.put("toolCalls", toNative(e.getToolCalls()));
             }
             if (event instanceof UserConfirmResultEvent e) {
-                payload.put("confirmResults", e.getConfirmResults());
+                payload.put("confirmResults", toNative(e.getConfirmResults()));
             }
             if (event instanceof ExternalExecutionResultEvent e) {
-                payload.put("toolResults", e.getToolResults());
+                payload.put("toolResults", toNative(e.getToolResults()));
             }
             if (event instanceof ExceedMaxItersEvent e) {
                 payload.put("maxIters", e.getMaxIters());
                 payload.put("currentIter", e.getCurrentIter());
             }
             if (event instanceof AllToolsDeniedEvent e) {
-                payload.put("deniedToolCalls", e.getDeniedToolCalls());
+                payload.put("deniedToolCalls", toNative(e.getDeniedToolCalls()));
             }
             if (event instanceof RequestStopEvent e) {
                 payload.put("reason", e.getReason());
                 payload.put("generateReason", e.getGenerateReason());
             }
             if (event instanceof AgentResultEvent e) {
-                payload.put("result", e.getResult());
+                payload.put("result", toNative(e.getResult()));
             }
             if (event instanceof SubagentExposedEvent e) {
                 payload.put("subagentId", e.getSubagentId());

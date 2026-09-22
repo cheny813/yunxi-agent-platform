@@ -2,6 +2,8 @@ package io.yunxi.platform.aistio.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 import io.yunxi.platform.shared.config.GraphConfig;
 import io.yunxi.platform.shared.config.GraphEdgeConfig;
 import io.yunxi.platform.shared.config.GraphNodeConfig;
@@ -49,7 +51,7 @@ public class OrchestrationTranslator {
     private final int maxEdges;
 
     public OrchestrationTranslator() {
-        this(new ObjectMapper(), 200, 500);
+        this(CodecSpec.storage(), 200, 500);
     }
 
     public OrchestrationTranslator(ObjectMapper objectMapper, int maxNodes, int maxEdges) {

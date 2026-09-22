@@ -3,6 +3,8 @@ package io.yunxi.platform.file.extractor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 import io.yunxi.platform.shared.entity.UserFileEntity;
 import io.yunxi.platform.file.dto.ImageFeatureResult;
 import io.yunxi.platform.file.storage.FileStorageService;
@@ -88,7 +90,7 @@ public class ClipImageFeatureExtractor implements ImageFeatureExtractor {
     public ClipImageFeatureExtractor(FileStorageService fileStorageService) {
         this.fileStorageService = fileStorageService;
         this.restTemplate = new RestTemplate();
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = CodecSpec.storage();
     }
 
     @Override

@@ -86,6 +86,7 @@
 | [14. A2A 协议](./14-a2a-protocol.md) | 跨服务 Agent 协作、分布式架构 | 30 分钟 |
 | [15. 可观测性](./15-observability.md) | 追踪、指标、日志与 OpenTelemetry 集成 | 20 分钟 |
 | [16. 意图引擎](./16-intent-engine.md) | 意图识别、实体抽取、多域模型、分类通道与热更新 | 20 分钟 |
+| [17. 统一 JSON 编解码机制](./17-data-codec.md) | Redis 值编解码单一真相源、开发约束与诊断 | 10 分钟 |
 
 ---
 
@@ -107,7 +108,7 @@
 → 查看 [12. 常见问题](./12-faq.md)
 
 **我要了解高级功能**
-→ 查看 [13. 智能系统](./13-intelligent-system.md)、[14. A2A 协议](./14-a2a-protocol.md)、[15. 可观测性](./15-observability.md) 和 [16. 意图引擎](./16-intent-engine.md)
+→ 查看 [13. 智能系统](./13-intelligent-system.md)、[14. A2A 协议](./14-a2a-protocol.md)、[15. 可观测性](./15-observability.md)、[16. 意图引擎](./16-intent-engine.md) 和 [17. 统一 JSON 编解码机制](./17-data-codec.md)
 
 **我要定制意图识别与路由**
 → 查看 [16. 意图引擎](./16-intent-engine.md)，业务数据（词典/意图树/映射表）均可配置替换

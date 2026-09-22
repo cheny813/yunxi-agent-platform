@@ -4,26 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentStartEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
-import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.Task;
 import io.agentscope.core.state.TaskContextState;
-import reactor.core.publisher.Flux;
-
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * 任务清单归集测试：{@code todo_write} 调用的清单快照入树。
@@ -38,18 +31,12 @@ import static org.mockito.Mockito.when;
 class TodoSnapshotCollectionTest {
 
     private InMemoryTraceStore store;
-    private TraceCollectorMiddleware middleware;
+    private TraceCollector collector;
 
     @BeforeEach
     void setUp() {
         store = new InMemoryTraceStore();
-        middleware = new TraceCollectorMiddleware(new TraceComposer(), store);
-    }
-
-    private static Agent agentNamed(String name) {
-        Agent agent = mock(Agent.class);
-        when(agent.getName()).thenReturn(name);
-        return agent;
+        collector = new TraceCollector(new TraceComposer(TestCodecs.newCodec()), store);
     }
 
     /** 构造带清单的 AgentState。 */
@@ -69,14 +56,14 @@ class TodoSnapshotCollectionTest {
         if (state != null) {
             b.agentState(state);
         }
-        Flux<AgentEvent> events = Flux.just(
+        RuntimeContext ctx = b.build();
+        List<AgentEvent> events = List.of(
                 new AgentStartEvent("s1", "r1", "agent-a"),
                 new ToolCallStartEvent("r1", "call-1", toolName),
                 new AgentEndEvent("r1"));
-        Function<AgentInput, Flux<AgentEvent>> next = input -> events;
-        middleware.onAgent(agentNamed("agent-a"), b.build(), new AgentInput(List.of()), next)
-                .collectList()
-                .block();
+        TraceComposer.Session session = collector.openSession("u1:s1");
+        events.forEach(event -> collector.accept(session, event, ctx));
+        collector.close(session);
     }
 
     @Test

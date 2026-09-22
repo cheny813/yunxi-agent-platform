@@ -17,6 +17,12 @@
     <description>Java implementation of OpenSearch-SQL framework for natural language to SQL conversion</description>
 
     <dependencies>
+        <!-- 编解码机制（全平台唯一 JSON 绑定配置来源） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-codec</artifactId>
+        </dependency>
+
         <!-- Agent Config 模块 (配置集中管理) -->
         <dependency>
             <groupId>io.yunxi</groupId>

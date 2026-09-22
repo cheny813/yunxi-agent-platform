@@ -9,8 +9,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
-import org.springframework.data.redis.serializer.StringRedisSerializer;
+
+import io.yunxi.platform.shared.codec.RedisTemplates;
+import io.yunxi.platform.shared.codec.RedisValueCodec;
 
 /**
  * {@link TraceStore} 的统一自动装配。
@@ -29,13 +30,12 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  * 取 {@code RedisConnectionFactory}：此时所有 bean 定义（含自动配置）已注册，能正确取到；
  * 取不到（未配 Redis）则方法返回 {@code null}，Spring 不注册该 bean，由内存实现兜底。</p>
  *
- * <p><b>连接来源</b>：直接复用全局自动装配的 {@link RedisConnectionFactory}
- * （由 {@code config/redis.yml} 的 {@code spring.data.redis.*} 提供连接参数），
- * 本类不再自建连接工厂。自建工厂曾导致“轨迹连的库与全局不一致、密码取自读不到的前缀”
- * 这类难查问题 —— 连接参数只允许有一个来源。</p>
+ * <p><b>连接来源</b>：复用全局自动装配的 {@link RedisConnectionFactory}
+ * （连接参数由 {@code config/redis.yml} 的 {@code spring.data.redis.*} 统一提供），
+ * 本类不自建连接工厂 —— 连接参数只允许有一个来源。</p>
  *
- * <p>仅序列化器需要在本类指定：轨迹键用明文 {@link StringRedisSerializer}，
- * 以便与外部工具注入的合成轨迹格式一致；值用 {@link GenericJackson2JsonRedisSerializer}。</p>
+ * <p><b>编解码</b>：键用明文 {@link StringRedisSerializer}，以便与外部工具注入的合成轨迹
+ * 格式一致；值统一走 {@link RedisValueCodec}，不附加类型标识。</p>
  */
 @Configuration(proxyBeanMethods = false)
 public class TraceStoreAutoConfiguration {
@@ -43,10 +43,11 @@ public class TraceStoreAutoConfiguration {
     private static final Logger log = LoggerFactory.getLogger(TraceStoreAutoConfiguration.class);
 
     /**
-     * 单一工厂方法：任何配置下都恰好产出一个 TraceStore 实例，杜绝两个竞争 @Bean 在
-     * 无 Redis 环境下互相抑制的缺陷——此前 redis 的 bean 定义被注册（matchIfMissing=true）
-     * 但方法返回 null，导致 @ConditionalOnMissingBean 误判、InMemory 兜底失效，容器里
-     * 最终没有可用的 TraceStore，造成 AgentExecutionEngine 注入失败。
+     * 单一工厂方法：任何配置下都恰好产出一个 TraceStore 实例。
+     *
+     * <p>不用两个竞争的 @Bean 加 @ConditionalOnMissingBean 判定：当某个 bean 定义被注册
+     * 但工厂方法返回 null 时，条件判定会误判、兜底失效，容器里最终可能没有可用的 TraceStore。
+     * 单一方法内部选择实现可避免这类装配竞态。</p>
      *
      * <p>选择逻辑：显式检测到 RedisConnectionFactory 且未指定 memory 时优先用 RedisTraceStore
      * （跨实例共享）；其余情况（无 Redis 或显式 memory）回退 InMemoryTraceStore，
@@ -55,25 +56,37 @@ public class TraceStoreAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(TraceStore.class)
     public TraceStore traceStore(ObjectProvider<RedisConnectionFactory> redisConnectionFactory,
-                                 Environment environment) {
+                                 Environment environment,
+                                 RedisValueCodec valueCodec) {
         RedisConnectionFactory connectionFactory = redisConnectionFactory.getIfAvailable();
         String type = environment.getProperty("conversation.trace-storage-type", "redis");
         if (connectionFactory != null && !"memory".equalsIgnoreCase(type)) {
-            RedisTemplate<String, Object> template = new RedisTemplate<>();
-            template.setConnectionFactory(connectionFactory);
-            template.setKeySerializer(new StringRedisSerializer());
-            template.setHashKeySerializer(new StringRedisSerializer());
-            template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
-            template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
-            template.afterPropertiesSet();
-            log.warn("TraceStore 装配: RedisTraceStore (复用全局 RedisConnectionFactory) 已创建");
-            return new RedisTraceStore(template);
+            RedisTemplate<String, Object> template = RedisTemplates.objectTemplate(connectionFactory, valueCodec);
+            log.warn("TraceStore 装配: RedisTraceStore (复用全局 RedisConnectionFactory) 已创建，目标 Redis 实例={}，轨迹键前缀={}",
+                    RedisTemplates.endpointOf(connectionFactory), RedisTraceStore.KEY_PREFIX);
+            return new RedisTraceStore(template, valueCodec);
         }
         if (connectionFactory == null && "redis".equalsIgnoreCase(type)) {
-            log.warn("TraceStore 装配: 显式要求 redis 但未检测到 RedisConnectionFactory，回退 InMemoryTraceStore");
+            log.warn("TraceStore 装配: 显式要求 redis 但未检测到 RedisConnectionFactory，回退 InMemoryTraceStore（内存降级：轨迹仅存本进程、重启即失，查不到任何键属正常）");
         } else {
-            log.warn("TraceStore 装配: InMemoryTraceStore (内存) 已创建");
+            log.warn("TraceStore 装配: InMemoryTraceStore (内存) 已创建（未配 Redis 的降级模式，轨迹仅存本进程、重启即失，查不到任何键属正常）");
         }
         return new InMemoryTraceStore();
+    }
+
+    /**
+     * 轨迹归集器：全平台唯一的归集入口，供各执行通道共用。
+     *
+     * <p>刻意声明为 Bean 而非让各通道自行构造：归集是一处横切关切，若每个通道各自 new 一个，
+     * 就会出现通道间的行为差异（走某接口有轨迹、走另一接口没有），而这类差异排查成本极高。</p>
+     *
+     * @param composer   归集器（事件流 → 语义快照）
+     * @param traceStore 轨迹存储
+     * @return 归集器
+     */
+    @Bean
+    @ConditionalOnMissingBean(TraceCollector.class)
+    public TraceCollector traceCollector(TraceComposer composer, TraceStore traceStore) {
+        return new TraceCollector(composer, traceStore);
     }
 }

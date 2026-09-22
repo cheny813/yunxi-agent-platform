@@ -15,6 +15,12 @@
     <description>核心 Agent 框架模块</description>
 
     <dependencies>
+        <!-- 编解码机制（全平台唯一 JSON 绑定配置来源、Redis 值编解码、数据库 JSON 类型处理器） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-codec</artifactId>
+        </dependency>
+
         <!-- Agent SPI 模块 (SPI 接口) -->
         <dependency>
             <groupId>io.yunxi</groupId>

@@ -22,6 +22,8 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.execution.AgentExecutionEngine;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.execution.ExecutionResult;
 import io.yunxi.platform.execution.strategy.StructuredBlockingStrategy;
@@ -71,7 +73,7 @@ public class ChatAppService {
     private final io.yunxi.platform.agent.service.AgentService agentDomainService;
     private final SchemaClassRegistry schemaClassRegistry;
     private final DistributedRequestManager requestManager;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = CodecSpec.storage();
 
     /** 对话接口等待超时时间（秒） */
     @Value("${conversation.timeout-seconds:300}")

@@ -16,6 +16,12 @@
     <description>Agent 平台 SPI 接口模块，定义跨模块服务接口</description>
 
     <dependencies>
+        <!-- 编解码机制（全平台唯一 JSON 绑定配置来源） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-codec</artifactId>
+        </dependency>
+
         <!-- 仅依赖 Spring 核心，不依赖其他业务模块 -->
         <dependency>
             <groupId>org.springframework</groupId>

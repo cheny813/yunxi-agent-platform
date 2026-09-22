@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
+
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
 import io.yunxi.platform.aistio.AistioIntegrationProperties.TriggerConfig;
 import io.yunxi.platform.aistio.AistioIntegrationProperties.TriggerConfig.AutomationBinding;
@@ -56,7 +58,7 @@ public class WebhookOrchestrationTrigger implements OrchestrationTrigger {
             TriggerIdempotencyStore idempotencyStore) {
         this.properties = properties;
         this.idempotencyStore = idempotencyStore;
-        this.mapper = new ObjectMapper();
+        this.mapper = CodecSpec.storage();
         this.client = new AistioControlPlaneClient(properties.getControlPlaneUrl(), this.mapper);
     }
 

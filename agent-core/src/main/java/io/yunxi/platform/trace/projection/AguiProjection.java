@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.trace.ReasoningSpan;
 import io.yunxi.platform.trace.SpanKind;
 import io.yunxi.platform.trace.Snapshot;
@@ -42,7 +43,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class AguiProjection implements TraceProjection<String> {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** 绑定器取自全平台唯一配置来源，避免投影与持久化对同一份负载产生不同的解析行为 */
+    private static final ObjectMapper MAPPER = CodecSpec.storage();
     private static final char KEY_SEPARATOR = '|';
 
     @Override

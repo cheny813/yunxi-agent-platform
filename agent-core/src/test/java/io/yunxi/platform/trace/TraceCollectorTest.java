@@ -3,13 +3,11 @@ package io.yunxi.platform.trace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
-import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.AgentEvent;
@@ -18,48 +16,33 @@ import io.agentscope.core.event.ModelCallEndEvent;
 import io.agentscope.core.event.ModelCallStartEvent;
 import io.agentscope.core.event.ToolCallEndEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
-import io.agentscope.core.middleware.AgentInput;
 import reactor.core.publisher.Flux;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 /**
- * {@link TraceCollectorMiddleware} 单元测试：归集中间件的运行时接线点。
+ * {@link TraceCollector} 单元测试：轨迹归集的运行时接线点。
  *
- * <p>本类守护的核心约束是<b>归集状态必须跨事件存活</b>。最初的实现按事件逐个调用
- * {@code composer.compose(Flux.just(event))}，而该方法内部每次新建归集状态，
- * 于是节点栈恒为空、配对键无从匹配、父子关系全部丢失 —— 输出仍是一串合法快照，
+ * <p>本类守护的核心约束是<b>归集状态必须跨事件存活</b>。若按事件逐个新建归集状态，
+ * 节点栈恒为空、配对键无从匹配、父子关系全部丢失 —— 输出仍是一串合法快照，
  * 却失去了树的形状。这类错误不会抛异常，只会静默产出错误结构，因此必须有断言守住。</p>
  */
-@DisplayName("TraceCollectorMiddleware 轨迹归集接线")
-class TraceCollectorMiddlewareTest {
+@DisplayName("TraceCollector 轨迹归集")
+class TraceCollectorTest {
 
     private InMemoryTraceStore store;
-    private TraceCollectorMiddleware middleware;
+    private TraceCollector collector;
 
     @BeforeEach
     void setUp() {
         store = new InMemoryTraceStore();
-        middleware = new TraceCollectorMiddleware(new TraceComposer(), store);
+        collector = new TraceCollector(new TraceComposer(TestCodecs.newCodec()), store);
     }
 
-    private static Agent agentNamed(String name) {
-        Agent agent = mock(Agent.class);
-        when(agent.getName()).thenReturn(name);
-        return agent;
-    }
-
-    /** 跑一次 onAgent，把给定事件流交给中间件。 */
-    private void run(Flux<AgentEvent> events, String userId, String sessionId) {
-        RuntimeContext ctx = RuntimeContext.builder()
-                .userId(userId)
-                .sessionId(sessionId)
-                .build();
-        Function<AgentInput, Flux<AgentEvent>> next = input -> events;
-        middleware.onAgent(agentNamed("agent-a"), ctx, new AgentInput(List.of()), next)
-                .collectList()
-                .block();
+    /** 把给定事件流喂给归集会话，返回归集会话供调用方收尾。 */
+    private TraceComposer.Session feed(Flux<AgentEvent> events, String traceId) {
+        RuntimeContext ctx = RuntimeContext.builder().userId("u1").sessionId("s1").build();
+        TraceComposer.Session session = collector.openSession(traceId);
+        events.toIterable().forEach(event -> collector.accept(session, event, ctx));
+        return session;
     }
 
     /** 一段完整回合：开始 → 模型调用 → 工具调用 → 结束。 */
@@ -76,7 +59,8 @@ class TraceCollectorMiddlewareTest {
     @Test
     @DisplayName("归集结果落库：回合产生 TURN / MODEL_CALL / TOOL_CALL 三类节点")
     void collectsSpansIntoTraceStore() {
-        run(fullTurn(), "u1", "s1");
+        TraceComposer.Session session = feed(fullTurn(), "u1:s1");
+        collector.close(session);
 
         List<ReasoningSpan> spans = store.read("u1:s1");
         assertThat(spans).isNotEmpty();
@@ -88,7 +72,8 @@ class TraceCollectorMiddlewareTest {
     @Test
     @DisplayName("关键约束：归集状态跨事件存活，开启快照带父节点归属")
     void keepsStateAcrossEventsSoParentChildHolds() {
-        run(fullTurn(), "u1", "s1");
+        TraceComposer.Session session = feed(fullTurn(), "u1:s1");
+        collector.close(session);
 
         List<ReasoningSpan> children = store.read("u1:s1").stream()
                 .filter(s -> s.kind() == SpanKind.MODEL_CALL || s.kind() == SpanKind.TOOL_CALL)
@@ -108,7 +93,8 @@ class TraceCollectorMiddlewareTest {
     @Test
     @DisplayName("父子归属不在关闭快照上重复表达（避免误解为丢失）")
     void closedSnapshotCarriesNoParentKeyByDesign() {
-        run(fullTurn(), "u1", "s1");
+        TraceComposer.Session session = feed(fullTurn(), "u1:s1");
+        collector.close(session);
 
         List<ReasoningSpan> closed = store.read("u1:s1").stream()
                 .filter(ReasoningSpan::isClosed)
@@ -124,7 +110,8 @@ class TraceCollectorMiddlewareTest {
     @Test
     @DisplayName("关键约束：同一节点的开启与关闭归到同一 stableKey（非逐事件新建状态）")
     void openAndCloseShareSameStableKey() {
-        run(fullTurn(), "u1", "s1");
+        TraceComposer.Session session = feed(fullTurn(), "u1:s1");
+        collector.close(session);
 
         List<ReasoningSpan> toolSpans = store.read("u1:s1").stream()
                 .filter(s -> s.kind() == SpanKind.TOOL_CALL)
@@ -139,56 +126,43 @@ class TraceCollectorMiddlewareTest {
     }
 
     @Test
-    @DisplayName("轨迹标识按用户与会话组合，不同用户不混桶")
-    void traceIdIsUserScoped() {
-        run(fullTurn(), "u1", "same-session");
-        run(fullTurn(), "u2", "same-session");
-
-        assertThat(store.read("u1:same-session")).isNotEmpty();
-        assertThat(store.read("u2:same-session")).isNotEmpty();
-        assertThat(store.read("same-session"))
-                .as("不应退化成仅按 sessionId 分桶")
-                .isEmpty();
-    }
-
-    @Test
-    @DisplayName("无会话身份：跳过归集且不影响事件流透传")
-    void skipsWhenNoSessionIdentity() {
-        RuntimeContext ctx = RuntimeContext.builder().userId("u1").build();
-        List<AgentEvent> passthrough = middleware
-                .onAgent(agentNamed("agent-a"), ctx, new AgentInput(List.of()),
-                        input -> Flux.just(new AgentStartEvent("x", "r1", "a")))
-                .collectList()
-                .block();
-
-        assertThat(passthrough)
-                .as("事件必须原样透传，执行不受归集跳过影响")
-                .hasSize(1);
-    }
-
-    @Test
-    @DisplayName("归集全程不改写事件流（旁路语义）")
-    void doesNotMutateEventStream() {
+    @DisplayName("收尾补齐：未关闭的节点在 close 时补关闭快照")
+    void closeEmitsClosingSnapshots() {
+        // 只喂到开启，不留结束事件
+        TraceComposer.Session session = collector.openSession("u1:s1");
         RuntimeContext ctx = RuntimeContext.builder().userId("u1").sessionId("s1").build();
-        List<AgentEvent> out = middleware
-                .onAgent(agentNamed("agent-a"), ctx, new AgentInput(List.of()),
-                        input -> fullTurn())
-                .collectList()
-                .block();
+        collector.accept(session, new AgentStartEvent("sess", "r1", "agent-a"), ctx);
+        collector.accept(session, new ModelCallStartEvent("r1"), ctx);
 
-        assertThat(out)
-                .as("归集是旁路观察，事件数量与顺序均不得改变")
-                .hasSize(6);
-        assertThat(out.get(0)).isInstanceOf(AgentStartEvent.class);
-        assertThat(out.get(5)).isInstanceOf(AgentEndEvent.class);
+        collector.close(session);
+
+        assertThat(store.read("u1:s1").stream().filter(ReasoningSpan::isClosed))
+                .as("收尾必须为未关闭节点补关闭快照，避免轨迹里出现无终点的节点")
+                .isNotEmpty();
     }
 
     @Test
-    @DisplayName("order 最高：归集器必须看到全部下游节点")
-    void runsAtOutermostLayer() {
-        assertThat(middleware.order())
-                .as("须大于 AgentPhaseMiddleware(100) 与 AgentMetricsMiddleware(200)")
-                .isGreaterThan(200);
+    @DisplayName("无会话身份：openSession 返回 null，归集被跳过")
+    void skipsWhenNoTraceId() {
+        assertThat(collector.openSession(null)).isNull();
+
+        // 传入 null 会话时归集应无操作且不抛异常
+        collector.accept(null, new AgentStartEvent("sess", "r1", "agent-a"), null);
+        collector.close(null);
+
+        assertThat(store.read("u1:s1")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("注入节点：编排层产生的意图节点可挂入轨迹")
+    void injectsOrchestrationSpan() {
+        TraceComposer.Session session = collector.openSession("u1:s1");
+        collector.inject(session, SpanKind.INTENT, java.util.Map.of("intentLabel", "问诊"), 12L);
+        collector.close(session);
+
+        assertThat(store.read("u1:s1"))
+                .extracting(ReasoningSpan::kind)
+                .contains(SpanKind.INTENT);
     }
 
     @Test
@@ -218,19 +192,17 @@ class TraceCollectorMiddlewareTest {
             public List<String> recentTraceIds(int limit) {
                 return List.of();
             }
+
+            @Override
+            public String storeEndpoint() {
+                return "(测试用故障存储)";
+            }
         };
-        TraceCollectorMiddleware resilient =
-                new TraceCollectorMiddleware(new TraceComposer(), failing);
+        TraceCollector resilient = new TraceCollector(new TraceComposer(TestCodecs.newCodec()), failing);
 
-        RuntimeContext ctx = RuntimeContext.builder().userId("u1").sessionId("s1").build();
-        List<AgentEvent> out = resilient
-                .onAgent(agentNamed("agent-a"), ctx, new AgentInput(List.of()),
-                        input -> fullTurn())
-                .collectList()
-                .block();
-
-        assertThat(out)
-                .as("轨迹是观测资产，存储故障不得中断执行")
-                .hasSize(6);
+        TraceComposer.Session session = resilient.openSession("u1:s1");
+        // 助手：存储故障时归集不得向调用方抛出
+        resilient.accept(session, new AgentStartEvent("sess", "r1", "agent-a"), null);
+        resilient.close(session);
     }
 }

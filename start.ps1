@@ -186,7 +186,7 @@ $MYSQL_PASSWORD = "root"
 #   -DDASHSCOPE_MODEL    → agentscope.yml 的 core.model-name，真正生效的对话模型（ModelFactory.java:230-233）
 #   -DINTENT_MODEL       → intent.yml 的分类模型（每轮都跑，建议用快模型）
 #   -DINTENT_TIMEOUT_MS  → intent.yml 的分类超时，超时即降级 unknown
-$DASHSCOPE_API_KEY = "sk-dd32b52d60d8d08a9e"
+$DASHSCOPE_API_KEY = "sk-f0bd64663da82cd5"
 $LLM_MODEL         = "qwen3.8-27b"
 # 意图分类单独用变量：分类每轮都跑一次，建议用快模型（如 qwen-turbo / qwen-plus）省时延和成本。
 # 2026-09-21 由 qwen3.7-flash-2026-07-15 改为 qwen-turbo：前者单次响应常超 2000ms 分类超时，

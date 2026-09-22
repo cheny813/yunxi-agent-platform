@@ -227,10 +227,16 @@ class SseProjectionTest {
                 .isEqualTo(stripTimestamps(project(spans)));
     }
 
-    /** 去掉 JSON 中的 timestamp 字段，只保留类型与内容用于比较。 */
+    /**
+     * 去掉 JSON 中的 timestamp 字段，只保留类型与内容用于比较。
+     *
+     * <p>匹配到字符串结束的引号为止：时间既有数值形式（时间戳）也有字符串形式（ISO 8601），
+     * 且 JSON 字符串可能被再次转义（出现 {@code \"} ）。只按数值字符集匹配会漏掉 ISO 形式，
+     * 使「带时间戳的字段」在剥离后仍留在结果里，破坏比较。</p>
+     */
     private static List<String> stripTimestamps(List<String> messages) {
         return messages.stream()
-                .map(m -> m.replaceAll("\"timestamp\":[0-9.E-]+,", ""))
+                .map(m -> m.replaceAll("\"timestamp\":(\"[^\"]*\"|[^,}]+),", ""))
                 .toList();
     }
 

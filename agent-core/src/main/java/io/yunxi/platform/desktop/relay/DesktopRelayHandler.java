@@ -3,6 +3,8 @@ package io.yunxi.platform.desktop.relay;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.yunxi.platform.desktop.model.NodeInfo;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.agent.profile.NodeProfileService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,7 +38,7 @@ import java.util.stream.Collectors;
 public class DesktopRelayHandler extends TextWebSocketHandler {
 
     /** JSON 序列化工具 */
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = CodecSpec.storage();
 
     /** Spring 事件发布器 */
     private final ApplicationEventPublisher eventPublisher;

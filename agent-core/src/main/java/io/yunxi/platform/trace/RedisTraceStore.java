@@ -13,6 +13,8 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
 
+import io.yunxi.platform.shared.codec.RedisTemplates;
+import io.yunxi.platform.shared.codec.RedisValueCodec;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
@@ -35,6 +37,9 @@ import reactor.core.publisher.Sinks;
  * <p><b>容量控制</b>：每次追加后按 {@code maxSpansPerTrace} 裁剪，避免长会话无限增长。
  * TTL 与轨迹生命周期绑定：每次追加刷新过期时间，使活跃轨迹不过期、沉寂轨迹自动回收。</p>
  *
+ * <p><b>编解码</b>：值走全平台统一编解码器，不含类型信息。读回的元素是自由结构，
+ * 逐条转换为轨迹快照，单条失败只跳过该条 —— 详见 {@link #read(String)}。</p>
+ *
  * @author yunxi-agent-platform
  */
 public class RedisTraceStore implements TraceStore {
@@ -42,7 +47,7 @@ public class RedisTraceStore implements TraceStore {
     private static final Logger log = LoggerFactory.getLogger(RedisTraceStore.class);
 
     /** 键前缀，避免与业务键冲突 */
-    private static final String KEY_PREFIX = "yunxi:trace:";
+    public static final String KEY_PREFIX = "yunxi:trace:";
 
     /** 单轨迹默认保留的最大快照数 */
     private static final int DEFAULT_MAX_SPANS_PER_TRACE = 10_000;
@@ -51,20 +56,21 @@ public class RedisTraceStore implements TraceStore {
     private static final Duration DEFAULT_TTL = Duration.ofDays(7);
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisValueCodec codec;
     private final int maxSpansPerTrace;
     private final Duration ttl;
 
     /** 本实例的实时推送通道（跨实例推送未实现，见类注释） */
     private final ConcurrentHashMap<String, Sinks.Many<ReasoningSpan>> localSinks = new ConcurrentHashMap<>();
 
-    public RedisTraceStore(RedisTemplate<String, Object> redisTemplate) {
-        this(redisTemplate, DEFAULT_MAX_SPANS_PER_TRACE, DEFAULT_TTL);
+    public RedisTraceStore(RedisTemplate<String, Object> redisTemplate, RedisValueCodec codec) {
+        this(redisTemplate, codec, DEFAULT_MAX_SPANS_PER_TRACE, DEFAULT_TTL);
     }
 
-    public RedisTraceStore(RedisTemplate<String, Object> redisTemplate,
-                           int maxSpansPerTrace,
-                           Duration ttl) {
+    public RedisTraceStore(RedisTemplate<String, Object> redisTemplate, RedisValueCodec codec,
+                           int maxSpansPerTrace, Duration ttl) {
         this.redisTemplate = redisTemplate;
+        this.codec = codec;
         this.maxSpansPerTrace = maxSpansPerTrace > 0 ? maxSpansPerTrace : DEFAULT_MAX_SPANS_PER_TRACE;
         this.ttl = (ttl == null || ttl.isZero()) ? DEFAULT_TTL : ttl;
     }
@@ -92,6 +98,11 @@ public class RedisTraceStore implements TraceStore {
         }
     }
 
+    /**
+     * 读取一个轨迹的全部快照。
+     *
+     * <p>逐条转换：单条快照损坏只跳过该条并计入编解码失败指标，不影响整条轨迹的可读性。</p>
+     */
     @Override
     public List<ReasoningSpan> read(String traceId) {
         if (traceId == null) {
@@ -102,10 +113,7 @@ public class RedisTraceStore implements TraceStore {
             if (raw == null || raw.isEmpty()) {
                 return List.of();
             }
-            return raw.stream()
-                    .filter(ReasoningSpan.class::isInstance)
-                    .map(ReasoningSpan.class::cast)
-                    .toList();
+            return codec.convertList(raw, ReasoningSpan.class, RedisValueCodec.SCENE_TRACE);
         } catch (Exception e) {
             log.warn("轨迹读取 Redis 失败: traceId={}: {}", traceId, e.getMessage());
             return List.of();
@@ -178,6 +186,12 @@ public class RedisTraceStore implements TraceStore {
 
     private static String keyOf(String traceId) {
         return KEY_PREFIX + traceId;
+    }
+
+    @Override
+    public String storeEndpoint() {
+        return RedisTemplates.endpointOf(redisTemplate.getConnectionFactory())
+                + " (键前缀=" + KEY_PREFIX + ")";
     }
 
 }

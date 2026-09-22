@@ -18,12 +18,12 @@ import io.agentscope.core.state.AgentState;
 import io.agentscope.core.message.Msg;
 import io.yunxi.platform.execution.spi.AgentEventAdapter;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
+import io.yunxi.platform.execution.strategy.StrategyContextSupport;
 import io.yunxi.platform.execution.strategy.StreamingStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.entity.ConversationEntity;
 import io.yunxi.platform.trace.ReasoningSpan;
-import io.yunxi.platform.trace.SpanKind;
-import io.yunxi.platform.trace.TraceCollectorMiddleware;
+import io.yunxi.platform.trace.TraceCollector;
 import io.yunxi.platform.trace.TraceComposer;
 import io.yunxi.platform.trace.TraceStore;
 import io.yunxi.platform.trace.projection.ProjectionContext;
@@ -64,23 +64,20 @@ public class AgentExecutionEngine {
     private final List<ExecutionStrategy> strategies;
     private final AgentEventAdapter eventAdapter;
     private final AgentscopeCoreProperties properties;
-    private final TraceComposer composer;
-    private final TraceStore traceStore;
+    private final TraceCollector traceCollector;
     private final SseProjection sseProjection;
 
     public AgentExecutionEngine(DefaultInterceptorChain interceptorChain,
                                 List<ExecutionStrategy> strategies,
                                 AgentEventAdapter eventAdapter,
                                 AgentscopeCoreProperties properties,
-                                TraceComposer composer,
-                                TraceStore traceStore,
+                                TraceCollector traceCollector,
                                 SseProjection sseProjection) {
         this.interceptorChain = interceptorChain;
         this.strategies = strategies;
         this.eventAdapter = eventAdapter;
         this.properties = properties;
-        this.composer = composer;
-        this.traceStore = traceStore;
+        this.traceCollector = traceCollector;
         this.sseProjection = sseProjection;
     }
 
@@ -206,14 +203,12 @@ public class AgentExecutionEngine {
         // 整条事件流先经归集器成为语义快照流，再由协议投影消费（切换点：
         // 归集结果直接供投影消费），同时旁路落库。
         String traceId = resolveTraceId(ctx);
-        TraceComposer.Session session = traceId == null ? null : composer.session(traceId);
-        boolean[] orchestrationInjected = {false};
+        TraceComposer.Session session = traceCollector.openSession(traceId);
         RuntimeContext runtimeContext = (RuntimeContext) ctx.getAttribute("yunxi.runtimeContext");
 
         Flux<String> contentFlux = events
                 .timeout(timeout)
-                .concatMap(event -> projectEvent(event, ctx, session, traceId, runtimeContext,
-                        orchestrationInjected))
+                .concatMap(event -> projectEvent(event, ctx, session, traceId, runtimeContext))
                 .onErrorResume(e -> {
                     // 推理异常被兜底为 error 消息：同时记录结果摘要，供 postHandle 审计判定失败
                     ctx.setExecutionError(formatAgentError(e));
@@ -244,29 +239,18 @@ public class AgentExecutionEngine {
      */
     private Flux<String> projectEvent(AgentEvent event, ExecutionContext ctx,
                                       TraceComposer.Session session, String traceId,
-                                      RuntimeContext runtimeContext, boolean[] orchestrationInjected) {
+                                      RuntimeContext runtimeContext) {
         List<String> out = new ArrayList<>();
         if (session != null) {
-            try {
-                List<ReasoningSpan> spans = session.accept(event);
-                if (event instanceof ToolCallStartEvent start
-                        && "todo_write".equals(start.getToolCallName())) {
-                    injectTodoSnapshot(session, runtimeContext, start);
-                }
+            // 归集与落库统一委托给归集器：任务清单旁路注入、异常吞并、失败计数都在那里，
+            // 引擎只拿归集结果做协议投影。
+            List<ReasoningSpan> spans = traceCollector.accept(session, event, runtimeContext);
+            if (!spans.isEmpty()) {
                 ProjectionContext pctx = ProjectionContext.of(traceId,
                         ctx.getRequest().getUserId(), ctx.getConversationId(), Map.of());
                 for (ReasoningSpan span : spans) {
                     out.addAll(sseProjection.convert(span, pctx));
                 }
-                for (ReasoningSpan span : spans) {
-                    try {
-                        traceStore.append(span);
-                    } catch (Exception ex) {
-                        log.warn("轨迹落库失败: traceId={}: {}", traceId, ex.getMessage());
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("轨迹归集失败: traceId={}: {}", traceId, e.getMessage());
             }
         }
 
@@ -283,46 +267,14 @@ public class AgentExecutionEngine {
         return Flux.fromIterable(out);
     }
 
-    /** 旁路读取 AgentState 任务清单，注入为 PLAN 节点（工具参数不在事件流里） */
-    private void injectTodoSnapshot(TraceComposer.Session session, RuntimeContext runtimeContext,
-                                    ToolCallStartEvent start) {
-        if (runtimeContext == null) {
-            return;
-        }
-        try {
-            AgentState state = RuntimeContext.resolveAgentState(runtimeContext, null);
-            if (state == null || state.getTasksContext() == null) {
-                return;
-            }
-            List<Map<String, Object>> tasks = state.getTasksContext().getTasks().stream()
-                    .map(t -> {
-                        Map<String, Object> item = new LinkedHashMap<>();
-                        item.put("id", t.getId());
-                        item.put("subject", t.getSubject());
-                        item.put("state", t.getState() == null ? null : t.getState().name());
-                        return item;
-                    })
-                    .toList();
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("tasks", tasks);
-            payload.put("taskCount", tasks.size());
-            payload.put("toolCallId", start.getToolCallId());
-            for (ReasoningSpan span : session.inject(SpanKind.PLAN, payload, 0L)) {
-                traceStore.append(span);
-            }
-        } catch (Exception e) {
-            log.debug("任务清单归集失败: {}", e.getMessage());
-        }
-    }
-
-    /** 轨迹标识：未显式指定时按 userId:sessionId 生成，与存储键一致 */
+    /**
+     * 轨迹标识。
+     *
+     * <p>委托给 {@link StrategyContextSupport} 的唯一实现 —— 归集、投影与存储必须共用
+     * 同一套标识生成规则，任一处独立拼装都会造成「写进去了但读不出来」。</p>
+     */
     private static String resolveTraceId(ExecutionContext ctx) {
-        String sessionId = ctx.getConversationId();
-        if (sessionId == null || sessionId.isBlank()) {
-            return null;
-        }
-        String userId = ctx.getRequest().getUserId();
-        return (userId == null || userId.isBlank()) ? sessionId : userId + ":" + sessionId;
+        return StrategyContextSupport.resolveTraceId(ctx);
     }
 
     /**

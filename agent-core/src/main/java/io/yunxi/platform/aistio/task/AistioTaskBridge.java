@@ -15,6 +15,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.extensions.aistio.adapter.AgentTaskStarter;
 import io.agentscope.extensions.aistio.adapter.HarnessAgentTaskStarter;
 import io.agentscope.extensions.aistio.model.AgentTaskAssignment;
+
+import io.yunxi.platform.shared.codec.CodecSpec;
 import reactor.core.publisher.Mono;
 
 /**
@@ -36,7 +38,7 @@ import reactor.core.publisher.Mono;
 public class AistioTaskBridge implements AgentTaskStarter {
 
     private static final Logger log = LoggerFactory.getLogger(AistioTaskBridge.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = CodecSpec.storage();
 
     private final AgentTaskStarter delegate;
     private final AtomicBoolean accepting = new AtomicBoolean(true);
