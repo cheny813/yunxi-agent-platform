@@ -6,13 +6,14 @@
 
 ## 模块概览
 
-### Maven 模块（根 `pom.xml` 的 `<modules>`，共 7 个）
+### Maven 模块（根 `pom.xml` 的 `<modules>`，共 8 个）
 
 ```
 yunxi-agent-platform/
 ├── agent-spi               # SPI 接口定义（最底层抽象）
 ├── agent-config            # 集中化配置管理
 ├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、统一执行引擎、意图引擎、轨迹系统）
+├── agent-aistio            # aistio 控制面 / 数据面集成（注册、gRPC 对话流、编排触发器、契约与治理、任务接活）
 ├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-text2sql          # 自然语言转 SQL
 ├── agent-app               # 可执行应用打包（统一入口，端口 40001）
@@ -33,8 +34,8 @@ yunxi-agent-platform/
 
 ```
 agent-spi → agent-config → agent-core
-                                ↑
-                    agent-muse  agent-text2sql
+                                ↑        ↑
+                    agent-muse  agent-aistio（仅依赖 agent-core）
                                 ↓
             agent-app (聚合 + 启动入口)
 ```
@@ -214,6 +215,40 @@ MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()`
 | `infra/lifecycle/` | `lifecycle/` | 生命周期管理 |
 | `infra/monitoring/` + `framework/observability/` | `tracing/` | 可观测性 |
 | `infra/cache/` | `cache/` | Redis 缓存 |
+
+---
+
+## agent-aistio（aistio 控制面集成）
+
+### 职责
+
+承载 yunxi 与 aistio 管控面的全部对接，是**传输层 / 外部集成**，不携带任何推理语义：
+
+- **注册与心跳**：`AistioGrpcConnector` 复用 AgentScope-Java 框架 `Aistio.instrument(agent, AistioConfig, adapter)` 完成自注册、心跳与 gRPC 对话流；yunxi 不自建注册与心跳调度。
+- **编排触发器 / 导出器**：`WebhookOrchestrationTrigger`、`OrchestrationTranslator`、`WorkflowArtifactExporter` 把 yunxi 的编排 manifest 与控制面对齐。
+- **契约与治理**：`AistioContractController`、`GovernanceService`、`WorkspaceInventoryService`、`SessionInventoryService` 暴露控制面所需的数据面视图。
+- **任务接活**：`AistioTaskBridge` 把控制面下推的 `AgentTaskAssignment` 转交框架官方 `HarnessAgentTaskStarter`，yunxi 不另研执行器。
+
+### 包结构
+
+```
+agent-aistio/src/main/java/io/yunxi/platform/aistio/
+├── AistioAutoConfiguration.java     # 自动装配入口（经主类组件扫描 io.yunxi.platform 装载）
+├── AistioGrpcConnector.java         # gRPC 数据面连接器
+├── YunxiFrameworkAdapter.java       # 框架适配桥
+├── AistioIntegrationProperties.java # yunxi.aistio.* 配置绑定
+├── client/ controller/ dto/ interceptor/ orchestration/ registrar/ registry/ reporter/ service/ task/
+```
+
+> **启用开关**：`yunxi.aistio.enabled`（默认 true）。关闭时 `AistioAutoConfiguration` 不装配，控制面相关能力整体离线，不影响其它模块。
+
+### 与 agent-core 的依赖边界（单一方向）
+
+`agent-aistio` **只依赖 `agent-core`**，反向不允许（否则形成 Maven 循环依赖）。唯一需要共享的状态——`ActiveSessionRegistry`（活跃会话索引，由对话生命周期写入、控制面治理读取）——已下沉为 `agent-core` 的 `io.yunxi.platform.registry.ActiveSessionRegistry` 常驻 Bean，aistio 侧仅注入使用，不持有其定义。除该索引外，`agent-core` 不得再引用 `agent-aistio` 任何类。
+
+### 装配
+
+`agent-aistio` 是库模块，由 `agent-app` 引入后，其 `@Configuration` / `@Component` 经主类 `scanBasePackages = io.yunxi.platform` 自动扫描装载，无需在 `agent-app` 增加任何扫描配置。
 
 ---
 

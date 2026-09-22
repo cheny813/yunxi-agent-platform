@@ -19,6 +19,9 @@ public class MountBodyConfig {
     /** 触发模式，当前仅支持 auto */
     private String mode = "auto";
 
+    /** agent 类型时填写目标 Agent 名（与 workflow 的 definition 对应，引用本平台已注册的 Agent） */
+    private String ref;
+
     /** workflow 类型且引用已发布定义时填写 aistio 定义 key（与 graph 二选一） */
     private String definition;
 

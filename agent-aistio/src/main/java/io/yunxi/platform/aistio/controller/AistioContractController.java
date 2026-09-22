@@ -26,7 +26,7 @@ import io.yunxi.platform.aistio.dto.SessionState;
 import io.yunxi.platform.aistio.dto.SubagentInfo;
 import io.yunxi.platform.aistio.dto.TaskInfo;
 import io.yunxi.platform.aistio.dto.WorkspaceInfo;
-import io.yunxi.platform.aistio.registry.ActiveSessionRegistry;
+import io.yunxi.platform.registry.ActiveSessionRegistry;
 import io.yunxi.platform.aistio.service.AistioInfoService;
 import io.yunxi.platform.aistio.service.GovernanceService;
 import io.yunxi.platform.aistio.service.SessionInventoryService;

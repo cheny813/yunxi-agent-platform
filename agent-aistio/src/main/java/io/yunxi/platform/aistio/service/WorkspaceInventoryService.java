@@ -9,8 +9,8 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 import io.yunxi.platform.aistio.dto.WorkspaceInfo;
-import io.yunxi.platform.aistio.registry.ActiveSessionRegistry;
-import io.yunxi.platform.aistio.registry.ActiveSessionRegistry.SessionMeta;
+import io.yunxi.platform.registry.ActiveSessionRegistry;
+import io.yunxi.platform.registry.ActiveSessionRegistry.SessionMeta;
 import lombok.RequiredArgsConstructor;
 
 /**

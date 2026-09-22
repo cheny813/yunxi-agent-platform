@@ -31,7 +31,7 @@ import reactor.core.scheduler.Schedulers;
  * 数据面内网 token 在该链路上不可用，故此处<b>不携带</b> internal-token。
  *
  * <p>响应体只有 {@code {"status":..., "delivery":{...}}}，<b>没有 runId</b>：
- * 编排 run 由异步 worker 创建，触发侧无从得知，因此回执不含 orchestrationRunId（§3.3.0）。
+ * 编排 run 由异步 worker 创建，触发侧无从得知，因此回执不含 orchestrationRunId。
  *
  * <p>与服务端交互仅此一处，统一走 {@link AistioControlPlaneClient}（适配层）：控制面地址、鉴权头、超时与重试
  * 集中于一处，webhook secret 与幂等键作为方法参数传入（凭据一律作参数、不外渗产品平面核心）。</p>
@@ -40,12 +40,12 @@ public class WebhookOrchestrationTrigger implements OrchestrationTrigger {
 
     private static final Logger log = LoggerFactory.getLogger(WebhookOrchestrationTrigger.class);
 
-    /** §3.8：触发侧把 correlationId 放在 body 的 _yunxi 段，随 run input 一路下推到 attempt payload */
+    /** 触发侧把 correlationId 放在 body 的 _yunxi 段，随 run input 一路下推到 attempt payload */
     private static final String YUNXI_SEGMENT = "_yunxi";
 
     /**
      * 探测专用常量：一个**恒不存在**的 triggerId，仅用于区分「鉴权失败」与「路由/参数错误」，
-     * 绝不用于真实触发（§3.3.4：探测必须无副作用）。
+     * 绝不用于真实触发（探测必须无副作用）。
      */
     private static final String PROBE_TRIGGER_ID = "yunxi-probe-nonexistent";
 
@@ -147,7 +147,7 @@ public class WebhookOrchestrationTrigger implements OrchestrationTrigger {
     }
 
     /**
-     * 无副作用探测：用恒不存在的 triggerId 打一次，按状态码区分配置错误类型（§3.3.4）。
+     * 无副作用探测：用恒不存在的 triggerId 打一次，按状态码区分配置错误类型。
      *
      * <p>判定：<b>400 是预期结果</b> —— 说明 secret 校验已通过、路由正确，只是 triggerId 不存在
      * （这正是探测构造出来的情形）；401 = secret 错；404 = automation 不存在；

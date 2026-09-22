@@ -36,8 +36,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 项目自身版本：所有模块统一引用该属性，升级版本时只需改此处一处，
              无需逐模块修改 <parent><version>。install/deploy 时由 flatten-maven-plugin 解析为具体版本号。 -->
-        <revision>2.0.4-SNAPSHOT</revision>
-        <agentscope.version>2.0.4-SNAPSHOT</agentscope.version>
+        <revision>2.0.3</revision>
+        <agentscope.version>2.0.3</agentscope.version>
         <jacoco.version>0.8.12</jacoco.version>
         <!-- surefire argLine 默认空串：未声明 jacoco 的模块 fork JVM 不带覆盖率 agent；
              声明 jacoco 的模块由 prepare-agent 覆盖该属性注入 -javaagent -->
@@ -87,12 +87,16 @@
             <dependency>
                 <groupId>io.yunxi</groupId>
                 <artifactId>agent-codec</artifactId>
-                <version>${project.version}</version>
+                <!-- 用固定的 ${revision}（而非 ${project.version}）：${project.version} 在继承后的子模块有效模型里
+                     会解析成「消费模块自身版本」，当 agent-aistio 用 ${aistio.revision}（2.0.4-SNAPSHOT）继承本管理段时，
+                     会把 agent-core:2.0.3 的 agent-codec 依赖错误膨胀成 2.0.4-SNAPSHOT 导致解析失败；
+                     ${revision} 恒为 2.0.3，跨模块版本一致且不会随子模块版本漂移。 -->
+                <version>${revision}</version>
             </dependency>
             <dependency>
                 <groupId>io.yunxi</groupId>
                 <artifactId>agent-text2sql</artifactId>
-                <version>${project.version}</version>
+                <version>${revision}</version>
             </dependency>
 
             <!-- MyBatis -->
@@ -587,8 +591,8 @@
         <plugins>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
-                    <artifactId>flatten-maven-plugin</artifactId>
-                    <version>${flatten-maven.version}</version>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>${flatten-maven.version}</version>
                 <configuration>
                     <updatePomFile>false</updatePomFile>
                     <flattenMode>resolveCiFriendliesOnly</flattenMode>
@@ -614,4 +618,25 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- agent-aistio 为可选尝鲜组件（控制面注册 / gRPC 对话流 / 编排触发器 / 契约与治理 / 任务接活），
+         默认 reactor 不含该模块、框架依赖固定为 2.0.3（正式版）；构建时加 -Paistio 一并纳入模块，
+         并将 AgentScope-Java 依赖切到 2.0.4-SNAPSHOT（随其 aistio 扩展提供）。 -->
+    <profiles>
+        <profile>
+            <id>aistio</id>
+            <properties>
+                <!-- aistio 管控面依赖 AgentScope-Java 的 aistio 扩展（随 2.0.4 提供），
+                     故启用该 profile 时把框架依赖整体切到 2.0.4-SNAPSHOT；
+                     同一 fat jar 只允许一个 io.agentscope:* 版本，请勿单独给 agent-aistio 指其他版本。 -->
+                <agentscope.version>2.0.4-SNAPSHOT</agentscope.version>
+                <!-- agent-aistio 作为可选尝鲜组件的独立版本号，与平台核心的 ${revision}（2.0.3 正式版）解耦；
+                     它追踪 AgentScope-Java 2.0.4-SNAPSHOT 尝鲜线，而它依赖的 agent-core / agent-codec 仍指向 ${revision} 正式版。 -->
+                <aistio.revision>2.0.4-SNAPSHOT</aistio.revision>
+            </properties>
+            <modules>
+                <module>agent-aistio</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

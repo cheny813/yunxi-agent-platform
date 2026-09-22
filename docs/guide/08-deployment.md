@@ -178,13 +178,13 @@ OTel Collector 的配置文件位于 `scripts/deploy/otel-collector-config.yaml`
 docker compose --profile aistio up -d
 ```
 
-aistio 由 `agentscope-service` 仓库源码本地构建（**无公开镜像**），启动前必须先克隆并构建，否则镜像 build 阶段会因 JAR 缺失而失败。构建产物的版本号由 `AISTIO_VERSION` 环境变量控制（默认 `2.0.3`，**须与该仓库根 pom 的 `<revision>` 一致**；若你的仓库 revision 不同，先 `export AISTIO_VERSION=<其版本>` 再启动，否则 `COPY *.jar` 会因文件名不匹配而失败）：
+aistio 由 `agentscope-service` 仓库源码本地构建（**无公开镜像**），启动前必须先克隆并构建，否则镜像 build 阶段会因 JAR 缺失而失败。构建产物的版本号由 `AISTIO_VERSION` 环境变量控制（默认 `2.0.4-SNAPSHOT`，**须与该仓库根 pom 的 `<revision>` 一致**；若你的仓库 revision 不同，先 `export AISTIO_VERSION=<其版本>` 再启动，否则 `COPY *.jar` 会因文件名不匹配而失败）：
 
 ```bash
 # 0) 获取源码
 git clone https://github.com/agentscope-ai/agentscope-java.git
 cd agentscope-java
-# git checkout 2.0.3   # 可选：切到与 yunxi 匹配的版本标签
+# git checkout 2.0.4-SNAPSHOT   # 可选：切到与 yunxi 匹配的版本标签
 
 # 1) 构建后端（方式 A：在仓库根目录执行，显式列出 service 子模块，-am 顺带编译 harness/extensions 等上游依赖）
 #    注意：-pl agentscope-service 只会选中聚合 pom 本身、不会构建其下子模块的 jar，必须列出子模块

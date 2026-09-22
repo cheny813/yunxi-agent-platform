@@ -19,9 +19,13 @@ $yunxiRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $siblingRoot = (Resolve-Path (Join-Path $yunxiRoot '..')).Path
 
 if ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
-    foreach ($name in @('agentscope-java', 'agentscope-java-2.0GA')) {
+    # Prefer the dir that actually contains the agentscope-service submodule. The sibling
+    # agentscope-java dir is an (intentionally non-deleted) empty placeholder, so a plain
+    # Test-Path match on it is not enough -- require the agentscope-service subdir to exist.
+    foreach ($name in @('agentscope-java-2.0GA', 'agentscope-java')) {
         $candidate = Join-Path $siblingRoot $name
-        if (Test-Path $candidate) { $AistioRepoRoot = $candidate; break }
+        $candidateSvc = Join-Path $candidate 'agentscope-service'
+        if ((Test-Path $candidate) -and (Test-Path $candidateSvc)) { $AistioRepoRoot = $candidate; break }
     }
 }
 if ([string]::IsNullOrWhiteSpace($AistioRepoRoot) -or -not (Test-Path $AistioRepoRoot)) {

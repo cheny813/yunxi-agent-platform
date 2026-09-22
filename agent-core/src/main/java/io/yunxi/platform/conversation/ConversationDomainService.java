@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import io.yunxi.platform.aistio.registry.ActiveSessionRegistry;
+import io.yunxi.platform.registry.ActiveSessionRegistry;
 import io.yunxi.platform.cache.CacheNamespaces;
 import io.yunxi.platform.persistence.repository.ConversationRepository;
 import io.yunxi.platform.shared.dto.ConversationInfoDto;

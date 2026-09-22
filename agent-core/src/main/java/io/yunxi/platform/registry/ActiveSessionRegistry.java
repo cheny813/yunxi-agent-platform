@@ -1,4 +1,4 @@
-package io.yunxi.platform.aistio.registry;
+package io.yunxi.platform.registry;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;

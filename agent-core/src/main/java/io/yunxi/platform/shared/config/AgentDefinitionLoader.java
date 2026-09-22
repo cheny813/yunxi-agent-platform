@@ -148,7 +148,9 @@ public class AgentDefinitionLoader {
             // 未显式配置（null/空白）即默认 single
             String rawPattern = orch.getPattern();
             String pattern = (rawPattern == null || rawPattern.isBlank()) ? "single" : rawPattern.toLowerCase();
-            if ("supervisor".equals(pattern)) {
+            if ("single".equals(pattern)) {
+                // 单 Agent 模式，运行时已接线；允许带 mounts 挂载，无需额外声明
+            } else if ("supervisor".equals(pattern)) {
                 if (orch.getExperts() == null || orch.getExperts().isEmpty()) {
                     errors.add("supervisor 模式必须配置 experts 列表");
                 }
@@ -163,10 +165,19 @@ public class AgentDefinitionLoader {
                             + "必须至少声明一个 body.kind: workflow 的 mounts 挂载");
                 }
                 // 图节点本身的合法性由 OrchestrationTranslator 在导出期校验
-            } else if (!"single".equals(pattern)) {
-                errors.add("编排模式调度未接线，暂不可配置: " + rawPattern
-                        + "（运行时可用: single / supervisor；声明型: workflow（仅导出，不产生运行时实例）。"
-                        + "pipeline / routing / handoffs 的调度尚未接线，接线完成前不允许配置）");
+            } else {
+                // pipeline / routing / handoffs：yunxi 不自持编排运行时，这些 pattern 运行期归一到
+                // 单 Agent（带 mounts 挂载可选），编排能力由 aistio 控制面调度兑现（委托，不自建）。
+                // 为确保配置有意义（非「配得上、跑不起来」的裸 relabel），至少需声明 experts（构建
+                // Supervisor）、mounts（挂工作流/子 Agent）或 stages（导出为 aistio 编排图）之一。
+                boolean hasExperts = orch.getExperts() != null && !orch.getExperts().isEmpty();
+                boolean hasMounts = orch.getMounts() != null && !orch.getMounts().isEmpty();
+                boolean hasStages = orch.getStages() != null && !orch.getStages().isEmpty();
+                if (!hasExperts && !hasMounts && !hasStages) {
+                    errors.add("编排模式 " + rawPattern + " 不自持运行时调度（yunxi 委托 aistio 控制面），"
+                            + "需声明 experts（构建 Supervisor）、mounts（挂工作流/子 Agent）或 stages"
+                            + "（导出为 aistio 编排图）之一才有效");
+                }
             }
         }
         return errors;

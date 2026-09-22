@@ -78,7 +78,7 @@ public class AistioGrpcConnector {
 
     private volatile ScheduledExecutorService scheduler;
     private volatile List<SessionBridge> bridges;
-    /** 每条 bridge 对应的接活桥：优雅下线时先 stopAccepting（§3.4.2 步骤 2） */
+    /** 每条 bridge 对应的接活桥：优雅下线时先 stopAccepting（优雅下线第二步） */
     private volatile List<AistioTaskBridge> taskBridges = new ArrayList<>();
     private volatile boolean started = false;
     /** 实例身份冲突等不可重试错误：置位后停止重试，避免把错误状态刷成常态 */

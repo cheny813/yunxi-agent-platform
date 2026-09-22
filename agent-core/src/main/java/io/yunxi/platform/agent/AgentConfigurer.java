@@ -36,6 +36,7 @@ import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.config.PermissionConfig;
 import io.yunxi.platform.intent.IntentTool;
 import io.yunxi.platform.security.hitl.HumanToolRegistrar;
+import io.yunxi.platform.agent.ToolkitContributor;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
@@ -177,6 +178,7 @@ public class AgentConfigurer implements SmartLifecycle {
     private final ObjectProvider<RedisUserProfileStore> userProfileStoreProvider;
     private final ObjectProvider<UserProfileEvolver> userProfileEvolverProvider;
     private final ObjectProvider<ProfileEvolutionThrottle> profileEvolutionThrottleProvider;
+    private final List<ToolkitContributor> toolkitContributors;
 
     /** 跨实例 reconcile 的熔断保护（复用 resilience4j circuitbreaker 防止目标不可达时雪崩） */
     private final CircuitBreaker mcpReconcileCircuitBreaker =
@@ -212,7 +214,8 @@ public class AgentConfigurer implements SmartLifecycle {
             AgentCapabilityRegistry capabilityRegistry,
             ObjectProvider<RedisUserProfileStore> userProfileStoreProvider,
             ObjectProvider<UserProfileEvolver> userProfileEvolverProvider,
-            ObjectProvider<ProfileEvolutionThrottle> profileEvolutionThrottleProvider) {
+            ObjectProvider<ProfileEvolutionThrottle> profileEvolutionThrottleProvider,
+            List<ToolkitContributor> toolkitContributors) {
         this.definitionLoader = definitionLoader;
         this.agentService = agentService;
         this.coreProperties = coreProperties;
@@ -229,6 +232,7 @@ public class AgentConfigurer implements SmartLifecycle {
         this.userProfileStoreProvider = userProfileStoreProvider;
         this.userProfileEvolverProvider = userProfileEvolverProvider;
         this.profileEvolutionThrottleProvider = profileEvolutionThrottleProvider;
+        this.toolkitContributors = toolkitContributors;
     }
 
     /**
@@ -504,6 +508,26 @@ public class AgentConfigurer implements SmartLifecycle {
         }
     }
 
+    /**
+     * 编排挂载融合：回调所有 ToolkitContributor，把给定 Agent 定义上的 mounts 声明
+     * 编译并挂载到 toolkit 上（子 Agent / 工作流工具）。单条挂载失败不阻断其余 Agent 装配，
+     * 每条贡献者异常被捕获后仅记错误日志，由对应产品平面模块负责正确性。
+     */
+    private void contributeMounts(AgentDefinition def, Toolkit toolkit) {
+        OrchestrationConfig orch = def.getOrchestration();
+        if (orch == null || orch.getMounts() == null || orch.getMounts().isEmpty()) {
+            return;
+        }
+        for (ToolkitContributor contributor : toolkitContributors) {
+            try {
+                contributor.contribute(def, toolkit);
+            } catch (Exception e) {
+                log.error("[mount] 挂载贡献失败 agent={} contributor={}", def.getName(),
+                        contributor.getClass().getSimpleName(), e);
+            }
+        }
+    }
+
     private void initializeSingleAgent(AgentDefinition def) {
         try {
             log.info("创建 Agent: {}", def.getName());
@@ -516,6 +540,8 @@ public class AgentConfigurer implements SmartLifecycle {
             registerMcpServers(toolkit, def);
             registerMuseTools(toolkit);
             registerIntentTool(toolkit);
+            // 编排挂载融合：回调所有 ToolkitContributor，把 def.orchestration.mounts 编译挂到 toolkit
+            contributeMounts(def, toolkit);
 
             // 激活工具组（toolkit 共享，仅执行一次）
             applyToolGroupActivation(toolkit, def);
@@ -687,6 +713,9 @@ public class AgentConfigurer implements SmartLifecycle {
                             SubAgentConfig.builder().forwardEvents(forward).build())
                     .group("agent").apply();
         }
+
+        // 编排挂载融合：回调所有 ToolkitContributor，把 def.orchestration.mounts 编译挂到 toolkit
+        contributeMounts(def, toolkit);
 
         // 激活工具组并注册（toolkit 共享，仅执行一次）
         applyToolGroupActivation(toolkit, def);
@@ -1265,12 +1294,17 @@ public class AgentConfigurer implements SmartLifecycle {
         if (toolkit.getToolGroup("muse") != null && !activeGroups.contains("muse")) {
             activeGroups.add("muse");
         }
+        // 工作流挂载组（通道② WorkflowTool）为挂载融合产物：只要 MountFactory 注册了就激活，
+        // 与 muse 同理——不在此并入会导致「注册了但模型看不到」。
+        if (toolkit.getToolGroup("workflow") != null && !activeGroups.contains("workflow")) {
+            activeGroups.add("workflow");
+        }
 
         // 先禁用所有已知组，再激活配置中指定的组
         // 只操作通过 createToolGroup() 创建的应用层组，不影响框架内置的未分组工具
         // muse 组为全局自进化元工具（yunxi.muse.enabled=true 时才创建），不随 Agent 的
         // 工具组白名单裁剪，否则元工具注册了却永不激活、模型侧看不到该工具。
-        List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "page", "general", "muse");
+        List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "page", "general", "muse", "workflow");
         for (String group : knownGroups) {
             if (toolkit.getToolGroup(group) != null) {
                 toolkit.updateToolGroups(List.of(group), false);

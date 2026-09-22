@@ -43,6 +43,17 @@ if ([string]::IsNullOrWhiteSpace($McpServersRoot)) {
 if ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
     $AistioRepoRoot = Resolve-SiblingDir -Parent $SiblingRoot -Candidates @('agentscope-java', 'agentscope-java-2.0GA') -Label 'AgentScope-Java'
 }
+# 优先选用真正含 agentscope-service 源码的目录：同名空目录（如仅含书籍的 agentscope-java）应让位给 agentscope-java-2.0GA，
+# 否则 compose 的 AISTIO_SRC 会指向空目录而失败。
+if (-not [string]::IsNullOrWhiteSpace($AistioRepoRoot) -and -not (Test-Path (Join-Path $AistioRepoRoot 'agentscope-service'))) {
+    foreach ($alt in @('agentscope-java-2.0GA', 'agentscope-java')) {
+        $ap = Join-Path $SiblingRoot $alt
+        if ((Test-Path $ap) -and (Test-Path (Join-Path $ap 'agentscope-service'))) {
+            $AistioRepoRoot = (Resolve-Path $ap).Path
+            break
+        }
+    }
+}
 
 $ErrorActionPreference = 'Stop'
 

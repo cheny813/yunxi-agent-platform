@@ -12,8 +12,9 @@ import java.util.List;
  * <p>
  * 其余模式的处理：{@code workflow} 是**声明型**（只承载编排图定义，由
  * {@code WorkflowArtifactExporter} 导出后交由 aistio 执行，**不产生 yunxi 运行时 Agent 实例**）；
- * {@code pipeline} / {@code routing} / {@code handoffs} 的调度**尚未接线**，由
- * {@link AgentDefinitionLoader} 在加载期直接拒绝 —— 不允许维持"配得上、跑不起来"的中间态。
+ * {@code pipeline} / {@code routing} / {@code handoffs} 的调度**不在 yunxi 侧自建**，由
+ * {@link AgentDefinitionLoader} 加载期归一到单 Agent（带 mounts 挂载可选）并委托 aistio 控制面调度，
+ * 仅当配置无任何实质内容（无 experts / mounts / stages）时才拒绝，避免"配得上、跑不起来"的裸 relabel。
  * </p>
  *
  * <pre>
@@ -36,7 +37,8 @@ public class OrchestrationConfig {
      *   <li>supervisor - Supervisor + 专家 Agent，LLM 自主决定调用哪个专家 —— 运行时已接线</li>
      *   <li>workflow - 声明型：编排图定义载体，仅供导出，不产生运行时实例</li>
      * </ul>
-     * pipeline / routing / handoffs 的调度尚未接线，配置后在加载期即被拒绝。
+     * pipeline / routing / handoffs 不在 yunxi 侧自建运行时，加载期归一到单 Agent 并委托 aistio 控制面
+ * 调度，仅当无 experts / mounts / stages 等任何实质内容时才被 {@link AgentDefinitionLoader} 拒绝。
      */
     private String pattern = "single";
 

@@ -59,11 +59,27 @@
                     </excludes>
                 </configuration>
             </plugin>
-            <!-- 启用 JaCoCo 测试覆盖率报告 -->
-            <plugin>
-                <groupId>org.jacoco</groupId>
-                <artifactId>jacoco-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
+        <!-- 启用 JaCoCo 测试覆盖率报告 -->
+        <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+        </plugin>
+    </plugins>
+</build>
+
+    <!-- aistio 管控面对接为可选尝鲜能力：默认不引入，构建时加 -Paistio 纳入。
+         agent-aistio 的 AistioAutoConfiguration 经主类组件扫描（io.yunxi.platform）自动装载。 -->
+    <profiles>
+        <profile>
+            <id>aistio</id>
+            <dependencies>
+                <dependency>
+                    <groupId>io.yunxi</groupId>
+                    <artifactId>agent-aistio</artifactId>
+                    <!-- 引用 agent-aistio 的独立尝鲜版本号，与平台 ${revision} 解耦 -->
+                    <version>${aistio.revision}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 </project>

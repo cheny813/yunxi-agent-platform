@@ -10,7 +10,7 @@ package io.yunxi.platform.aistio.orchestration;
  * @param deliveryId      AutomationDelivery.ID
  * @param automationRunId AutomationDelivery.RunID（AutomationRun，非编排 run）
  * @param status          queued / dispatched / skipped / replayed / duplicate
- * @param correlationId   贯穿协议键（§3.8），执行侧据此把触发段与执行段关联起来
+ * @param correlationId   贯穿协议键，执行侧据此把触发段与执行段关联起来
  */
 public record TriggerReceipt(
         String deliveryId,

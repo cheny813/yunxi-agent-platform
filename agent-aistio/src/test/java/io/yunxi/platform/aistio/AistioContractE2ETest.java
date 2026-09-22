@@ -30,7 +30,7 @@ import io.agentscope.core.state.TaskContextState;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.aistio.controller.AistioContractController;
 import io.yunxi.platform.aistio.interceptor.AistioAuthInterceptor;
-import io.yunxi.platform.aistio.registry.ActiveSessionRegistry;
+import io.yunxi.platform.registry.ActiveSessionRegistry;
 import io.yunxi.platform.aistio.service.AistioInfoService;
 import io.yunxi.platform.aistio.service.GovernanceService;
 import io.yunxi.platform.aistio.service.HarnessAgentResolver;

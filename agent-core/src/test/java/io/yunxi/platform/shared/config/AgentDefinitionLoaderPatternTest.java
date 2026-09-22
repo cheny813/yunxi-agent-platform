@@ -51,26 +51,40 @@ class AgentDefinitionLoaderPatternTest {
     }
 
     @Test
-    void pipelineIsRejectedBecauseSchedulingNotWired() {
+    void pipelineIsAllowedWhenItHasSubstance() {
+        // pipeline 带 stages（导出为 aistio 编排图），yunxi 委托 aistio 执行，不再硬拒
         AgentDefinition def = defWithPattern("pipeline");
         StageConfig stage = new StageConfig();
         stage.setAgent("some-agent");
         def.getOrchestration().setStages(List.of(stage));
-
-        List<String> errors = errorsOf(def);
-        assertFalse(errors.isEmpty());
-        assertTrue(errors.stream().anyMatch(e -> e.contains("未接线")),
-                "pipeline 必须以「调度未接线」为由拒绝，而不是靠 stages 校验放行");
+        assertTrue(errorsOf(def).isEmpty(), "pipeline 带 stages（委托 aistio 执行）应被允许");
     }
 
     @Test
-    void routingIsRejectedBecauseSchedulingNotWired() {
+    void pipelineWithoutSubstanceIsRejected() {
+        // pipeline 既无 experts / mounts / stages —— 纯 relabel，属无效配置
+        List<String> errors = errorsOf(defWithPattern("pipeline"));
+        assertFalse(errors.isEmpty(), "pipeline 无实质内容应被拒绝");
+        assertTrue(errors.stream().anyMatch(e -> e.contains("不自持运行时调度")),
+                "拒绝原因应说明委托 aistio 且需有实质内容: " + errors);
+    }
+
+    @Test
+    void routingIsAllowedWithExperts() {
+        // routing 带 experts（构建 Supervisor），yunxi 已接线，不被拒
         AgentDefinition def = defWithPattern("routing");
         ExpertConfig expert = new ExpertConfig();
         expert.setName("expert-a");
         def.getOrchestration().setExperts(List.of(expert));
+        assertTrue(errorsOf(def).isEmpty(), "routing 带 experts（构建 Supervisor）应被允许");
+    }
 
-        assertFalse(errorsOf(def).isEmpty(), "routing 即使配了 experts 也必须拒绝");
+    @Test
+    void routingWithoutSubstanceIsRejected() {
+        List<String> errors = errorsOf(defWithPattern("routing"));
+        assertFalse(errors.isEmpty(), "routing 无实质内容应被拒绝");
+        assertTrue(errors.stream().anyMatch(e -> e.contains("不自持运行时调度")),
+                "拒绝原因应说明委托 aistio 且需有实质内容: " + errors);
     }
 
     @Test

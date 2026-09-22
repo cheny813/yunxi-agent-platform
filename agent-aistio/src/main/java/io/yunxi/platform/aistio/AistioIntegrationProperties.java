@@ -13,7 +13,7 @@ import java.util.Map;
 /**
  * aistio 集成配置（绑定 {@code yunxi.aistio.*}）。
  *
- * <p>本 Bean <b>始终加载</b>（无 {@code @ConditionalOnProperty}），与 {@link io.yunxi.platform.aistio.registry.ActiveSessionRegistry}
+ * <p>本 Bean <b>始终加载</b>（无 {@code @ConditionalOnProperty}），与 {@link io.yunxi.platform.registry.ActiveSessionRegistry}
  * 类似——即便集成关闭，读取默认值也不会破坏任何东西。真正的装配开关在 {@code enabled} 上，
  * 由 {@code AistioAutoConfiguration} 与各组件的 {@code @ConditionalOnProperty} 控制。</p>
  */
@@ -116,7 +116,7 @@ public class AistioIntegrationProperties {
     /**
      * 编排触发：definitionKey → automation 绑定。
      *
-     * <p>按场景拆分绑定（§3.3.5）：webhook 限流是 60 次/分钟、按 {@code automationId + ClientIP} 共享，
+     * <p>按场景拆分绑定：webhook 限流是 60 次/分钟、按 {@code automationId + ClientIP} 共享，
      * 且 secret 是 automation 级；所有场景共用一个 automation 会让单一场景打满配额，且泄露影响面波及全部场景。</p>
      */
     @Data

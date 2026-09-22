@@ -18,6 +18,9 @@
         <!-- 默认跳过集成测试，避免每次 mvn test 都真实调用 LLM。
              需运行时加 -Pintegration 激活。 -->
         <skip.integration.tests>true</skip.integration.tests>
+        <!-- 默认编译排除引用 agent-aistio 的集成测试类（aistio 默认不在 reactor 内）。
+             加 -Paistio 时置为不匹配模式，使其随 aistio 模块一并编译 / 运行。 -->
+        <aistio.test.excludes>**/aistio/**</aistio.test.excludes>
     </properties>
 
     <dependencies>
@@ -68,6 +71,17 @@
                     <skip>true</skip>
                 </configuration>
             </plugin>
+            <!-- 默认排除引用 agent-aistio 的集成测试类编译（aistio 不在默认 reactor 内）；
+                 加 -Paistio 时由 profile 将该排除模式置为不匹配，使测试随模块一并编译。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <testExcludes>
+                        <testExclude>${aistio.test.excludes}</testExclude>
+                    </testExcludes>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -96,6 +110,22 @@
             <properties>
                 <skip.integration.tests>false</skip.integration.tests>
             </properties>
+        </profile>
+        <!-- aistio 管控面对接为可选尝鲜能力：默认不引入 agent-aistio，
+             故引用其类的集成测试也一并从默认编译中排除；加 -Paistio 时放开。 -->
+        <profile>
+            <id>aistio</id>
+            <properties>
+                <aistio.test.excludes>**/DOES_NOT_EXIST_AISTIO/**</aistio.test.excludes>
+            </properties>
+            <dependencies>
+                <dependency>
+                    <groupId>io.yunxi</groupId>
+                    <artifactId>agent-aistio</artifactId>
+                    <!-- 引用 agent-aistio 的独立尝鲜版本号，与平台 ${revision} 解耦 -->
+                    <version>${aistio.revision}</version>
+                </dependency>
+            </dependencies>
         </profile>
     </profiles>
 </project>

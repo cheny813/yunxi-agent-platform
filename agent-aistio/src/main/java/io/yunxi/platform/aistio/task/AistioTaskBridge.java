@@ -27,7 +27,7 @@ import reactor.core.publisher.Mono;
  *   <li><b>框架</b>：{@code SessionBridge.onExecutionAttempt} 收 ASDP 下推 → {@code adapter.handleAgentTask}
  *       → {@code HarnessAgentTaskStarter} 承担「拉任务上下文 → ack → ensureRunning → 跑 Agent →
  *       finish/fail 回传」的完整生命周期（含 attempt 级心跳与 {@code attemptId:generation} 幂等去重）；</li>
- *   <li><b>本类</b>：只加三件 yunxi 独有的事 —— 优雅下线的「停接新活」闸门、§3.8 correlationId 读回、
+ *   <li><b>本类</b>：只加三件 yunxi 独有的事 —— 优雅下线的「停接新活」闸门、correlationId 读回、
  *       接活日志与计数。</li>
  * </ul>
  * 刻意不在此处重复幂等去重：框架 {@code HarnessAgentTaskStarter} 已实现，同一关切只允许一个实现位置。
@@ -54,7 +54,7 @@ public class AistioTaskBridge implements AgentTaskStarter {
     @Override
     public Mono<Void> start(AgentTaskAssignment assignment) {
         if (!accepting.get()) {
-            // 优雅下线中不接新活：立即失败回传，避免执行到一半被进程杀死（§3.4.2 步骤 2 语义）
+            // 优雅下线中不接新活：立即失败回传，避免执行到一半被进程杀死（优雅下线第二步语义）
             String taskId = assignment == null ? "-" : assignment.agentTaskId();
             log.warn("[AISTIO-TASK] 实例正在下线，拒绝新 attempt: task={}", taskId);
             return Mono.error(new IllegalStateException("instance is shutting down, reject new attempt: " + taskId));
