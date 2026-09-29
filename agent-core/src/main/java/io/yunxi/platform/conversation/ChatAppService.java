@@ -1,7 +1,5 @@
 package io.yunxi.platform.conversation;
 
-import java.time.Duration;
-import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -9,31 +7,24 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import io.agentscope.core.agent.Agent;
-import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEventType;
 import io.agentscope.core.event.AgentResultEvent;
-import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
+import io.agentscope.core.event.ThinkingBlockDeltaEvent;
 import io.agentscope.core.message.Msg;
-import io.agentscope.core.message.MsgRole;
-import io.agentscope.harness.agent.HarnessAgent;
-import io.yunxi.platform.execution.AgentExecutionEngine;
-
-import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.execution.ExecutionResult;
-import io.yunxi.platform.execution.strategy.StructuredBlockingStrategy;
+import io.yunxi.platform.execution.context.SchemaTarget;
+import io.yunxi.platform.execution.spi.ExecutionEngine;
 import io.yunxi.platform.security.auth.SecurityContext;
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.shared.dto.ChatRequest;
 import io.yunxi.platform.shared.dto.ChatResponse;
 import io.yunxi.platform.shared.dto.ConversationChatRequest;
 import io.yunxi.platform.shared.dto.StreamChatRequest;
 import io.yunxi.platform.shared.dto.UnifiedChatRequest;
-import io.yunxi.platform.agent.AgentConfigurer;
 import io.yunxi.platform.shared.entity.ConversationEntity;
 import io.yunxi.platform.shared.exception.BadRequestException;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
@@ -43,7 +34,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 /**
- * 对话服务门面：4 个 public 入口 + 2 个结构化输出入口统一委托 {@link AgentExecutionEngine} 执行。
+ * 对话服务门面：4 个 public 入口 + 2 个结构化输出入口统一委托 {@link ExecutionEngine} 执行。
  *
  * <p>本类只保留：入口签名、请求归一化、会话持久化与错误兜底。
  * 意图/记忆/RAG/事件编排等逻辑全部下沉到执行引擎的拦截器、策略、算子与适配器。</p>
@@ -66,7 +57,7 @@ public class ChatAppService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatAppService.class);
 
-    private final AgentExecutionEngine executionEngine;
+    private final ExecutionEngine executionEngine;
     private final ConversationDomainService conversationDomainService;
     private final SecurityContext securityContext;
     private final SseMessageBuilder sseMessageBuilder;
@@ -79,7 +70,7 @@ public class ChatAppService {
     @Value("${conversation.timeout-seconds:300}")
     private int conversationTimeoutSeconds;
 
-    public ChatAppService(AgentExecutionEngine executionEngine,
+    public ChatAppService(ExecutionEngine executionEngine,
                           ConversationDomainService conversationDomainService,
                           SecurityContext securityContext,
                           SseMessageBuilder sseMessageBuilder,
@@ -208,7 +199,7 @@ public class ChatAppService {
                         .doOnNext(chunk -> log.trace("流式输出chunk: {}", chunk));
             } catch (Exception e) {
                 log.error("流式对话失败: Agent={}", name, e);
-                return Flux.just(sseMessageBuilder.buildErrorMessage(AgentExecutionEngine.formatAgentError(e)));
+                return Flux.just(sseMessageBuilder.buildErrorMessage(ExecutionEngine.formatAgentError(e)));
             }
         }).subscribeOn(Schedulers.boundedElastic());
     }
@@ -267,7 +258,7 @@ public class ChatAppService {
                 });
             } catch (Exception e) {
                 log.error("基于会话的流式对话失败: ConversationId={}", conversationId, e);
-                return Flux.just(sseMessageBuilder.buildErrorMessage(AgentExecutionEngine.formatAgentError(e)));
+                return Flux.just(sseMessageBuilder.buildErrorMessage(ExecutionEngine.formatAgentError(e)));
             }
         }).subscribeOn(Schedulers.boundedElastic());
     }
@@ -312,8 +303,8 @@ public class ChatAppService {
         if (responseMsg == null) {
             throw new RuntimeException("Agent 响应为空");
         }
-        StructuredBlockingStrategy.SchemaTarget target = (StructuredBlockingStrategy.SchemaTarget)
-                result.getContext().getAttribute(StructuredBlockingStrategy.ATTR_SCHEMA_TARGET);
+        SchemaTarget target = (SchemaTarget)
+                result.getContext().getAttribute(SchemaTarget.ATTR_SCHEMA_TARGET);
         try {
             if (target != null && target.schemaClass() != null) {
                 return responseMsg.getStructuredData(target.schemaClass());
@@ -327,7 +318,16 @@ public class ChatAppService {
     /**
      * 流式结构化输出（门面专属的 SSE 编排）。
      *
-     * <p>双模式（流/表单）+ 取消令牌 + requestId 的 SSE 专属编排，暂不经执行引擎。</p>
+     * <p>执行语义统一交由 {@link ExecutionEngine} 兑现（Agent 解析、拦截器链、会话级工具组激活、
+     * 统一 RuntimeContext）；本方法只负责边缘层 SSE 帧封装（start/requestId、逐字、structured、done）
+     * 与取消令牌管理——符合"运行时内兑现执行语义、HTTP 边缘只做传输 framing"的边界。</p>
+     *
+     * <ul>
+     *   <li>表单模式（structuredStream=false）：请求以 streaming=false 交引擎，由
+     *       {@code StructuredBlockingStrategy} 执行并返回 {@code Msg}，本方法从中提取结构化数据帧封装；</li>
+     *   <li>流模式（structuredStream=true）：请求以 streaming=true 交引擎，由 {@code StreamingStrategy}
+     *       产出原始事件流，本方法在 AGENT_RESULT 处自解析结构化数据帧封装。</li>
+     * </ul>
      *
      * @param agentName Agent 名称
      * @param request   统一请求（含 message/schema/schemaName/structuredStream/cancelToken）
@@ -336,81 +336,84 @@ public class ChatAppService {
     public Flux<String> chatStreamStructured(String agentName, UnifiedChatRequest request) {
         return Flux.defer(() -> {
             try {
-                // 获取 Agent 实例
-                Agent agent = agentDomainService.getAgentInstance(agentName);
-                // 解析 Structured Output 目标（类 or 内联 JsonNode）
-                StructuredBlockingStrategy.SchemaTarget target = resolveSchemaTarget(agentName, request);
+                // 解析结构化目标（仅用于前置校验与帧封装时的解析；执行由引擎兑现）
+                SchemaTarget target = resolveSchemaTarget(agentName, request);
                 if (target == null) {
                     return Flux.just(sseMessageBuilder.buildErrorMessage(
                             "未配置 Schema，请在 Agent 配置中设置 schema_class 或在请求中提供 schema 参数"));
                 }
-                // 注册请求（根据令牌）
+                // 注册请求（取消令牌）
                 DistributedRequestManager.RequestInfo requestInfo = requestManager.registerRequestWithToken(
                         agentName,
                         request.getCancelToken() != null ? request.getCancelToken()
                                 : requestManager.generateCancelToken());
                 String requestId = requestInfo.getRequestId();
-                // 构造用户消息
-                Msg userMsg = Msg.builder()
-                        .textContent(request.getMessage())
-                        .role(MsgRole.USER)
-                        .build();
-                // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
-                String structUserId = request.getUserId();
-                String structSessionId = request.getConversationId() != null ? request.getConversationId()
-                        : (structUserId != null ? structUserId : "structured-" + agentName);
-                RuntimeContext rc = RuntimeContext.builder().userId(structUserId).sessionId(structSessionId).build();
-                AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, structUserId, structSessionId);
                 // 开始事件（包含 requestId）
                 Flux<String> startFlux = Flux.just(sseMessageBuilder.buildMessageWithRequestId("start", null, requestId));
                 // 完成事件
                 Flux<String> doneFlux = Flux.just(sseMessageBuilder.buildDoneMessage());
 
-                // 流模式：streamEvents 实时吐字 + 末尾自解析结构化数据
-                if (request.isStructuredStream()) {
-                    log.info("流式结构化输出(流模式, 逐字流): Agent={}, requestId={}", agentName, requestId);
-                    Flux<String> streamFlux = ((HarnessAgent) agent).streamEvents(List.of(userMsg), rc)
-                            .takeWhile(event -> !requestManager.isRequestCancelled(requestId))
-                            .flatMap(event -> processStructuredAgentEvent(event, target))
-                            .doOnComplete(() -> {
-                                log.info("流式差异化输出完成: Agent={}, requestId={}", agentName, requestId);
-                                requestManager.unregisterRequest(requestId);
-                            })
-                            .doOnCancel(() -> {
-                                log.info("流式差异化输出取消: Agent={}, requestId={}", agentName, requestId);
-                                requestManager.unregisterRequest(requestId);
-                            })
+                // 表单模式（阻塞校验）：以 streaming=false 交引擎，取回 Msg 后帧封装结构化数据
+                if (!request.isStructuredStream()) {
+                    log.info("流式结构化输出(表单模式, 经执行引擎): Agent={}, requestId={}", agentName, requestId);
+                    ExecutionRequest execReq = ExecutionRequest.builder()
+                            .agentName(agentName)
+                            .message(request.getMessage())
+                            .userId(request.getUserId())
+                            .conversationId(request.getConversationId())
+                            .streaming(false)
+                            .structuredOutput(true)
+                            .structuredSchema(request.getSchema())
+                            .structuredSchemaName(request.getSchemaName())
+                            .build();
+                    Mono<String> structuredFlux = Mono.fromCallable(() -> {
+                        ExecutionResult res = executionEngine.execute(execReq, null);
+                        if (res.isError()) {
+                            throw new RuntimeException(res.getErrorMessage());
+                        }
+                        Msg result = res.getResult();
+                        if (result == null) {
+                            throw new IllegalStateException("Agent 响应为空");
+                        }
+                        Object data = parseStructuredFromMessage(result, target);
+                        return sseMessageBuilder.buildMessage("structured", sseMessageBuilder.toJsonString(data));
+                    }).doFinally(sig -> requestManager.unregisterRequest(requestId))
                             .onErrorResume(e -> {
                                 log.error("流式差异化输出异常: Agent={}, requestId={}", agentName, requestId, e);
-                                requestManager.unregisterRequest(requestId);
-                                return Flux.just(sseMessageBuilder.buildErrorMessage("结构化数据解析失败: " + e.getMessage()));
+                                return Mono.just(sseMessageBuilder.buildErrorMessage("结构化数据解析失败: " + e.getMessage()));
                             });
-                    return Flux.concat(startFlux, streamFlux, doneFlux);
+                    return Flux.concat(startFlux, structuredFlux, doneFlux);
                 }
 
-                // 表单模式（默认）：使用 AgentScope 提供的结构化重载 call(List, Class/JsonNode, RuntimeContext)。
-                // HarnessAgent.streamEvents 不接受 schema 参数、无法绑定 structured_output 元数据，故不可用。
-                // 该重载内部走 native(json_schema) 或 fallback(generate_response 合成工具) 并自动降级，与官方文档一致；
-                // 代价是结构化模式下不提供逐字 token 流（框架未公开 stream+structured 组合 API）。
-                log.info("流式结构化输出(表单模式, 阻塞校验): Agent={}, requestId={}", agentName, requestId);
-                Duration timeout = Duration.ofSeconds(conversationTimeoutSeconds);
-                Mono<String> structuredFlux = Mono.fromCallable(() -> {
-                    Msg result;
-                    Object data;
-                    if (target.schemaClass() != null) {
-                        result = ((HarnessAgent) agent).call(List.of(userMsg), target.schemaClass(), rc).block(timeout);
-                        data = result.getStructuredData(target.schemaClass());
-                    } else {
-                        result = ((HarnessAgent) agent).call(List.of(userMsg), target.schemaNode(), rc).block(timeout);
-                        data = result.getStructuredData(false);
-                    }
-                    return sseMessageBuilder.buildMessage("structured", sseMessageBuilder.toJsonString(data));
-                }).doFinally(signal -> requestManager.unregisterRequest(requestId))
+                // 流模式（逐字流 + 末尾自解析结构化）：以 streaming=true 交引擎产出原始事件流，边沿帧封装
+                log.info("流式结构化输出(流模式, 经执行引擎): Agent={}, requestId={}", agentName, requestId);
+                ExecutionRequest execReq = ExecutionRequest.builder()
+                        .agentName(agentName)
+                        .message(request.getMessage())
+                        .userId(request.getUserId())
+                        .conversationId(request.getConversationId())
+                        .streaming(true)
+                        .structuredOutput(true)
+                        .structuredSchema(request.getSchema())
+                        .structuredSchemaName(request.getSchemaName())
+                        .build();
+                Flux<String> streamFlux = executionEngine.executeEvents(execReq, null)
+                        .takeWhile(event -> !requestManager.isRequestCancelled(requestId))
+                        .flatMap(event -> processStructuredAgentEvent(event, target))
+                        .doOnComplete(() -> {
+                            log.info("流式差异化输出完成: Agent={}, requestId={}", agentName, requestId);
+                            requestManager.unregisterRequest(requestId);
+                        })
+                        .doOnCancel(() -> {
+                            log.info("流式差异化输出取消: Agent={}, requestId={}", agentName, requestId);
+                            requestManager.unregisterRequest(requestId);
+                        })
                         .onErrorResume(e -> {
                             log.error("流式差异化输出异常: Agent={}, requestId={}", agentName, requestId, e);
-                            return Mono.just(sseMessageBuilder.buildErrorMessage("结构化数据解析失败: " + e.getMessage()));
+                            requestManager.unregisterRequest(requestId);
+                            return Flux.just(sseMessageBuilder.buildErrorMessage("结构化数据解析失败: " + e.getMessage()));
                         });
-                return Flux.concat(startFlux, structuredFlux, doneFlux);
+                return Flux.concat(startFlux, streamFlux, doneFlux);
             } catch (Exception e) {
                 log.error("流式差异化输出初始化异常: Agent={}", agentName, e);
                 return Flux.just(sseMessageBuilder.buildErrorMessage(e.getMessage()));
@@ -422,7 +425,7 @@ public class ChatAppService {
      * 处理流模式下的 AgentEvent：转发 thinking/content 逐字事件，并在 AGENT_RESULT 处自解析结构化数据。
      */
     private Flux<String> processStructuredAgentEvent(io.agentscope.core.event.AgentEvent event,
-                                                     StructuredBlockingStrategy.SchemaTarget target) {
+                                                     SchemaTarget target) {
         var type = event.getType();
         if (type == AgentEventType.THINKING_BLOCK_DELTA && event instanceof ThinkingBlockDeltaEvent tde) {
             String text = tde.getDelta();
@@ -451,7 +454,7 @@ public class ChatAppService {
     /**
      * 从模型结果中提取结构化数据：优先用框架绑定的 structured_output 元数据，否则把文本当 JSON 自解析。
      */
-    private Object parseStructuredFromMessage(Msg message, StructuredBlockingStrategy.SchemaTarget target) throws Exception {
+    private Object parseStructuredFromMessage(Msg message, SchemaTarget target) throws Exception {
         if (message.hasStructuredData() && target.schemaClass() != null) {
             return message.getStructuredData(target.schemaClass());
         }
@@ -483,12 +486,12 @@ public class ChatAppService {
     }
 
     /** 解析 Structured Output 目标（按优先级：内联 JSON Schema > 命名 Schema > 默认 Schema 表） */
-    private StructuredBlockingStrategy.SchemaTarget resolveSchemaTarget(String agentName, UnifiedChatRequest request) {
+    private SchemaTarget resolveSchemaTarget(String agentName, UnifiedChatRequest request) {
         // 优先检查：内联 JSON Schema
         Map<String, Object> schema = request.getSchema();
         if (schema != null && !schema.isEmpty()) {
             log.info("流式差异化输出使用内联 JSON Schema");
-            return new StructuredBlockingStrategy.SchemaTarget(null, objectMapper.valueToTree(schema));
+            return new SchemaTarget(null, objectMapper.valueToTree(schema));
         }
         // 其次检查：命名 Schema（通过 schemaName 参数）
         String schemaName = request.getSchemaName();
@@ -496,7 +499,7 @@ public class ChatAppService {
             Class<?> schemaClass = schemaClassRegistry.getSchema(agentName, schemaName);
             if (schemaClass != null) {
                 log.info("流式差异化输出使用命名 Schema [{}]: {}", schemaName, schemaClass.getName());
-                return new StructuredBlockingStrategy.SchemaTarget(schemaClass, null);
+                return new SchemaTarget(schemaClass, null);
             }
             log.warn("未找到命名 Schema [{}]，尝试使用默认 Schema", schemaName);
         }
@@ -504,7 +507,7 @@ public class ChatAppService {
         Class<?> schemaClass = schemaClassRegistry.get(agentName);
         if (schemaClass != null) {
             log.info("流式差异化输出使用默认 Schema 表: {}", schemaClass.getName());
-            return new StructuredBlockingStrategy.SchemaTarget(schemaClass, null);
+            return new SchemaTarget(schemaClass, null);
         }
         return null;
     }

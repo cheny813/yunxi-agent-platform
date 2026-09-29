@@ -95,49 +95,12 @@ public class UnifiedChatRequest {
     private String memoryMode = "full";
 
     /**
-     * 是否使用历史摘要（默认 true）
-     * <p>
-     * 在 smart 模式下，是否使用 LLM 生成历史摘要。
-     * 设置为 false 时，只保留最近 N 条完整消息，不生成摘要。
-     * </p>
-     */
-    private Boolean useHistorySummary = true;
-
-    /**
-     * 检索关键词列表（可选）
-     * <p>
-     * 在 smart 模式下，用于从完整历史中检索相关消息。
-     * AgentScope AutoContextMemory 会根据这些关键词从原始存储中检索相关历史。
-     * </p>
-     */
-    private List<String> retrieveKeywords;
-
-    /**
-     * 最大历史消息数（默认 30）
-     * <p>
-     * 在 smart 模式下，这是 AutoContextMemory 的 msgThreshold 参数。
-     * 超过此数量的消息会触发自动压缩。
-     * </p>
-     */
-    private Integer memoryThreshold = 30;
-
-    /**
      * 保留的最近消息数（默认 10）
      * <p>
-     * 在 smart 模式下，这是 AutoContextMemory 的 lastKeep 参数。
-     * 最近的 N 条消息不会被压缩，保持完整内容。
+     * 始终保留最近的 N 条消息不压缩，直接出现在上下文中，确保最新对话不受影响。
      * </p>
      */
     private Integer lastKeepMessages = 10;
-
-    /**
-     * Token 压缩比例（默认 0.3）
-     * <p>
-     * 在 smart 模式下，这是 AutoContextMemory 的 tokenRatio 参数。
-     * 压缩目标是使历史消息的 token 数降至此比例。
-     * </p>
-     */
-    private Double tokenRatio = 0.3;
 
     // ==================== 响应模式（可选） ====================
 

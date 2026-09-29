@@ -25,7 +25,7 @@ yunxi Agent Platform 是基于 **AgentScope-Java 2.0.3（正式版）** 构建�
 |------|------|
 | **意图引擎（决策中枢）** | NER → 改写 → 分类 → 映射四阶段前置管道；多域模型、rule/llm/hybrid 分类通道、actuator 热更新、意图路由，业务数据可配置替换 |
 | **多 Agent 编排** | Supervisor 多专家编排（已接线）；`workflow` 为声明型（编排图导出至 aistio 执行，不产生运行时实例）；`pipeline`/`routing`/`handoffs` 未接线，加载期即被拒绝 |
-| **统一执行引擎** | `AgentExecutionEngine` 门面统一收口同步 / 流式 / 结构化 / 取消四类调用入口；调用前经 4 个前置拦截器（AuthResolve → Memory → IntentPipeline → RagRetrieval），事件流经统一轨迹归集后由投影消费 |
+| **统一执行引擎** | 独立模块 `agent-execution` 负责 web / A2A 自有协议的调用编排（意图识别、RAG、记忆构建、权限快照、实体注入、指标、阶段状态、审计），经框架 `Agent.streamEvents` 接缝衔接；协议无关的横切（内容安全 / 画像 / 追踪 / 记忆压缩）实现为 AgentScope-Java Middleware 对所有协议统一生效，详见 [19. 统一执行引擎](docs/guide/19-execution-engine.md) |
 | **统一推理轨迹（One Trace, Many Projections）** | 内核只维护一条结构化轨迹（`TraceComposer` → `ReasoningSpan` → `TraceStore`），SSE / AG-UI 只是它的投影；轨迹可落 Redis 跨实例共享，支持历史回放与断点续传 |
 | **AgentScope 深度集成** | 复用 AgentScope-Java 的 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **MCP 协议** | 完整支持 Model Context Protocol，内置 9 个 MCP 服务定义（sse/stdio/http），其中 database/redis/milvus/mcp-nutrition/formfill 共 5 个默认启用；支持运行期动态注册（Nacos 持久化、目标不可达自动重连），一键接入 30+ MCP 服务生态 |
@@ -192,11 +192,14 @@ yunxi:
 
 | 模块 | 说明 | 核心技术 |
 |------|------|----------|
-| **agent-core** | 核心框架：Agent 编排、统一执行引擎、意图引擎、推理轨迹、会话、模型、记忆、技能、安全 | Spring Boot, agentscope-harness |
-| **agent-muse** | 自进化引擎：技能沙箱评估 → LLM 修补 → 剪枝合并闭环 | agentscope, Java 子进程沙箱 |
-| **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
-| **agent-spi** | SPI 接口定义 | Java SPI |
+| **agent-codec** | 全平台唯一 JSON 编解码机制：唯一绑定配置来源、Redis 值编解码、数据库 JSON 类型处理器、失败计数与启动自检 | Jackson, Spring Data Redis, MyBatis |
 | **agent-config** | 统一配置：YAML、数据库初始化 | Spring Cloud |
+| **agent-spi** | SPI 接口定义（契约层，最底层抽象） | Java SPI |
+| **agent-text2sql** | 自然语言转 SQL | LLM, Milvus 向量检索 |
+| **agent-core** | 核心框架：Agent 编排、意图引擎、推理轨迹、会话、模型、记忆、技能、安全 | Spring Boot, agentscope-harness |
+| **agent-execution** | 统一执行引擎：web / A2A 自有协议的调用编排（意图、RAG、记忆构建、权限快照、实体注入、指标、阶段、审计） | AgentScope-Java Middleware, ExecutionInterceptor |
+| **agent-ingress** | 统一接入网关：集中承载所有外部 HTTP 入口与边缘横切（认证 / 限流 / 可观测）、协议服务端接入与路由 | Spring Boot Web, AgentScope-Java 协议 Starter |
+| **agent-muse** | 自进化引擎：技能沙箱评估 → LLM 修补 → 剪枝合并闭环 | agentscope, Java 子进程沙箱 |
 | **agent-aistio** | aistio 管控面集成（注册、gRPC 对话流、编排触发器、契约与治理、任务接活），尝鲜模式可选 | AgentScope-Java aistio 扩展 |
 | **agent-app** | 启动入口：整合所有模块（端口 40001） | Spring Boot |
 | **agent-integration-test** | 集成测试 | JUnit, Testcontainers |
@@ -227,6 +230,8 @@ yunxi:
 | [15. 可观测性](docs/guide/15-observability.md) | 运维工程师 |
 | [16. 意图引擎](docs/guide/16-intent-engine.md) | 架构师、开发者 |
 | [17. 统一 JSON 编解码机制](docs/guide/17-data-codec.md) | 架构师、开发者 |
+| [18. 统一入口网关](docs/guide/18-ingress-gateway.md) | 架构师、开发者 |
+| [19. 统一执行引擎](docs/guide/19-execution-engine.md) | 架构师、开发者 |
 
 [📖 查看完整文档](docs/guide/README.md)
 

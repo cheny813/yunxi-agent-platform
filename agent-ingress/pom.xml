@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-agent-platform</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>agent-ingress</artifactId>
+    <name>agent-ingress</name>
+    <description>统一接入网关：集中承载所有外部 HTTP 入口与边缘横切关注点</description>
+
+    <dependencies>
+        <!-- 内核（提供服务、轨迹投影注册表等被网关委托的能力） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- 平台契约层（统一接入网关仅依赖 agent-spi 暴露的接口，不耦合业务模块内部类型） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-spi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Web 与 Actuator 由 agent-core 传递获得，此处显式声明以表达网关层语义 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- AgentScope AG-UI 协议扩展库（提供 AguiAgentRegistry / AguiRequestProcessor / AguiEventEncoder 等核心类，
+             适配层直接引用；作用域 compile，因为 starter 将其标为 provided，不向 yunxi 传递）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-agui</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+        <!-- AgentScope AG-UI Spring Boot Starter：提供框架原生 AG-UI HTTP 端点（POST /agui/run 与 /agui/run/{agentId}），
+             由内置 AguiMvcController / AguiRestController 承载协议与 SSE 生命周期，取代 yunxi 自写的 AguiController（命名主权铁律一）。
+             yunxi 侧仅注册一个 AguiAgentRegistry bean（吸收 {name} 与 {name}-agent 的命名差异）即完成接线。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-agui-spring-boot-starter</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+        <!-- AgentScope Chat Completions（OpenAI 兼容）协议 starter：提供 /v1/chat/completions 端点的框架原生实现，
+             构件与同一 2.0.3 发布批次的其它 AgentScope 模块一致，从已配置的远程仓库（Maven Central / Aliyun）拉取。
+             yunxi 侧以 YunxiChatCompletionsController 覆盖其默认 Controller（裸 agent、无身份），
+             改为经 AgentService 取已装配 Agent 并注入 RuntimeContext，使其与 web / A2A / AG-UI 一致走统一装配链。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-chat-completions-web-starter</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+        <!-- AgentScope Core：YunxiChatCompletionsController（以及 AG-UI / A2A 适配层）直接引用
+             io.agentscope.core.agent.*（AgentResultEvent / Msg / ReActAgent 等核心 API）。
+             各 AgentScope starter 与 extensions 模块将 agentscope-core 标为 provided（不向 yunxi 传递），
+             此处显式声明以固定 2.0.3 版本，确保 core 包确定可见。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+        <!-- Chat Completions 适配层（YunxiChatCompletionsController）直接引用
+             io.agentscope.core.chat.completions.*（model / builder / converter / streaming）。
+             这些类位于 agentscope-extensions-chat-completions-web 模块，而该模块对 agentscope-core 标为
+             provided（不向 yunxi 传递），此处显式声明以固定 2.0.3 版本，确保 chat.completions 包确定可见。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-chat-completions-web</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+        <!-- AG-UI 处理器以 Project Reactor Flux 产出事件流，网关层通过 SseEmitter 桥接为 text/event-stream -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </dependency>
+        <!-- Lombok（网关层 Controller 使用 @Slf4j / @RequiredArgsConstructor 注解） -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- 测试桩（可选，便于后续给网关层补单测） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

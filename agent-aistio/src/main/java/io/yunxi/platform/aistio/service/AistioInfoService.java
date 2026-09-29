@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import io.yunxi.platform.agent.mcp.McpConfigStore;
 import io.yunxi.platform.agent.mcp.McpServerEntry;
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
-import io.yunxi.platform.aistio.dto.DataPlaneInfo;
+import io.yunxi.platform.contract.dto.DataPlaneInfo;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import lombok.RequiredArgsConstructor;
 

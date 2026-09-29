@@ -1,6 +1,7 @@
 package io.yunxi.platform.shared.config;
 
 import io.yunxi.platform.config.MilvusConfig;
+import io.yunxi.platform.config.A2AConfig;
 import io.yunxi.platform.config.AgentscopeExtensionProperties;
 import io.yunxi.platform.shared.constants.ConfigDefaults;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class ConfigValidator {
     private final AgentscopeCoreProperties agentscopeProperties;
     private final MilvusConfig milvusConfig;
     private final AgentscopeExtensionProperties extensionProperties;
+    private final A2AConfig a2aConfig;
 
     /**
      * 应用启动后执行配置验证
@@ -158,25 +160,22 @@ public class ConfigValidator {
      * @param warnings 警告信息列表
      */
     private void validateA2AConfig(List<String> errors, List<String> warnings) {
-        AgentscopeExtensionProperties.A2AConfig a2a = 
-            extensionProperties.getA2a();
-        
-        if (a2a == null || !a2a.isEnabled()) {
+        if (a2aConfig == null || !a2aConfig.isEnabled()) {
             return;
         }
 
         // A2A 启用时，注册中心地址和命名空间是必填项
-        if (a2a.getRegistryAddr() == null || a2a.getRegistryAddr().isBlank()) {
-            errors.add("agentscope.extensions.a2a.registry-addr 未配置（启用 A2A 时必填）");
+        if (a2aConfig.getRegistryAddr() == null || a2aConfig.getRegistryAddr().isBlank()) {
+            errors.add("yunxi.a2a.registry-addr 未配置（启用 A2A 时必填）");
         }
 
-        if (a2a.getNamespace() == null || a2a.getNamespace().isBlank()) {
-            errors.add("agentscope.extensions.a2a.namespace 未配置（启用 A2A 时必填）");
+        if (a2aConfig.getNamespace() == null || a2aConfig.getNamespace().isBlank()) {
+            errors.add("yunxi.a2a.namespace 未配置（启用 A2A 时必填）");
         }
 
         if (errors.isEmpty()) {
-            log.info("  ✓ A2A 配置完整: type={}, addr={}, namespace={}", 
-                a2a.getRegistryType(), a2a.getRegistryAddr(), a2a.getNamespace());
+            log.info("  ✓ A2A 配置完整: type={}, addr={}, namespace={}",
+                a2aConfig.getRegistryType(), a2aConfig.getRegistryAddr(), a2aConfig.getNamespace());
         }
     }
 

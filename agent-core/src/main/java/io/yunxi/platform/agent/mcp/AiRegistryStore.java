@@ -4,15 +4,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.alibaba.nacos.api.NacosFactory;
 import com.alibaba.nacos.api.config.ConfigService;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.yunxi.platform.infrastructure.nacos.NacosClientFactory;
+import io.yunxi.platform.infrastructure.nacos.NacosConnection;
 import io.yunxi.platform.shared.config.McpNacosProperties;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -40,14 +40,16 @@ public class AiRegistryStore {
 
     private final McpNacosProperties props;
     private final ObjectMapper objectMapper;
+    private final NacosClientFactory factory;
     private volatile ConfigService configService;
 
     /** 本实例已发布 AI 资源的本地缓存，使 get() 立即可用（规避 Nacos 3.x 读后写延迟）。 */
     private final Map<String, String> contentCache = new ConcurrentHashMap<>();
 
-    public AiRegistryStore(McpNacosProperties props, ObjectMapper objectMapper) {
+    public AiRegistryStore(McpNacosProperties props, ObjectMapper objectMapper, NacosClientFactory factory) {
         this.props = props;
         this.objectMapper = objectMapper;
+        this.factory = factory;
     }
 
     /** Spring 就绪后连接 Nacos（复用 MCP 协调底座同一地址/命名空间）。 */
@@ -58,16 +60,9 @@ public class AiRegistryStore {
             return;
         }
         try {
-            Properties p = new Properties();
-            p.put("serverAddr", props.getServerAddr());
-            if (props.getNamespace() != null && !props.getNamespace().isEmpty()) {
-                p.put("namespace", props.getNamespace());
-            }
-            if (props.getUsername() != null && !props.getUsername().isEmpty()) {
-                p.put("username", props.getUsername());
-                p.put("password", props.getPassword());
-            }
-            configService = NacosFactory.createConfigService(p);
+            configService = factory.createConfigService(
+                    new NacosConnection(props.getServerAddr(), props.getNamespace(),
+                            props.getUsername(), props.getPassword()));
             log.info("[AI-Registry] 已连接 Nacos：serverAddr={}, group={}",
                     props.getServerAddr(), props.getAiRegistryGroup());
         } catch (NacosException e) {

@@ -52,6 +52,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- 架构护栏（统一接入网关架构不变量）：编译期禁止本模块声明 @RestController（散装入口必须收编 agent-ingress） -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>1.4.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

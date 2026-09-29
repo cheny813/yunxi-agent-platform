@@ -18,13 +18,15 @@ import org.junit.jupiter.api.Test;
 
 import io.milvus.v2.client.MilvusClientV2;
 import io.yunxi.platform.agent.text2sql.config.Text2SqlProperties;
-import io.yunxi.platform.spi.text2sql.EmbeddingService;
+import io.yunxi.platform.spi.EmbeddingService;
+import org.springframework.beans.factory.ObjectProvider;
 
 class ColumnRetrieverTest {
 
     private Text2SqlProperties text2SqlProperties;
     private MilvusClientV2 milvusClient;
     private EmbeddingService embeddingService;
+    private ObjectProvider<EmbeddingService> embeddingProvider;
     private ColumnRetriever columnRetriever;
 
     @BeforeEach
@@ -32,6 +34,8 @@ class ColumnRetrieverTest {
         text2SqlProperties = mock(Text2SqlProperties.class);
         milvusClient = mock(MilvusClientV2.class);
         embeddingService = mock(EmbeddingService.class);
+        embeddingProvider = mock(ObjectProvider.class);
+        when(embeddingProvider.getIfAvailable()).thenReturn(embeddingService);
 
         Text2SqlProperties.RetrievalProperties retrievalProps = new Text2SqlProperties.RetrievalProperties();
         retrievalProps.setCollectionName("column_embeddings");
@@ -40,7 +44,7 @@ class ColumnRetrieverTest {
 
         columnRetriever = new ColumnRetriever(
                 text2SqlProperties,
-                () -> embeddingService,
+                embeddingProvider,
                 () -> milvusClient);
     }
 
@@ -61,7 +65,7 @@ class ColumnRetrieverTest {
         @Test
         @DisplayName("embed returns empty array - returns empty list")
         void embedReturnsEmpty() {
-            when(embeddingService.embed(any())).thenReturn(new float[0]);
+            when(embeddingService.embed(any())).thenReturn(Collections.emptyList());
 
             List<ColumnRetriever.ColumnInfo> result = columnRetriever.retrieveColumns("test query", null, 5);
 
@@ -76,10 +80,7 @@ class ColumnRetrieverTest {
         @Test
         @DisplayName("milvusClient search returns empty list - returns empty list")
         void milvusReturnsEmpty() {
-            float[] embedding = new float[128];
-            for (int i = 0; i < 128; i++) {
-                embedding[i] = 0.1f;
-            }
+            List<Float> embedding = new ArrayList<>(Collections.nCopies(128, 0.1f));
             when(embeddingService.embed(any())).thenReturn(embedding);
             when(milvusClient.search(any())).thenReturn(null);
 
@@ -96,10 +97,7 @@ class ColumnRetrieverTest {
         @Test
         @DisplayName("milvusClient search throws exception - returns empty list")
         void milvusThrowsException() {
-            float[] embedding = new float[128];
-            for (int i = 0; i < 128; i++) {
-                embedding[i] = 0.1f;
-            }
+            List<Float> embedding = new ArrayList<>(Collections.nCopies(128, 0.1f));
             when(embeddingService.embed(any())).thenReturn(embedding);
             when(milvusClient.search(any())).thenThrow(new RuntimeException("connection refused"));
 
@@ -132,7 +130,7 @@ class ColumnRetrieverTest {
         void milvusNull() {
             ColumnRetriever retrieverWithNullMilvus = new ColumnRetriever(
                     text2SqlProperties,
-                    () -> embeddingService,
+                    embeddingProvider,
                     () -> null);
 
             // 测试预期：当MilvusClient为null时，索引操作不应抛出异常，应跳过索引过程
@@ -142,9 +140,11 @@ class ColumnRetrieverTest {
         @Test
         @DisplayName("embeddingService is null - skips indexing")
         void embeddingServiceNull() {
+            ObjectProvider<EmbeddingService> nullEmbeddingProvider = mock(ObjectProvider.class);
+            when(nullEmbeddingProvider.getIfAvailable()).thenReturn(null);
             ColumnRetriever retrieverWithNullEmbedding = new ColumnRetriever(
                     text2SqlProperties,
-                    () -> null,
+                    nullEmbeddingProvider,
                     () -> milvusClient);
 
             // 测试预期：当EmbeddingService为null时，索引操作不应抛出异常，应跳过索引过程

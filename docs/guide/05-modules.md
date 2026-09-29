@@ -6,16 +6,19 @@
 
 ## 模块概览
 
-### Maven 模块（根 `pom.xml` 的 `<modules>`，共 8 个）
+### Maven 模块（根 `pom.xml` 的 `<modules>`，共 10 个；另 `agent-aistio` 为可选 profile 模块）
 
 ```
 yunxi-agent-platform/
+├── agent-codec             # 全平台唯一 JSON 编解码机制（最底层，无内部模块依赖）
 ├── agent-spi               # SPI 接口定义（最底层抽象）
 ├── agent-config            # 集中化配置管理
-├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、统一执行引擎、意图引擎、轨迹系统）
-├── agent-aistio            # aistio 控制面 / 数据面集成（注册、gRPC 对话流、编排触发器、契约与治理、任务接活）
-├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-text2sql          # 自然语言转 SQL
+├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、意图引擎、轨迹系统）
+├── agent-execution         # 统一执行引擎（web / A2A 调用编排）
+├── agent-ingress           # 统一接入网关（边缘横切 + 协议服务端接入）
+├── agent-aistio            # aistio 控制面 / 数据面集成（可选 profile）
+├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-app               # 可执行应用打包（统一入口，端口 40001）
 └── agent-integration-test  # 跨模块集成测试
 ```
@@ -33,14 +36,26 @@ yunxi-agent-platform/
 ### 依赖链
 
 ```
-agent-spi → agent-config → agent-core
-                                ↑        ↑
-                    agent-muse  agent-aistio（仅依赖 agent-core）
-                                ↓
-            agent-app (聚合 + 启动入口)
+agent-codec → agent-spi → agent-config → agent-core
+                                          ↑        ↑
+                  agent-execution  agent-ingress  agent-muse  agent-aistio（仅依赖 agent-core）
+                                          ↓
+                          agent-app (聚合 + 启动入口)
 ```
 
 ---
+
+## agent-codec / agent-execution / agent-ingress（编解码、接入与执行）
+
+这三者分别对应平台对外暴露能力的「编解码」「网关」「执行编排」三个横切面，均为 Maven 模块：
+
+| 模块 | 职责 | 说明 |
+|------|------|------|
+| `agent-codec` | 全平台唯一 JSON 编解码机制 | 唯一绑定配置来源、Redis 值编解码、数据库 JSON 类型处理器、失败计数与启动自检；不依赖任何业务模块，被所有业务模块依赖，是编解码契约的唯一实现位置。详见 [17. 统一 JSON 编解码机制](./17-data-codec.md) |
+| `agent-ingress` | 统一接入网关 | 集中承载所有外部 HTTP 入口与边缘横切（认证 / 限流 / 可观测）、协议服务端接入与路由，是平台对外暴露智能体能力的唯一网络边缘。详见 [18. 统一入口网关](./18-ingress-gateway.md) |
+| `agent-execution` | 统一执行引擎 | 独立于网关的模块（`io.yunxi.platform.execution`），负责「从 `Agent.streamEvents` 被调用到事件流回吐」之间的业务编排（意图、RAG、记忆构建、权限快照、实体注入、指标、阶段、审计）。详见 [19. 统一执行引擎](./19-execution-engine.md) |
+
+> `agent-ingress` 的 HTTP 边缘由过滤器统一实现；aistio 管控面的 HTTP 边缘（`AistioIngressController`，基址 `/agentscope`）也收编于此模块，但对 `agent-aistio` 保持编译隔离。
 
 ## agent-spi（SPI 扩展接口）
 
@@ -226,7 +241,7 @@ MCP 工具由 AgentScope 框架原生管理：`AgentConfigurer.buildMcpClient()`
 
 - **注册与心跳**：`AistioGrpcConnector` 复用 AgentScope-Java 框架 `Aistio.instrument(agent, AistioConfig, adapter)` 完成自注册、心跳与 gRPC 对话流；yunxi 不自建注册与心跳调度。
 - **编排触发器 / 导出器**：`WebhookOrchestrationTrigger`、`OrchestrationTranslator`、`WorkflowArtifactExporter` 把 yunxi 的编排 manifest 与控制面对齐。
-- **契约与治理**：`AistioContractController`、`GovernanceService`、`WorkspaceInventoryService`、`SessionInventoryService` 暴露控制面所需的数据面视图。
+- **契约与治理**：`AistioDataPlaneContract`（实现 `agent-core` 的 `DataPlaneContract` 接口，委托 `GovernanceService` / `WorkspaceInventoryService` / `SessionInventoryService` 提供数据面视图）；HTTP 边缘由 `agent-ingress` 的 `AistioIngressController` 收编（基址 `/agentscope`），ingress 对 `agent-aistio` 保持编译隔离。
 - **任务接活**：`AistioTaskBridge` 把控制面下推的 `AgentTaskAssignment` 转交框架官方 `HarnessAgentTaskStarter`，yunxi 不另研执行器。
 
 ### 包结构

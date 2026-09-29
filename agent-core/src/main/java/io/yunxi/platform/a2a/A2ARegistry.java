@@ -4,13 +4,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.alibaba.nacos.api.naming.NamingService;
+import com.alibaba.nacos.api.naming.pojo.Instance;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
-import io.yunxi.platform.config.AgentscopeExtensionProperties.A2AConfig;
+import io.yunxi.platform.config.A2AConfig;
+import io.yunxi.platform.infrastructure.nacos.NacosClientFactory;
+import io.yunxi.platform.infrastructure.nacos.NacosConnection;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -47,18 +50,21 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Service
-// @ConditionalOnProperty(name = "agentscope.extensions.a2a.enabled",
+// @ConditionalOnProperty(name = "yunxi.a2a.enabled",
 // havingValue = "true")
 public class A2ARegistry {
 
     /** A2A 配置 */
     private final A2AConfig config;
 
+    /** 统一 Nacos 客户端工厂（可选；缺失时 Nacos 注册降级为静态）。 */
+    private final ObjectProvider<NacosClientFactory> nacosFactoryProvider;
+
     /** 本地注册表（静态模式或缓存） */
     private final Map<String, List<A2AClient.AgentEndpoint>> localRegistry = new ConcurrentHashMap<>();
 
-    /** Nacos 命名服务（如使用Nacos） */
-    private Object nacosNamingService; // 使用 Object 避免强依赖
+    /** Nacos 命名服务（如使用 Nacos；nacos-client 已是 agent-core 硬依赖，故此处为强类型）。 */
+    private NamingService nacosNamingService;
 
     /** Consul 客户端（如使用 Consul） */
     private Object consulClient; // 使用 Object 避免强依赖
@@ -68,8 +74,10 @@ public class A2ARegistry {
      *
      * @param configProvider A2A 配置（可选）
      */
-    public A2ARegistry(ObjectProvider<A2AConfig> configProvider) {
+    public A2ARegistry(ObjectProvider<A2AConfig> configProvider,
+                        ObjectProvider<NacosClientFactory> nacosFactoryProvider) {
         this.config = configProvider.getIfAvailable();
+        this.nacosFactoryProvider = nacosFactoryProvider;
         initRegistry();
     }
 
@@ -109,28 +117,20 @@ public class A2ARegistry {
      * 初始化 Nacos 注册中心
      */
     private void initNacosRegistry() {
+        NacosClientFactory factory = nacosFactoryProvider.getIfAvailable();
+        if (factory == null) {
+            log.warn("Nacos 客户端工厂不可用，降级静态注册");
+            initStaticRegistry();
+            return;
+        }
         try {
-            // 动态加载 Nacos 客户端，避免强制依赖
-            Class<?> nacosFactoryClass = Class.forName("com.alibaba.nacos.api.NacosFactory");
-            Class<?> propertiesClass = Properties.class;
-
-            Properties properties = new Properties();
-            properties.setProperty("serverAddr", config.getRegistryAddr());
-            if (config.getNamespace() != null) {
-                properties.setProperty("namespace", config.getNamespace());
-            }
-
-            // 创建 NamingService
-            var createNamingServiceMethod = nacosFactoryClass.getMethod("createNamingService", propertiesClass);
-            this.nacosNamingService = createNamingServiceMethod.invoke(null, properties);
-
+            this.nacosNamingService = factory.createNamingService(
+                    new NacosConnection(config.getRegistryAddr(), config.getNamespace(), "", ""));
             log.info("Nacos 注册初始化成功: {}", config.getRegistryAddr());
-
-        } catch (ClassNotFoundException e) {
-            log.warn("Nacos 依赖未找到，请添加依赖: com.alibaba.nacos:nacos-client");
-            log.info("使用静态注册模式");
         } catch (Exception e) {
             log.error("Nacos 注册初始化失败: {}", e.getMessage());
+            this.nacosNamingService = null;
+            initStaticRegistry();
         }
     }
 
@@ -200,25 +200,17 @@ public class A2ARegistry {
         }
 
         try {
-            // 使用 registerInstance
-            var registerMethod = nacosNamingService.getClass().getMethod(
-                    "registerInstance", String.class, String.class, int.class, Map.class);
-
+            Instance instance = new Instance();
+            instance.setServiceName(registration.name());
+            instance.setIp(registration.host());
+            instance.setPort(registration.port());
             Map<String, String> metadata = new HashMap<>(registration.metadata());
             metadata.put("protocol", registration.protocol());
-
-            registerMethod.invoke(
-                    nacosNamingService,
-                    registration.name(),
-                    registration.host(),
-                    registration.port(),
-                    metadata);
-
+            instance.setMetadata(metadata);
+            nacosNamingService.registerInstance(instance.getServiceName(), instance);
             log.info("Agent 注册到 Nacos: {}", registration.name());
-
         } catch (Exception e) {
             log.error("注册到 Nacos 失败: {}", registration.name(), e);
-            // 降级注册
             registerToLocal(registration);
         }
     }
@@ -279,7 +271,6 @@ public class A2ARegistry {
         }
 
         try {
-            // 查找注册的节点信息
             List<A2AClient.AgentEndpoint> endpoints = localRegistry.get(agentName);
             if (endpoints == null || endpoints.isEmpty()) {
                 log.warn("Agent {} 未注册", agentName);
@@ -287,23 +278,12 @@ public class A2ARegistry {
                 return;
             }
 
-            // 使用 deregisterInstance
-            // Nacos API: deregisterInstance(String serviceName, String ip, int port) 注销服务实例
-            var deregisterMethod = nacosNamingService.getClass().getMethod(
-                    "deregisterInstance", String.class, String.class, int.class);
-
             for (A2AClient.AgentEndpoint endpoint : endpoints) {
-                deregisterMethod.invoke(
-                        nacosNamingService,
-                        agentName,
-                        endpoint.host(),
-                        endpoint.port());
+                nacosNamingService.deregisterInstance(agentName, endpoint.host(), endpoint.port());
                 log.info("从 Nacos 注销: {} -> {}:{}", agentName, endpoint.host(), endpoint.port());
             }
-
         } catch (Exception e) {
             log.error("从 Nacos 注销失败: {}", agentName, e);
-            // 确保本地也清理
             deregisterFromLocal(agentName);
         }
     }
@@ -370,37 +350,19 @@ public class A2ARegistry {
         }
 
         try {
-            // 使用 selectInstances
-            var selectMethod = nacosNamingService.getClass().getMethod(
-                    "selectInstances", String.class, boolean.class);
-
-            @SuppressWarnings("unchecked")
-            List<?> instances = (List<?>) selectMethod.invoke(nacosNamingService, agentName, true);
-
+            List<Instance> instances = nacosNamingService.selectInstances(agentName, true);
             List<A2AClient.AgentEndpoint> endpoints = new ArrayList<>();
-            for (Object instance : instances) {
-                // 解析 Nacos Instance 对象
-                var hostMethod = instance.getClass().getMethod("getIp");
-                var portMethod = instance.getClass().getMethod("getPort");
-                var metaMethod = instance.getClass().getMethod("getMetadata");
-
-                String host = (String) hostMethod.invoke(instance);
-                int port = (int) portMethod.invoke(instance);
-                @SuppressWarnings("unchecked")
-                Map<String, String> metadata = (Map<String, String>) metaMethod.invoke(instance);
-
-                String protocol = metadata.getOrDefault("protocol", "http");
-
-                endpoints.add(new A2AClient.AgentEndpoint(agentName, host, port, protocol, metadata));
+            for (Instance instance : instances) {
+                String protocol = instance.getMetadata().getOrDefault("protocol", "http");
+                endpoints.add(new A2AClient.AgentEndpoint(agentName, instance.getIp(), instance.getPort(),
+                        protocol, instance.getMetadata()));
             }
 
-            // 缓存结果
             if (!endpoints.isEmpty()) {
                 localRegistry.put(agentName, endpoints);
             }
 
             return endpoints;
-
         } catch (Exception e) {
             log.warn("从 Nacos 发现 Agent 失败: {}, 降级本地", agentName);
             return discoverFromLocal(agentName);

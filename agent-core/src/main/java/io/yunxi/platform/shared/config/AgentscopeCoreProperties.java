@@ -255,6 +255,10 @@ public class AgentscopeCoreProperties {
         private Map<String, String> headers;
         /** 环境变量 */
         private Map<String, String> env;
+        /** Bearer 令牌（higress 类型使用，写入 Authorization 头） */
+        private String token;
+        /** 传输方式（higress 类型使用：http=StreamableHTTP，sse=SSE，默认 http） */
+        private String transport;
     }
 
     /**

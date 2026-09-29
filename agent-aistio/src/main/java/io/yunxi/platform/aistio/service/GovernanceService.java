@@ -21,7 +21,7 @@ import io.agentscope.harness.agent.memory.MemoryFlushManager;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.memory.compaction.ConversationCompactor;
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
-import io.yunxi.platform.aistio.dto.TaskInfo;
+import io.yunxi.platform.contract.dto.TaskInfo;
 import io.yunxi.platform.registry.ActiveSessionRegistry;
 import io.yunxi.platform.registry.ActiveSessionRegistry.SessionMeta;
 import io.yunxi.platform.agent.service.AgentService;

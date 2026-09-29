@@ -67,11 +67,6 @@ public class AgentscopeExtensionProperties {
     private StudioConfig studio;
 
     /**
-     * A2A（Agent-to-Agent）协议配置
-     */
-    private A2AConfig a2a;
-
-    /**
      * MCP 服务器配置映射
      */
     private Map<String, McpServerConfig> mcpServers;
@@ -119,21 +114,6 @@ public class AgentscopeExtensionProperties {
         private boolean enabled = false;
         /** Studio 服务地址（必填，无默认值） */
         private String url;
-    }
-
-    /**
-     * A2A 协议配置类
-     */
-    @Data
-    public static class A2AConfig {
-        /** 是否启用 */
-        private boolean enabled = false;
-        /** 注册中心类型：nacos、consul、static */
-        private String registryType = ConfigDefaults.DEFAULT_REGISTRY_TYPE;
-        /** 注册中心地址（必填，无默认值） */
-        private String registryAddr;
-        /** 注册中心命名空间（必填，无默认值） */
-        private String namespace;
     }
 
     /**

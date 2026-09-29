@@ -3,7 +3,7 @@ package io.yunxi.platform.a2a;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.yunxi.platform.shared.codec.CodecSpec;
-import io.yunxi.platform.config.AgentscopeExtensionProperties.A2AConfig;
+import io.yunxi.platform.config.A2AConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,7 +62,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Service
-// @ConditionalOnProperty(name = "agentscope.extensions.a2a.enabled",
+// @ConditionalOnProperty(name = "yunxi.a2a.enabled",
 // havingValue = "true")
 public class A2AClient {
 
@@ -79,7 +79,7 @@ public class A2AClient {
     private final Map<String, List<AgentEndpoint>> agentCache = new ConcurrentHashMap<>();
 
     /** 默认超时时间 */
-    @Value("${agentscope.extensions.a2a.timeout-seconds:60}")
+    @Value("${yunxi.a2a.timeout-seconds:60}")
     private Duration defaultTimeout = Duration.ofSeconds(60);
 
     /**

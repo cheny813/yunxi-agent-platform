@@ -100,19 +100,9 @@ public final class ConfigDefaults {
     public static final String DEFAULT_MEMORY_MODE = "full";
 
     /**
-     * 默认记忆阈值
-     */
-    public static final int DEFAULT_MEMORY_THRESHOLD = 30;
-
-    /**
      * 默认保留消息数
      */
     public static final int DEFAULT_LAST_KEEP_MESSAGES = 10;
-
-    /**
-     * 默认 Token 压缩比例
-     */
-    public static final double DEFAULT_TOKEN_RATIO = 0.3;
 
     /**
      * 默认最大历史消息数

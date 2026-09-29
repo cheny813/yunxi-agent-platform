@@ -55,24 +55,9 @@ public class StreamChatRequest implements MemoryParams {
     private String memoryMode = "full";
 
     /**
-     * 使用历史摘要（默认 true）
-     */
-    private Boolean useHistorySummary = true;
-
-    /**
-     * 记忆阈值（默认 30）
-     */
-    private Integer memoryThreshold = 30;
-
-    /**
      * 最后保留消息数（默认 10）
      */
     private Integer lastKeepMessages = 10;
-
-    /**
-     * Token 比例（默认 0.3）
-     */
-    private Double tokenRatio = 0.3;
 
     /**
      * 上下文数据（前端自动收集的当前页面业务数据）
@@ -202,10 +187,7 @@ public class StreamChatRequest implements MemoryParams {
         if (memoryConfig == null) {
             memoryConfig = new MemoryConfig();
             memoryConfig.setMemoryMode(memoryMode);
-            memoryConfig.setUseHistorySummary(useHistorySummary);
-            memoryConfig.setMemoryThreshold(memoryThreshold);
             memoryConfig.setLastKeepMessages(lastKeepMessages);
-            memoryConfig.setTokenRatio(tokenRatio);
             memoryConfig.setMaxHistory(10); // 流式对话默认使用 10
         }
         return memoryConfig;
@@ -221,10 +203,7 @@ public class StreamChatRequest implements MemoryParams {
         if (config != null) {
             this.memoryConfig = config;
             this.memoryMode = config.getMemoryMode();
-            this.useHistorySummary = config.getUseHistorySummary();
-            this.memoryThreshold = config.getMemoryThreshold();
             this.lastKeepMessages = config.getLastKeepMessages();
-            this.tokenRatio = config.getTokenRatio();
         }
     }
 
@@ -270,36 +249,12 @@ public class StreamChatRequest implements MemoryParams {
         this.memoryMode = memoryMode;
     }
 
-    public Boolean getUseHistorySummary() {
-        return useHistorySummary;
-    }
-
-    public void setUseHistorySummary(Boolean useHistorySummary) {
-        this.useHistorySummary = useHistorySummary;
-    }
-
-    public Integer getMemoryThreshold() {
-        return memoryThreshold;
-    }
-
-    public void setMemoryThreshold(Integer memoryThreshold) {
-        this.memoryThreshold = memoryThreshold;
-    }
-
     public Integer getLastKeepMessages() {
         return lastKeepMessages;
     }
 
     public void setLastKeepMessages(Integer lastKeepMessages) {
         this.lastKeepMessages = lastKeepMessages;
-    }
-
-    public Double getTokenRatio() {
-        return tokenRatio;
-    }
-
-    public void setTokenRatio(Double tokenRatio) {
-        this.tokenRatio = tokenRatio;
     }
 
     public Map<String, Object> getContextData() {

@@ -55,24 +55,9 @@ public class MemoryConfig {
     private String memoryMode = ConfigDefaults.DEFAULT_MEMORY_MODE;
 
     /**
-     * 是否使用历史摘要
-     */
-    private Boolean useHistorySummary = true;
-
-    /**
-     * 记忆阈值（触发压缩的阈值）
-     */
-    private Integer memoryThreshold = ConfigDefaults.DEFAULT_MEMORY_THRESHOLD;
-
-    /**
      * 最后保留消息数（始终保留的最近消息数）
      */
     private Integer lastKeepMessages = ConfigDefaults.DEFAULT_LAST_KEEP_MESSAGES;
-
-    /**
-     * Token 比例（压缩后 token 占原 token 的比例）
-     */
-    private Double tokenRatio = ConfigDefaults.DEFAULT_TOKEN_RATIO;
 
     /**
      * 最大历史消息数

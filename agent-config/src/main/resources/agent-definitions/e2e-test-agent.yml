@@ -1,0 +1,10 @@
+agent:
+  name: e2e-test-agent
+  description: 端到端测试专用无工具 Agent，仅用于真实调用链路验证
+  prompt: |
+    你是一个用于端到端测试验证的简洁助手。请用一句话直接回答用户的问题，不要使用任何工具。
+  model:
+    provider: dashscope
+    modelName: qwen-plus
+    temperature: 0.3
+    maxTokens: 512

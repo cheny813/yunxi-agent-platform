@@ -9,6 +9,7 @@ import io.agentscope.core.shutdown.GracefulShutdownMiddleware;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.core.tool.mcp.McpClientBuilder;
 import io.agentscope.core.tool.mcp.McpClientWrapper;
+import io.agentscope.extensions.higress.HigressMcpClientBuilder;
 import io.agentscope.core.tool.subagent.SubAgentConfig;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.AgentStateStore;
@@ -21,8 +22,8 @@ import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
 import io.yunxi.platform.agent.capability.AgentCapabilityRegistry;
+import io.yunxi.platform.execution.spi.AgentMiddlewareContributor;
 import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
-import io.yunxi.platform.agent.middleware.ChatAuditMiddleware;
 import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
 import io.yunxi.platform.agent.middleware.FileContextInjectionMiddleware;
 import io.yunxi.platform.agent.middleware.HistoryInjectionMiddleware;
@@ -179,6 +180,7 @@ public class AgentConfigurer implements SmartLifecycle {
     private final ObjectProvider<UserProfileEvolver> userProfileEvolverProvider;
     private final ObjectProvider<ProfileEvolutionThrottle> profileEvolutionThrottleProvider;
     private final List<ToolkitContributor> toolkitContributors;
+    private final List<AgentMiddlewareContributor> middlewareContributors;
 
     /** 跨实例 reconcile 的熔断保护（复用 resilience4j circuitbreaker 防止目标不可达时雪崩） */
     private final CircuitBreaker mcpReconcileCircuitBreaker =
@@ -215,7 +217,8 @@ public class AgentConfigurer implements SmartLifecycle {
             ObjectProvider<RedisUserProfileStore> userProfileStoreProvider,
             ObjectProvider<UserProfileEvolver> userProfileEvolverProvider,
             ObjectProvider<ProfileEvolutionThrottle> profileEvolutionThrottleProvider,
-            List<ToolkitContributor> toolkitContributors) {
+            List<ToolkitContributor> toolkitContributors,
+            List<AgentMiddlewareContributor> middlewareContributors) {
         this.definitionLoader = definitionLoader;
         this.agentService = agentService;
         this.coreProperties = coreProperties;
@@ -233,6 +236,7 @@ public class AgentConfigurer implements SmartLifecycle {
         this.userProfileEvolverProvider = userProfileEvolverProvider;
         this.profileEvolutionThrottleProvider = profileEvolutionThrottleProvider;
         this.toolkitContributors = toolkitContributors;
+        this.middlewareContributors = middlewareContributors;
     }
 
     /**
@@ -911,6 +915,9 @@ public class AgentConfigurer implements SmartLifecycle {
 
     private McpClientWrapper buildMcpClient(String name, AgentscopeCoreProperties.McpServerConfig src) {
         String type = src.getType() == null ? "sse" : src.getType();
+        if ("higress".equals(type)) {
+            return buildHigressClient(name, src);
+        }
         // 连接预检：用最朴素的 TCP 探测目标 host:port 是否可达，使"MCP 服务器未启动"这类问题
         // 在日志中明确指向具体服务器与地址，而不是被框架内部 reactor 的 onErrorDropped 吞成
         // 一条无上下文的 ConnectException。返回 false 表示端口明确不可达。
@@ -956,6 +963,35 @@ public class AgentConfigurer implements SmartLifecycle {
     }
 
     /**
+     * 构建 Higress MCP 网关客户端。yunxi 经 Higress MCP 网关消费外部 MCP 服务：
+     * 用框架原生 {@link HigressMcpClientBuilder} 按配置的传输方式（http=StreamableHTTP / sse=SSE）
+     * 与鉴权令牌（Bearer）创建 {@link io.agentscope.extensions.higress.HigressMcpClientWrapper}，
+     * 该 wrapper 是框架原生 {@code McpClientWrapper}，注册后经统一断线重连包装器兜底，
+     * 落回统一 MCP 注册路径（铁律：运行时内统一走框架原生扩展件）。
+     */
+    private McpClientWrapper buildHigressClient(String name, AgentscopeCoreProperties.McpServerConfig src) {
+        probeConnection(name, "higress", src.getUrl());
+        HigressMcpClientBuilder builder = HigressMcpClientBuilder.create(name);
+        String transport = src.getTransport() == null ? "http" : src.getTransport();
+        if ("sse".equalsIgnoreCase(transport)) {
+            builder.sseEndpoint(src.getUrl());
+        } else {
+            builder.streamableHttpEndpoint(src.getUrl());
+        }
+        if (src.getToken() != null && !src.getToken().isBlank()) {
+            builder.header("Authorization", "Bearer " + src.getToken());
+        }
+        if (src.getHeaders() != null && !src.getHeaders().isEmpty()) {
+            builder.headers(src.getHeaders());
+        }
+        if (src.getTimeout() != null) {
+            builder.timeout(java.time.Duration.ofMillis(src.getTimeout()));
+        }
+        // buildAsync().block() 内部已完成 initialize；不可达时抛异常，由 registerMcpServers 的 try 捕获为 WARN。
+        return builder.buildAsync().block();
+    }
+
+    /**
      * 连接预检：对 SSE / HTTP 类 MCP 服务器，用最朴素的 TCP 连接探测目标 host:port 是否可达。
      * 仅用于诊断——服务器未启动时能明确给出"连不上哪个地址、请先启动哪个服务"的具体日志，
      * 避免被框架内部 reactor 的 onErrorDropped 吞成无上下文的 ConnectException。
@@ -964,7 +1000,8 @@ public class AgentConfigurer implements SmartLifecycle {
      */
     private boolean probeConnection(String name, String type, String url) {
         if (url == null || (!"sse".equals(type) && !"http".equals(type)
-                && !"streamable-http".equals(type) && !"streamablehttp".equals(type))) {
+                && !"streamable-http".equals(type) && !"streamablehttp".equals(type)
+                && !"higress".equals(type))) {
             return true;
         }
         String host;
@@ -1031,10 +1068,17 @@ public class AgentConfigurer implements SmartLifecycle {
             builder.middleware(new FileContextInjectionMiddleware(fileUploadService));
         }
 
-        // 调用收尾审计（是否落库由调用方按调用维度声明）
+        // 执行引擎横切中间件（指标 / 阶段 / 审计）由 AgentMiddlewareContributor SPI 贡献，
+        // 经本循环挂到每个 Agent；agent-core 不直接依赖 agent-execution 的具体实现，从根上断开循环依赖。
         ConversationMapper conversationMapper = conversationMapperProvider.getIfAvailable();
+        for (AgentMiddlewareContributor contributor : middlewareContributors) {
+            for (io.agentscope.core.middleware.MiddlewareBase mw : contributor.contribute(def, conversationMapper)) {
+                builder.middleware(mw);
+            }
+        }
+
+        // 用户画像（读侧注入 / 写侧演进）：仅在有会话落库能力时装配
         if (conversationMapper != null) {
-            builder.middleware(new ChatAuditMiddleware(conversationMapper, def.getName()));
             userProfileStoreProvider.ifAvailable(store -> builder.middleware(new UserProfileMiddleware(store)));
         }
 
@@ -1160,13 +1204,13 @@ public class AgentConfigurer implements SmartLifecycle {
         if (hitl == null || toolkit == null) {
             return;
         }
+        // 只校验 allowedTools：白名单里引用的工具若不在 toolkit 中，会因框架兜底 DENY 而功能失效，
+        // 必须告警（多为拼写错误或工具组未激活）。deniedTools 仅用于显式拒绝，拒绝一个本就未注册的工具
+        // 是安全的（且平台级危险工具基线已全局拒绝 node_command 等），不应告警，否则对每条防御性声明都误报。
         Set<String> registered = toolkit.getToolNames();
         List<String> refs = new ArrayList<>();
         if (hitl.getAllowedTools() != null) {
             refs.addAll(hitl.getAllowedTools());
-        }
-        if (hitl.getDeniedTools() != null) {
-            refs.addAll(hitl.getDeniedTools());
         }
         for (String ref : refs) {
             if (ref == null || ref.isBlank()) {

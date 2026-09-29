@@ -24,6 +24,7 @@ import io.agentscope.core.model.ChatUsage;
 import io.agentscope.core.model.Model;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import io.yunxi.platform.shared.codec.CodecSpec;
 import io.yunxi.platform.tracing.LlmMetrics;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -320,6 +321,36 @@ public class PageAgentService {
      * @param task     用户任务描述（当前保留用于扩展，未参与解析）
      * @return 解析出的指令内容（JSON 片段或原始文本）
      */
+    /**
+     * 解析模型返回的页面操作指令 JSON 片段，提取其中的 actions 列表。
+     *
+     * <p>原由 {@code PageAgentController.chat} 在 HTTP 层直接 {@code new ObjectMapper()} 解析（越界且
+     * 违反全平台 JSON 绑定唯一来源约束），现下沉到内核：统一从 {@link CodecSpec#structure()} 取绑定器。
+     * 解析失败时返回空列表，不中断调用方流程。</p>
+     *
+     * @param parsedActionsJson 模型返回的 parsedActions JSON 字符串（结构为 {"actions": [...]}）
+     * @return 操作指令列表，解析失败或非预期结构时为空列表
+     */
+    public List<Map<String, Object>> parseActions(String parsedActionsJson) {
+        if (parsedActionsJson == null || parsedActionsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            Object parsed = CodecSpec.structure().readValue(parsedActionsJson, Object.class);
+            if (parsed instanceof Map) {
+                Object actionsObj = ((Map<?, ?>) parsed).get("actions");
+                if (actionsObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> actionsList = (List<Map<String, Object>>) actionsObj;
+                    return actionsList;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("解析 actions 失败: {}", e.getMessage());
+        }
+        return List.of();
+    }
+
     private String parseModelResponse(String response, String task) {
         // 简单尝试解析 JSON
         try {
@@ -599,7 +630,7 @@ public class PageAgentService {
 
             // 尝试解析为 tool_calls 格式
             try {
-                Object parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+                Object parsed = CodecSpec.structure()
                         .readValue(assistantContent, Object.class);
                 if (parsed instanceof Map) {
                     Map<String, Object> parsedMap = (Map<String, Object>) parsed;

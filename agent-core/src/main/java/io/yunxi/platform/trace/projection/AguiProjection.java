@@ -36,7 +36,7 @@ import org.springframework.stereotype.Component;
  * 且未给出标准字段名。故 per-model usage 当前以 {@code CUSTOM} 事件（name=model_call_usage）作非标准占位，
  * <b>回填接缝</b>：1.0 冻结后将其迁移为 {@code RUN_FINISHED.metadata} 中的 model/provider/usage 结构，
  * 而非保留 CUSTOM 事件（投影为无状态 flatMap，把多次模型调用的 usage 缓冲进 RUN_FINISHED 当前不在范围内，冻结时再评估）。
- * 不现在猜一个错的形状（外部规范草案只作旁证，见设计纪律 root cause 6）。</p>
+ * 不现在猜一个错的形状（外部规范草案只作旁证）。</p>
  *
  * @author yunxi-agent-platform
  */

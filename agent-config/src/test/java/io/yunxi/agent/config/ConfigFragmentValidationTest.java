@@ -124,6 +124,13 @@ class ConfigFragmentValidationTest {
         validateConfigFile("config/observability.yml", "management");
     }
 
+    @Test
+    void testSecurityConfigFormat() {
+        // 边缘安全加固：根前缀 yunxi.security（鉴权模式/内部令牌），顶层 jwt（JWT 验签）。
+        // 受保护端点默认 enforce，密钥经环境变量注入。
+        validateConfigFile("config/security.yml", "yunxi.security");
+    }
+
     /**
      * 防止 Redis 配置前缀回归。
      *
@@ -193,7 +200,8 @@ class ConfigFragmentValidationTest {
             for (String mandatory : new String[]{"server.yml", "datasource.yml", "cache.yml", "async.yml",
                     "redis.yml", "llm.yml", "milvus.yml", "embedding.yml", "persistence.yml", "mcp-core.yml",
                     "mcp-external.yml", "resilience.yml", "rate-limit.yml", "file-upload.yml", "a2a-pipeline.yml",
-                    "agentscope.yml", "muse.yml", "intent.yml", "platform.yml", "aistio.yml", "observability.yml"}) {
+                    "agentscope.yml", "muse.yml", "intent.yml", "platform.yml", "aistio.yml", "observability.yml",
+                    "security.yml"}) {
                 assertTrue(imports.contains("classpath:config/" + mandatory),
                     "imports.yml 必须注册必选片段 " + mandatory);
                 assertFalse(imports.contains("optional:classpath:config/" + mandatory),
@@ -253,7 +261,7 @@ class ConfigFragmentValidationTest {
             assertTrue(app.contains("spring.config.import"),
                 "application.yml 应声明 spring.config.import");
             for (String fragment : new String[]{"server.yml", "datasource.yml", "cache.yml", "async.yml",
-                    "platform.yml", "aistio.yml", "observability.yml", "logging.yml"}) {
+                    "platform.yml", "aistio.yml", "observability.yml", "logging.yml", "security.yml"}) {
                 assertTrue(imports.contains(fragment),
                     "config/imports.yml should load " + fragment);
             }

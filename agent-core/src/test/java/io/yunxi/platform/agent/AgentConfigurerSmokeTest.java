@@ -5,7 +5,6 @@ import io.milvus.v2.client.MilvusClientV2;
 import io.yunxi.platform.AgentPlatformApplication;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.agent.service.AgentService;
-import io.yunxi.platform.spi.text2sql.EmbeddingService;
 import org.apache.ibatis.mapping.Environment;
 
 import java.util.function.Supplier;
@@ -130,16 +129,6 @@ class AgentConfigurerSmokeTest {
         @Primary
         RedisTemplate<String, Object> mockRedisTemplate() {
             return mock(RedisTemplate.class);
-        }
-
-        /**
-         * Supplier<EmbeddingService>：ColumnRetriever（text2sql）构造注入该 Supplier，
-         * smoke 场景下不启用向量能力，返回 null 供应器即可满足装配。
-         */
-        @Bean
-        @Primary
-        Supplier<EmbeddingService> embeddingServiceSupplier() {
-            return () -> null;
         }
 
         /**

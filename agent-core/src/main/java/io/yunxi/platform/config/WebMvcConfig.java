@@ -6,6 +6,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.AsyncTaskExecutor;
@@ -20,7 +21,8 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import io.yunxi.platform.security.auth.AuthInterceptor;
+import io.yunxi.platform.security.auth.EdgeAuthenticationFilter;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Web MVC 统一配置
@@ -28,8 +30,8 @@ import io.yunxi.platform.security.auth.AuthInterceptor;
  * <p>
  * 包含以下配置项：
  * <ul>
- * <li>认证拦截器配置</li>
- * <li>CORS 跨域配置</li>
+ * <li>边缘鉴权（{@link EdgeAuthenticationFilter}，servlet 过滤器，在拦截器之前执行）</li>
+ * <li>CORS 跨域配置（默认拒绝，须显式配置来源）</li>
  * <li>HTTP 消息转换器（UTF-8 编码）</li>
  * <li>视图控制器映射</li>
  * <li>静态资源配置</li>
@@ -38,16 +40,21 @@ import io.yunxi.platform.security.auth.AuthInterceptor;
  * @author yunxi-agent-platform
  * @version 2.0.0
  */
+@Slf4j
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
-
-    /** 认证拦截器 */
-    @Autowired
-    private ObjectProvider<AuthInterceptor> authInterceptorProvider;
 
     /** 限流拦截器 */
     @Autowired
     private ObjectProvider<RateLimitInterceptor> rateLimitInterceptorProvider;
+
+    /**
+     * CORS 允许的前端源（逗号分隔）。为空时回退为「拒绝任何源」（不开放跨域）并告警，
+     * 生产/联调环境须显式配置为已知前端源（如 http://localhost:5173、各部署域名），
+     * 避免任意源携带凭据跨域访问。
+     */
+    @Value("${yunxi.web.cors.allowed-origins:}")
+    private String corsAllowedOrigins;
 
     /**
      * 配置认证拦截器
@@ -60,19 +67,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        if (authInterceptorProvider.getIfAvailable() != null) {
-            registry.addInterceptor(authInterceptorProvider.getIfAvailable())
-                    .addPathPatterns("/api/**")
-                    .excludePathPatterns(
-                            "/api/health",
-                            "/api/actuator/**",
-                            "/api/traces/diagnostics");
-        }
         if (rateLimitInterceptorProvider.getIfAvailable() != null) {
             registry.addInterceptor(rateLimitInterceptorProvider.getIfAvailable())
                     .addPathPatterns("/api/**")
                     .excludePathPatterns(
                             "/api/health",
+                            "/api/channels",
+                            "/api/channels/**",
                             "/api/actuator/**",
                             "/api/traces/diagnostics");
         }
@@ -83,12 +84,31 @@ public class WebMvcConfig implements WebMvcConfigurer {
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        String[] origins = resolveCorsOrigins();
         registry.addMapping("/**")
-                .allowedOriginPatterns("*")
+                .allowedOriginPatterns(origins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)
                 .maxAge(3600);
+    }
+
+    /**
+     * 解析 CORS 允许源。配置了 {@code yunxi.web.cors.allowed-origins} 时使用配置值；
+     * 未配置时回退为「拒绝任何源」（空数组，不开放跨域）并打印告警，提示运维显式列出来源。
+     *
+     * @return 允许源模式数组
+     */
+    private String[] resolveCorsOrigins() {
+        if (corsAllowedOrigins == null || corsAllowedOrigins.isBlank()) {
+            log.warn("CORS 未显式配置 yunxi.web.cors.allowed-origins，默认拒绝任何源（不开放跨域）。"
+                    + "生产/联调环境应通过配置显式列出已知前端源（如 http://localhost:5173），避免任意源携带凭据访问。");
+            return new String[0];
+        }
+        return java.util.Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toArray(String[]::new);
     }
 
     /**

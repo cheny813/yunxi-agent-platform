@@ -230,3 +230,15 @@ agentscope:
           - "@modelcontextprotocol/server-filesystem"
           - "/tmp"
         description: "官方文件系统 MCP 服务器"
+
+      # --------------------- Higress MCP 网关（经网关消费外部 MCP 服务） ---------------------
+      higress-demo:
+        enabled: ${MCP_HIGRESS_DEMO_ENABLED:false}
+        type: higress
+        # Higress MCP 网关端点：StreamableHTTP 用根路径，SSE 用 /sse 后缀（见 transport）
+        url: ${MCP_HIGRESS_DEMO_URL:http://higress-gateway:8080/mcp-servers/union-tools-search}
+        transport: ${MCP_HIGRESS_DEMO_TRANSPORT:http}
+        timeout: ${MCP_HIGRESS_DEMO_TIMEOUT:60000}
+        # Bearer 令牌写入 Authorization 头；也可改用 headers 注入自定义鉴权头
+        token: ${MCP_HIGRESS_DEMO_TOKEN:}
+        description: "Higress MCP 网关接入示例（yunxi 经 Higress 网关消费外部 MCP 工具）"

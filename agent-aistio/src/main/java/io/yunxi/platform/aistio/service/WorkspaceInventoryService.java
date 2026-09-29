@@ -8,7 +8,7 @@ import java.util.Set;
 
 import org.springframework.stereotype.Component;
 
-import io.yunxi.platform.aistio.dto.WorkspaceInfo;
+import io.yunxi.platform.contract.dto.WorkspaceInfo;
 import io.yunxi.platform.registry.ActiveSessionRegistry;
 import io.yunxi.platform.registry.ActiveSessionRegistry.SessionMeta;
 import lombok.RequiredArgsConstructor;

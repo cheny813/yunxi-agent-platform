@@ -14,6 +14,7 @@ import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.middleware.MiddlewareBase;
+import io.yunxi.platform.execution.context.CallContextKeys;
 import io.yunxi.platform.file.FileUploadService;
 import io.yunxi.platform.file.dto.FileSearchRequest;
 import io.yunxi.platform.file.dto.FileSearchResult;

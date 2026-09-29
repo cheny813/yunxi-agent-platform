@@ -86,6 +86,15 @@ public class AistioIntegrationProperties {
     /** /context 返回的有效上下文窗口大小（最近 N 轮消息），默认 20 */
     private int contextWindow = 20;
 
+    /**
+     * /context 是否对超窗口对话启用框架 ConversationCompactor 压缩（与主体 Agent 一致的运行时压缩内核）。
+     * 关闭、模型不可用或压缩超时均自动回退到朴素「最近 N 轮」窗口。默认开启。
+     */
+    private boolean contextCompactionEnabled = true;
+
+    /** /context 压缩调用的 LLM 超时（秒），超时即回退朴素窗口。默认 10 */
+    private int contextCompactionTimeoutSec = 10;
+
     /** 是否启用 gRPC 实时上报（aistio 团队的实时事件上报通道，需 gRPC proto 代码生成；默认关闭） */
     private boolean grpcEnabled = false;
 

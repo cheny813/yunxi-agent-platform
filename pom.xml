@@ -23,6 +23,8 @@
         <module>agent-spi</module>
         <module>agent-text2sql</module>
         <module>agent-core</module>
+        <module>agent-execution</module>
+        <module>agent-ingress</module>
         <module>agent-muse</module>
         <module>agent-app</module>
         <module>agent-integration-test</module>

@@ -9,9 +9,10 @@ import io.milvus.v2.service.vector.request.InsertReq;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.response.SearchResp;
 import io.yunxi.platform.agent.text2sql.config.Text2SqlProperties;
-import io.yunxi.platform.spi.text2sql.EmbeddingService;
+import io.yunxi.platform.spi.EmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -34,8 +35,8 @@ public class ColumnRetriever {
     /** Text2SQL 配置属性 */
     private final Text2SqlProperties text2SqlProperties;
 
-    /** 嵌入服务提供者（支持可选注入） */
-    private final Supplier<EmbeddingService> embeddingServiceProvider;
+    /** 嵌入服务提供者（可选注入，由 agent-core 的 EmbeddingService 实现） */
+    private final ObjectProvider<EmbeddingService> embeddingServiceProvider;
 
     /** Milvus 客户端提供者（支持可选注入） */
     private final Supplier<MilvusClientV2> milvusClientProvider;
@@ -52,7 +53,7 @@ public class ColumnRetriever {
      */
     public ColumnRetriever(
             Text2SqlProperties text2SqlProperties,
-            Supplier<EmbeddingService> embeddingServiceProvider,
+            ObjectProvider<EmbeddingService> embeddingServiceProvider,
             Supplier<MilvusClientV2> milvusClientProvider) {
         this.text2SqlProperties = text2SqlProperties;
         this.embeddingServiceProvider = embeddingServiceProvider;
@@ -140,7 +141,7 @@ public class ColumnRetriever {
             return;
         }
 
-        if (embeddingServiceProvider.get() == null) {
+        if (embeddingServiceProvider.getIfAvailable() == null) {
             log.warn("EmbeddingService 未配置，跳过列索引");
             return;
         }
@@ -226,21 +227,18 @@ public class ColumnRetriever {
      * 生成嵌入向量
      */
     private List<Float> generateEmbedding(String text) {
-        if (embeddingServiceProvider.get() == null) {
+        EmbeddingService embeddingService = embeddingServiceProvider.getIfAvailable();
+        if (embeddingService == null) {
             log.warn("EmbeddingService 未配置");
             return null;
         }
 
         try {
-            float[] embedding = embeddingServiceProvider.get().embed(text);
-            if (embedding == null) {
+            List<Float> embedding = embeddingService.embed(text);
+            if (embedding == null || embedding.isEmpty()) {
                 return null;
             }
-            List<Float> result = new ArrayList<>(embedding.length);
-            for (float v : embedding) {
-                result.add(v);
-            }
-            return result;
+            return embedding;
         } catch (Exception e) {
             log.error("生成嵌入向量失败: {}", text, e);
             return null;

@@ -152,14 +152,15 @@ agentscope:
     # ChatAppService 中注入，不再依赖此 YAML 段。此处删除该段避免 Jackson 绑定到已删类。
     # ============================================================
 
-    # A2A 协议
-    a2a:
-      enabled: ${A2A_ENABLED:false}
-      registry-type: ${A2A_REGISTRY_TYPE:nacos}
-      registry-addr: ${A2A_REGISTRY_ADDR:localhost:8848}
-      namespace: ${A2A_NAMESPACE:agent-platform}
-      # A2A 客户端默认调用超时（秒）
-      timeout-seconds: ${A2A_TIMEOUT_SECONDS:60}
+# A2A 协议（yunxi 产品平面统一配置键，区别于框架扩展命名空间）
+yunxi:
+  a2a:
+    enabled: ${A2A_ENABLED:false}
+    registry-type: ${A2A_REGISTRY_TYPE:nacos}
+    registry-addr: ${A2A_REGISTRY_ADDR:localhost:8848}
+    namespace: ${A2A_NAMESPACE:agent-platform}
+    # A2A 客户端默认调用超时（秒）
+    timeout-seconds: ${A2A_TIMEOUT_SECONDS:60}
 
 # ============================================================
 # 框架级超时与缓存配置（可运维调优，均带默认值）

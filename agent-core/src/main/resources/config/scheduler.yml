@@ -1,0 +1,19 @@
+# yunxi 定时 Agent 定义（框架 QuartzAgentScheduler 载体）
+#
+# 设计边界：定时 Agent 与在线聊天 Agent 是两套独立种群（框架每次触发现造 Agent 实例，
+# 且配置类无 agentFactory 注入钩子）。此处只声明「模型 + 提示词 + 节奏」，模型凭据
+# 默认回落到 agentscope.core.api-key / model-name，无需在此重复填写密钥。
+#
+# 触发节奏三选一：cron / fixedRateMs / fixedDelayMs
+# 全局开关：yunxi.scheduler.enabled（默认 true）；单个 agent 用 enabled 控制。
+#
+# 默认全部关闭，按需把 enabled 改为 true 并填写节奏即可生效。
+agents:
+  - name: daily-digest
+    enabled: false
+    # modelName / apiKey 留空则回落到 AgentscopeCoreProperties
+    modelName: qwen-plus
+    sysPrompt: 你是每日摘要 Agent，请汇总过去 24 小时的关键信息并输出要点。
+    cron: "0 0 9 * * ?"
+    zoneId: Asia/Shanghai
+    initialDelayMs: 0

@@ -43,4 +43,6 @@ spring:
       classpath:config/aistio.yml,
       classpath:config/observability.yml,
       classpath:config/logging.yml,
+      classpath:config/channels.yml,
+      classpath:config/security.yml,
       optional:classpath:config/aistio-workflow-export.yml

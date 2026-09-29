@@ -15,10 +15,10 @@ import org.springframework.web.server.ResponseStatusException;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
-import io.yunxi.platform.aistio.dto.ContextSnapshot;
-import io.yunxi.platform.aistio.dto.MessagePage;
-import io.yunxi.platform.aistio.dto.SessionSnapshot;
-import io.yunxi.platform.aistio.dto.SessionState;
+import io.yunxi.platform.contract.dto.ContextSnapshot;
+import io.yunxi.platform.contract.dto.MessagePage;
+import io.yunxi.platform.contract.dto.SessionSnapshot;
+import io.yunxi.platform.contract.dto.SessionState;
 import io.yunxi.platform.registry.ActiveSessionRegistry;
 import io.yunxi.platform.registry.ActiveSessionRegistry.SessionMeta;
 import io.yunxi.platform.conversation.ConversationDomainService;
@@ -42,6 +42,7 @@ public class SessionInventoryService {
     private final ConversationDomainService conversationDomainService;
     private final AistioIntegrationProperties properties;
     private final HarnessAgentResolver agentResolver;
+    private final ContextSnapshotCompactor contextCompactor;
 
     /**
      * 列出索引中的全部会话快照。
@@ -105,13 +106,29 @@ public class SessionInventoryService {
     }
 
     /**
-     * 获取指定会话的有效上下文窗口（最近 N 轮，见 properties.contextWindow）。
+     * 获取指定会话的有效上下文窗口（见 properties.contextWindow）。
+     *
+     * <p>优先用框架 {@link ContextSnapshotCompactor} 产出运行时压缩上下文（与主体 Agent 一致的
+     * CompactionMiddleware 内核）；未超窗口、未启用或压缩失败时回退到朴素「最近 N 轮」窗口拼接文本，
+     * 读路径不退化。</p>
      *
      * @param id 会话 ID
      * @return 上下文快照
      */
     public ContextSnapshot getContext(String id) {
         List<Object> messages = conversationDomainService.getConversationMessages(id);
+
+        String agentName = null;
+        SessionMeta meta = registry.get(id);
+        if (meta != null) {
+            agentName = meta.agentName();
+        }
+
+        ContextSnapshot compacted = contextCompactor.compact(agentName, id, messages);
+        if (compacted != null) {
+            return compacted;
+        }
+
         int size = messages.size();
         int n = Math.min(properties.getContextWindow(), size);
         StringBuilder sb = new StringBuilder();

@@ -128,7 +128,7 @@ A2A 服务端负责将本地 Agent 暴露为远程可调用的服务，同时提
 
 ### 注册本地 Agent
 
-**通过 A2AServer 编程式 API**（`@ConditionalOnProperty(name="agentscope.extensions.a2a.enabled", havingValue="true")` 启用，A2A 默认关闭）：
+**通过 A2AServer 编程式 API**（`@ConditionalOnProperty(name="yunxi.a2a.enabled", havingValue="true")` 启用，A2A 默认关闭）：
 
 ```java
 @Autowired

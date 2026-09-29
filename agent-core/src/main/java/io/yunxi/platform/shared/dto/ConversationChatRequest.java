@@ -195,42 +195,6 @@ public class ConversationChatRequest implements MemoryParams {
     private String memoryMode = "full";
 
     /**
-     * 使用历史摘要（默认 true）
-     *
-     * <p>
-     * 当 memoryMode = "smart" 时，是否使用历史摘要功能。
-     * </p>
-     *
-     * <p>
-     * 功能说明：
-     * <ul>
-     * <li>true：对对话历史进行智能摘要，保留关键信息</li>
-     * <li>false：不进行摘要，使用原始对话历史</li>
-     * </ul>
-     * </p>
-     */
-    private Boolean useHistorySummary = true;
-
-    /**
-     * 记忆阈值（默认 30）
-     *
-     * <p>
-     * 当 memoryMode = "smart" 时，触发记忆压缩的阈值。
-     * 当对话历史超过此阈值时，开始应用压缩策略。
-     * </p>
-     *
-     * <p>
-     * 建议：
-     * <ul>
-     * <li>短对话：20-30</li>
-     * <li>长对话：50-100</li>
-     * <li>默认值：30，适合大多数场景</li>
-     * </ul>
-     * </p>
-     */
-    private Integer memoryThreshold = 30;
-
-    /**
      * 最后保留消息数（默认 10）
      *
      * <p>
@@ -248,26 +212,6 @@ public class ConversationChatRequest implements MemoryParams {
      * </p>
      */
     private Integer lastKeepMessages = 10;
-
-    /**
-     * Token 比例（默认 0.3）
-     *
-     * <p>
-     * 当 memoryMode = "smart" 时，压缩后 token 数占原始 token 数的最大比例。
-     * 例如：原始 10000 tokens，比例 0.3，则压缩后最多 3000 tokens。
-     * </p>
-     *
-     * <p>
-     * 建议：
-     * <ul>
-     * <li>激进压缩：0.2-0.3</li>
-     * <li>平衡压缩：0.3-0.5</li>
-     * <li>保守压缩：0.5-0.7</li>
-     * <li>默认值：0.3，平衡压缩率和信息保留</li>
-     * </ul>
-     * </p>
-     */
-    private Double tokenRatio = 0.3;
 
     /**
      * 记忆配置对象（内部使用）
@@ -319,10 +263,7 @@ public class ConversationChatRequest implements MemoryParams {
         if (memoryConfig == null) {
             memoryConfig = new MemoryConfig();
             memoryConfig.setType(memoryMode);
-            memoryConfig.setUseHistorySummary(useHistorySummary);
-            memoryConfig.setMemoryThreshold(memoryThreshold);
             memoryConfig.setLastKeepMessages(lastKeepMessages);
-            memoryConfig.setTokenRatio(tokenRatio);
             memoryConfig.setMaxHistory(maxHistory);
         }
         return memoryConfig;
@@ -342,10 +283,7 @@ public class ConversationChatRequest implements MemoryParams {
         if (config != null) {
             this.memoryConfig = config;
             this.memoryMode = config.getType();
-            this.useHistorySummary = config.getUseHistorySummary();
-            this.memoryThreshold = config.getMemoryThreshold();
             this.lastKeepMessages = config.getLastKeepMessages();
-            this.tokenRatio = config.getTokenRatio();
             this.maxHistory = config.getMaxHistory();
         }
     }
@@ -400,35 +338,11 @@ public class ConversationChatRequest implements MemoryParams {
         this.memoryMode = memoryMode;
     }
 
-    public Boolean getUseHistorySummary() {
-        return useHistorySummary;
-    }
-
-    public void setUseHistorySummary(Boolean useHistorySummary) {
-        this.useHistorySummary = useHistorySummary;
-    }
-
-    public Integer getMemoryThreshold() {
-        return memoryThreshold;
-    }
-
-    public void setMemoryThreshold(Integer memoryThreshold) {
-        this.memoryThreshold = memoryThreshold;
-    }
-
     public Integer getLastKeepMessages() {
         return lastKeepMessages;
     }
 
     public void setLastKeepMessages(Integer lastKeepMessages) {
         this.lastKeepMessages = lastKeepMessages;
-    }
-
-    public Double getTokenRatio() {
-        return tokenRatio;
-    }
-
-    public void setTokenRatio(Double tokenRatio) {
-        this.tokenRatio = tokenRatio;
     }
 }

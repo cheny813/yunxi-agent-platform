@@ -38,7 +38,7 @@ public class ReconnectingMcpClientWrapper extends McpClientWrapper {
 
     private static final Logger log = LoggerFactory.getLogger(ReconnectingMcpClientWrapper.class);
 
-    /** 底层真实客户端，重连时整体替换 */
+    /** 底层真实客户端，重连时整体替换；启动期为 null（惰性构建，避免对不可达 MCP 服务发起连接） */
     private volatile McpClientWrapper delegate;
 
     /** 重建底层客户端的工厂（闭包捕获服务器名与配置，等价于一次 buildMcpClient 调用） */
@@ -50,12 +50,34 @@ public class ReconnectingMcpClientWrapper extends McpClientWrapper {
     public ReconnectingMcpClientWrapper(String name, Supplier<McpClientWrapper> factory) {
         super(name);
         this.factory = factory;
-        this.delegate = factory.get();
+        // 刻意不在构造期调用 factory.get()：MCP SSE/HTTP 客户端在 build 阶段即发起连接，
+        // 若目标服务不可达，连接 Mono 会以超时/连接异常形式失败并抛出 ErrorCallbackNotImplemented
+        // （reactor 异步错误，绕过同步 try/catch），导致 Spring 上下文启动失败。改为惰性构建：
+        // 启动期只注册工具组引用，真实连接在首次调用工具时才发生，届时失败由重连逻辑/调用方兜底。
+        this.delegate = null;
+    }
+
+    /**
+     * 惰性获取底层客户端：首次使用时经工厂构建并缓存；构建失败（服务不可达）则上抛，
+     * 由调用方（toolkit 调用链或重连 onErrorResume）统一降级为工具错误结果，不影响平台启动。
+     */
+    private McpClientWrapper getDelegate() {
+        McpClientWrapper d = delegate;
+        if (d == null) {
+            synchronized (reconnectLock) {
+                d = delegate;
+                if (d == null) {
+                    d = factory.get();
+                    delegate = d;
+                }
+            }
+        }
+        return d;
     }
 
     @Override
     public Mono<Void> initialize() {
-        return delegate.initialize()
+        return getDelegate().initialize()
                 .doOnError(e -> log.warn(
                         "[MCP] 客户端 '{}' 初始化失败：{}。"
                                 + " 请确认对应的 MCP 服务已启动并可访问；首次调用工具时若仍失败将自动重连。",
@@ -64,7 +86,7 @@ public class ReconnectingMcpClientWrapper extends McpClientWrapper {
 
     @Override
     public Mono<List<McpSchema.Tool>> listTools() {
-        return delegate.listTools();
+        return getDelegate().listTools();
     }
 
     @Override
@@ -76,7 +98,7 @@ public class ReconnectingMcpClientWrapper extends McpClientWrapper {
     public Mono<McpSchema.CallToolResult> callTool(
             String toolName, Map<String, Object> arguments, Map<String, Object> meta) {
         // 捕获当前 delegate 引用，重连判定时用于识别"是否已由其他线程重建"
-        McpClientWrapper current = delegate;
+        McpClientWrapper current = getDelegate();
         return current.callTool(toolName, arguments, meta)
                 .onErrorResume(e -> {
                     if (!isConnectionError(e)) {
@@ -163,8 +185,13 @@ public class ReconnectingMcpClientWrapper extends McpClientWrapper {
 
     @Override
     public void close() {
+        // 直接读字段：若从未构建（启动期不可达、关闭前未被调用）则不触发连接，仅安全跳过
+        McpClientWrapper d = delegate;
+        if (d == null) {
+            return;
+        }
         try {
-            delegate.close();
+            d.close();
         } catch (Exception e) {
             log.warn("MCP 客户端 '{}' 关闭异常: {}", name, e.getMessage());
         }

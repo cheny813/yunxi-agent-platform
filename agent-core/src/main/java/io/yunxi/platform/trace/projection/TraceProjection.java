@@ -1,6 +1,7 @@
 package io.yunxi.platform.trace.projection;
 
 import io.yunxi.platform.trace.ReasoningSpan;
+import java.util.List;
 import reactor.core.publisher.Flux;
 
 /**
@@ -42,4 +43,16 @@ public interface TraceProjection<OUT> {
      * @return 协议输出流
      */
     Flux<OUT> project(Flux<ReasoningSpan> spans, ProjectionContext ctx);
+
+    /**
+     * 把单个快照投影为协议消息列表。
+     *
+     * <p>引擎在内容流装配阶段按快照调用，用于把归集结果即时写入协议输出流。
+     * 实现应当与 {@link #project} 行为一致：只读快照自身携带的信息，可重放。</p>
+     *
+     * @param span 单个推理快照
+     * @param ctx  投影上下文
+     * @return 协议消息列表（顺序即下发顺序）
+     */
+    List<OUT> convert(ReasoningSpan span, ProjectionContext ctx);
 }

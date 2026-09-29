@@ -8,7 +8,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus,a2a-pipeline
+        include: health,info,metrics,prometheus,a2a-pipeline,channels
       base-path: /actuator
   endpoint:
     health:

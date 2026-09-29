@@ -186,10 +186,10 @@ $MYSQL_PASSWORD = "root"
 #   -DDASHSCOPE_MODEL    → agentscope.yml 的 core.model-name，真正生效的对话模型（ModelFactory.java:230-233）
 #   -DINTENT_MODEL       → intent.yml 的分类模型（每轮都跑，建议用快模型）
 #   -DINTENT_TIMEOUT_MS  → intent.yml 的分类超时，超时即降级 unknown
-$DASHSCOPE_API_KEY = "sk-f0bd6466c79013da82cd5"
+$DASHSCOPE_API_KEY = "sk-f0bd6466c7774fa3b053f9013da82cd5"
 $LLM_MODEL         = "qwen3.8-27b"
 # 意图分类单独用变量：分类每轮都跑一次，建议用快模型（如 qwen-turbo / qwen-plus）省时延和成本。
-# 2026-09-21 由 qwen3.7-flash-2026-07-15 改为 qwen-turbo：前者单次响应常超 2000ms 分类超时，
+# 由 qwen3.7-flash-2026-07-15 改为 qwen-turbo：前者单次响应常超 2000ms 分类超时，
 # 导致每轮都降级 unknown（意图识别事实性失效）。同时把 intent.yml 的 timeout-ms 放宽到 10000ms，
 # 两者叠加后分类应恢复正常，不再出现 "[INTENT] LLM 分类 超时" 告警。
 $INTENT_MODEL      = "qwen-turbo"
@@ -340,6 +340,11 @@ $configArgs = @(
     "-Dspring.data.redis.database=$REDIS_DATABASE",
     # aistio 控制面地址：心跳接口仅暴露在 control(8081)，gateway(18080) 不转发，故必须指向 8081
     "-Dyunxi.aistio.control-plane-url=http://127.0.0.1:8081",
+    # 本地开发安全模式：dev-trust（头信任，便于无 IdP 联调）。生产部署必须改为 enforce 并配置 JWT/JWKS：
+    #   -Dyunxi.security.mode=enforce -DJWT_SECRET=<256bit+>  （或 -DJWT_JWKS_URI=<idp>/.well-known/jwks.json -DJWT_ISSUER=<iss>）
+    "-Dyunxi.security.mode=dev-trust",
+    # 本地前端源（agent-nutritionist-web 默认 http://localhost:5173）。生产须改为真实部署域名。
+    "-Dyunxi.web.cors.allowed-origins=http://localhost:5173",
     "-Dotel.service.name=$OTEL_SERVICE_NAME"
 )
 # OTLP 导出到 Jaeger（确保 docker-compose 已启动 collector）

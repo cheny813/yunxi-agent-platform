@@ -1,0 +1,11 @@
+{
+  "threadId": "e2e-thread-001",
+  "runId": "e2e-run-001",
+  "messages": [
+    {
+      "id": "msg-001",
+      "role": "user",
+      "content": "你好,请用一句话介绍你自己能做什么。"
+    }
+  ]
+}

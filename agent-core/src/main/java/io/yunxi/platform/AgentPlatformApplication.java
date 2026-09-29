@@ -20,7 +20,7 @@ import io.agentscope.spring.boot.a2a.AgentscopeA2aAutoConfiguration;
 @SpringBootApplication(scanBasePackages = {
                 "io.yunxi.platform",
                 "io.yunxi.platform.config",
-                "io.yunxi.platform.controller"
+                "io.agentscope.extensions.channel"
 }, exclude = {
                 AgentscopeA2aAutoConfiguration.class
 })

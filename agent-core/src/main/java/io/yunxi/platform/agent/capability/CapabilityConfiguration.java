@@ -3,8 +3,6 @@ package io.yunxi.platform.agent.capability;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import io.yunxi.platform.agent.middleware.AgentMetricsMiddleware;
-import io.yunxi.platform.agent.middleware.AgentPhaseMiddleware;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.trace.SpanAttributeMiddleware;
 
@@ -40,22 +38,14 @@ public class CapabilityConfiguration {
     }
 
     /**
-     * 可观测性能力：阶段归集与执行指标。
+     * 可观测性能力：属性补充。
      *
-     * <p>中间件持有跨调用状态（阶段轨迹缓存），故在此声明为单例 Bean，
-     * 由 {@link ObservabilityCapability} 装配到每个 Agent 上。阶段轨迹的查询入口
-     * 也经由该 Bean 暴露（见 {@code ObservabilityCapability#phaseMiddleware()}）。</p>
-     *
-     * <p>轨迹归集已下沉到统一执行引擎（按调用归集并落库，见 {@code AgentExecutionEngine}），
-     * 此处不再装配归集中间件。属性补充中间件（{@link SpanAttributeMiddleware}）单独装配 ——
-     * 它补的是「事件流里没有、只在中间件入参里」的信息（模型名与技能归属），
-     * 与引擎侧归集配合才能产出完整节点负载。</p>
+     * <p>阶段归集（{@code PhaseMiddleware}）与执行指标（{@code MetricsMiddleware}）已随统一执行引擎
+     * 迁出到 agent-execution 模块，经 {@code AgentMiddlewareContributor} SPI 贡献装配
+     * （见 agent-core 的 AgentConfigurer），此处仅注册属性补充单例。</p>
      */
     @Bean
     public ObservabilityCapability observabilityCapability() {
-        return new ObservabilityCapability(
-                new AgentPhaseMiddleware(),
-                new AgentMetricsMiddleware(),
-                new SpanAttributeMiddleware());
+        return new ObservabilityCapability(new SpanAttributeMiddleware());
     }
 }

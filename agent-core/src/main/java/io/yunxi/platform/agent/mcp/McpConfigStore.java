@@ -4,13 +4,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-import com.alibaba.nacos.api.NacosFactory;
 import com.alibaba.nacos.api.config.ConfigService;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.config.listener.AbstractListener;
@@ -21,6 +19,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import io.yunxi.platform.infrastructure.nacos.NacosClientFactory;
+import io.yunxi.platform.infrastructure.nacos.NacosConnection;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.config.McpNacosProperties;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +41,7 @@ public class McpConfigStore {
 
     private final McpNacosProperties props;
     private final ObjectMapper objectMapper;
+    private final NacosClientFactory factory;
 
     private volatile ConfigService configService;
     private volatile NamingService namingService;
@@ -67,9 +68,16 @@ public class McpConfigStore {
     private final List<Consumer<Map<String, AgentscopeCoreProperties.McpServerConfig>>> changeListeners =
             new CopyOnWriteArrayList<>();
 
-    public McpConfigStore(McpNacosProperties props, ObjectMapper objectMapper) {
+    public McpConfigStore(McpNacosProperties props, ObjectMapper objectMapper, NacosClientFactory factory) {
         this.props = props;
         this.objectMapper = objectMapper;
+        this.factory = factory;
+    }
+
+    /** 由 MCP 配置归一化为统一 Nacos 连接参数。 */
+    private NacosConnection toConnection() {
+        return new NacosConnection(props.getServerAddr(), props.getNamespace(),
+                props.getUsername(), props.getPassword());
     }
 
     public boolean isEnabled() {
@@ -83,17 +91,9 @@ public class McpConfigStore {
             return;
         }
         try {
-            Properties p = new Properties();
-            p.put("serverAddr", props.getServerAddr());
-            if (props.getNamespace() != null && !props.getNamespace().isEmpty()) {
-                p.put("namespace", props.getNamespace());
-            }
-            if (props.getUsername() != null && !props.getUsername().isEmpty()) {
-                p.put("username", props.getUsername());
-                p.put("password", props.getPassword());
-            }
-            configService = NacosFactory.createConfigService(p);
-            namingService = NacosFactory.createNamingService(p);
+            NacosConnection conn = toConnection();
+            configService = factory.createConfigService(conn);
+            namingService = factory.createNamingService(conn);
             configService.addListener(props.getDataId(), props.getGroup(), new AbstractListener() {
                 @Override
                 public void receiveConfigInfo(String config) {

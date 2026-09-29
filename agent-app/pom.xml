@@ -28,6 +28,20 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 统一执行引擎（独立产品平面模块，实现 agent-core 的 ExecutionEngine 等契约） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-execution</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- 统一接入网关（HTTP 入口层，集中所有 @RestController） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-ingress</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- MUSE 自进化引擎（默认关闭，yunxi.muse.enabled=true 时由 MuseAutoConfiguration 激活） -->
         <dependency>
             <groupId>io.yunxi</groupId>

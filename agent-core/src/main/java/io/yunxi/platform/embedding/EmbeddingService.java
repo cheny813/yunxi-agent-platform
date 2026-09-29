@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author yunxi-agent-platform
  */
 @Service
-public class EmbeddingService {
+public class EmbeddingService implements io.yunxi.platform.spi.EmbeddingService {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddingService.class);
 

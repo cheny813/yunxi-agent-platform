@@ -29,6 +29,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 平台契约层（实现 MuseSkillAdminService 接口，作为统一接入网关与 MUSE 之间的解耦边界） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-spi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- Agent Config 模块（配置集中管理：builtin-skills 等资源现位于此，
              直接依赖以便在 MUSE 自身测试期从 classpath 解析，运行时由 agent-app 聚合） -->
         <dependency>
@@ -88,6 +95,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 架构护栏（统一接入网关架构不变量）：编译期禁止本模块声明 @RestController（散装入口必须收编 agent-ingress） -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>1.4.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>

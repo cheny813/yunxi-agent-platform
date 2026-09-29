@@ -62,7 +62,7 @@ public class TraceStoreAutoConfiguration {
         String type = environment.getProperty("conversation.trace-storage-type", "redis");
         if (connectionFactory != null && !"memory".equalsIgnoreCase(type)) {
             RedisTemplate<String, Object> template = RedisTemplates.objectTemplate(connectionFactory, valueCodec);
-            log.warn("TraceStore 装配: RedisTraceStore (复用全局 RedisConnectionFactory) 已创建，目标 Redis 实例={}，轨迹键前缀={}",
+            log.info("TraceStore 装配: RedisTraceStore (复用全局 RedisConnectionFactory) 已创建，目标 Redis 实例={}，轨迹键前缀={}",
                     RedisTemplates.endpointOf(connectionFactory), RedisTraceStore.KEY_PREFIX);
             return new RedisTraceStore(template, valueCodec);
         }

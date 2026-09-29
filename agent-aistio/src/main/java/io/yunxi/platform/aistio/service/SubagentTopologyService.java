@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
-import io.yunxi.platform.aistio.dto.SubagentInfo;
+import io.yunxi.platform.contract.dto.SubagentInfo;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import io.yunxi.platform.shared.config.ExpertConfig;
