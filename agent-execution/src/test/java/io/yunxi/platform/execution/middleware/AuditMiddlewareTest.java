@@ -25,9 +25,9 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.middleware.AgentInput;
-import io.yunxi.platform.execution.context.CallContextKeys;
+import io.yunxi.platform.agent.middleware.CallContextKeys;
 import io.yunxi.platform.shared.entity.ChatLogEntity;
-import io.yunxi.platform.shared.mapper.ConversationMapper;
+import io.yunxi.platform.chat.ChatMapper;
 import reactor.core.publisher.Flux;
 
 /**
@@ -39,7 +39,7 @@ import reactor.core.publisher.Flux;
 class AuditMiddlewareTest {
 
     @Mock
-    private ConversationMapper conversationMapper;
+    private ChatMapper chatMapper;
 
     private AuditMiddleware middleware;
     private Agent agent;
@@ -47,7 +47,7 @@ class AuditMiddlewareTest {
 
     @BeforeEach
     void setUp() {
-        middleware = new AuditMiddleware(conversationMapper, "agent-a");
+        middleware = new AuditMiddleware(chatMapper, "agent-a");
         agent = null;
         enabledCtx = RuntimeContext.builder()
                 .userId("user-1")
@@ -71,7 +71,7 @@ class AuditMiddlewareTest {
 
         middleware.onAgent(agent, off, inputOf("审计问题"), okChain()).blockLast();
 
-        verify(conversationMapper, never()).insertChatLog(any());
+        verify(chatMapper, never()).insertChatLog(any());
     }
 
     @Test
@@ -80,7 +80,7 @@ class AuditMiddlewareTest {
         middleware.onAgent(agent, enabledCtx, inputOf("审计问题"), okChain()).blockLast();
 
         ArgumentCaptor<ChatLogEntity> captor = ArgumentCaptor.forClass(ChatLogEntity.class);
-        verify(conversationMapper).insertChatLog(captor.capture());
+        verify(chatMapper).insertChatLog(captor.capture());
         ChatLogEntity entity = captor.getValue();
         assertThat(entity.getConversationId()).isEqualTo("conv-1");
         assertThat(entity.getAgentName()).isEqualTo("agent-a");
@@ -102,7 +102,7 @@ class AuditMiddlewareTest {
                 .blockLast()).doesNotThrowAnyException();
 
         ArgumentCaptor<ChatLogEntity> captor = ArgumentCaptor.forClass(ChatLogEntity.class);
-        verify(conversationMapper).insertChatLog(captor.capture());
+        verify(chatMapper).insertChatLog(captor.capture());
         assertThat(captor.getValue().getSuccess()).isFalse();
         assertThat(captor.getValue().getErrorMessage()).isEqualTo("模型调用超时");
     }
@@ -110,7 +110,7 @@ class AuditMiddlewareTest {
     @Test
     @DisplayName("落库异常被隔离，不向主流程抛出")
     void persistenceFailureIsolated() {
-        when(conversationMapper.insertChatLog(any())).thenThrow(new RuntimeException("DB 不可用"));
+        when(chatMapper.insertChatLog(any())).thenThrow(new RuntimeException("DB 不可用"));
 
         assertThatCode(() -> middleware.onAgent(agent, enabledCtx, inputOf("审计问题"), okChain())
                 .blockLast()).doesNotThrowAnyException();
@@ -128,7 +128,7 @@ class AuditMiddlewareTest {
                 .blockLast();
 
         ArgumentCaptor<ChatLogEntity> captor = ArgumentCaptor.forClass(ChatLogEntity.class);
-        verify(conversationMapper).insertChatLog(captor.capture());
+        verify(chatMapper).insertChatLog(captor.capture());
         assertThat(captor.getValue().getErrorMessage()).hasSize(500);
     }
 }

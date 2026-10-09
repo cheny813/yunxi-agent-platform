@@ -10,10 +10,10 @@ import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.Task;
 import io.agentscope.core.state.TaskContextState;
-import io.yunxi.platform.conversation.ConversationDomainService;
+import io.yunxi.platform.chat.ChatDomainService;
 import io.yunxi.platform.execution.sse.SseAgentEventAdapter;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
-import io.yunxi.platform.tracing.LlmMetrics;
+import io.yunxi.platform.trace.LlmMetrics;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,7 +37,7 @@ class SseAgentEventAdapterTodoListTest {
     @BeforeEach
     void setUp() {
         adapter = new SseAgentEventAdapter(
-                new SseMessageBuilder(), mock(LlmMetrics.class), mock(ConversationDomainService.class));
+                new SseMessageBuilder(), mock(LlmMetrics.class), mock(ChatDomainService.class));
         agent = mock(ReActAgent.class);
     }
 

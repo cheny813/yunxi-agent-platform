@@ -11,21 +11,21 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 import io.agentscope.core.agent.RuntimeContext;
+import io.yunxi.platform.agent.runtime.YunxiRuntimeContextBuilder;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.state.Task;
-import io.agentscope.core.state.Task.State;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.memory.MemoryFlushManager;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.memory.compaction.ConversationCompactor;
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
-import io.yunxi.platform.contract.dto.TaskInfo;
-import io.yunxi.platform.registry.ActiveSessionRegistry;
-import io.yunxi.platform.registry.ActiveSessionRegistry.SessionMeta;
+import io.yunxi.platform.integration.contract.dto.TaskInfo;
+import io.yunxi.platform.session.registry.ActiveSessionRegistry;
+import io.yunxi.platform.session.registry.ActiveSessionRegistry.SessionMeta;
 import io.yunxi.platform.agent.service.AgentService;
-import io.yunxi.platform.conversation.ConversationDomainService;
+import io.yunxi.platform.chat.ChatDomainService;
 import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Mono;
 
@@ -48,7 +48,7 @@ public class GovernanceService {
     private final ActiveSessionRegistry registry;
     private final AistioIntegrationProperties properties;
     private final AgentService agentService;
-    private final ConversationDomainService conversationDomainService;
+    private final ChatDomainService chatDomainService;
     private final HarnessAgentResolver agentResolver;
 
     /**
@@ -67,7 +67,7 @@ public class GovernanceService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "agent has no model configured, cannot compress");
         }
-        RuntimeContext rc = RuntimeContext.builder().userId(meta.userId()).sessionId(sessionId).build();
+        RuntimeContext rc = YunxiRuntimeContextBuilder.build(meta.userId(), sessionId);
         var delegate = agent.getDelegate();
         AgentState state = delegate.getAgentState(rc);
         if (state == null) {
@@ -119,7 +119,7 @@ public class GovernanceService {
             }
         });
         try {
-            conversationDomainService.deleteConversation(sessionId);
+            chatDomainService.deleteConversation(sessionId);
         } catch (Exception e) {
             log.warn("删除会话实体失败 session={}: {}", sessionId, e.getMessage());
         }
@@ -158,7 +158,7 @@ public class GovernanceService {
         HarnessAgent agent = agentResolver.resolve(meta.agentName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "agent not found: " + meta.agentName()));
-        RuntimeContext rc = RuntimeContext.builder().userId(meta.userId()).sessionId(sessionId).build();
+        RuntimeContext rc = YunxiRuntimeContextBuilder.build(meta.userId(), sessionId);
         AgentState state = agent.getDelegate().getAgentState(rc);
         if (state == null || state.getTasksContext() == null) {
             return List.of();
@@ -179,7 +179,7 @@ public class GovernanceService {
         HarnessAgent agent = agentResolver.resolve(meta.agentName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "agent not found: " + meta.agentName()));
-        RuntimeContext rc = RuntimeContext.builder().userId(meta.userId()).sessionId(sessionId).build();
+        RuntimeContext rc = YunxiRuntimeContextBuilder.build(meta.userId(), sessionId);
         AgentState state = agent.getDelegate().getAgentState(rc);
         if (state != null && state.getTasksContext() != null) {
             state.getTasksContext().tasksMutable().removeIf(t -> taskId.equals(t.getId()));
@@ -221,7 +221,7 @@ public class GovernanceService {
         info.setId(t.getId());
         info.setSubject(t.getSubject());
         info.setDescription(t.getDescription());
-        State st = t.getState();
+        Task.State st = t.getState();
         info.setState(st != null ? st.getWire() : null);
         info.setOwner(t.getOwner());
         info.setCreatedAt(t.getCreatedAt());

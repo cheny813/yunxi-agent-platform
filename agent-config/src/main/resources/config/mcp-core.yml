@@ -6,21 +6,6 @@
 # AgentConfigurer.registerMcpServers() 读取（AgentscopeCoreProperties，prefix=agentscope.core），
 # 用框架原生 McpClientBuilder 真注册进各 Agent 的 Toolkit（以服务器名建组）；
 # 不使用 McpServerRegistrar，也不依赖 mcp-servers.json。
-# 以下保留工具缓存配置（仍在使用）。
-# ============================================================
-
-# MCP 工具缓存配置 — 只读工具名称列表，这些工具的调用结果可被缓存
-mcp:
-  cacheable-tools:
-    - search_dishes
-    - search_public_dishes
-    - batch_query_dish_ingredients
-    - get_dish_details
-    - get_nutrient_standard
-    - search_ingredients
-    - search_knowledge
-    - evaluate_recipe
-    - sync_data
 
 agentscope:
   core:
@@ -53,7 +38,7 @@ agentscope:
         type: sse
         url: ${MCP_REDIS_URL:http://localhost:40102/mcp/sse}
         timeout: ${MCP_REDIS_TIMEOUT:60000}
-        description: "Redis 数据库操作 MCP 服务器【需要单独启动 yunxi-mcp-servers/mcp-redis:40102】"
+        description: "Redis 数据库操作 MCP 服务器【需要单独启动 yunxi-mcp-servers/mcp-redis:402】"
 
       # --------------------- Milvus 向量搜索 MCP 服务器 ---------------------
       # 端口：40103

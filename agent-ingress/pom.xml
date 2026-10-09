@@ -52,7 +52,7 @@
             <version>${agentscope.version}</version>
         </dependency>
         <!-- AgentScope Chat Completions（OpenAI 兼容）协议 starter：提供 /v1/chat/completions 端点的框架原生实现，
-             构件与同一 2.0.3 发布批次的其它 AgentScope 模块一致，从已配置的远程仓库（Maven Central / Aliyun）拉取。
+             构件与同一 2.0.4 发布批次的其它 AgentScope 模块一致，从已配置的远程仓库（Maven Central / Aliyun）拉取。
              yunxi 侧以 YunxiChatCompletionsController 覆盖其默认 Controller（裸 agent、无身份），
              改为经 AgentService 取已装配 Agent 并注入 RuntimeContext，使其与 web / A2A / AG-UI 一致走统一装配链。 -->
         <dependency>
@@ -63,7 +63,7 @@
         <!-- AgentScope Core：YunxiChatCompletionsController（以及 AG-UI / A2A 适配层）直接引用
              io.agentscope.core.agent.*（AgentResultEvent / Msg / ReActAgent 等核心 API）。
              各 AgentScope starter 与 extensions 模块将 agentscope-core 标为 provided（不向 yunxi 传递），
-             此处显式声明以固定 2.0.3 版本，确保 core 包确定可见。 -->
+             此处显式声明以固定 2.0.4 版本，确保 core 包确定可见。 -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-core</artifactId>
@@ -72,7 +72,7 @@
         <!-- Chat Completions 适配层（YunxiChatCompletionsController）直接引用
              io.agentscope.core.chat.completions.*（model / builder / converter / streaming）。
              这些类位于 agentscope-extensions-chat-completions-web 模块，而该模块对 agentscope-core 标为
-             provided（不向 yunxi 传递），此处显式声明以固定 2.0.3 版本，确保 chat.completions 包确定可见。 -->
+             provided（不向 yunxi 传递），此处显式声明以固定 2.0.4 版本，确保 chat.completions 包确定可见。 -->
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-chat-completions-web</artifactId>

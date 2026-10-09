@@ -26,6 +26,7 @@
         <module>agent-execution</module>
         <module>agent-ingress</module>
         <module>agent-muse</module>
+        <module>agent-aistio</module>
         <module>agent-app</module>
         <module>agent-integration-test</module>
     </modules>
@@ -38,8 +39,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- 项目自身版本：所有模块统一引用该属性，升级版本时只需改此处一处，
              无需逐模块修改 <parent><version>。install/deploy 时由 flatten-maven-plugin 解析为具体版本号。 -->
-        <revision>2.0.3</revision>
-        <agentscope.version>2.0.3</agentscope.version>
+        <revision>2.0.4</revision>
+        <agentscope.version>2.0.4</agentscope.version>
         <jacoco.version>0.8.12</jacoco.version>
         <!-- surefire argLine 默认空串：未声明 jacoco 的模块 fork JVM 不带覆盖率 agent；
              声明 jacoco 的模块由 prepare-agent 覆盖该属性注入 -javaagent -->
@@ -70,7 +71,7 @@
         <!-- 以下依赖在 BOM 之外显式锁定版本，亦集中为属性 -->
         <mybatis-spring-boot.version>3.0.3</mybatis-spring-boot.version>
         <mysql-connector.version>8.3.0</mysql-connector.version>
-        <lombok.version>1.18.30</lombok.version>
+        <lombok.version>1.18.34</lombok.version>
         <rocketmq-spring-boot.version>2.2.3</rocketmq-spring-boot.version>
         <!-- 以下构建插件版本集中为属性，统一在 pluginManagement 引用 -->
         <exec-maven.version>3.1.0</exec-maven.version>
@@ -90,9 +91,8 @@
                 <groupId>io.yunxi</groupId>
                 <artifactId>agent-codec</artifactId>
                 <!-- 用固定的 ${revision}（而非 ${project.version}）：${project.version} 在继承后的子模块有效模型里
-                     会解析成「消费模块自身版本」，当 agent-aistio 用 ${aistio.revision}（2.0.4-SNAPSHOT）继承本管理段时，
-                     会把 agent-core:2.0.3 的 agent-codec 依赖错误膨胀成 2.0.4-SNAPSHOT 导致解析失败；
-                     ${revision} 恒为 2.0.3，跨模块版本一致且不会随子模块版本漂移。 -->
+                     会解析成「消费模块自身版本」，导致 agent-core 的 agent-codec 依赖被错误膨胀成消费模块版本而解析失败；
+                     ${revision} 跨模块版本一致且不会随子模块版本漂移。 -->
                 <version>${revision}</version>
             </dependency>
             <dependency>
@@ -461,13 +461,22 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler.version}</version>
                     <configuration>
-                        <source>${java.version}</source>
-                        <target>${java.version}</target>
+                        <!-- 用 release 替代 source/target：reactor-core 等是 Multi-Release JAR，
+                             javac 在 -source/-target 模式下对 MR-JAR 处理有缺陷，会报
+                             “找不到Mono的类文件”（尽管类实际在 classpath 上）；release 模式
+                             用 ct.sym 正确解析 MR-JAR，根治该问题 -->
+                        <release>${java.version}</release>
                         <encoding>UTF-8</encoding>
                         <!-- 关闭增量编译：compiler 3.11.0 对依赖/注解处理器变更感知不全，
                              曾误判 testCompile "Nothing to compile" 导致测试类缺失（ClassNotFoundException），
                              统一走全量编译根治 -->
                         <useIncrementalCompilation>false</useIncrementalCompilation>
+                        <!-- 强制 fork 独立 javac 进程编译：默认 in-process 编译（javax.tools API）
+                             无法从 reactor-core 这类 Multi-Release JAR 中加载 Mono 等类（报
+                             "找不到Mono的类文件"），外部 javac 进程可正常处理 MR-JAR，故统一 fork。
+                             同时 in-process 编译下 Lombok 注解处理器对部分类（受 MR-JAR 干扰）生成失效，
+                             fork 后由独立 javac 进程统一处理，根治此问题。 -->
+                        <fork>true</fork>
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.projectlombok</groupId>
@@ -504,6 +513,12 @@
                         <!-- ${argLine} 默认空串（见 <properties>），由 jacoco prepare-agent 注入时覆盖为覆盖率 agent 参数；
                              显式挂载 mockito-core agent 替代运行时 self-attach（JDK 21+ 动态加载警告） -->
                         <argLine>${argLine} -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                        <!-- 测试进程经 Maven 启动（工作目录为各模块目录），不走 start.ps1 的 -DLOG_DIR 注入；
+                             此处统一把 LOG_DIR 指到仓库根 logs/，避免相对 logs/ 散落到 agent-*/logs 子目录
+                             （logback-spring.xml 的 ${LOG_DIR:-...} 优先读取此系统属性） -->
+                        <systemPropertyVariables>
+                            <LOG_DIR>${project.basedir}/../logs</LOG_DIR>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
 
@@ -621,24 +636,4 @@
         </plugins>
     </build>
 
-    <!-- agent-aistio 为可选尝鲜组件（控制面注册 / gRPC 对话流 / 编排触发器 / 契约与治理 / 任务接活），
-         默认 reactor 不含该模块、框架依赖固定为 2.0.3（正式版）；构建时加 -Paistio 一并纳入模块，
-         并将 AgentScope-Java 依赖切到 2.0.4-SNAPSHOT（随其 aistio 扩展提供）。 -->
-    <profiles>
-        <profile>
-            <id>aistio</id>
-            <properties>
-                <!-- aistio 管控面依赖 AgentScope-Java 的 aistio 扩展（随 2.0.4 提供），
-                     故启用该 profile 时把框架依赖整体切到 2.0.4-SNAPSHOT；
-                     同一 fat jar 只允许一个 io.agentscope:* 版本，请勿单独给 agent-aistio 指其他版本。 -->
-                <agentscope.version>2.0.4-SNAPSHOT</agentscope.version>
-                <!-- agent-aistio 作为可选尝鲜组件的独立版本号，与平台核心的 ${revision}（2.0.3 正式版）解耦；
-                     它追踪 AgentScope-Java 2.0.4-SNAPSHOT 尝鲜线，而它依赖的 agent-core / agent-codec 仍指向 ${revision} 正式版。 -->
-                <aistio.revision>2.0.4-SNAPSHOT</aistio.revision>
-            </properties>
-            <modules>
-                <module>agent-aistio</module>
-            </modules>
-        </profile>
-    </profiles>
 </project>

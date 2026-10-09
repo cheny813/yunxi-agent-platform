@@ -76,14 +76,13 @@ async:
     queue-capacity: 100
     keep-alive: 60
 
-# 日志配置
+# 日志配置（日志落盘路径由 logback-spring.xml 的 ${LOG_DIR}/${LOG_NAME} 统一控制，
+# 测试进程经 Maven 启动时由根 pom 的 surefire <systemPropertyVariables> 注入 LOG_DIR 指向仓库根 logs/，
+# 此处仅设置测试日志级别，不重复声明 file 路径以免与 logback 冲突或产生误导）
 logging:
   level:
     io.yunxi.platform: DEBUG
     org.springframework.web: INFO
-  file:
-    name: "logs/yangwai-agent-test.log"
-    path: "./logs"
 
 # 安全配置
 security:

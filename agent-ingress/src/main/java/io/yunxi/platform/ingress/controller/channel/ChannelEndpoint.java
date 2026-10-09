@@ -1,6 +1,6 @@
 package io.yunxi.platform.ingress.controller.channel;
 
-import io.yunxi.platform.channel.ChannelStatusRegistry;
+import io.yunxi.platform.integration.channel.ChannelStatusRegistry;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,7 +15,7 @@ import java.util.Map;
  * 渠道总开关关闭时返回空清单。该端点经 core 的 WebMvcConfig 认证/限流拦截器白名单放行
  * （与 /api/health 同源）；拦截器注册在共享应用上下文，与控制器所在模块无关。</p>
  *
- * <p>迁移说明：原位于 agent-core 的 io.yunxi.platform.channel.ChannelEndpoint，因违反
+ * <p>迁移说明：原位于 agent-core 的 io.yunxi.platform.integration.channel.ChannelEndpoint，因违反
  * 「agent-core 禁止声明 @RestController」架构不变量（GatewayArchitectureTest）而迁至本统一网关模块。
  * 仅委托调用 core 的 ChannelStatusRegistry（yunxi 产品平面侧唯一真相源），不引入新依赖、不造环。</p>
  */

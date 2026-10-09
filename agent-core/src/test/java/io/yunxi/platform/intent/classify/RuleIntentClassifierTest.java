@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
-import io.yunxi.platform.agent.profile.ConceptRegistry;
+import io.yunxi.platform.agent.routing.ConceptRegistry;
 import io.yunxi.platform.intent.Entity;
 import io.yunxi.platform.intent.Intent;
 import io.yunxi.platform.intent.config.IntentProperties;

@@ -14,12 +14,13 @@ import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.agent.AgentConfigurer;
+import io.yunxi.platform.agent.runtime.AgentInvoker;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.trace.TraceCollector;
 import io.yunxi.platform.trace.TraceComposer;
-import io.yunxi.platform.tracing.LlmMetrics;
+import io.yunxi.platform.trace.LlmMetrics;
 
 /**
  * 阻塞执行策略（非流式通道）。
@@ -85,8 +86,8 @@ public class BlockingStrategy implements ExecutionStrategy {
         RuntimeContext rc = StrategyContextSupport.build(ctx, sessionId, audit);
         Duration timeout = Duration.ofSeconds(properties.getChatTimeoutSeconds());
 
-        // 会话级工具组激活：覆盖持久化/遗留空激活组，确保 MCP 工具在每次会话可用
-        AgentConfigurer.activateSessionToolGroups((HarnessAgent) agent, rc.getUserId(), rc.getSessionId());
+        // 会话级工具组激活已下沉为协议无关的 SessionToolGroupActivationMiddleware（onAgent 钩子），
+        // 经 AgentConfigurer.configureMiddlewares 挂到共享 Agent，对所有协议统一生效。
 
         // 轨迹归集会话：与流式通道同一份归集器，保证「有事件流就有轨迹」不随通道而变化
         String traceId = StrategyContextSupport.resolveTraceId(ctx, rc.getSessionId());
@@ -94,7 +95,7 @@ public class BlockingStrategy implements ExecutionStrategy {
 
         // 注意：共享 Agent 实例生命周期由框架管理，绝不可 close（内联转换避免 JDT resource-leak 误报）
         final Msg[] holder = new Msg[1];
-        ((HarnessAgent) agent).streamEvents(messages, rc)
+        AgentInvoker.streamEvents((HarnessAgent) agent, messages, rc)
                 .timeout(timeout)
                 .doOnNext(event -> collect(event, session, rc))
                 .filter(event -> event.getType() == AgentEventType.AGENT_RESULT)

@@ -17,7 +17,7 @@ import io.agentscope.core.message.Msg;
  * @param recentMessages 最近 N 轮消息（指代消解用；可为空列表）
  * @param domain         显式指定领域名（可 null，判定链最高优先级；非流式入口无 profile 字段时
  *                       可借此显式传域）
- * @param profile        Profile 名称（可 null，参与域规则匹配；ConversationChatRequest 无
+ * @param profile        Profile 名称（可 null，参与域规则匹配；ChatConversationRequest 无
  *                       profile 字段，非流式入口传 null）
  * @author yunxi-agent-platform
  * @version 2.0.0

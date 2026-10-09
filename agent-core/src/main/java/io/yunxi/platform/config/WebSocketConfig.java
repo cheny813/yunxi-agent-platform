@@ -1,6 +1,6 @@
 package io.yunxi.platform.config;
 
-import io.yunxi.platform.desktop.relay.DesktopRelayHandler;
+import io.yunxi.platform.agent.desktop.relay.DesktopRelayHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;

@@ -18,17 +18,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import io.yunxi.platform.contract.DataPlaneContract;
-import io.yunxi.platform.contract.dto.ContextSnapshot;
-import io.yunxi.platform.contract.dto.DataPlaneInfo;
-import io.yunxi.platform.contract.dto.HealthResponse;
-import io.yunxi.platform.contract.dto.MessagePage;
-import io.yunxi.platform.contract.dto.PlanModeRequest;
-import io.yunxi.platform.contract.dto.SessionSnapshot;
-import io.yunxi.platform.contract.dto.SessionState;
-import io.yunxi.platform.contract.dto.SubagentInfo;
-import io.yunxi.platform.contract.dto.TaskInfo;
-import io.yunxi.platform.contract.dto.WorkspaceInfo;
+import io.yunxi.platform.integration.contract.DataPlaneContract;
+import io.yunxi.platform.integration.contract.dto.ContextSnapshot;
+import io.yunxi.platform.integration.contract.dto.DataPlaneInfo;
+import io.yunxi.platform.integration.contract.dto.HealthResponse;
+import io.yunxi.platform.integration.contract.dto.MessagePage;
+import io.yunxi.platform.integration.contract.dto.PlanModeRequest;
+import io.yunxi.platform.integration.contract.dto.SessionSnapshot;
+import io.yunxi.platform.integration.contract.dto.SessionState;
+import io.yunxi.platform.integration.contract.dto.SubagentInfo;
+import io.yunxi.platform.integration.contract.dto.TaskInfo;
+import io.yunxi.platform.integration.contract.dto.WorkspaceInfo;
 import lombok.RequiredArgsConstructor;
 
 /**

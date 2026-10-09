@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
+import io.yunxi.platform.agent.runtime.YunxiRuntimeContextBuilder;
+import io.yunxi.platform.agent.runtime.AgentInvoker;
 import io.agentscope.core.chat.completions.builder.ChatCompletionsResponseBuilder;
 import io.agentscope.core.chat.completions.converter.ChatMessageConverter;
 import io.agentscope.core.chat.completions.converter.OpenAIToolConverter;
@@ -44,7 +46,7 @@ import reactor.core.publisher.Mono;
  * <p>Chat Completions 本身保持无状态（每次请求独立 RuntimeContext，sessionId 用 requestId），与 OpenAI
  * 语义一致；yunxi 装配的 Agent 为共享单例，故不在此注册调用方声明的 schema-only 工具（以 Agent 自身已装配的工具为准）。
  *
- * <p>身份注入（userId）说明：AgentScope-Java 2.0.3 的 Chat Completions 入口
+ * <p>身份注入（userId）说明：AgentScope-Java 2.0.4 的 Chat Completions 入口
  * {@code Agent.call} 与 {@code ChatCompletionsStreamingService.streamAsSse} 均不接受 {@link RuntimeContext}
  * 参数，因此此处暂沿用框架无状态调用；yunxi 已装配 Agent 仍经统一装配链（内容安全 / 审计 / 画像 / 历史等
  * Middleware）生效。待框架在 Chat Completions 入口透传 RuntimeContext 后，可在此构造带 userId 的
@@ -98,7 +100,7 @@ public class YunxiChatCompletionsController extends ChatCompletionsController {
             if (messages.isEmpty()) {
                 return Mono.error(new IllegalArgumentException("At least one message is required"));
             }
-            return agent.call(messages)
+            return AgentInvoker.call(agent, messages)
                     .map(reply -> responseBuilder.buildResponse(request, reply, requestId))
                     .onErrorResume(
                             error -> {
@@ -176,14 +178,8 @@ public class YunxiChatCompletionsController extends ChatCompletionsController {
     }
 
     private RuntimeContext buildRuntimeContext(String sessionId) {
-        RuntimeContext.Builder builder = RuntimeContext.builder();
-        String userId = securityContext.getCurrentUserId();
-        if (userId != null && !userId.isBlank()) {
-            builder.userId(userId);
-        }
-        if (sessionId != null) {
-            builder.sessionId(sessionId);
-        }
-        return builder.build();
+        // AgentScope-Java 2.0.4 的 Chat Completions 入口不接受 RuntimeContext，故本方法当前未被调用；
+        // 统一经 YunxiRuntimeContextBuilder 构造，待框架入口透传 RuntimeContext 后直接接线即可。
+        return YunxiRuntimeContextBuilder.build(securityContext.getCurrentUserId(), sessionId, false, null, null, null);
     }
 }

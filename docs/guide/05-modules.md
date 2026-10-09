@@ -6,7 +6,7 @@
 
 ## 模块概览
 
-### Maven 模块（根 `pom.xml` 的 `<modules>`，共 10 个；另 `agent-aistio` 为可选 profile 模块）
+### Maven 模块（根 `pom.xml` 的 `<modules>`，共 11 个）
 
 ```
 yunxi-agent-platform/
@@ -17,7 +17,7 @@ yunxi-agent-platform/
 ├── agent-core              # 核心框架（Agent 生命周期、工作区、MCP、意图引擎、轨迹系统）
 ├── agent-execution         # 统一执行引擎（web / A2A 调用编排）
 ├── agent-ingress           # 统一接入网关（边缘横切 + 协议服务端接入）
-├── agent-aistio            # aistio 控制面 / 数据面集成（可选 profile）
+├── agent-aistio            # aistio 控制面 / 数据面集成（依赖 ${agentscope.version}=2.0.4 框架构件）
 ├── agent-muse              # 自进化引擎（技能沙箱评估→LLM 修补→剪枝合并闭环）
 ├── agent-app               # 可执行应用打包（统一入口，端口 40001）
 └── agent-integration-test  # 跨模块集成测试
@@ -255,7 +255,7 @@ agent-aistio/src/main/java/io/yunxi/platform/aistio/
 ├── client/ controller/ dto/ interceptor/ orchestration/ registrar/ registry/ reporter/ service/ task/
 ```
 
-> **启用开关**：`yunxi.aistio.enabled`（默认 true）。关闭时 `AistioAutoConfiguration` 不装配，控制面相关能力整体离线，不影响其它模块。
+> **启用开关**：`yunxi.aistio.enabled`（默认 `false`，符合「零新增基建、不侵入主线」原则）。关闭时 `AistioAutoConfiguration` 不装配，控制面相关能力整体离线，不影响其它模块。
 
 ### 与 agent-core 的依赖边界（单一方向）
 

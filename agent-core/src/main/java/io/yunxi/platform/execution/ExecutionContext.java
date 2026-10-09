@@ -7,7 +7,7 @@ import io.agentscope.core.agent.Agent;
 import io.agentscope.core.message.Msg;
 import io.yunxi.platform.intent.IntentResult;
 import io.yunxi.platform.intent.routing.RouteDecision;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.chat.ChatEntity;
 
 /**
  * 单次执行上下文（拦截器共享可变状态）。
@@ -46,8 +46,8 @@ public class ExecutionContext {
     private RouteDecision routeDecision;
     /** 执行结果错误信息（引擎收口时写入；null 表示成功），供 postHandle 收尾（如审计）消费 */
     private String executionError;
-    /** 会话实体（引擎从 ConversationDomainService 加载后写入；非会话型入口为 null） */
-    private ConversationEntity conversation;
+    /** 会话实体（引擎从 ChatDomainService 加载后写入；非会话型入口为 null） */
+    private ChatEntity conversation;
     /** 运行时透传的附加属性（如 RAG 注入标记、场景名等） */
     private final Map<String, Object> attributes = new HashMap<>();
 
@@ -137,11 +137,11 @@ public class ExecutionContext {
         this.executionError = executionError;
     }
 
-    public ConversationEntity getConversation() {
+    public ChatEntity getConversation() {
         return conversation;
     }
 
-    public void setConversation(ConversationEntity conversation) {
+    public void setConversation(ChatEntity conversation) {
         this.conversation = conversation;
     }
 

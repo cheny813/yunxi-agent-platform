@@ -2,7 +2,7 @@
 # 日志级别配置（全平台 logging.level.* 唯一归属）
 # ============================================================
 # 跨切面段：所有 logging.level.* / logging.level.root 集中在本文件，
-# 禁止在 observability.yml / a2a-pipeline.yml 等其它片段重复写 logging.* 顶层键。
+# 禁止在 observability.yml 等其它片段重复写 logging.* 顶层键。
 #
 # 文件落盘、控制台/文件格式由 logback-spring.xml 硬编码接管
 # （CONSOLE_LOG_PATTERN / FILE_LOG_PATTERN），故 Spring 配置里的 logging.pattern.*
@@ -17,5 +17,5 @@ logging:
     io.agentscope.core.model: DEBUG
     io.agentscope.core.model.transport: INFO
     # —— A2A 流水线模块专属级（原散落在 a2a-pipeline.yml）——
-    '[io.yunxi.platform.a2a]': INFO
-    '[io.yunxi.platform.a2a.pipeline]': DEBUG
+    '[io.yunxi.platform.integration.a2a]': INFO
+    '[io.yunxi.platform.integration.a2a.pipeline]': DEBUG

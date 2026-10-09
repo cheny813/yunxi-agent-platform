@@ -5,8 +5,9 @@ import java.util.List;
 import java.util.Map;
 
 import io.agentscope.core.agent.RuntimeContext;
+import io.yunxi.platform.agent.runtime.YunxiRuntimeContextBuilder;
 import io.agentscope.core.message.Msg;
-import io.yunxi.platform.execution.context.CallContextKeys;
+import io.yunxi.platform.agent.middleware.CallContextKeys;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.execution.interceptors.RagRetrievalInterceptor;
@@ -43,16 +44,10 @@ public final class StrategyContextSupport {
     static RuntimeContext build(ExecutionContext ctx, String sessionId, boolean auditEnabled) {
         ExecutionRequest request = ctx.getRequest();
         String userId = request.getUserId();
-        RuntimeContext.Builder b = RuntimeContext.builder();
-        if (userId != null && !userId.isBlank()) {
-            b.userId(userId);
-        }
-        if (sessionId != null && !sessionId.isBlank()) {
-            b.sessionId(sessionId);
-        }
-        CallContextKeys.apply(b, resolveHistory(ctx), resolveRagQuery(ctx), auditEnabled);
-        applyIntentSpan(b, ctx);
-        RuntimeContext rc = b.build();
+        TraceContextKeys.IntentSpanData intentSpanData = buildIntentSpanData(ctx);
+        RuntimeContext rc = YunxiRuntimeContextBuilder.build(
+                userId, sessionId, auditEnabled,
+                resolveHistory(ctx), resolveRagQuery(ctx), intentSpanData);
         // 把本次调用的运行时上下文回写执行上下文，供统一执行引擎在投影阶段读取
         // （意图注入、任务清单旁路读取都依赖它）。
         ctx.setAttribute("yunxi.runtimeContext", rc);
@@ -69,10 +64,10 @@ public final class StrategyContextSupport {
      * 路由决策与降级标记。刻意不放模型原始输出与内部计数 —— 轨迹是给人看的，
      * 塞入未加工内容只会让它变成日志。</p>
      */
-    private static void applyIntentSpan(RuntimeContext.Builder b, ExecutionContext ctx) {
+    private static TraceContextKeys.IntentSpanData buildIntentSpanData(ExecutionContext ctx) {
         IntentResult intent = ctx.getIntentResult();
         if (intent == null) {
-            return;
+            return null;
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("originalQuery", intent.originalQuery());
@@ -106,8 +101,7 @@ public final class StrategyContextSupport {
                 && !intent.rewrittenQuery().equals(intent.originalQuery())) {
             payload.put("queryRewritten", true);
         }
-        b.put(TraceContextKeys.INTENT_SPAN_KEY,
-                new IntentSpanData(payload, ctx.getIntentDurationMs()));
+        return new IntentSpanData(payload, ctx.getIntentDurationMs());
     }
 
     /**

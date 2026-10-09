@@ -94,11 +94,9 @@
         </div>
     </div>
 
-    <!-- 引入 DomEngine（纯 DOM 执行）+ FormFillClient（WebSocket 桥接） -->
+    <!-- 引入 Page Agent SDK（纯前端 DOM 执行 + 表单填写由 agent-nutritionist-web 前端承载，不在此静态目录提供） -->
     <script src="/js/page-agent.js"></script>
     <script src="/js/page-agent.sdk.js?autoInit=false"></script>
-    <script src="/sdk/formfill-client.js"></script>
-    <script src="/sdk/page-agent-dom-engine.js"></script>
     <!-- 通用对话工具（CDN 直引，单一源：agent-web-sdk/src/yunxi-chat.js） -->
     <script src="/js/yunxi-chat.js"></script>
 

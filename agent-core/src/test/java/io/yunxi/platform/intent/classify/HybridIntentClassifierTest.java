@@ -23,7 +23,7 @@ import io.yunxi.platform.intent.snapshot.EntityDictSnapshot;
 import io.yunxi.platform.intent.snapshot.MappingSnapshot;
 import io.yunxi.platform.intent.snapshot.TermSnapshot;
 import io.yunxi.platform.intent.snapshot.TreeSnapshot;
-import io.yunxi.platform.tracing.LlmMetrics;
+import io.yunxi.platform.trace.LlmMetrics;
 import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.assertThat;

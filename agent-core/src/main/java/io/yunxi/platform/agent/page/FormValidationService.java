@@ -1,0 +1,345 @@
+package io.yunxi.platform.agent.page;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.util.*;
+import java.util.regex.Pattern;
+
+/**
+ * 表单验证服务
+ * 提供字段验证、格式校验、正则规则验证等功能
+ */
+@Slf4j
+@Service
+public class FormValidationService {
+    
+    // 常用验证规则
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+        "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$", Pattern.CASE_INSENSITIVE
+    );
+    
+    private static final Pattern PHONE_PATTERN = Pattern.compile(
+        "^1[3-9]\\d{9}$"
+    );
+    
+    private static final Pattern ID_CARD_PATTERN = Pattern.compile(
+        "^[1-9]\\d{5}(18|19|20)\\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\\d{3}[0-9Xx]$"
+    );
+
+    /**
+     * 验证字段是否必填（非空、非空白、非空集合/映射）。
+     *
+     * @param fieldName 字段名称（用于错误信息）
+     * @param value     待验证的值
+     * @param selector  字段对应的页面选择器（用于定位）
+     * @return 验证结果
+     */
+    public ValidationResult validateRequired(String fieldName, Object value, String selector) {
+        ValidationResult result = new ValidationResult(fieldName, selector);
+        
+        if (value == null || 
+            (value instanceof String && !StringUtils.hasText((String) value)) ||
+            (value instanceof Collection && ((Collection<?>) value).isEmpty()) ||
+            (value instanceof Map && ((Map<?, ?>) value).isEmpty())) {
+            
+            result.setValid(false);
+            result.setErrorCode("FIELD_REQUIRED");
+            result.setErrorMessage(fieldName + " 字段必填");
+            return result;
+        }
+        
+        result.setValid(true);
+        return result;
+    }
+
+    /**
+     * 验证数值是否在指定范围内 [min, max]。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证的数值（为 null 时报 FIELD_NULL）
+     * @param min       最小值下限（可为 null，表示不限制）
+     * @param max       最大值上限（可为 null，表示不限制）
+     * @param selector  页面选择器
+     * @return 验证结果
+     */
+    public ValidationResult validateNumberRange(String fieldName, Double value, Double min, Double max, String selector) {
+        ValidationResult result = new ValidationResult(fieldName, selector);
+        
+        if (value == null) {
+            result.setValid(false);
+            result.setErrorCode("FIELD_NULL");
+            result.setErrorMessage(fieldName + " 不能为空");
+            return result;
+        }
+        
+        if (min != null && value < min) {
+            result.setValid(false);
+            result.setErrorCode("VALUE_TOO_SMALL");
+            result.setErrorMessage(fieldName + " 小于最小值 " + min);
+            return result;
+        }
+        
+        if (max != null && value > max) {
+            result.setValid(false);
+            result.setErrorCode("VALUE_TOO_LARGE");
+            result.setErrorMessage(fieldName + " 大于最大值 " + max);
+            return result;
+        }
+        
+        result.setValid(true);
+        return result;
+    }
+
+    /**
+     * 验证字符串长度是否在 [min, max] 区间内。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证字符串（为 null 时报 FIELD_NULL）
+     * @param min       最小长度（可为 null）
+     * @param max       最大长度（可为 null）
+     * @param selector  页面选择器
+     * @return 验证结果
+     */
+    public ValidationResult validateStringLength(String fieldName, String value, Integer min, Integer max, String selector) {
+        ValidationResult result = new ValidationResult(fieldName, selector);
+        
+        if (value == null) {
+            result.setValid(false);
+            result.setErrorCode("FIELD_NULL");
+            result.setErrorMessage(fieldName + " 不能为空");
+            return result;
+        }
+        
+        int length = value.length();
+        
+        if (min != null && length < min) {
+            result.setValid(false);
+            result.setErrorCode("LENGTH_TOO_SHORT");
+            result.setErrorMessage(fieldName + " 短于最小长度 " + min + " 字符");
+            return result;
+        }
+        
+        if (max != null && length > max) {
+            result.setValid(false);
+            result.setErrorCode("LENGTH_TOO_LONG");
+            result.setErrorMessage(fieldName + " 长于最大长度 " + max + " 字符");
+            return result;
+        }
+        
+        result.setValid(true);
+        return result;
+    }
+
+    /**
+     * 使用预设正则验证邮箱格式。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证邮箱字符串
+     * @param selector  页面选择器
+     * @return 验证结果
+     */
+    public ValidationResult validateEmail(String fieldName, String value, String selector) {
+        ValidationResult result = new ValidationResult(fieldName, selector);
+        
+        if (value == null || !StringUtils.hasText(value)) {
+            result.setValid(false);
+            result.setErrorCode("EMAIL_EMPTY");
+            result.setErrorMessage(fieldName + " 不能为空");
+            return result;
+        }
+        
+        if (!EMAIL_PATTERN.matcher(value).matches()) {
+            result.setValid(false);
+            result.setErrorCode("EMAIL_INVALID");
+            result.setErrorMessage(fieldName + " 格式错误");
+            return result;
+        }
+        
+        result.setValid(true);
+        return result;
+    }
+
+    /**
+     * 使用预设正则验证中国大陆手机号格式（1[3-9] 开头共 11 位）。
+     *
+     * @param fieldName 字段名称
+     * @param value     待验证手机号字符串
+     * @param selector  页面选择器
+     * @return 验证结果
+     */
+    public ValidationResult validatePhone(String fieldName, String value, String selector) {
+        ValidationResult result = new ValidationResult(fieldName, selector);
+        
+        if (value == null || !StringUtils.hasText(value)) {
+            result.setValid(false);
+            result.setErrorCode("PHONE_EMPTY");
+            result.setErrorMessage(fieldName + " 不能为空");
+            return result;
+        }
+        
+        if (!PHONE_PATTERN.matcher(value).matches()) {
+            result.setValid(false);
+            result.setErrorCode("PHONE_INVALID");
+            result.setErrorMessage(fieldName + " 格式错误");
+            return result;
+        }
+        
+        result.setValid(true);
+        return result;
+    }
+
+    /**
+     * 批量验证表单中的多个字段。
+     *
+     * @param formFields 字段名到表单字段定义的映射
+     * @return 每个字段对应的验证结果列表
+     */
+    public List<ValidationResult> validateForm(Map<String, FormField> formFields) {
+        List<ValidationResult> results = new ArrayList<>();
+        
+        for (FormField field : formFields.values()) {
+            ValidationResult result = validateField(field);
+            results.add(result);
+        }
+        
+        return results;
+    }
+
+    /**
+     * 验证单个表单字段
+     */
+    private ValidationResult validateField(FormField field) {
+        switch (field.getFieldType()) {
+            case "email":
+                return validateEmail(field.getFieldName(), field.getValue() != null ? field.getValue().toString() : null, field.getSelector());
+            case "phone":
+                return validatePhone(field.getFieldName(), field.getValue() != null ? field.getValue().toString() : null, field.getSelector());
+            case "number":
+                return validateNumberRange(field.getFieldName(), 
+                    field.getValue() != null ? Double.parseDouble(field.getValue().toString()) : null,
+                    field.getMinValue(), field.getMaxValue(), field.getSelector());
+            case "text":
+                return validateStringLength(field.getFieldName(), 
+                    field.getValue() != null ? field.getValue().toString() : null,
+                    field.getMinLength(), field.getMaxLength(), field.getSelector());
+            default:
+                return validateRequired(field.getFieldName(), field.getValue(), field.getSelector());
+        }
+    }
+
+    /**
+     * 判断验证结果列表中是否存在错误。
+     *
+     * @param results 验证结果列表
+     * @return 存在任一未通过验证的结果时返回 true
+     */
+    public boolean hasErrors(List<ValidationResult> results) {
+        return results.stream().anyMatch(result -> !result.isValid());
+    }
+
+    /**
+     * 提取所有未通过验证的错误信息。
+     *
+     * @param results 验证结果列表
+     * @return 错误信息字符串列表
+     */
+    public List<String> getErrorMessages(List<ValidationResult> results) {
+        return results.stream()
+            .filter(result -> !result.isValid())
+            .map(ValidationResult::getErrorMessage)
+            .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+    }
+
+    /**
+     * 验证结果类
+     */
+    public static class ValidationResult {
+        private String fieldName;
+        private String selector;
+        private boolean valid;
+        private String errorCode;
+        private String errorMessage;
+
+    /** 构造验证结果（默认 valid=true）。
+     * @param fieldName 字段名称
+     * @param selector  页面选择器
+     */
+    public ValidationResult(String fieldName, String selector) {
+        this.fieldName = fieldName;
+        this.selector = selector;
+        this.valid = true;
+    }
+
+        // Getter 和 Setter 方法
+        public String getFieldName() { return fieldName; }
+        public void setFieldName(String fieldName) { this.fieldName = fieldName; }
+        
+        public String getSelector() { return selector; }
+        public void setSelector(String selector) { this.selector = selector; }
+        
+        public boolean isValid() { return valid; }
+        public void setValid(boolean valid) { this.valid = valid; }
+        
+        public String getErrorCode() { return errorCode; }
+        public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
+        
+        public String getErrorMessage() { return errorMessage; }
+        public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+    }
+
+    /**
+     * 表单字段定义类
+     */
+    public static class FormField {
+        private String fieldName;
+        private String selector;
+        private String fieldType;
+        private Object value;
+        private Integer minLength;
+        private Integer maxLength;
+        private Double minValue;
+        private Double maxValue;
+        private boolean required;
+
+    /** 构造表单字段定义。
+     * @param fieldName 字段名称
+     * @param selector  页面选择器
+     * @param fieldType 字段类型（email/phone/number/text 等）
+     */
+    public FormField(String fieldName, String selector, String fieldType) {
+        this.fieldName = fieldName;
+        this.selector = selector;
+        this.fieldType = fieldType;
+    }
+
+        // Getter 和 Setter 方法
+        public String getFieldName() { return fieldName; }
+        public void setFieldName(String fieldName) { this.fieldName = fieldName; }
+        
+        public String getSelector() { return selector; }
+        public void setSelector(String selector) { this.selector = selector; }
+        
+        public String getFieldType() { return fieldType; }
+        public void setFieldType(String fieldType) { this.fieldType = fieldType; }
+        
+        public Object getValue() { return value; }
+        public void setValue(Object value) { this.value = value; }
+        
+        public Integer getMinLength() { return minLength; }
+        public void setMinLength(Integer minLength) { this.minLength = minLength; }
+        
+        public Integer getMaxLength() { return maxLength; }
+        public void setMaxLength(Integer maxLength) { this.maxLength = maxLength; }
+        
+        public Double getMinValue() { return minValue; }
+        public void setMinValue(Double minValue) { this.minValue = minValue; }
+        
+        public Double getMaxValue() { return maxValue; }
+        public void setMaxValue(Double maxValue) { this.maxValue = maxValue; }
+        
+        public boolean isRequired() { return required; }
+        public void setRequired(boolean required) { this.required = required; }
+    }
+}

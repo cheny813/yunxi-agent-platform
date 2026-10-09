@@ -1,5 +1,14 @@
 # Maven 编译输出
 target/
+# 构建产物：每个模块下的 build-out（配置片段/文档生成），随构建自动刷新
+build-out/
+**/build-out/
+
+# 编排图导出 artifact 落盘目录（yunxi.aistio.workflow.export-dir 默认 ./workflow-artifacts，相对进程工作目录，
+# 由应用/集成测试运行期生成，非源码；默认 export-enabled=false 不生成，开启后从根或模块目录重新生成）
+# 精确锚定仓库根与一级模块目录，避免误伤 agent-integration-test/src/test/resources/workflow-artifacts（测试输入夹具）
+/workflow-artifacts/
+/*/workflow-artifacts/
 *.class
 *.jar
 *.war
@@ -96,6 +105,7 @@ build/
 .env
 .env.local
 .env.*.local
+.env.aistio
 启动项目.bat
 
 # 本地测试文件
@@ -104,7 +114,8 @@ build/
 # 运行时产物（Spring Boot 可执行 jar 解包目录）
 META-INF/
 BOOT-INF/
-tmp/
+tmp/**
+!tmp/.gitkeep
 uploads/
 agent-core/uploads/
 

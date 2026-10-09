@@ -14,7 +14,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  * 统一接入网关架构不变量（agent-muse 镜像，对应 {@code agent-core} 的 {@code GatewayArchitectureTest}
  * 与 {@code agent-aistio} 的 {@code AistioArchitectureTest}）。
  *
- * <p>设计文档 {@code docs/unified-access-gateway-design.md} 规定的架构不变量：散装 HTTP 入口必须集中到
+ * <p>架构不变量（规定于 {@code docs/unified-access-gateway-design.md}）：散装 HTTP 入口必须集中到
  * {@code agent-ingress}。{@code agent-muse} 原唯一的 {@code @RestController}（{@code MuseSkillController}，
  * 暴露 {@code /api/muse/skills/*}）已在 2026-09-24 收编到 {@code agent-ingress}（muse 侧仅保留经
  * {@code agent-spi} 的 {@code MuseSkillAdminService} 接口暴露的 {@code @Service} 实现，无 {@code @RestController}）。

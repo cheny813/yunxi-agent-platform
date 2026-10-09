@@ -3,6 +3,7 @@ package io.yunxi.platform.ingress.agui;
 import io.agentscope.core.agui.runtime.AguiRuntimeContextRequest;
 import io.agentscope.core.agui.runtime.AguiRuntimeContextResolver;
 import io.agentscope.core.agent.RuntimeContext;
+import io.yunxi.platform.agent.runtime.YunxiRuntimeContextBuilder;
 import io.yunxi.platform.security.auth.SecurityContext;
 import org.springframework.stereotype.Component;
 
@@ -27,11 +28,6 @@ public class YunxiAguiRuntimeContextResolver implements AguiRuntimeContextResolv
 
     @Override
     public RuntimeContext resolve(AguiRuntimeContextRequest<?> request) {
-        String userId = securityContext.getCurrentUserId();
-        RuntimeContext.Builder builder = RuntimeContext.builder();
-        if (userId != null && !userId.isBlank()) {
-            builder.userId(userId);
-        }
-        return builder.build();
+        return YunxiRuntimeContextBuilder.build(securityContext.getCurrentUserId(), null, false, null, null, null);
     }
 }

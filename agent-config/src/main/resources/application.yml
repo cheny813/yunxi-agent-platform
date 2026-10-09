@@ -21,6 +21,6 @@ spring:
       fail-on-unknown-properties: false
   # 关闭框架 AG-UI 内置的 Agent bean 自动扫描（AguiAgentRegistryAutoConfiguration）。
   # yunxi 以 AgentService 为 agent 权威目录，由 agent-ingress 的 YunxiAguiAgentRegistryConfig
-  # 单一注册进 AguiAgentRegistry；禁用框架扫描避免与 AgentService 产生第二套注册路径（双份真相）。
+  # 单一注册进 AguiAgentRegistry；禁用框架扫描避免与 AgentService 产生第二套注册路径（重复的真相源）。
   autoconfigure:
     exclude: io.agentscope.spring.boot.agui.common.AguiAgentRegistryAutoConfiguration

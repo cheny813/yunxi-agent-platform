@@ -8,7 +8,7 @@ import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.spi.ExecutionInterceptor;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.config.MemoryConfig;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.chat.ChatEntity;
 
 /**
  * 文件检索启用条件拦截器（order=300）。
@@ -59,7 +59,7 @@ public class RagRetrievalInterceptor implements ExecutionInterceptor {
      */
     private boolean ragApplicable(ExecutionContext ctx) {
         MemoryConfig memoryConfig = ctx.getRequest().getMemoryConfig();
-        ConversationEntity conversation = ctx.getConversation();
+        ChatEntity conversation = ctx.getConversation();
         return conversation != null && memoryConfig != null && !memoryConfig.isNone()
                 && ctx.getRequest().isIncludeHistory();
     }

@@ -2,6 +2,8 @@ package io.yunxi.platform.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.yunxi.platform.security.PermissionConfig;
+
 import io.agentscope.core.permission.PermissionBehavior;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;

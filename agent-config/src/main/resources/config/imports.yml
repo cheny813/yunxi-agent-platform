@@ -34,7 +34,6 @@ spring:
       classpath:config/resilience.yml,
       classpath:config/rate-limit.yml,
       classpath:config/file-upload.yml,
-      classpath:config/a2a-pipeline.yml,
       classpath:config/agentscope.yml,
       classpath:config/muse.yml,
       classpath:config/intent.yml,

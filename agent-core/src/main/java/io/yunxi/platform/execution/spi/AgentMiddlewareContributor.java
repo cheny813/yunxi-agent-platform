@@ -4,7 +4,7 @@ import java.util.List;
 
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.yunxi.platform.shared.config.AgentDefinition;
-import io.yunxi.platform.shared.mapper.ConversationMapper;
+import io.yunxi.platform.chat.ChatMapper;
 
 /**
  * 执行引擎横切中间件贡献者 SPI（驻留 agent-core）。
@@ -22,8 +22,8 @@ public interface AgentMiddlewareContributor {
      * 贡献该 Agent 运行时所需的中间件。
      *
      * @param def                  Agent 定义（含 agent 名称）
-     * @param conversationMapper   会话 Mapper；为 null 时贡献者不应产出审计等依赖落库的中间件
+     * @param chatMapper   会话 Mapper；为 null 时贡献者不应产出审计等依赖落库的中间件
      * @return 中间件列表（顺序由各中间件自身 {@code order()} 决定，调用方按序挂接即可）
      */
-    List<MiddlewareBase> contribute(AgentDefinition def, ConversationMapper conversationMapper);
+    List<MiddlewareBase> contribute(AgentDefinition def, ChatMapper chatMapper);
 }

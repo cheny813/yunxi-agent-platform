@@ -6,7 +6,7 @@ import java.util.Map;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
-import io.yunxi.platform.agent.profile.ConceptRegistry;
+import io.yunxi.platform.agent.routing.ConceptRegistry;
 import io.yunxi.platform.intent.Entity;
 import io.yunxi.platform.intent.Intent;
 import io.yunxi.platform.intent.config.IntentProperties;

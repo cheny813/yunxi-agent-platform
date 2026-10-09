@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import io.agentscope.core.agent.Agent;
-import io.yunxi.platform.agent.profile.ProfileRouter;
+import io.yunxi.platform.agent.routing.ProfileRouter;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.intent.Intent;
 import io.yunxi.platform.intent.IntentResult;

@@ -1,68 +1,6 @@
 package io.yunxi.platform.agent;
 
-import io.agentscope.core.agent.Agent;
-import io.agentscope.core.agent.RuntimeContext;
-import io.agentscope.core.model.ExecutionConfig;
-import io.agentscope.core.model.Model;
-import io.agentscope.core.shutdown.GracefulShutdownManager;
-import io.agentscope.core.shutdown.GracefulShutdownMiddleware;
-import io.agentscope.core.tool.Toolkit;
-import io.agentscope.core.tool.mcp.McpClientBuilder;
-import io.agentscope.core.tool.mcp.McpClientWrapper;
-import io.agentscope.extensions.higress.HigressMcpClientBuilder;
-import io.agentscope.core.tool.subagent.SubAgentConfig;
-import io.agentscope.core.state.AgentState;
-import io.agentscope.core.state.AgentStateStore;
-import io.agentscope.harness.agent.HarnessAgent;
-import io.agentscope.harness.agent.DistributedStore;
-import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
-import io.agentscope.harness.agent.middleware.PlanModeMiddleware;
-import io.agentscope.harness.agent.workspace.WorkspaceManager;
-import io.agentscope.harness.agent.workspace.plan.PlanModeManager;
-import io.agentscope.core.permission.PermissionContextState;
-import io.agentscope.core.permission.PermissionMode;
-import io.yunxi.platform.agent.capability.AgentCapabilityRegistry;
-import io.yunxi.platform.execution.spi.AgentMiddlewareContributor;
-import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
-import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
-import io.yunxi.platform.agent.middleware.FileContextInjectionMiddleware;
-import io.yunxi.platform.agent.middleware.HistoryInjectionMiddleware;
-import io.yunxi.platform.agent.middleware.UserProfileEvolverMiddleware;
-import io.yunxi.platform.agent.middleware.UserProfileMiddleware;
-import io.yunxi.platform.file.FileUploadService;
-import io.yunxi.platform.shared.mapper.ConversationMapper;
-import io.yunxi.platform.agent.model.ModelFactory;
-import io.yunxi.platform.agent.spi.MuseToolRegistrar;
-import io.yunxi.platform.agent.service.AgentService;
-import io.yunxi.platform.config.PermissionConfig;
-import io.yunxi.platform.intent.IntentTool;
-import io.yunxi.platform.security.hitl.HumanToolRegistrar;
-import io.yunxi.platform.agent.ToolkitContributor;
-import io.yunxi.platform.shared.config.AgentDefinition;
-import io.yunxi.platform.shared.config.AgentDefinitionLoader;
-import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
-import io.yunxi.platform.shared.config.ProfileDefinition;
-import io.yunxi.platform.shared.config.ExpertConfig;
-import io.yunxi.platform.shared.config.ExtensionConfig;
-import io.yunxi.platform.shared.config.OrchestrationConfig;
-import io.yunxi.platform.shared.config.ToolsGroupConfig;
-import io.yunxi.platform.shared.config.HITLConfig;
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-
-import io.yunxi.platform.agent.mcp.McpConfigStore;
-import io.yunxi.platform.profile.ProfileEvolutionThrottle;
-import io.yunxi.platform.profile.RedisUserProfileStore;
-import io.yunxi.platform.spi.UserProfileEvolver;
-
-import io.agentscope.core.tracing.OtelTracingMiddleware;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.context.SmartLifecycle;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
+import java.net.InetAddress;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -73,8 +11,66 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.net.InetAddress;
-import java.util.function.Predicate;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.SmartLifecycle;
+import org.springframework.stereotype.Component;
+
+import io.agentscope.core.agent.Agent;
+import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.model.Model;
+import io.agentscope.core.permission.PermissionContextState;
+import io.agentscope.core.permission.PermissionMode;
+import io.agentscope.core.shutdown.GracefulShutdownManager;
+import io.agentscope.core.shutdown.GracefulShutdownMiddleware;
+import io.agentscope.core.skill.repository.AgentSkillRepository;
+import io.agentscope.core.state.AgentState;
+import io.agentscope.core.state.AgentStateStore;
+import io.agentscope.core.tool.Toolkit;
+import io.agentscope.core.tool.mcp.McpClientBuilder;
+import io.agentscope.core.tool.mcp.McpClientWrapper;
+import io.agentscope.core.tool.subagent.SubAgentConfig;
+import io.agentscope.core.tracing.OtelTracingMiddleware;
+import io.agentscope.extensions.higress.HigressMcpClientBuilder;
+import io.agentscope.harness.agent.DistributedStore;
+import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.yunxi.platform.agent.capability.AgentCapabilityRegistry;
+import io.yunxi.platform.agent.mcp.McpConfigStore;
+import io.yunxi.platform.agent.mcp.ReconnectingMcpClientWrapper;
+import io.yunxi.platform.agent.middleware.ContentFilterMiddleware;
+import io.yunxi.platform.agent.middleware.FileContextInjectionMiddleware;
+import io.yunxi.platform.agent.middleware.HistoryInjectionMiddleware;
+import io.yunxi.platform.agent.middleware.SessionToolGroupActivationMiddleware;
+import io.yunxi.platform.agent.middleware.UserProfileEvolverMiddleware;
+import io.yunxi.platform.agent.middleware.UserProfileMiddleware;
+import io.yunxi.platform.agent.model.ModelFactory;
+import io.yunxi.platform.agent.runtime.YunxiRuntimeContextBuilder;
+import io.yunxi.platform.agent.service.AgentService;
+import io.yunxi.platform.agent.spi.MuseToolRegistrar;
+import io.yunxi.platform.chat.ChatMapper;
+import io.yunxi.platform.execution.spi.AgentMiddlewareContributor;
+import io.yunxi.platform.file.FileUploadService;
+import io.yunxi.platform.intent.IntentTool;
+import io.yunxi.platform.profile.ProfileEvolutionThrottle;
+import io.yunxi.platform.profile.RedisUserProfileStore;
+import io.yunxi.platform.security.PermissionConfig;
+import io.yunxi.platform.security.hitl.HumanToolRegistrar;
+import io.yunxi.platform.shared.config.AgentDefinition;
+import io.yunxi.platform.shared.config.AgentDefinitionLoader;
+import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
+import io.yunxi.platform.shared.config.ExpertConfig;
+import io.yunxi.platform.shared.config.ExtensionConfig;
+import io.yunxi.platform.shared.config.HITLConfig;
+import io.yunxi.platform.shared.config.OrchestrationConfig;
+import io.yunxi.platform.shared.config.ProfileDefinition;
+import io.yunxi.platform.shared.config.ToolsGroupConfig;
+import io.yunxi.platform.spi.UserProfileEvolver;
 
 /**
  * Agent 配置器，负责根据 YAML 定义创建并注册 Agent。
@@ -159,7 +155,7 @@ public class AgentConfigurer implements SmartLifecycle {
     private final ObjectProvider<FileUploadService> fileUploadServiceProvider;
 
     /** 审计落库 Mapper（可选），供对话审计中间件使用 */
-    private final ObjectProvider<ConversationMapper> conversationMapperProvider;
+    private final ObjectProvider<ChatMapper> chatMapperProvider;
 
     /** Agent 分布式后端（可选），提供 AgentStateStore + BaseStore + SandboxSnapshot 一站式配置 */
     private DistributedStore distributedBackend;
@@ -211,7 +207,7 @@ public class AgentConfigurer implements SmartLifecycle {
             ObjectProvider<MuseToolRegistrar> museToolRegistrarProvider,
             ObjectProvider<IntentTool> intentToolProvider,
             ObjectProvider<FileUploadService> fileUploadServiceProvider,
-            ObjectProvider<ConversationMapper> conversationMapperProvider,
+            ObjectProvider<ChatMapper> chatMapperProvider,
             McpConfigStore mcpConfigStore,
             AgentCapabilityRegistry capabilityRegistry,
             ObjectProvider<RedisUserProfileStore> userProfileStoreProvider,
@@ -227,7 +223,7 @@ public class AgentConfigurer implements SmartLifecycle {
         this.permissionConfig = permissionConfig;
         this.otelTracingMiddlewareProvider = otelTracingMiddlewareProvider;
         this.fileUploadServiceProvider = fileUploadServiceProvider;
-        this.conversationMapperProvider = conversationMapperProvider;
+        this.chatMapperProvider = chatMapperProvider;
         this.museToolRegistrarProvider = museToolRegistrarProvider;
         this.intentToolProvider = intentToolProvider;
         this.mcpConfigStore = mcpConfigStore;
@@ -1061,6 +1057,11 @@ public class AgentConfigurer implements SmartLifecycle {
         // 必须：内容安全过滤（提示注入检测）
         builder.middleware(new ContentFilterMiddleware());
 
+        // 会话级工具组激活 + 权限模板回写（协议无关）：挂在共享 Agent 的 Middleware 链上，
+        // 经 onAgent 钩子每次调用前统一触发，覆盖 web/A2A / AG-UI / Chat Completions / aistio 全协议，
+        // 取代原本散落在三个执行策略里的逐协议调用。
+        builder.middleware(new SessionToolGroupActivationMiddleware());
+
         // 请求级输入处理：历史裁剪 + 文件上下文前置（参数按调用维度经 RuntimeContext 传入）
         builder.middleware(new HistoryInjectionMiddleware());
         FileUploadService fileUploadService = fileUploadServiceProvider.getIfAvailable();
@@ -1070,15 +1071,15 @@ public class AgentConfigurer implements SmartLifecycle {
 
         // 执行引擎横切中间件（指标 / 阶段 / 审计）由 AgentMiddlewareContributor SPI 贡献，
         // 经本循环挂到每个 Agent；agent-core 不直接依赖 agent-execution 的具体实现，从根上断开循环依赖。
-        ConversationMapper conversationMapper = conversationMapperProvider.getIfAvailable();
+        ChatMapper chatMapper = chatMapperProvider.getIfAvailable();
         for (AgentMiddlewareContributor contributor : middlewareContributors) {
-            for (io.agentscope.core.middleware.MiddlewareBase mw : contributor.contribute(def, conversationMapper)) {
+            for (io.agentscope.core.middleware.MiddlewareBase mw : contributor.contribute(def, chatMapper)) {
                 builder.middleware(mw);
             }
         }
 
         // 用户画像（读侧注入 / 写侧演进）：仅在有会话落库能力时装配
-        if (conversationMapper != null) {
+        if (chatMapper != null) {
             userProfileStoreProvider.ifAvailable(store -> builder.middleware(new UserProfileMiddleware(store)));
         }
 
@@ -1395,7 +1396,7 @@ public class AgentConfigurer implements SmartLifecycle {
                 log.warn("未找到 Agent '{}' 的构建期工具组快照，跳过会话级激活", agent.getName());
                 return;
             }
-            RuntimeContext rc = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
+            RuntimeContext rc = YunxiRuntimeContextBuilder.build(userId, sessionId);
             AgentState state = agent.getDelegate().getAgentState(rc);
             state.getToolContext().setActivatedGroups(groups);
             // 权限上下文写回：与工具组同理——权限上下文只在新建会话时取自构建期模板，

@@ -18,9 +18,9 @@
         <!-- 默认跳过集成测试，避免每次 mvn test 都真实调用 LLM。
              需运行时加 -Pintegration 激活。 -->
         <skip.integration.tests>true</skip.integration.tests>
-        <!-- 默认编译排除引用 agent-aistio 的集成测试类（aistio 默认不在 reactor 内）。
-             加 -Paistio 时置为不匹配模式，使其随 aistio 模块一并编译 / 运行。 -->
-        <aistio.test.excludes>**/aistio/**</aistio.test.excludes>
+        <!-- aistio 已随默认 reactor 一并构建，默认不排除任何引用 agent-aistio 的集成测试类；
+             置为非匹配模式，确保相关测试始终参与编译 / 运行。 -->
+        <aistio.test.excludes>**/DOES_NOT_EXIST_AISTIO/**</aistio.test.excludes>
     </properties>
 
     <dependencies>
@@ -53,10 +53,35 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- aistio 管控面对接集成测试依赖（随默认 reactor 一并编译） -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-aistio</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- 架构纪律门禁：需扫描执行引擎与入口层，确认它们仅经 AgentInvoker 触达框架 Agent -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-execution</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>agent-ingress</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- 测试依赖 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 架构纪律门禁：把「横切关切 → 唯一权威」映射做成机器可校验事实 -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>1.4.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -71,8 +96,7 @@
                     <skip>true</skip>
                 </configuration>
             </plugin>
-            <!-- 默认排除引用 agent-aistio 的集成测试类编译（aistio 不在默认 reactor 内）；
-                 加 -Paistio 时由 profile 将该排除模式置为不匹配，使测试随模块一并编译。 -->
+            <!-- 默认不排除引用 agent-aistio 的集成测试类（aistio 已随默认 reactor 一并构建）。 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -92,13 +116,34 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <skip>${skip.integration.tests}</skip>
-                    <includes>
-                        <include>**/*Test.java</include>
-                        <include>**/*IT.java</include>
-                    </includes>
-                </configuration>
+                <executions>
+                    <!-- 架构纪律门禁：随默认 reactor 始终运行，不受 skip.integration.tests 影响 -->
+                    <execution>
+                        <id>default-test</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <skip>false</skip>
+                            <includes>
+                                <include>**/ArchitectureAuthorityTest.java</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                    <!-- 真实集成测试：默认跳过，需 -Pintegration 激活（依赖本地 Redis / MySQL / LLM） -->
+                    <execution>
+                        <id>integration-tests</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skip.integration.tests}</skip>
+                            <excludes>
+                                <exclude>**/ArchitectureAuthorityTest.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
@@ -110,22 +155,6 @@
             <properties>
                 <skip.integration.tests>false</skip.integration.tests>
             </properties>
-        </profile>
-        <!-- aistio 管控面对接为可选尝鲜能力：默认不引入 agent-aistio，
-             故引用其类的集成测试也一并从默认编译中排除；加 -Paistio 时放开。 -->
-        <profile>
-            <id>aistio</id>
-            <properties>
-                <aistio.test.excludes>**/DOES_NOT_EXIST_AISTIO/**</aistio.test.excludes>
-            </properties>
-            <dependencies>
-                <dependency>
-                    <groupId>io.yunxi</groupId>
-                    <artifactId>agent-aistio</artifactId>
-                    <!-- 引用 agent-aistio 的独立尝鲜版本号，与平台 ${revision} 解耦 -->
-                    <version>${aistio.revision}</version>
-                </dependency>
-            </dependencies>
         </profile>
     </profiles>
 </project>

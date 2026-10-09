@@ -17,7 +17,7 @@ import io.yunxi.platform.execution.ExecutionRequest;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties.InterceptorProperties;
 import io.yunxi.platform.shared.config.MemoryConfig;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.chat.ChatEntity;
 
 /**
  * RagRetrievalInterceptor（order=300）：检索启用条件测试。
@@ -34,7 +34,7 @@ class RagRetrievalInterceptorTest {
     @Mock
     private InterceptorProperties interceptorProperties;
     @Mock
-    private ConversationEntity conversation;
+    private ChatEntity conversation;
 
     private RagRetrievalInterceptor interceptor;
     private ExecutionContext ctx;

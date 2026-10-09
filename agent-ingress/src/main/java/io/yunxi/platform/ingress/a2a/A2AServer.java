@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.message.Msg;
-import io.yunxi.platform.a2a.A2AClient;
-import io.yunxi.platform.a2a.A2ARegistry;
+import io.yunxi.platform.integration.a2a.A2AClient;
+import io.yunxi.platform.integration.a2a.A2ARegistry;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.execution.spi.ExecutionEngine;
 import io.yunxi.platform.ingress.a2a.dto.DeregisterRequest;

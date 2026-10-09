@@ -24,12 +24,20 @@ param(
     [switch]$Web
 )
 
-# 设置控制台输出编码为 UTF-8，解决 Maven/javac 中文警告乱码
+# 统一控制台与 JVM 输出编码为 UTF-8，消除 Maven/javac/jdeps 等中文日志乱码。
+# ① 把控制台活动代码页切到 65001（UTF-8）：仅设 [Console]::OutputEncoding 只影响
+#   PowerShell 管道解码，不改变控制台 codepage；外部进程直接写控制台时仍按 GBK 渲染，
+#   故必须 chcp 65001，否则 UTF-8 字节被当 GBK 显示成乱码。
+try { chcp 65001 | Out-Null } catch { }
+# ② PowerShell 读取外部进程输出按 UTF-8 解码。
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Maven 调起的 javac 默认用系统编码（中文 Windows 为 GBK）输出编译警告，
-# 与上方 UTF-8 控制台渲染不一致会中文乱码；让 Maven/JVM 也输出 UTF-8 以对齐。
-$env:MAVEN_OPTS = "-Dfile.encoding=UTF-8"
+# ③ Maven 主 JVM 与 fork 出的子 JVM（compiler / jdeps 等插件进程）一律输出 UTF-8。
+#    MAVEN_OPTS 仅作用于 Maven 主 JVM，fork 的子 JVM 不继承；JAVA_TOOL_OPTIONS 所有
+#    JVM 都会读取，可覆盖 jdeps 这类独立子进程（否则默认 GBK，与控制台 UTF-8 不一致）。
+$utf8Args = "-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8"
+$env:MAVEN_OPTS = $utf8Args
+$env:JAVA_TOOL_OPTIONS = $utf8Args
 
 # ===== 辅助函数 =====
 
@@ -186,7 +194,7 @@ $MYSQL_PASSWORD = "root"
 #   -DDASHSCOPE_MODEL    → agentscope.yml 的 core.model-name，真正生效的对话模型（ModelFactory.java:230-233）
 #   -DINTENT_MODEL       → intent.yml 的分类模型（每轮都跑，建议用快模型）
 #   -DINTENT_TIMEOUT_MS  → intent.yml 的分类超时，超时即降级 unknown
-$DASHSCOPE_API_KEY = "sk-f0bd6466c7774fa3b053f9013da82cd5"
+$DASHSCOPE_API_KEY = "sk-245484c6f853aaa"
 $LLM_MODEL         = "qwen3.8-27b"
 # 意图分类单独用变量：分类每轮都跑一次，建议用快模型（如 qwen-turbo / qwen-plus）省时延和成本。
 # 由 qwen3.7-flash-2026-07-15 改为 qwen-turbo：前者单次响应常超 2000ms 分类超时，
@@ -414,8 +422,24 @@ switch ($mode) {
         foreach ($dir in $targetDirs) {
             $target = Join-Path $scriptDir "$dir\target"
             if (Test-Path $target) {
-                Remove-Item -Recurse -Force $target
-                Write-Host "  Deleted: $dir\target"
+                $removed = $false
+                try {
+                    # 主路径：PowerShell 原生删除
+                    Remove-Item -Recurse -Force $target -ErrorAction Stop
+                    $removed = -not (Test-Path $target)
+                }
+                catch {
+                    # PowerShell 5.1 已知缺陷：Remove-Item -Recurse 在含非空子目录树时会报
+                    # "directory is not empty" 且删除不彻底。回退到 cmd rmdir 可靠清空整棵目录树。
+                    cmd /c ("rmdir /s /q ""{0}""" -f $target) 2>$null
+                    $removed = -not (Test-Path $target)
+                }
+                if ($removed) {
+                    Write-Host "  Deleted: $dir\target"
+                }
+                else {
+                    Write-Warning ("未能删除 {0}\target，请确认是否有进程占用该目录" -f $dir)
+                }
             }
         }
 

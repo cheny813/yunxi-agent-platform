@@ -19,7 +19,7 @@ import io.yunxi.platform.intent.Entity;
 import io.yunxi.platform.intent.Intent;
 import io.yunxi.platform.intent.config.IntentProperties;
 import io.yunxi.platform.intent.domain.DomainRuntime;
-import io.yunxi.platform.tracing.LlmMetrics;
+import io.yunxi.platform.trace.LlmMetrics;
 
 /**
  * 混合意图分类器（编排 {rule, llm, hybrid} 三种通道）。

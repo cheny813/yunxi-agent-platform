@@ -1,5 +1,6 @@
 package io.yunxi.platform.shared.mapper;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 /**
@@ -12,6 +13,7 @@ import org.apache.ibatis.annotations.Param;
  *
  * @author yunxi-agent-platform
  */
+@Mapper
 public interface MemoryDdlMapper {
 
     /**

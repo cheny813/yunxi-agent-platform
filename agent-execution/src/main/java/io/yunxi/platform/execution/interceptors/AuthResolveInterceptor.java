@@ -2,7 +2,7 @@ package io.yunxi.platform.execution.interceptors;
 
 import org.springframework.stereotype.Component;
 
-import io.yunxi.platform.agent.profile.ProfileRouter;
+import io.yunxi.platform.agent.routing.ProfileRouter;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.spi.ExecutionInterceptor;
 import io.yunxi.platform.security.auth.SecurityContext;

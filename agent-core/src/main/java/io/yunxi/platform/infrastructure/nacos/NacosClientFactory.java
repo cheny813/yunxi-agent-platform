@@ -13,7 +13,7 @@ import java.util.Properties;
  * Nacos 客户端统一工厂（全仓 Nacos SDK 访问单一收敛点）。
  * <p>全仓唯一允许直接调用 com.alibaba.nacos.api.NacosFactory 的位置。MCP 动态注册协调底座、
  * AI Registry、A2A 注册发现三处均经本工厂获取 ConfigService / NamingService，
- * 消除三处散落的 Nacos SDK 直连与 Properties 构造逻辑（即双份真相）。</p>
+ * 消除三处散落的 Nacos SDK 直连与 Properties 构造逻辑（即重复的真相源）。</p>
  * <p>接入 Nacos 的凭据（serverAddr / namespace / username / password）在此集中读取，
  * 调用方只需提供已归一化的 NacosConnection。</p>
  */

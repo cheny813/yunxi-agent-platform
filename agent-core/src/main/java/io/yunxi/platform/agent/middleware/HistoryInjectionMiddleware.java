@@ -13,7 +13,7 @@ import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.middleware.MiddlewareBase;
-import io.yunxi.platform.execution.context.CallContextKeys;
+import io.yunxi.platform.agent.middleware.CallContextKeys;
 import reactor.core.publisher.Flux;
 
 /**

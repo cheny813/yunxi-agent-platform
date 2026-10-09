@@ -118,15 +118,15 @@ docker compose ps
 > ```powershell
 > docker compose --profile aistio up -d
 > ```
-> aistio 由 `agentscope-service` 仓库源码本地构建（无公开镜像），**启动前须先在 `AISTIO_SRC` 指向的源码目录完成构建**（详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio) 与 [配置指南](./06-configuration.md#aistio)）。该 profile 包含 5 个额外容器，见下表：
+> aistio 以 AgentScope-Java 官方 Docker 镜像提供（仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，平面 `as-controlplane` / `as-dataplane` / `as-gateway` / `as-scheduler`）。如需启用，先 `.\scripts\setup-aistio.ps1` 拉取镜像并拉起控制面（详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio) 与 [配置指南](./06-configuration.md#aistio)）。该 profile 包含 5 个额外容器，见下表：
 
 | 容器名 | 镜像/构建 | 端口 | 说明 |
 |--------|----------|------|------|
-| yunxi-aistio-db | postgres:17（构建） | 5432 | aistio 元数据库（builder/builder） |
-| yunxi-aistio-control | aistiod（Go，构建） | 8081（内部） | 控制面 |
-| yunxi-aistio-data | service-dataplane（Java，构建） | 8082（内部） | 数据面 |
-| yunxi-aistio-scheduler | service-scheduler（Java，构建） | 8083（内部） | 调度面 |
-| yunxi-aistio-gateway | service-gateway（Java，构建） | 18080（对外） | 网关（对外发布到主机 18080，避开 Nacos 控制台 8080） |
+| yunxi-aistio-db | postgres:17（官方镜像） | 5432 | aistio 元数据库（builder/builder） |
+| yunxi-aistio-control | as-controlplane（官方镜像） | 8081（内部） | 控制面 |
+| yunxi-aistio-data | as-dataplane（官方镜像） | 8082（内部） | 数据面 |
+| yunxi-aistio-scheduler | as-scheduler（官方镜像） | 8083（内部） | 调度面 |
+| yunxi-aistio-gateway | as-gateway（官方镜像） | 18080（对外） | 网关（对外发布到主机 18080，避开 Nacos 控制台 8080） |
 
 首次启动约 30-60 秒。Ollama 向量嵌入需在宿主机单独安装：
 
@@ -243,7 +243,7 @@ export OLLAMA_EMBEDDING_MODEL=bge-m3
 
 ### 2. 初始化数据库
 
-数据库表结构由 Spring Boot / agentscope-harness 框架自动管理（JPA/Hibernate DDL Auto），无需手动执行 SQL 脚本。
+yunxi 以 MyBatis 作为持久层框架（并非 JPA/Hibernate），数据库表结构不依赖 JPA/Hibernate 的 DDL Auto 自动创建；首次运行请按 [06. 配置](./06-configuration.md) 中的数据库初始化说明建表。
 
 ---
 

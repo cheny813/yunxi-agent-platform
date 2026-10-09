@@ -15,20 +15,20 @@ import org.springframework.web.server.ResponseStatusException;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
-import io.yunxi.platform.contract.dto.ContextSnapshot;
-import io.yunxi.platform.contract.dto.MessagePage;
-import io.yunxi.platform.contract.dto.SessionSnapshot;
-import io.yunxi.platform.contract.dto.SessionState;
-import io.yunxi.platform.registry.ActiveSessionRegistry;
-import io.yunxi.platform.registry.ActiveSessionRegistry.SessionMeta;
-import io.yunxi.platform.conversation.ConversationDomainService;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.integration.contract.dto.ContextSnapshot;
+import io.yunxi.platform.integration.contract.dto.MessagePage;
+import io.yunxi.platform.integration.contract.dto.SessionSnapshot;
+import io.yunxi.platform.integration.contract.dto.SessionState;
+import io.yunxi.platform.session.registry.ActiveSessionRegistry;
+import io.yunxi.platform.session.registry.ActiveSessionRegistry.SessionMeta;
+import io.yunxi.platform.chat.ChatDomainService;
+import io.yunxi.platform.chat.ChatEntity;
 import lombok.RequiredArgsConstructor;
 
 /**
  * 会话清单 / 状态 / 上下文 / 历史消息的读取服务。
  *
- * <p>数据源：{@link ActiveSessionRegistry}（会话清单）+ {@link ConversationDomainService}
+ * <p>数据源：{@link ActiveSessionRegistry}（会话清单）+ {@link ChatDomainService}
  * （会话实体、消息）。其中状态推导基于会话最后活跃时间与末条消息角色，区别于 AgentScope-Java PhaseTracker
  * 的「按 agentName 取最近一次执行」语义。</p>
  */
@@ -39,7 +39,7 @@ public class SessionInventoryService {
     private static final Logger log = LoggerFactory.getLogger(SessionInventoryService.class);
 
     private final ActiveSessionRegistry registry;
-    private final ConversationDomainService conversationDomainService;
+    private final ChatDomainService chatDomainService;
     private final AistioIntegrationProperties properties;
     private final HarnessAgentResolver agentResolver;
     private final ContextSnapshotCompactor contextCompactor;
@@ -58,7 +58,7 @@ public class SessionInventoryService {
             s.setUserId(meta.userId());
             s.setCreatedAt(toIso(meta.createdAt()));
             try {
-                ConversationEntity entity = conversationDomainService.getConversation(meta.sessionId());
+                ChatEntity entity = chatDomainService.getConversation(meta.sessionId());
                 s.setUpdatedAt(toIso(entity.getLastUpdatedAt()));
                 s.setStatus(deriveStatus(entity));
             } catch (Exception e) {
@@ -78,7 +78,7 @@ public class SessionInventoryService {
      */
     public SessionState getState(String id) {
         SessionMeta meta = registry.get(id);
-        ConversationEntity entity = conversationDomainService.getConversation(id);
+        ChatEntity entity = chatDomainService.getConversation(id);
         // 会话既不在活跃索引、也无会话实体时视为不存在
         if (meta == null && entity == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "session not found: " + id);
@@ -116,7 +116,7 @@ public class SessionInventoryService {
      * @return 上下文快照
      */
     public ContextSnapshot getContext(String id) {
-        List<Object> messages = conversationDomainService.getConversationMessages(id);
+        List<Object> messages = chatDomainService.getConversationMessages(id);
 
         String agentName = null;
         SessionMeta meta = registry.get(id);
@@ -153,7 +153,7 @@ public class SessionInventoryService {
      * @return 消息分页
      */
     public MessagePage getMessages(String id, int offset, int limit) {
-        List<Object> all = conversationDomainService.getConversationMessages(id);
+        List<Object> all = chatDomainService.getConversationMessages(id);
         int total = all.size();
         int from = Math.max(0, offset);
         int to = Math.min(total, from + (limit <= 0 ? total : limit));
@@ -171,7 +171,7 @@ public class SessionInventoryService {
      * @param entity 会话实体
      * @return runnable / running / idle
      */
-    private String deriveStatus(ConversationEntity entity) {
+    private String deriveStatus(ChatEntity entity) {
         List<Msg> messages = entity.getMessages();
         if (messages == null || messages.isEmpty()) {
             return "idle";

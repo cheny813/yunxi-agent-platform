@@ -5,6 +5,7 @@ import io.milvus.v2.client.MilvusClientV2;
 import io.yunxi.platform.AgentPlatformApplication;
 import io.yunxi.platform.agent.model.ModelFactory;
 import io.yunxi.platform.agent.service.AgentService;
+import io.yunxi.platform.execution.spi.ExecutionEngine;
 import org.apache.ibatis.mapping.Environment;
 
 import java.util.function.Supplier;
@@ -139,6 +140,18 @@ class AgentConfigurerSmokeTest {
         @Primary
         Supplier<MilvusClientV2> milvusClientSupplier() {
             return () -> null;
+        }
+
+        /**
+         * mock ExecutionEngine：具体实现 AgentExecutionEngine 位于独立模块 agent-execution，
+         * 该模块不在 agent-core 编译期/测试 classpath（避免循环依赖）。smoke 场景不调用引擎
+         * 执行逻辑（仅验证 AgentConfigurer 生命周期与 Agent 注册），用 mock 满足 ChatAppService
+         * 的构造注入即可；smoke 配置已排除真实执行链路。
+         */
+        @Bean
+        @Primary
+        ExecutionEngine mockExecutionEngine() {
+            return mock(ExecutionEngine.class);
         }
     }
 

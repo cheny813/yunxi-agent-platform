@@ -1,5 +1,6 @@
 package io.yunxi.platform.shared.mapper;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Map;
  *
  * @author yunxi-agent-platform
  */
+@Mapper
 public interface MemoryMapper {
 
     /**

@@ -145,7 +145,7 @@ spring:
 spring:
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       lettuce:
@@ -716,14 +716,14 @@ logging:
 ```yaml
 spring:
   profiles:
-    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,resilience,file-upload,a2a-pipeline
+    active: datasource,redis,llm,milvus,embedding,persistence,mcp-core,mcp-external,resilience,file-upload
 
 logging:
   level:
     io.yunxi.platform: warn
 ```
 
-> **说明**：所有 `config/*.yml` 由 `config/imports.yml` 全量加载（`optional`），`spring.profiles.active` 只控制 `@Profile` 注解 Bean 的启用。真实可激活的 profile 名见 `agent-config/src/main/resources/application.yml`（datasource/redis/llm/milvus/embedding/persistence/mcp-core/mcp-external/mcp-business/skill/resilience/file-upload/a2a-pipeline 等）。
+> **说明**：所有 `config/*.yml` 由 `config/imports.yml` 全量加载（其中 `aistio-workflow-export.yml` 标记为 `optional`，缺失仅告警不报错；其余片段为必需），`spring.profiles.active` 只控制 `@Profile` 注解 Bean 的启用。当前代码中仅 `muse-docker` 一个 `@Profile` 开关（`agent-muse` 沙箱实现切换），其余列出的 profile 名仅作配置分组说明，并无对应 `@Profile` Bean。
 
 ---
 
@@ -1088,7 +1088,7 @@ yunxi 通过应用内 `io.yunxi.platform.aistio` 适配层接入底层框架的 
 
 ### 术语对照（yunxi 模块名 ↔ 底层框架官方名）
 
-本章出现的 "aistio" 是 yunxi 对 AgentScope-Java 生态 **AgentScope Service** 管控面的集成模块命名，同时也是 AgentScope Service 后端（`agentscope-service` 仓库）自身的部署代号（Go 二进制 `aistiod`、平面 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`，容器间经 `BUILDER_DATA_URL=http://aistio-data:8082` 等硬编码主机名互联）。因此代码层沿用 `yunxi.aistio.*` 配置前缀与 `io.yunxi.platform.aistio` 适配包、docker 服务名沿用 `aistio-gateway` / `aistio-scheduler` / `aistio-data`，以与真实后端保持一致，不可改名。底层框架对外发布的官方产品名为 **AgentScope Service**（官方文档：<https://java.agentscope.io/v2/zh/service>，当前为预览版，且官方站点称 "AgentScope Service"、源码与容器称 "aistio"，二者同源）。为降低开源后的学习门槛，本章行文统一使用框架官方概念名，关键映射如下：
+本章出现的 "aistio" 是 yunxi 对 AgentScope-Java 生态 **AgentScope Service** 管控面的集成模块命名，同时也是 AgentScope Service 后端（`agentscope-service` 仓库）自身的部署代号（Go 二进制 `aistiod`、平面 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`，容器间经 `BUILDER_DATA_URL=http://aistio-data:8082` 等硬编码主机名互联）。因此代码层沿用 `yunxi.aistio.*` 配置前缀与 `io.yunxi.platform.aistio` 适配包、docker 服务名沿用 `aistio-gateway` / `aistio-scheduler` / `aistio-data`，以与真实后端保持一致，不可改名。底层框架对外发布的官方产品名为 **AgentScope Service**（官方文档：<https://java.agentscope.io/v2/zh/service>，当前为预览版，且官方站点称 "AgentScope Service"、源码与容器称 "aistio"，二者同源）。yunxi 的 docker-compose 中上述 service 的镜像坐标使用官方发布产物 `as-controlplane` / `as-dataplane` / `as-gateway` / `as-scheduler`（仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，为官方预编译镜像，**非** `agentscope-service` 源码构建），详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)。为降低开源后的学习门槛，本章行文统一使用框架官方概念名，关键映射如下：
 
 | yunxi 文档用语 | AgentScope Service 官方概念 |
 | --- | --- |
@@ -1105,9 +1105,9 @@ yunxi 通过应用内 `io.yunxi.platform.aistio` 适配层接入底层框架的 
 yunxi:
   aistio:
     enabled: false                                  # 总开关（默认 false，不连接管控面）
-    control-plane-url: http://localhost:18080        # aistio 网关地址（即 docker-compose 中 gateway 发布端口）
+    control-plane-url: http://localhost:8081        # aistio 控制面地址（REST/控制台，docker-compose 中 control 发布端口）
     internal-token: compose-local-internal-token-at-least-32chars   # 与 aistio 侧 BUILDER_INTERNAL_TOKEN 一致
-    base-url: http://localhost:40001/agentscope      # yunxi 自身对外的基座地址（管控面回调用，填本机 IP 或域名）
+    base-url: http://localhost:40001                 # yunxi 数据面对管控面可达的基座地址（裸 host:port，管控面自行拼接 /agentscope/*）
 ```
 
 ### 配置说明
@@ -1115,9 +1115,9 @@ yunxi:
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `yunxi.aistio.enabled` | `false` | 是否启用管控面接入；开启后平台向 aistio 注册 Agent、上报会话事件并接收干预指令 |
-| `yunxi.aistio.control-plane-url` | — | aistio 网关地址；docker-compose 默认发布到主机 `18080`，故填 `http://localhost:18080` |
+| `yunxi.aistio.control-plane-url` | — | aistio 控制面地址；docker-compose 默认发布到主机 `8081`，故填 `http://localhost:8081` |
 | `yunxi.aistio.internal-token` | — | 内部令牌，须与 aistio 各平面的 `BUILDER_INTERNAL_TOKEN` 环境变量完全一致（compose 本地默认 `compose-local-internal-token-at-least-32chars`） |
-| `yunxi.aistio.base-url` | `http://localhost:40001` | yunxi 数据面**对管控面可达**的基座地址，用于两处：① 管控面 prober 轮询 `base-url/agentscope/health` 探活；② 管控面回调本平台会话。注意此处是从**管控面容器视角**解析的地址，**绝不能填 `localhost`**——当管控面运行在 Docker 中、yunxi 运行在宿主机时，容器内的 `localhost` 指向容器自身而非宿主机，prober 连接被拒，Agent 全部显示 `unavailable`。正确填法：Windows/Mac Docker Desktop 用 `http://host.docker.internal:40001/agentscope`，或宿主机局域网 IP `http://<host-ip>:40001/agentscope`（如 `http://192.168.x.x:40001/agentscope`） |
+| `yunxi.aistio.base-url` | `http://localhost:40001` | yunxi 数据面**对管控面可达**的基座地址（裸 host:port，管控面自行拼接 `/agentscope/health` 等），用于两处：① 管控面 prober 轮询 `base-url/agentscope/health` 探活；② 管控面回调本平台会话。注意此处是从**管控面容器视角**解析的地址，**绝不能填 `localhost`**——当管控面运行在 Docker 中、yunxi 运行在宿主机时，容器内的 `localhost` 指向容器自身而非宿主机，prober 连接被拒，Agent 全部显示 `unavailable`。正确填法：Windows/Mac Docker Desktop 用 `http://host.docker.internal:40001`，或宿主机局域网 IP `http://<host-ip>:40001`（如 `http://192.168.x.x:40001`） |
 | `yunxi.aistio.agent-key` | `yunxi-agent-platform` | 本数据面在管控面目录中的稳定标识（Agent key）；同名 Agent 已存在时复用并新建 instance |
 | `yunxi.aistio.agent-name` | `yunxi-agent-platform` | 数据面展示名（displayName），仅用于控制台显示 |
 | `yunxi.aistio.tenant` | `default` | 上报至管控面的租户 |
@@ -1132,13 +1132,13 @@ yunxi:
 
 ### 接入步骤（docker-compose 方式）
 
-1. 在 `agentscope-service` 源码目录完成构建（见部署指南 aistio 小节）；
+1. 用 `scripts/setup-aistio.ps1` 拉取官方镜像并拉起管控面（详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)；生产环境该脚本会生成 `.env.aistio` 强随机密钥）；
 2. 启动管控面：`docker compose --profile aistio up -d`；
 3. 在 yunxi 的 `application.yml`（或环境变量）设置上表四项，将 `enabled` 置为 `true`；
 4. 重启 yunxi（`mvn spring-boot:run -pl agent-app`），观察启动日志确认 `aistio` 适配层连接成功；
 5. 浏览器访问 `http://localhost:18080` 打开管控面，验证 Agent 注册与会话干预。
 
-> 生产环境务必替换默认的 `internal-token` 与数据库弱口令（`builder/builder`），并避免将 `aistio-db` 的 `5432` 端口直接映射到公网。
+> 生产环境务必用 `scripts/setup-aistio.ps1` 生成 `.env.aistio`（CSPRNG 强随机密钥，文件权限受限且已被 `.gitignore` 忽略），不要沿用内置开发默认值（如 `BUILDER_INTERNAL_TOKEN=compose-local-internal-token-...`、`AISTIO_POSTGRES_PASSWORD=builder`），并避免将 `aistio-db` 的 `5432` 端口直接映射到公网。
 
 ### 编排图导出与自动推送（Workflow Artifact Exporter）
 

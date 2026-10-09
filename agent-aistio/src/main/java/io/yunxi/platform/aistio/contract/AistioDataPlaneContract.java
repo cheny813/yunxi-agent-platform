@@ -11,16 +11,16 @@ import io.yunxi.platform.aistio.service.GovernanceService;
 import io.yunxi.platform.aistio.service.SessionInventoryService;
 import io.yunxi.platform.aistio.service.SubagentTopologyService;
 import io.yunxi.platform.aistio.service.WorkspaceInventoryService;
-import io.yunxi.platform.contract.DataPlaneContract;
-import io.yunxi.platform.contract.dto.ContextSnapshot;
-import io.yunxi.platform.contract.dto.DataPlaneInfo;
-import io.yunxi.platform.contract.dto.HealthResponse;
-import io.yunxi.platform.contract.dto.MessagePage;
-import io.yunxi.platform.contract.dto.SessionSnapshot;
-import io.yunxi.platform.contract.dto.SessionState;
-import io.yunxi.platform.contract.dto.SubagentInfo;
-import io.yunxi.platform.contract.dto.TaskInfo;
-import io.yunxi.platform.contract.dto.WorkspaceInfo;
+import io.yunxi.platform.integration.contract.DataPlaneContract;
+import io.yunxi.platform.integration.contract.dto.ContextSnapshot;
+import io.yunxi.platform.integration.contract.dto.DataPlaneInfo;
+import io.yunxi.platform.integration.contract.dto.HealthResponse;
+import io.yunxi.platform.integration.contract.dto.MessagePage;
+import io.yunxi.platform.integration.contract.dto.SessionSnapshot;
+import io.yunxi.platform.integration.contract.dto.SessionState;
+import io.yunxi.platform.integration.contract.dto.SubagentInfo;
+import io.yunxi.platform.integration.contract.dto.TaskInfo;
+import io.yunxi.platform.integration.contract.dto.WorkspaceInfo;
 import lombok.RequiredArgsConstructor;
 
 /**

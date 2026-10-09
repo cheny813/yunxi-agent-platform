@@ -1,10 +1,10 @@
 # 13. 智能系统
 
-Intelligent 模块是 yunxi Agent Platform 的基础 LLM 调用服务，提供简化的模型调用接口，封装 AgentScope 框架的 Model API。
+Intelligent 能力包（位于 `agent-core` 模块内的 `io.yunxi.platform.agent.intelligent` 包）是 yunxi Agent Platform 的基础 LLM 调用服务，提供简化的模型调用接口，封装 AgentScope-Java 框架的 Model API。
 
-## 实际模块结构
+## 实际包结构
 
-> **注意**：当前 Intelligent 模块是一个**轻量级 LLM 调用封装层**，仅包含 3 个类，**不包含**自适应策略引擎、反思机制、监控降级、事件总线等高级功能（这些功能计划在未来版本中实现）。
+> **注意**：当前 Intelligent 是 `agent-core` 内的一个**轻量级 LLM 调用封装包**，仅包含 3 个类，**不包含**自适应策略引擎、反思机制、监控降级、事件总线等高级功能（这些功能计划在未来版本中实现）。
 
 | 类 | 包 | 职责 |
 |----|-----|------|

@@ -9,7 +9,7 @@
 - 本仓库只包含**用户交互入口**（页面 + 前端 SDK 透传层）。
 - AI 能力、systemPrompt、工具定义、API Key 全部在后端：
   - 页面配置：`GET /v1/agent/config?pageType=nutritionist`（`agent-core` 的 `OpenAIProxyController`）
-  - **主流程对话**：`POST /api/conversations/chat/stream`（`ConversationController`，经统一执行引擎，
+  - **主流程对话**：`POST /api/conversations/chat/stream`（`ChatController`，经统一执行引擎，
     含记忆、意图识别、评分与结构化输出），由公共层 `window.yunxiChat` 封装
   - 轻量问答：`POST /v1/chat/completions`（`OpenAIProxyController`，裸 LLM 透传，**无评分能力**），
     仅用于侧边栏即时问答与自动填表

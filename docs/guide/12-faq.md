@@ -32,7 +32,7 @@
 | `curl` | 测试 API | `curl http://localhost:40001/actuator/health` |
 | `netstat` | 查看端口 | `netstat -ano \| findstr 40001` |
 | `telnet` | 测试连接 | `telnet localhost 3306` |
-| `logs` | 查看日志 | `tail -f logs/app.log` |
+| `logs` | 查看日志 | `tail -f logs/yunxi-agent-platform.log` |
 
 ---
 

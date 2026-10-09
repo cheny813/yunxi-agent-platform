@@ -2,31 +2,33 @@ package io.yunxi.platform.execution;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentEventType;
-import io.agentscope.core.event.ToolCallStartEvent;
-import io.agentscope.core.agent.RuntimeContext;
-import io.agentscope.core.state.AgentState;
+import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.Msg;
+import io.yunxi.platform.chat.ChatEntity;
 import io.yunxi.platform.execution.spi.AgentEventAdapter;
 import io.yunxi.platform.execution.spi.ExecutionEngine;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.execution.strategy.StrategyContextSupport;
 import io.yunxi.platform.execution.strategy.StreamingStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.shared.util.SseMessageBuilder;
 import io.yunxi.platform.trace.ReasoningSpan;
 import io.yunxi.platform.trace.TraceCollector;
 import io.yunxi.platform.trace.TraceComposer;
-import io.yunxi.platform.trace.TraceStore;
 import io.yunxi.platform.trace.projection.ProjectionContext;
 import io.yunxi.platform.trace.projection.ProjectionRegistry;
 import io.yunxi.platform.trace.projection.TraceProjection;
@@ -68,19 +70,25 @@ public class AgentExecutionEngine implements ExecutionEngine {
     private final AgentscopeCoreProperties properties;
     private final TraceCollector traceCollector;
     private final ProjectionRegistry projectionRegistry;
+    private final SseMessageBuilder sseMessageBuilder;
+    private final ObjectMapper objectMapper;
 
     public AgentExecutionEngine(DefaultInterceptorChain interceptorChain,
                                 List<ExecutionStrategy> strategies,
                                 AgentEventAdapter eventAdapter,
                                 AgentscopeCoreProperties properties,
                                 TraceCollector traceCollector,
-                                ProjectionRegistry projectionRegistry) {
+                                ProjectionRegistry projectionRegistry,
+                                SseMessageBuilder sseMessageBuilder,
+                                ObjectMapper objectMapper) {
         this.interceptorChain = interceptorChain;
         this.strategies = strategies;
         this.eventAdapter = eventAdapter;
         this.properties = properties;
         this.traceCollector = traceCollector;
         this.projectionRegistry = projectionRegistry;
+        this.sseMessageBuilder = sseMessageBuilder;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -90,7 +98,7 @@ public class AgentExecutionEngine implements ExecutionEngine {
      * @param conversation 会话实体（可为 null，非会话型入口）
      * @return 执行结果（阻塞 Msg / 流式 SSE 流 / 错误）
      */
-    public ExecutionResult execute(ExecutionRequest request, ConversationEntity conversation) {
+    public ExecutionResult execute(ExecutionRequest request, ChatEntity conversation) {
         ExecutionContext ctx = new ExecutionContext(
                 request, request.getConversationId(), request.getUserId(), request.getAgentName());
         ctx.setConversation(conversation);
@@ -173,7 +181,7 @@ public class AgentExecutionEngine implements ExecutionEngine {
      * （Agent 解析、拦截器链、会话级工具组激活、统一 RuntimeContext），原始事件流交调用方
      * 做协议投射。失败时以 {@code Flux.error} 暴露，由调用方收口为错误 SSE。</p>
      *
-     * <p>与 {@link #execute(ExecutionRequest, ConversationEntity)} 的区别：后者对事件流做
+     * <p>与 {@link #execute(ExecutionRequest, ChatEntity)} 的区别：后者对事件流做
      * 协议编排（start/thinking/content + 双层超时）后返回 {@code Flux<String>}；本方法只返回
      * 策略产出的原始 {@code Flux<AgentEvent>}，把"协议无关"贯彻到底——新协议接入只需在调用方
      * 提供适配器，而非改造引擎。</p>
@@ -182,7 +190,7 @@ public class AgentExecutionEngine implements ExecutionEngine {
      * @param conversation 会话实体（可为 null，非会话型入口）
      * @return 原始 AgentEvent 流
      */
-    public Flux<AgentEvent> executeEvents(ExecutionRequest request, ConversationEntity conversation) {
+    public Flux<AgentEvent> executeEvents(ExecutionRequest request, ChatEntity conversation) {
         if (!request.isStreaming()) {
             throw new IllegalArgumentException("executeEvents 仅支持流式请求");
         }
@@ -207,6 +215,54 @@ public class AgentExecutionEngine implements ExecutionEngine {
         return events.doFinally(sig -> interceptorChain.postHandleAll(ctx));
     }
 
+    /**
+     * 结构化流式输出：经统一管线产出 thinking/content/tool 帧，并在 AGENT_RESULT 处集中产出 structured 帧。
+     *
+     * <p>等价于 {@link #executeEvents} + 门面手搓 SSE 帧（原 {@code processStructuredAgentEvent}）的合流版本，
+     * 但只保留单一 framing 管线（{@code projectEvents} 复用 {@code SseProjection}），消除 web 内部第二份 SSE 帧。
+     * 结构化数据的抽取（schema 解析 / 文本自解析）由调用方以 {@code structuredExtractor} 注入，
+     * 引擎只负责把抽取结果封装为 {@code structured} 帧，不持有 schema 知识。</p>
+     *
+     * <p>门面负责在返回流前后拼接边缘层 {@code start(requestId)} / {@code done} 帧（HTTP 边缘只做传输 framing）。</p>
+     *
+     * @param request             归一化执行请求（须 streaming=true 且 structuredOutput=true）
+     * @param conversation        会话实体（可为 null）
+     * @param structuredExtractor 从 AGENT_RESULT 的 Msg 抽取结构化对象（可为 null，为 null 时退化为普通流式）
+     * @param cancellationCheck  取消令牌判定（可为 null）
+     * @return 已封装 SSE 帧的流（含 thinking/content/tool/structured）
+     */
+    public Flux<String> frameStructuredStream(ExecutionRequest request, ChatEntity conversation,
+                                              Function<Msg, Object> structuredExtractor,
+                                              BooleanSupplier cancellationCheck) {
+        if (!request.isStreaming()) {
+            throw new IllegalArgumentException("frameStructuredStream 仅支持流式请求");
+        }
+        ExecutionContext ctx = new ExecutionContext(
+                request, request.getConversationId(), request.getUserId(), request.getAgentName());
+        ctx.setConversation(conversation);
+        try {
+            interceptorChain.preHandleAll(ctx);
+        } catch (Exception e) {
+            return Flux.error(new RuntimeException(formatAgentError(e), e));
+        }
+        if (ctx.getResolvedAgent() == null) {
+            return Flux.error(new RuntimeException("Agent 未解析: " + request.getAgentName()));
+        }
+        ExecutionStrategy strategy = selectStrategy(ctx);
+        if (strategy == null) {
+            return Flux.error(new RuntimeException("无匹配执行策略"));
+        }
+        @SuppressWarnings("unchecked")
+        Flux<AgentEvent> events = (Flux<AgentEvent>) strategy.execute(ctx);
+        if (cancellationCheck != null) {
+            events = events.takeUntil(cancelled -> cancellationCheck.getAsBoolean());
+        }
+        RuntimeContext runtimeContext = (RuntimeContext) ctx.getAttribute("yunxi.runtimeContext");
+        return projectEvents(events, ctx, runtimeContext, structuredExtractor)
+                // 流终结时触发 postHandle 收尾，与 execute 的 composeStream.doFinally 对齐
+                .doFinally(sig -> interceptorChain.postHandleAll(ctx));
+    }
+
     private ExecutionStrategy selectStrategy(ExecutionContext ctx) {
         for (ExecutionStrategy strategy : strategies) {
             if (strategy.supports(ctx)) {
@@ -224,6 +280,30 @@ public class AgentExecutionEngine implements ExecutionEngine {
  * 引擎不依赖任何具体协议。</p>
      */
     private Flux<String> composeStream(Flux<AgentEvent> events, ExecutionContext ctx) {
+        // 开始事件（消息形态由适配器决定，如携带会话 ID）
+        Flux<String> startFlux = toFlux(eventAdapter.onStart(ctx));
+
+        // 思考事件（thinkingText 由 StreamingStrategy 写入 ctx；展示形态由适配器按模式自决）
+        String thinkingText = (String) ctx.getAttribute(StreamingStrategy.ATTR_THINKING_TEXT);
+        Flux<String> thinkingFlux = toFlux(eventAdapter.onThinking(thinkingText, ctx));
+
+        RuntimeContext runtimeContext = (RuntimeContext) ctx.getAttribute("yunxi.runtimeContext");
+        Flux<String> contentFlux = projectEvents(events, ctx, runtimeContext, null);
+
+        return Flux.concat(startFlux, thinkingFlux, contentFlux)
+                .timeout(Duration.ofSeconds(properties.getChatTimeoutSeconds() + 30));
+    }
+
+    /**
+     * 内容流帧封装（单一管线，流式与结构化共用）：事件经归集器 → SseProjection 投影为协议消息，
+     * 非归集事件走适配器兜底；含内容流单层超时（整体 concat 超时见 composeStream）。
+     *
+     * <p>{@code structuredExtractor} 非空时，本管线在 AGENT_RESULT 处集中产出 {@code structured} 帧、
+     * 不再交适配器兜底（避免重复 content 帧），从而消除 web 内部第二份 SSE framing。</p>
+     */
+    private Flux<String> projectEvents(Flux<AgentEvent> events, ExecutionContext ctx,
+                                      RuntimeContext runtimeContext,
+                                      Function<Msg, Object> structuredExtractor) {
         ExecutionRequest req = ctx.getRequest();
         boolean useA2A = req.isUseA2A() || req.isDeepMode();
         int timeoutSeconds = useA2A
@@ -234,24 +314,15 @@ public class AgentExecutionEngine implements ExecutionEngine {
             log.info("深度/A2A 协作模式已启用，超时时间: {}s", timeoutSeconds);
         }
 
-        // 开始事件（消息形态由适配器决定，如携带会话 ID）
-        Flux<String> startFlux = toFlux(eventAdapter.onStart(ctx));
-
-        // 思考事件（thinkingText 由 StreamingStrategy 写入 ctx；展示形态由适配器按模式自决）
-        String thinkingText = (String) ctx.getAttribute(StreamingStrategy.ATTR_THINKING_TEXT);
-        Flux<String> thinkingFlux = toFlux(eventAdapter.onThinking(thinkingText, ctx));
-
         // 一次调用 = 一棵轨迹树 = 一个归集会话。会话持有跨事件的归集状态（节点栈、配对键、
         // 未决计数），必须复用而非逐事件重建 —— 那正是此前修复过的缺陷（跨通道重复计数的回归）。
         // 整条事件流先经归集器成为语义快照流，再由协议投影消费（切换点：
         // 归集结果直接供投影消费），同时旁路落库。
         String traceId = resolveTraceId(ctx);
         TraceComposer.Session session = traceCollector.openSession(traceId);
-        RuntimeContext runtimeContext = (RuntimeContext) ctx.getAttribute("yunxi.runtimeContext");
-
-        Flux<String> contentFlux = events
+        return events
                 .timeout(timeout)
-                .concatMap(event -> projectEvent(event, ctx, session, traceId, runtimeContext))
+                .concatMap(event -> projectEvent(event, ctx, session, traceId, runtimeContext, structuredExtractor))
                 .onErrorResume(e -> {
                     // 推理异常被兜底为 error 消息：同时记录结果摘要，供 postHandle 审计判定失败
                     ctx.setExecutionError(formatAgentError(e));
@@ -259,9 +330,6 @@ public class AgentExecutionEngine implements ExecutionEngine {
                     String error = eventAdapter.onError(formatAgentError(e), ctx);
                     return error != null ? Flux.just(error) : Flux.empty();
                 });
-
-        return Flux.concat(startFlux, thinkingFlux, contentFlux)
-                .timeout(Duration.ofSeconds(properties.getChatTimeoutSeconds() + 30));
     }
 
     /** null 安全的消息列表转 Flux（适配器钩子未实现/mock 场景返回 null 时降级为空流） */
@@ -282,7 +350,8 @@ public class AgentExecutionEngine implements ExecutionEngine {
      */
     private Flux<String> projectEvent(AgentEvent event, ExecutionContext ctx,
                                       TraceComposer.Session session, String traceId,
-                                      RuntimeContext runtimeContext) {
+                                      RuntimeContext runtimeContext,
+                                      Function<Msg, Object> structuredExtractor) {
         List<String> out = new ArrayList<>();
         if (session != null) {
             // 归集与落库统一委托给归集器：任务清单旁路注入、异常吞并、失败计数都在那里，
@@ -305,8 +374,24 @@ public class AgentExecutionEngine implements ExecutionEngine {
                 || type == AgentEventType.THINKING_BLOCK_START || type == AgentEventType.THINKING_BLOCK_END
                 || type == AgentEventType.TOOL_CALL_START || type == AgentEventType.TOOL_CALL_END
                 || type == AgentEventType.TOOL_RESULT_END;
-        if (session == null || !projected) {
+        // 结构化模式下 AGENT_RESULT 由本方法统一产出 structured 帧，不再交适配器（避免重复 content 帧）
+        boolean structuredAgentResult = structuredExtractor != null
+                && event instanceof AgentResultEvent are
+                && are.getResult() != null;
+        if (session == null || (!projected && !structuredAgentResult)) {
             out.addAll(eventAdapter.convert(event, ctx));
+        }
+        // 结构化帧：由单一管线在 AGENT_RESULT 处集中产出（取代 ChatAppService 手搓的 processStructuredAgentEvent）
+        if (structuredExtractor != null && event instanceof AgentResultEvent are && are.getResult() != null) {
+            try {
+                Object data = structuredExtractor.apply(are.getResult());
+                if (data != null) {
+                    out.add(sseMessageBuilder.buildMessage("structured", objectMapper.writeValueAsString(data)));
+                }
+            } catch (Exception e) {
+                log.error("结构化数据解析失败", e);
+                out.add(sseMessageBuilder.buildErrorMessage("结构化数据解析失败: " + e.getMessage()));
+            }
         }
         return Flux.fromIterable(out);
     }

@@ -1,6 +1,6 @@
 # 15. 可观测性
 
-> **可观测性说明**：AgentScope-Java 自 2.0.0 起废弃了 `Tracer`/`TracerRegistry` 接口（当前 2.0.3 沿用该 OpenTelemetry 直连 API），平台已删除 `OpenTelemetryTracer.java`，通过 `OtelTracingMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
+> **可观测性说明**：AgentScope-Java 自 2.0.0 起废弃了 `Tracer`/`TracerRegistry` 接口（当前 2.0.4 沿用该 OpenTelemetry 直连 API），平台已删除 `OpenTelemetryTracer.java`，通过 `OtelTracingMiddleware` + `GlobalOpenTelemetry` 实现链路追踪。
 
 了解 yunxi Agent Platform 的可观测性设计。
 
@@ -8,7 +8,7 @@
 
 ## 架构
 
-通过实现 AgentScope 2.0.3 SDK 的 `MiddlewareBase` 接口（2.0.0 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
+通过实现 AgentScope 2.0.4 SDK 的 `MiddlewareBase` 接口（2.0.0 中 `Tracer` 已废弃），在 Agent/Model/Tool 三层创建 OpenTelemetry Span。
 
 ### 组件关系
 

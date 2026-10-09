@@ -1,7 +1,7 @@
 package io.yunxi.platform.ingress.controller.management;
 
 import io.yunxi.platform.agent.service.AgentService;
-import io.yunxi.platform.agent.profile.ProfileRouter;
+import io.yunxi.platform.agent.routing.ProfileRouter;
 import io.yunxi.platform.shared.dto.AgentConfigDto;
 import io.yunxi.platform.shared.dto.AgentInfoDto;
 import io.yunxi.platform.shared.dto.ProfileInfo;
@@ -17,7 +17,7 @@ import java.util.Map;
  * Agent 控制器
  * <p>
  * 提供 Agent 的 CRUD 操作和健康检查端点。
- * <b>对话相关操作请使用 ConversationController</b>
+ * <b>对话相关操作请使用 ChatController</b>
  * </p>
  * <p>
  * <b>功能：</b>

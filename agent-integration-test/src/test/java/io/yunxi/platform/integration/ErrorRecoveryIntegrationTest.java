@@ -1,8 +1,8 @@
 package io.yunxi.platform.integration;
 
 import io.yunxi.platform.AgentPlatformApplication;
-import io.yunxi.platform.agent.profile.ConceptRegistry;
-import io.yunxi.platform.conversation.ChatAppService;
+import io.yunxi.platform.agent.routing.ConceptRegistry;
+import io.yunxi.platform.chat.ChatAppService;
 import io.yunxi.platform.shared.dto.ChatRequest;
 import io.yunxi.platform.shared.dto.ChatResponse;
 import io.yunxi.platform.shared.exception.BadRequestException;

@@ -15,9 +15,11 @@ import io.yunxi.platform.execution.spi.ExecutionInterceptor;
 import io.yunxi.platform.execution.spi.ExecutionStrategy;
 import io.yunxi.platform.shared.config.AgentscopeCoreProperties;
 import io.yunxi.platform.shared.dto.ConfirmResultRequest;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.shared.util.SseMessageBuilder;
+import io.yunxi.platform.chat.ChatEntity;
 import io.yunxi.platform.trace.TraceCollector;
 import io.yunxi.platform.trace.projection.ProjectionRegistry;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -109,7 +111,9 @@ class AgentExecutionE2ETest {
                 mock(AgentEventAdapter.class),
                 mock(AgentscopeCoreProperties.class),
                 mock(TraceCollector.class),
-                mock(ProjectionRegistry.class));
+                mock(ProjectionRegistry.class),
+                mock(SseMessageBuilder.class),
+                mock(ObjectMapper.class));
     }
 
     private static ConfirmResultRequest approvedResult(String toolCallId, String toolName) {
@@ -136,7 +140,7 @@ class AgentExecutionE2ETest {
                 .confirmResults(List.of(approvedResult("call-1", "queryDb")))
                 .build();
 
-        ExecutionResult result = engine.execute(request, (ConversationEntity) null);
+        ExecutionResult result = engine.execute(request, (ChatEntity) null);
 
         // 1) 引擎未报错（拦截器链与策略均正常走通）
         assertThat(result.isError())
@@ -171,7 +175,7 @@ class AgentExecutionE2ETest {
                 .includeHistory(false)
                 .build();
 
-        ExecutionResult result = engine.execute(request, (ConversationEntity) null);
+        ExecutionResult result = engine.execute(request, (ChatEntity) null);
 
         assertThat(result.isError()).as("无确认结果的普通请求应正常执行").isFalse();
 

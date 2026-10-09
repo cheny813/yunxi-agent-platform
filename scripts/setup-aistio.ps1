@@ -1,120 +1,127 @@
 # setup-aistio.ps1
-# One-shot launcher for the AgentScope-Service (aistio) control plane.
-# It auto-applies the upstream Dockerfile.control domestic-network patches,
-# rewrites the package-lock.json registry, builds the three Java plane jars
-# via maven, then starts the aistio profile with docker compose.
-# All upstream edits are idempotent and safe to re-run.
+# Pull and start the AgentScope-Service (aistio) control plane from the
+# official AgentScope-Java Docker images. No source checkout / Maven / Go build
+# is required. See https://java.agentscope.io/v2/zh/service/quickstart
+#
+# The script also initializes production-grade secrets into .env.aistio
+# (random per-deployment values, file access restricted to the current user and
+# git-ignored). Existing values are preserved across runs so encrypted data
+# (e.g. Vault master key) stays decryptable; use -Rotate to regenerate.
+#
+# Prerequisites:
+#   - Docker Engine + Compose v2
+#   - Network access to the official registry (override via -AistioRegistry)
+#
+# Usage:
+#   .\scripts\setup-aistio.ps1                              # generate secrets, pull & start (2.1.0-BETA1)
+#   .\scripts\setup-aistio.ps1 -AistioVersion 2.0.4         # pin a specific image version
+#   .\scripts\setup-aistio.ps1 -AistioRegistry my-reg.io/agentscope
+#   .\scripts\setup-aistio.ps1 -Dev                         # skip secret generation, use built-in dev defaults
+#   .\scripts\setup-aistio.ps1 -Rotate                      # regenerate all secrets
 
 param(
-    # AgentScope-Java repo root. Empty -> auto-detect a sibling dir named
-    # agentscope-java or agentscope-java-2.0GA.
-    [string] $AistioRepoRoot = '',
-    [string] $AistioVersion  = '2.0.4-SNAPSHOT',
-    [switch] $GitPull
+    # Official aistio image registry prefix.
+    [string] $AistioRegistry = 'sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope',
+    # aistio image version; must match the API negotiated by yunxi's agent-aistio client.
+    [string] $AistioVersion  = '2.1.0-BETA1',
+    # Skip secret generation and rely on the built-in dev defaults in docker-compose.yml.
+    [switch] $Dev,
+    # Regenerate every secret even if .env.aistio already exists (invalidates previously encrypted data).
+    [switch] $Rotate
 )
 
 $ErrorActionPreference = 'Stop'
-$nl = [Environment]::NewLine
 $yunxiRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$siblingRoot = (Resolve-Path (Join-Path $yunxiRoot '..')).Path
+$envFile   = Join-Path $yunxiRoot '.env.aistio'
 
-if ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
-    # Prefer the dir that actually contains the agentscope-service submodule. The sibling
-    # agentscope-java dir is an (intentionally non-deleted) empty placeholder, so a plain
-    # Test-Path match on it is not enough -- require the agentscope-service subdir to exist.
-    foreach ($name in @('agentscope-java-2.0GA', 'agentscope-java')) {
-        $candidate = Join-Path $siblingRoot $name
-        $candidateSvc = Join-Path $candidate 'agentscope-service'
-        if ((Test-Path $candidate) -and (Test-Path $candidateSvc)) { $AistioRepoRoot = $candidate; break }
+# URL-safe base64 without padding, derived from a CSPRNG.
+function New-RandomSecret {
+    param([int] $Bytes = 32)
+    $buf = New-Object byte[] $Bytes
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($buf)
+    return [Convert]::ToBase64String($buf).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+# Generate / merge secrets into .env.aistio. Idempotent: keeps existing values
+# unless -Rotate is given. Returns the parsed key/value map.
+function New-AistioSecrets {
+    $spec = [ordered]@{
+        AISTIO_POSTGRES_PASSWORD    = 32
+        BUILDER_JWT_SECRET          = 32
+        BUILDER_INTERNAL_TOKEN      = 32
+        BUILDER_VAULT_MASTER_KEY    = 32
+        CONTROL_PLANE_BOOTSTRAP_PASSWORD = 24
     }
-}
-if ([string]::IsNullOrWhiteSpace($AistioRepoRoot) -or -not (Test-Path $AistioRepoRoot)) {
-    throw "Cannot find the AgentScope-Java repo next to this project (looked for agentscope-java / agentscope-java-2.0GA under $siblingRoot). Clone it there or pass -AistioRepoRoot <path>."
-}
 
-$repoRoot = (Resolve-Path $AistioRepoRoot).Path
-$svcDir = Join-Path $repoRoot 'agentscope-service'
-
-if (-not (Test-Path $svcDir)) {
-    throw "Cannot find agentscope-service dir: $svcDir. Pass -AistioRepoRoot to the AgentScope-Java repo root."
-}
-
-Write-Host "==> repo root: $repoRoot" -ForegroundColor Cyan
-Write-Host "==> service dir: $svcDir" -ForegroundColor Cyan
-Write-Host "==> aistio version: $AistioVersion" -ForegroundColor Cyan
-
-# Optional: pull upstream latest
-if ($GitPull) {
-    Write-Host '==> git pull origin main ...' -ForegroundColor Cyan
-    Push-Location $repoRoot
-    try { git pull origin main } finally { Pop-Location }
-}
-
-# Patch 1: upstream Dockerfile.control domestic-network fixes (idempotent)
-# Issue A: final base image gcr.io/distroless/static:nonroot is unreachable in CN
-# Issue B: Go modules via proxy.golang.org is blocked in CN
-$dockerfile = Join-Path (Join-Path $svcDir 'docker') 'Dockerfile.control'
-if (-not (Test-Path $dockerfile)) { throw "Cannot find Dockerfile.control: $dockerfile" }
-$df = Get-Content $dockerfile -Raw
-
-if ($df -notmatch 'RUNTIME_IMAGE=debian:bookworm-slim') {
-    $argNode = 'ARG RUNTIME_IMAGE=debian:bookworm-slim' + $nl + 'FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS console'
-    $df = $df.Replace('FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS console', $argNode)
-    $runCa = 'FROM ${RUNTIME_IMAGE}' + $nl + 'RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*'
-    $df = $df.Replace('FROM gcr.io/distroless/static:nonroot', $runCa)
-    Set-Content -Path $dockerfile -Value $df -NoNewline
-    Write-Host '[patch] Dockerfile.control: applied RUNTIME_IMAGE + ca-certificates (gcr.io -> debian:bookworm-slim)' -ForegroundColor Green
-} else {
-    Write-Host '[skip] Dockerfile.control already has RUNTIME_IMAGE patch' -ForegroundColor DarkGray
-}
-
-if ($df -notmatch 'GOPROXY=https://goproxy.cn') {
-    $envGoproxy = 'FROM --platform=$BUILDPLATFORM golang:1.26 AS build' + $nl + '# proxy.golang.org is blocked in CN; use goproxy.cn' + $nl + 'ENV GOPROXY=https://goproxy.cn,direct GONOSUMCHECK=1 GOFLAGS=-mod=mod'
-    $df = $df.Replace('FROM --platform=$BUILDPLATFORM golang:1.26 AS build', $envGoproxy)
-    Set-Content -Path $dockerfile -Value $df -NoNewline
-    Write-Host '[patch] Dockerfile.control: applied GOPROXY=goproxy.cn' -ForegroundColor Green
-} else {
-    Write-Host '[skip] Dockerfile.control already has GOPROXY patch' -ForegroundColor DarkGray
-}
-
-# Patch 2: package-lock.json pinned to Ali internal registry (idempotent)
-$lock = Join-Path (Join-Path $svcDir 'frontend') 'package-lock.json'
-if (Test-Path $lock) {
-    $lockContent = Get-Content $lock -Raw
-    $count = ([regex]::Matches($lockContent, 'registry.anpm.alibaba-inc.com')).Count
-    if ($count -gt 0) {
-        $lockContent = $lockContent.Replace('registry.anpm.alibaba-inc.com', 'registry.npmmirror.com')
-        Set-Content -Path $lock -Value $lockContent -NoNewline
-        Write-Host "[patch] package-lock.json: replaced $count internal-registry entries -> registry.npmmirror.com" -ForegroundColor Green
-    } else {
-        Write-Host '[skip] package-lock.json has no internal registry, skip' -ForegroundColor DarkGray
+    $existing = @{}
+    if (Test-Path $envFile) {
+        foreach ($line in (Get-Content $envFile)) {
+            if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') {
+                $existing[$Matches[1]] = $Matches[2]
+            }
+        }
     }
-} else {
-    Write-Host '[warn] package-lock.json not found, skip registry rewrite (Dockerfile npm ci may fail on internal registry)' -ForegroundColor Yellow
+
+    $merged = [ordered]@{}
+    foreach ($key in $spec.Keys) {
+        if (-not $Rotate -and $existing.ContainsKey($key) -and $existing[$key].Length -gt 0) {
+            $merged[$key] = $existing[$key]
+        } else {
+            $merged[$key] = New-RandomSecret -Bytes $spec[$key]
+        }
+    }
+
+    $lines = @(
+        '# Auto-generated by scripts/setup-aistio.ps1 — production secrets for the aistio control plane.'
+        '# This file is git-ignored. Keep it; regenerating invalidates Vault-encrypted data.'
+        '# Fill in the model credential below before starting (required by the builder runtime).'
+        'DASHSCOPE_API_KEY='
+        'BUILDER_ALLOW_LOCAL_ENVIRONMENT=true'
+    )
+    foreach ($key in $merged.Keys) { $lines += "$key=$($merged[$key])" }
+
+    Set-Content -Path $envFile -Value $lines -Encoding utf8
+
+    # Restrict file access to the current user only (roughly chmod 600 on Windows).
+    try {
+        icacls $envFile /inheritance:r /grant:r "$env:USERNAME:(R,W)" > $null
+    } catch {
+        Write-Warning "Could not restrict permissions on $envFile; ensure the file is not world-readable."
+    }
+
+    return $merged
 }
 
-# Build the three Java plane jars (submodules must be listed explicitly)
-Write-Host '==> maven build of aistio plane jars (first run is slow, needs network)...' -ForegroundColor Cyan
-Push-Location $repoRoot
-try {
-    mvn -pl agentscope-service/service-dataplane,agentscope-service/service-gateway,agentscope-service/service-scheduler -am install -DskipTests
-    if ($LASTEXITCODE -ne 0) { throw "maven build failed (exit=$LASTEXITCODE)" }
-} finally { Pop-Location }
-Write-Host '[ok] maven build done' -ForegroundColor Green
+Write-Host "==> aistio registry : $AistioRegistry" -ForegroundColor Cyan
+Write-Host "==> aistio version  : $AistioVersion" -ForegroundColor Cyan
 
-# Start aistio profile (always use PowerShell to set env vars)
-Write-Host '==> docker compose up aistio profile ...' -ForegroundColor Cyan
-$env:AISTIO_SRC = $svcDir
-$env:AISTIO_ROOT = $repoRoot
-$env:AISTIO_VERSION = $AistioVersion
+$env:AISTIO_REGISTRY = $AistioRegistry
+$env:AISTIO_VERSION  = $AistioVersion
+
 Push-Location $yunxiRoot
 try {
-    docker compose --profile aistio up -d
+    $composeArgs = @('--profile', 'aistio')
+    if (-not $Dev) {
+        $secrets = New-AistioSecrets
+        $composeArgs += '--env-file'; $composeArgs += $envFile
+        Write-Host "==> secrets written to $envFile (git-ignored, user-only ACL)" -ForegroundColor Cyan
+        Write-Host "    initial admin password (CONTROL_PLANE_BOOTSTRAP_PASSWORD): $($secrets['CONTROL_PLANE_BOOTSTRAP_PASSWORD'])" -ForegroundColor Yellow
+        Write-Host '    set DASHSCOPE_API_KEY in that file before first use if a model credential is required.' -ForegroundColor DarkGray
+    } else {
+        Write-Host '==> -Dev: using built-in dev defaults, no secret file generated.' -ForegroundColor DarkGray
+    }
+
+    Write-Host '==> docker compose pull aistio images ...' -ForegroundColor Cyan
+    docker compose @composeArgs pull
+    if ($LASTEXITCODE -ne 0) { throw "docker compose pull failed (exit=$LASTEXITCODE)" }
+
+    Write-Host '==> docker compose up aistio profile ...' -ForegroundColor Cyan
+    docker compose @composeArgs up -d
     if ($LASTEXITCODE -ne 0) { throw "docker compose failed (exit=$LASTEXITCODE)" }
 } finally { Pop-Location }
 
 Write-Host ''
 Write-Host '==> aistio control plane started. Verify all containers are Up (healthy):' -ForegroundColor Green
 Write-Host '    docker compose --profile aistio ps' -ForegroundColor White
-Write-Host '==> Web console: http://localhost:8081 (served by Go aistiod control plane)' -ForegroundColor White
+Write-Host '==> Web console: http://localhost:8081 (served by as-controlplane)' -ForegroundColor White
 Write-Host '==> To let yunxi join, set yunxi.aistio.enabled=true in application.yml (see README).' -ForegroundColor White

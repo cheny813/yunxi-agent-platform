@@ -15,7 +15,7 @@ import java.util.function.Supplier;
  * 集成测试用例实际调用，仅用于满足依赖注入。</p>
  *
  * <p>嵌入服务 {@code EmbeddingService}（agent-spi 中性接口，由 agent-core 的
- * {@code io.yunxi.platform.embedding.EmbeddingService} 实现）通过 {@code ObjectProvider} 注入
+ * {@code io.yunxi.platform.rag.embedding.EmbeddingService} 实现）通过 {@code ObjectProvider} 注入
  * {@code ColumnRetriever}：集成测试上下文启用 agent-core 时由核心 Bean 直接满足，未启用时
  * {@code ObjectProvider#getIfAvailable()} 返回 null 并由 {@code ColumnRetriever} 跳过，无需此处提供桩。</p>
  *

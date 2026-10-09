@@ -21,7 +21,6 @@ agent-config/src/main/resources/
 │   ├── mcp-core.yml                   #   MCP 核心服务器
 │   ├── mcp-external.yml               #   MCP 外部服务器
 │   ├── resilience.yml                 #   熔断/限流/重试
-│   ├── a2a-pipeline.yml               #   A2A Pipeline 配置
 │   ├── file-upload.yml                #   文件上传 + 多媒体 RAG
 │   ├── agentscope.yml                 #   AgentScope 框架、API密钥、默认模型、技能、记忆
 │   ├── muse.yml                       #   MUSE 自进化引擎

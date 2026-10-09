@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
-import io.yunxi.platform.desktop.model.NodeInfo;
-import io.yunxi.platform.desktop.relay.DesktopRelayHandler;
+import io.yunxi.platform.agent.desktop.model.NodeInfo;
+import io.yunxi.platform.agent.desktop.relay.DesktopRelayHandler;
 import io.yunxi.platform.tool.ShellToolFactory;
 import lombok.extern.slf4j.Slf4j;
 

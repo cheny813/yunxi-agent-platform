@@ -1,6 +1,6 @@
 package io.yunxi.platform.ingress.pageagent;
 
-import io.yunxi.platform.pageagent.PageAgentService;
+import io.yunxi.platform.agent.page.PageAgentService;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

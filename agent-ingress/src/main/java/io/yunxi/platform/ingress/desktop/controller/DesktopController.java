@@ -1,10 +1,10 @@
 package io.yunxi.platform.ingress.desktop.controller;
 
-import io.yunxi.platform.desktop.command.DesktopCommandService;
-import io.yunxi.platform.desktop.relay.DesktopRelayHandler;
-import io.yunxi.platform.desktop.model.NodeInfo;
-import io.yunxi.platform.agent.profile.NodeProfile;
-import io.yunxi.platform.agent.profile.NodeProfileService;
+import io.yunxi.platform.agent.desktop.command.DesktopCommandService;
+import io.yunxi.platform.agent.desktop.relay.DesktopRelayHandler;
+import io.yunxi.platform.agent.desktop.model.NodeInfo;
+import io.yunxi.platform.agent.routing.NodeProfile;
+import io.yunxi.platform.agent.routing.NodeProfileService;
 import io.yunxi.platform.security.audit.NodeAuditService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;

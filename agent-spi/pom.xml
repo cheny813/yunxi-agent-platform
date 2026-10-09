@@ -50,14 +50,7 @@
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
-                    <encoding>UTF-8</encoding>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
+                    <encoding>UTF-8</encoding></configuration>
             </plugin>
             <!-- 启用 JaCoCo 测试覆盖率报告 -->
             <plugin>

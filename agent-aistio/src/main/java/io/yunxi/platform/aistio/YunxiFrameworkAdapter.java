@@ -11,6 +11,8 @@ import reactor.core.publisher.Mono;
 
 import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
+import io.yunxi.platform.agent.runtime.YunxiRuntimeContextBuilder;
+import io.yunxi.platform.agent.runtime.AgentInvoker;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.extensions.aistio.FrameworkAdapter;
@@ -150,8 +152,8 @@ public class YunxiFrameworkAdapter implements FrameworkAdapter {
             String targetAgent = resolveTargetAgent(sessionId, content);
             Agent agent = agentService.getAgentInstance(targetAgent);
             Msg msg = Msg.builder().textContent(content).build();
-            RuntimeContext rc = RuntimeContext.builder().userId(consoleUserId).sessionId(sessionId).build();
-            Msg result = ((HarnessAgent) agent).call(msg, rc).block();
+            RuntimeContext rc = YunxiRuntimeContextBuilder.build(consoleUserId, sessionId);
+            Msg result = AgentInvoker.call((HarnessAgent) agent, msg, rc).block();
             String text = (result != null && result.getTextContent() != null) ? result.getTextContent() : "";
             return Mono.just(text);
         } catch (Throwable t) {

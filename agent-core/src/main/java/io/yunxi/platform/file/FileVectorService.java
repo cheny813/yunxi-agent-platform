@@ -8,7 +8,7 @@ import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.response.SearchResp;
 import io.yunxi.platform.config.MilvusConfig;
-import io.yunxi.platform.embedding.EmbeddingService;
+import io.yunxi.platform.rag.embedding.EmbeddingService;
 import io.yunxi.platform.file.dto.FileSearchRequest;
 import io.yunxi.platform.file.dto.FileSearchResult;
 import io.yunxi.platform.file.dto.ImageFeatureResult;

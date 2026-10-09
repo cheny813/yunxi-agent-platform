@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>测试 AgentConfigurer 中不依赖 Spring 容器/外部基建的纯逻辑辅助方法，
  * 包括编排模式判断、描述信息获取等。</p>
  *
- * <p>本测试直接调用真实方法，不复制其逻辑（单一真相源，禁止双份真相 / 复制逻辑）。</p>
+ * <p>本测试直接调用真实方法，不复制其逻辑（单一真相源，禁止重复实现 / 复制逻辑）。</p>
  */
 @DisplayName("AgentConfigurer 辅助方法单元测试")
 class AgentConfigurerHelperTest {

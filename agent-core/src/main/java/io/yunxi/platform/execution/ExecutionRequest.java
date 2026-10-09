@@ -14,7 +14,7 @@ import lombok.Getter;
  * 执行请求归一化对象。
  *
  * <p>ChatAppService 的 4 个 public 入口（chat / chatWithConversation / chatStream /
- * chatStreamWithConversation）请求类型不同（ChatRequest / ConversationChatRequest /
+ * chatStreamWithConversation）请求类型不同（ChatRequest / ChatConversationRequest /
  * StreamChatRequest），在调用引擎前由门面归一化为本对象，使拦截器/策略与具体请求类型解耦。</p>
  *
  * @author yunxi-agent-platform

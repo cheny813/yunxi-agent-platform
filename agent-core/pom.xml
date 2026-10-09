@@ -104,10 +104,27 @@
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-core</artifactId>
+            <exclusions>
+                <!-- agentscope-core 依赖 reactor-core 3.8.2，该版本不在本地仓库（离线）会导致 reactor-core 整条被丢弃、
+                     进而 StudioConfiguration 编译找不到 Mono。此处排除后改由本模块显式声明的 reactor-core（本地已有）承接。 -->
+                <exclusion>
+                    <groupId>io.projectreactor</groupId>
+                    <artifactId>reactor-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-studio</artifactId>
+        </dependency>
+
+        <!-- 显式声明 reactor-core：StudioConfiguration 直接调用 Mono.block()（Studio 客户端响应式 API 返回 Mono）。
+             reactor-core 在 agentscope-core / spring-boot-starter-webflux 中均为 optional 依赖，不会向本模块传递，
+             故需在此显式声明，确保编译期 Mono 类在 classpath 上（与框架、studio 版本无关）。版本由 Spring Boot 父 BOM 管理。 -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+            <version>3.7.17</version>
         </dependency>
 
         <!-- AgentScope-Java 官方 aistio 数据面集成扩展：复用其 GrpcTransport/ContractHttpServer/HttpSelfRegistration
@@ -119,7 +136,7 @@
 
         <!-- AgentScope-Java 定时调度扩展：把内核 Agent 包装为可周期性触发的任务（Quartz 承载）。
              注意：该扩展每次触发都会用 RuntimeAgentConfig 现造一个 Agent 实例，且配置类无 agentFactory 注入钩子，
-             故 yunxi 不让其复用在线 Agent 实例，而是把定时 Agent 作为独立种群写在 config/scheduler.yml（避免双份真相）。
+             故 yunxi 不让其复用在线 Agent 实例，而是把定时 Agent 作为独立种群写在 config/scheduler.yml（避免重复的真相源）。
              模型配置复用 AgentscopeCoreProperties，不重复声明。 -->
         <dependency>
             <groupId>io.agentscope</groupId>
@@ -140,7 +157,7 @@
         <!-- AgentScope-Java IM 渠道扩展：把内核 Agent 经框架 Gateway/ChannelManager 暴露到
              钉钉/飞书/企微/GitHub/GitLab。关键：复用 yunxi 既有的 HarnessAgent 实例（经
              AgentService.getAgentInstance 注册到 GatewayBootstrap.agent(id, ha)），不新建 Agent
-             构建路径、不重复装配 middleware/toolkit（在线 Agent 真相源单一，避免双份真相）。
+             构建路径、不重复装配 middleware/toolkit（在线 Agent 真相源单一，避免重复的真相源）。
              各渠道 fromProperties(channelId, ChannelConfig, props) 三参工厂，凭据走 config/channels.yml 的
              ${ENV} 占位符，由 start.ps1 经 -D 注入，不重复声明密钥。 -->
         <dependency>
@@ -456,15 +473,9 @@
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
-                    <encoding>UTF-8</encoding>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </path>
-                    </annotationProcessorPaths>
-                    <compilerArgs>
+                    <encoding>UTF-8</encoding><compilerArgs>
                         <arg>-parameters</arg>
+                        <arg>-verbose</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>

@@ -2,22 +2,22 @@
 
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-brightgreen)](https://spring.io/projects/spring-boot)
-[![AgentScope-Java](https://img.shields.io/badge/AgentScope--Java-2.0.3-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
+[![AgentScope-Java](https://img.shields.io/badge/AgentScope--Java-2.0.4-blueviolet)](https://github.com/agentscope-ai/agentscope-java)
 [![Maven](https://img.shields.io/badge/Maven-3.8%2B-red)](https://maven.apache.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 **yunxi（云曦）—— 让多智能体像晨曦一样自然涌现、协同共生。**
 
-yunxi Agent Platform 是基于 **AgentScope-Java 2.0.3（正式版）** 构建的企业级多智能体协作平台，以**意图引擎**为决策核心，开箱即用地提供多 Agent 编排、MCP 协议集成、记忆系统与技能自进化（MUSE）等能力。yunxi 站在经过生产验证的 AgentScope-Java 运行时之上，为企业级落地补齐「编排 · 决策 · 治理 · 可观测」能力，让开发者专注业务而非底层胶水代码。
+yunxi Agent Platform 是基于 **AgentScope-Java 2.0.4（正式版）** 构建的企业级多智能体协作平台，以**意图引擎**为决策核心，开箱即用地提供多 Agent 编排、MCP 协议集成、记忆系统与技能自进化（MUSE）等能力。yunxi 站在经过生产验证的 AgentScope-Java 运行时之上，为企业级落地补齐「编排 · 决策 · 治理 · 可观测」能力，让开发者专注业务而非底层胶水代码。
 
 ## 版本策略
 
-| 模式 | `agentscope.version`（AgentScope-Java） | 构建方式（根 `pom.xml` 的 `<modules>`） | 说明 |
-|------|-----------------------------------|------------------------------|------|
-| **稳定模式（默认）** | `2.0.3`（正式版 / GA） | 默认 reactor 不含 `agent-aistio`；`agentscope.version` 固定为 `2.0.3` | 只跑核心平台，不含 aistio 管控面对接 |
-| **尝鲜模式（可选）** | `2.0.4-SNAPSHOT` | 构建加 `-Paistio`：纳入 `agent-aistio` 模块，并把 `agentscope.version` 切到 `2.0.4-SNAPSHOT` | 额外吃上 aistio 管控面对接能力 |
+| 项 | 值 |
+|------|------|
+| `agentscope.version`（AgentScope-Java） | `2.0.4`（正式版） |
+| `agent-aistio` | 随默认 reactor 一并构建的常规模块（无需 `-Paistio`） |
 
-> 默认推荐稳定模式。`agent-aistio` 为可选尝鲜组件，默认不进入 Maven reactor；想用上 aistio 能力时构建加 `-Paistio` 即可整体纳入，无需手工编辑 `pom.xml`。aistio 管控面依赖 AgentScope-Java 的 aistio 扩展（随 2.0.4 提供），与核心平台共用同一 `io.agentscope:*` 版本，请勿手动把 `agent-aistio` 单独指向其他版本——`io.agentscope:*` 进入同一 fat jar 只保留一个版本，混用会在 aistio↔core 边界产生 `LinkageError`。版本回退后的功能差异见文末「版本兼容说明」。
+> 平台整体基于 AgentScope-Java `2.0.4`（正式版）构建，`agent-aistio` 随默认 reactor 一并构建，无需 `-Paistio`。`io.agentscope:*` 进入同一 fat jar 只保留一个版本，请勿单独把 `agent-aistio` 指向其他版本，否则 aistio↔core 边界会出现 `LinkageError`。
 
 ## 核心特性
 
@@ -42,10 +42,10 @@ yunxi Agent Platform 是基于 **AgentScope-Java 2.0.3（正式版）** 构建�
 
 ## 快速开始
 
-两个配套仓库需与本项目放在**同级目录**（脚本默认从此推导路径）：
+内置 MCP 服务来自独立的 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) 仓库，需与本项目放在**同级目录**（脚本默认从此推导路径）：
 
-- [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) — 5 个内置 MCP 服务（Java 进程）
-- [`agentscope-java`](https://github.com/agentscope-ai/agentscope-java) — AgentScope-Java 源码仓（aistio 管控面源码即位于其 `agentscope-service` 模块，仅启用 aistio 时需要）
+- [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) — 5 个内置 MCP 服务（Java 进程），由 `scripts/start-stack.ps1` 拉起
+- aistio 管控面以 **AgentScope-Java 官方 Docker 镜像**提供（见下文「启用 aistio 管控面」），无需克隆任何源码仓
 
 ### 环境要求
 
@@ -105,7 +105,7 @@ curl -X POST http://localhost:40001/api/conversations/chat \
   -d '{"agentName":"dish-searcher","message":"你好，请介绍一下自己","mode":"sync"}'
 ```
 
-`dish-searcher` 是内置示例 Agent，随平台默认加载（共 6 个：dish-searcher、resident-nutrition-assistant、nutrition-evaluator、pagegen-assistant、recipe-composer、safety-assistant）。
+`dish-searcher` 是内置示例 Agent，随平台默认加载。平台内置 8 个 Agent 定义（6 个可对话示例 + 测试/导出示例各 1），其中 dish-searcher / recipe-composer / nutrition-evaluator 标记 `hidden`，不出现在 UI 下拉但仍可直接调用。
 
 ### 体验前端示例（agent-nutritionist-web，可选）
 
@@ -124,20 +124,20 @@ curl -X POST http://localhost:40001/api/conversations/chat \
 
 **访问注意**：用 `http`（不是 `https`）访问 `http://localhost:5173`；不加 `-Web` 时 5173 连不上是预期，不是后端故障。MCP 服务或 aistio 未就绪**不会影响页面渲染**，只会影响聊天中实际调用到的工具（如营养评分依赖 `mcp-nutrition`）。详细的页面说明见 [`agent-nutritionist-web/README.md`](agent-nutritionist-web/README.md)。
 
-## 启用 aistio 管控面（可选）
+## 启用 aistio 管控面
 
-aistio 管控面提供 Web 控制台、Agent 注册接管与编排图执行能力，依赖 AgentScope-Java 2.0.4，属**可选尝鲜模式**。
+aistio 管控面提供 Web 控制台、Agent 注册接管与编排图执行能力，依赖 AgentScope-Java 2.0.4，作为平台常规模块随默认构建一并纳入。
 
-**1. 切换到 2.0.4 尝鲜模式**：稳定模式固定 `agentscope.version=2.0.3`（正式版），无需手工改根 `pom.xml`；构建时加 `-Paistio` 即把 `agent-aistio` 纳入 reactor，并自动把 `agentscope.version` 切到 `2.0.4-SNAPSHOT`（控制面注册 / gRPC 对话流 / 编排触发器 / 契约与治理 / 任务接活），重新构建 `mvn -pl agent-app -am clean install -DskipTests -Paistio`。
+**1. 构建**：`agent-aistio` 已随默认 reactor 一并构建，无需 `-Paistio`；直接 `mvn -pl agent-app -am clean install -DskipTests` 即可把 aistio 管控面对接（控制面注册 / gRPC 对话流 / 编排触发器 / 契约与治理 / 任务接活）一并打进产物。
 
-**2. 本地构建 aistio（无公开镜像）**：aistio 由 `agentscope-service` 仓库源码本地构建，docker 构建过程不执行 maven。首次启用前先运行（自动打补丁 + maven 编 jar + docker 启动 aistio）：
+**2. 接入 aistio 控制面**：aistio 以 AgentScope-Java 官方发布版本提供，首次启用前先运行启动脚本拉起控制面：
 
 ```powershell
-.\scripts\setup-aistio.ps1          # 补丁 + maven 构建 + docker 启动 aistio
-# .\scripts\setup-aistio.ps1 -GitPull  # 首次拉取上游最新代码（目录有本地改动时勿用）
+.\scripts\setup-aistio.ps1                 # 拉取官方 aistio 镜像并启动控制面
+# .\scripts\setup-aistio.ps1 -AistioVersion 2.0.4   # 指定镜像版本（须与 agent-aistio 客户端 API 一致）
 ```
 
-> 重要：aistio 构建时留在 `main` 分支，不要用 `v2.0.4` 标签 / `release/2.0.4` 分支——其前端引用了并不存在的 `features/build` 模块，会编译报 `TS2307: Cannot find module`。脚本默认构建 `main`，产物版本 `2.0.4-SNAPSHOT`（由 `scripts/setup-aistio.ps1` 的 `$AistioVersion` 指定，与 AgentScope-Java 2.0.4-SNAPSHOT 对齐）。
+> 重要：aistio 以 AgentScope-Java 官方 Docker 镜像提供，镜像坐标由 `scripts/setup-aistio.ps1` 的 `$AistioRegistry` / `$AistioVersion` 指定（默认仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`、版本 `2.1.0-BETA1`）。镜像版本须与 yunxi `agent-aistio` 客户端协商的 API 版本一致（当前客户端按 `2.0.4` 构建，若官方仓库存在该 tag，请改用 `.\scripts\setup-aistio.ps1 -AistioVersion 2.0.4` 对齐；否则需先升级 `agent-aistio` 客户端到 `2.1.0-BETA1`）。`setup-aistio.ps1` 默认会生成生产密钥到仓库根 `.env.aistio`（git 忽略、仅当前用户可读写），`-Dev` 可跳过生成回退内置开发默认值。
 
 **3. 开启集成**：将 `agent-config/src/main/resources/application.yml` 的 `yunxi.aistio` 段（默认 `enabled: false`）改为 `true`，重启 yunxi：
 
@@ -145,12 +145,12 @@ aistio 管控面提供 Web 控制台、Agent 注册接管与编排图执行能�
 yunxi:
   aistio:
     enabled: true
-    control-plane-url: http://localhost:18080
+    control-plane-url: http://localhost:8081
     internal-token: compose-local-internal-token-at-least-32chars
-    base-url: http://localhost:40001/agentscope
+    base-url: http://localhost:40001
 ```
 
-重启后 Web 控制台由 aistio 提供（http://localhost:8081），yunxi 经网关 http://localhost:18080 注册并接管 Agent。控制台种子用户 `admin`/`admin` 首次启动自动注入。**生产环境务必替换默认 `internal-token`、控制台弱口令与数据库弱口令。**
+重启后 Web 控制台由 aistio 提供（http://localhost:8081），yunxi 经控制面 http://localhost:8081 注册并接管 Agent。控制台种子用户 `admin`/`admin` 首次启动自动注入。**生产环境务必替换默认 `internal-token`、控制台弱口令与数据库弱口令。**
 
 > 若启动 yunxi 时 MCP 服务尚未就绪，平台会记连接告警但**不会崩溃**，对应工具暂时不可用；`start-stack.ps1` 拉起服务后调用工具会自动重连恢复，无需重启。
 
@@ -176,7 +176,7 @@ yunxi:
 └───────────────────────────────▼──────────────────────────────┘
 
 ┌────────────────────────────────┐   ┌──────────────────────────────┐
-│            MCP 协议            │   │   AgentScope-Java 2.0.3      │
+│            MCP 协议            │   │   AgentScope-Java 2.0.4      │
 │30+ 工具 · SPI 扩展             │   │   Model / Toolkit / Memory   │
 │运行期动态注册 (Nacos)          │   │   Middleware / State         │
 └────────────────────────────────┘   └──────────────────────────────┘
@@ -255,18 +255,6 @@ yunxi 采用 **Agent 优先** 的目录布局，遵循 AgentScope-Java 框架约
 ```
 
 用户运行时数据按 `{userId}/` 子目录隔离（由 `HarnessAgent.workspaceFor(userId, sessionId)` 路由，无需自建扫描器）；`skills/` 为框架唯一识别路径，随仓库附 24 个内置技能，MUSE 自进化引擎会将其 classpath 内 `builtin-skills/` 落地到此目录，共用同一标准格式。
-
-## 上游贡献
-
-yunxi 的运行时完全建立在 [AgentScope-Java](https://github.com/agentscope-ai/agentscope-java) 之上。生产与压测中定位到的框架级缺陷，yunxi 不只在上层绕过，而是把修复回馈上游：
-
-| PR | 修复的问题 | 状态 |
-|------|------------|------|
-| [agentscope-java#3134](https://github.com/agentscope-ai/agentscope-java/pull/3134) | `HarnessAgent` 关闭后记忆后台整理 / 落盘模型调用仍继续执行：连接不释放、in-flight 槽位泄漏；多 Agent 共存时取消还会误伤其它存活 Agent 的任务 | 已通过上游评审（Approved），待合并 |
-
-### 版本兼容说明
-
-yunxi 编译期依赖 AgentScope-Java（默认 2.0.3 正式版）。上游 PR #3134 修复了 `HarnessAgent` 关闭后记忆后台模型调用泄漏的问题（已评审通过、待合入各版本），在合入前平台内置 `MemoryBackgroundTaskReaper` 兜底：Agent 关闭时主动取消遗留的记忆后台模型调用并释放槽位。上游合入并发布后该兜底可整体删除，无需改动业务代码。
 
 ## 许可证
 

@@ -13,7 +13,7 @@ import java.util.Map;
 /**
  * aistio 集成配置（绑定 {@code yunxi.aistio.*}）。
  *
- * <p>本 Bean <b>始终加载</b>（无 {@code @ConditionalOnProperty}），与 {@link io.yunxi.platform.registry.ActiveSessionRegistry}
+ * <p>本 Bean <b>始终加载</b>（无 {@code @ConditionalOnProperty}），与 {@link io.yunxi.platform.session.registry.ActiveSessionRegistry}
  * 类似——即便集成关闭，读取默认值也不会破坏任何东西。真正的装配开关在 {@code enabled} 上，
  * 由 {@code AistioAutoConfiguration} 与各组件的 {@code @ConditionalOnProperty} 控制。</p>
  */

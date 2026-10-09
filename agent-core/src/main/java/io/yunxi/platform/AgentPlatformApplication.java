@@ -1,5 +1,6 @@
 package io.yunxi.platform;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -28,9 +29,10 @@ import io.agentscope.spring.boot.a2a.AgentscopeA2aAutoConfiguration;
 @EnableScheduling
 @EnableConfigurationProperties
 @ConfigurationPropertiesScan
-@MapperScan({ "io.yunxi.platform.shared.mapper", "io.yunxi.platform.session.mapper",
-                "io.yunxi.platform.agent.profile", "io.yunxi.platform.security.audit",
-                "io.yunxi.platform.business.rule" })
+@MapperScan(basePackages = { "io.yunxi.platform.shared.mapper", "io.yunxi.platform.session.mapper",
+                "io.yunxi.platform.agent.routing", "io.yunxi.platform.chat",
+                "io.yunxi.platform.security.audit" },
+                annotationClass = Mapper.class)
 public class AgentPlatformApplication {
 
         /**

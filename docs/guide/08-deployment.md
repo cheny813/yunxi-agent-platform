@@ -178,35 +178,28 @@ OTel Collector 的配置文件位于 `scripts/deploy/otel-collector-config.yaml`
 docker compose --profile aistio up -d
 ```
 
-aistio 由 `agentscope-service` 仓库源码本地构建（**无公开镜像**），启动前必须先克隆并构建，否则镜像 build 阶段会因 JAR 缺失而失败。构建产物的版本号由 `AISTIO_VERSION` 环境变量控制（默认 `2.0.4-SNAPSHOT`，**须与该仓库根 pom 的 `<revision>` 一致**；若你的仓库 revision 不同，先 `export AISTIO_VERSION=<其版本>` 再启动，否则 `COPY *.jar` 会因文件名不匹配而失败）：
+aistio 以 AgentScope-Java 官方发布的 Docker 镜像提供（见官方文档 https://java.agentscope.io/v2/zh/service/quickstart），启动前需先拉起控制面。镜像坐标由 `AISTIO_REGISTRY` / `AISTIO_VERSION` 环境变量控制（默认仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，默认版本 `2.0.4`；**镜像版本须与 yunxi `agent-aistio` 客户端协商的 API 版本一致**，否则控制面握手可能失败）。一键拉起：
 
-```bash
-# 0) 获取源码
-git clone https://github.com/agentscope-ai/agentscope-java.git
-cd agentscope-java
-# git checkout 2.0.4-SNAPSHOT   # 可选：切到与 yunxi 匹配的版本标签
-
-# 1) 构建后端（方式 A：在仓库根目录执行，显式列出 service 子模块，-am 顺带编译 harness/extensions 等上游依赖）
-#    注意：-pl agentscope-service 只会选中聚合 pom 本身、不会构建其下子模块的 jar，必须列出子模块
-mvn -pl agentscope-service/service-dataplane,agentscope-service/service-gateway,agentscope-service/service-scheduler -am install -DskipTests
-
-# 2) 构建前端（生成 aistio/ui，由 aistio/Dockerfile 打进 aistio-control（Go 控制平面）镜像作为 Web 控制台）
-(cd agentscope-service/frontend && npm install && npm run build)
+```powershell
+# 拉取官方镜像并启动 aistio 管控面（默认 2.0.4，与 yunxi agent-aistio 客户端构建版本对齐）
+.\scripts\setup-aistio.ps1
+# 指定版本：  .\scripts\setup-aistio.ps1 -AistioVersion 2.0.4
+# 指定镜像源：.\scripts\setup-aistio.ps1 -AistioRegistry my-reg.io/agentscope
 ```
 
-> **注意**：`mvn -pl agentscope-service -am install` 必须在仓库根目录（含 `agentscope-service` 模块的 pom）执行；若已 `cd` 进 `agentscope-service/` 子目录再执行会报 "Could not find the selected project in the reactor"。
->
-> 源码位置由环境变量 `AISTIO_SRC` 指定（构建后指向仓库内的 `agentscope-service` 目录，默认 `../agentscope-java/agentscope-service`）。使用者需自行 `export AISTIO_SRC=<其 agentscope-service 路径>`；若本地 AgentScope-Java 目录名不同，相应调整即可。
+> **镜像版本选择**：本编排默认拉取 `2.0.4`，与 yunxi `agent-aistio` 集成客户端当前的构建版本（`agentscope.version=2.0.4`）对齐，可避免控制面握手失败。如需使用官方预览版 `2.1.0-BETA1`，须先将 `agent-aistio` 客户端升级到 `2.1.0-BETA1` 后，再 `setup-aistio.ps1 -AistioVersion 2.1.0-BETA1`（详见 [06. 配置指南 - aistio](./06-configuration.md#aistio)）。
+
+> **注意**：官方镜像为预编译产物，无需克隆 AgentScope-Java 源码、无需 Maven / Go / npm 构建。本仓库的 `scripts/setup-aistio.ps1` 已内置生产密钥初始化：默认会用 CSPRNG 生成 `AISTIO_POSTGRES_PASSWORD` / `BUILDER_JWT_SECRET` / `BUILDER_INTERNAL_TOKEN` / `BUILDER_VAULT_MASTER_KEY` / `CONTROL_PLANE_BOOTSTRAP_PASSWORD`，写入仓库根 `.env.aistio`（已被 `.gitignore` 忽略，文件权限仅当前用户可读写）。该文件幂等保留旧值（重生成请用 `-Rotate`，会使 Vault 已加密数据失效），初始管理员密码会打印到控制台。也可改用官方 compose 包的 `init-env.sh` 生成 `.env` 密钥。仅供本地 / 开发可用 `-Dev` 跳过生成、回退内置开发明文默认值。
 
 aistio profile 包含 5 个容器（均在 `aistio` profile 下，默认不启动）：
 
 | 容器 | 构建来源 | 端口 | 用途 |
 |------|----------|------|------|
 | yunxi-aistio-db | postgres:17 | 5432（可选映射） | aistio 元数据库（库/用户/密码均为 `builder`） |
-| yunxi-aistio-control | `aistio/` 下 Go 二进制 aistiod | 8081（内部） | 控制面 |
-| yunxi-aistio-data | service-dataplane（Java） | 8082（内部） | 数据面 |
-| yunxi-aistio-scheduler | service-scheduler（Java） | 8083（内部） | 调度面 |
-| yunxi-aistio-gateway | service-gateway（Java） | 18080（对外） | 网关，对外发布到主机 18080（避开 Nacos 控制台已占用的 8080） |
+| yunxi-aistio-control | `as-controlplane`（官方镜像） | 8081（内部） | 控制面 |
+| yunxi-aistio-data | `as-dataplane`（官方镜像） | 8082（内部） | 数据面 |
+| yunxi-aistio-scheduler | `as-scheduler`（官方镜像） | 8083（内部） | 调度面 |
+| yunxi-aistio-gateway | `as-gateway`（官方镜像） | 18080（对外） | 网关，对外发布到主机 18080（避开 Nacos 控制台已占用的 8080） |
 
 - 内部 token 为 `compose-local-internal-token-at-least-32chars`（compose 本地联调用，生产务必替换）。
 - `aistio-db` 的 `5432` 映射仅用于本地调试，与宿主机已有 Postgres 冲突时可删除该映射行。
@@ -278,7 +271,7 @@ spec:
     spec:
       containers:
       - name: agent-platform
-        image: yunxi/agent-platform:2.0.3
+        image: yunxi/agent-platform:2.0.4
         ports:
         - containerPort: 40001
 ```

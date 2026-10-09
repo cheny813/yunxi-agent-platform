@@ -11,9 +11,9 @@ import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.middleware.AgentInput;
 import io.agentscope.core.middleware.MiddlewareBase;
-import io.yunxi.platform.execution.context.CallContextKeys;
+import io.yunxi.platform.agent.middleware.CallContextKeys;
 import io.yunxi.platform.shared.entity.ChatLogEntity;
-import io.yunxi.platform.shared.mapper.ConversationMapper;
+import io.yunxi.platform.chat.ChatMapper;
 import reactor.core.publisher.Flux;
 
 /**
@@ -34,11 +34,11 @@ public class AuditMiddleware implements MiddlewareBase {
     /** 错误信息落库的最大长度 */
     private static final int MAX_ERROR_LENGTH = 500;
 
-    private final ConversationMapper conversationMapper;
+    private final ChatMapper chatMapper;
     private final String agentName;
 
-    public AuditMiddleware(ConversationMapper conversationMapper, String agentName) {
-        this.conversationMapper = conversationMapper;
+    public AuditMiddleware(ChatMapper chatMapper, String agentName) {
+        this.chatMapper = chatMapper;
         this.agentName = agentName;
     }
 
@@ -77,7 +77,7 @@ public class AuditMiddleware implements MiddlewareBase {
             entity.setDurationMs(durationMs);
             entity.setSuccess(errorMessage == null);
             entity.setErrorMessage(truncate(errorMessage));
-            conversationMapper.insertChatLog(entity);
+            chatMapper.insertChatLog(entity);
             if (log.isDebugEnabled()) {
                 log.debug("审计落库: requestId={}, agent={}, success={}, durationMs={}",
                         requestId, agentName, errorMessage == null, durationMs);

@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import io.agentscope.core.agent.Agent;
-import io.yunxi.platform.agent.profile.ProfileRouter;
+import io.yunxi.platform.agent.routing.ProfileRouter;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.intent.IntentResult;
 import io.yunxi.platform.intent.RouteHint;

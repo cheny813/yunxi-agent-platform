@@ -80,9 +80,4 @@ metrics:
         server:
           requests: true                                 # HTTP请求直方图
 
-# 性能调优验证指标（yunxi 自定义，非 Spring 标准键）
-performance:
-  api:
-    target-response-time: 100ms                         # 目标响应时间
-    max-concurrent-requests: 1000                        # 最大并发请求
-    timeout-threshold: 5000ms                           # 超时阈值
+

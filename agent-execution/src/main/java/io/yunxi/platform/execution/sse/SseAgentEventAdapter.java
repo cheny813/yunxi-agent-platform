@@ -23,13 +23,13 @@ import io.agentscope.core.state.AgentState;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.model.ChatUsage;
-import io.yunxi.platform.conversation.ConversationDomainService;
+import io.yunxi.platform.chat.ChatDomainService;
 import io.yunxi.platform.execution.ExecutionContext;
 import io.yunxi.platform.execution.middleware.PhaseMiddleware;
 import io.yunxi.platform.execution.spi.AgentEventAdapter;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.chat.ChatEntity;
 import io.yunxi.platform.shared.util.SseMessageBuilder;
-import io.yunxi.platform.tracing.LlmMetrics;
+import io.yunxi.platform.trace.LlmMetrics;
 
 /**
  * SSE 事件适配器。
@@ -59,14 +59,14 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
 
     private final SseMessageBuilder sseMessageBuilder;
     private final LlmMetrics llmMetrics;
-    private final ConversationDomainService conversationDomainService;
+    private final ChatDomainService chatDomainService;
 
     public SseAgentEventAdapter(SseMessageBuilder sseMessageBuilder,
                                 LlmMetrics llmMetrics,
-                                ConversationDomainService conversationDomainService) {
+                                ChatDomainService chatDomainService) {
         this.sseMessageBuilder = sseMessageBuilder;
         this.llmMetrics = llmMetrics;
-        this.conversationDomainService = conversationDomainService;
+        this.chatDomainService = chatDomainService;
     }
 
     @Override
@@ -230,10 +230,10 @@ public class SseAgentEventAdapter implements AgentEventAdapter {
         if (text != null && !text.isEmpty()) {
             // 持久化会话：用户消息已在门面层 addMessage，此处补存助手回复，
             // 确保刷新 UI 后能恢复完整对话
-            ConversationEntity conversation = ctx.getConversation();
+            ChatEntity conversation = ctx.getConversation();
             if (conversation != null) {
                 conversation.addMessage(resultMsg);
-                conversationDomainService.saveConversation(conversation);
+                chatDomainService.saveConversation(conversation);
             }
             // 去重：终稿正文通常已由 TEXT_BLOCK_DELTA 逐字流出，此处只补发尚未流出的部分
             String pending = resolvePendingText(text, streamedTextAccumulator(ctx).toString());

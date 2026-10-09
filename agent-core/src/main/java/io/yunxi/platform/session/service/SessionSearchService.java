@@ -5,9 +5,9 @@ import io.agentscope.core.message.Msg;
 import io.yunxi.platform.session.entity.SessionSummaryEntity;
 import io.yunxi.platform.session.entity.SessionTagEntity;
 import io.yunxi.platform.session.index.FullTextIndex;
-import io.yunxi.platform.intelligent.config.IntelligentProperties;
-import io.yunxi.platform.intelligent.llm.IntelligentLlmService;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.agent.intelligent.config.IntelligentProperties;
+import io.yunxi.platform.agent.intelligent.llm.IntelligentLlmService;
+import io.yunxi.platform.chat.ChatEntity;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -215,7 +215,7 @@ public class SessionSearchService {
      * @param summaryType  摘要类型（session_overview/key_points/outcomes）
      * @return 生成的摘要文本；会话为空或异常时返回空字符串
      */
-    public String summarizeSession(ConversationEntity conversation, String summaryType) {
+    public String summarizeSession(ChatEntity conversation, String summaryType) {
         if (conversation == null || conversation.getMessages() == null ||
                 conversation.getMessages().isEmpty()) {
             return "";
@@ -250,7 +250,7 @@ public class SessionSearchService {
      * @param conversation 会话实体
      * @return 生成的摘要文本
      */
-    public String summarizeSession(ConversationEntity conversation) {
+    public String summarizeSession(ChatEntity conversation) {
         return summarizeSession(conversation, "session_overview");
     }
 
@@ -260,7 +260,7 @@ public class SessionSearchService {
      * @param conversation 会话实体
      * @param tags         待附加的标签列表
      */
-    public void tagSession(ConversationEntity conversation, List<SessionTagEntity> tags) {
+    public void tagSession(ChatEntity conversation, List<SessionTagEntity> tags) {
         if (conversation == null || tags == null || tags.isEmpty()) return;
         try {
             for (SessionTagEntity tag : tags) {
@@ -276,7 +276,7 @@ public class SessionSearchService {
     }
 
     /** 构建摘要生成提示词 */
-    private String buildSummaryPrompt(ConversationEntity conversation, String summaryType) {
+    private String buildSummaryPrompt(ChatEntity conversation, String summaryType) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("请为以下对话生成一个").append(summaryType).append("摘要。\n\n");
         if ("session_overview".equals(summaryType)) {

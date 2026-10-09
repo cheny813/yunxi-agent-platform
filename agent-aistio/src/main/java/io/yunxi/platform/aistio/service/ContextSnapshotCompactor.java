@@ -8,7 +8,7 @@ import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.memory.compaction.ConversationCompactor;
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
-import io.yunxi.platform.contract.dto.ContextSnapshot;
+import io.yunxi.platform.integration.contract.dto.ContextSnapshot;
 import io.yunxi.platform.agent.model.ModelFactory;
 import java.time.Duration;
 import java.util.ArrayList;

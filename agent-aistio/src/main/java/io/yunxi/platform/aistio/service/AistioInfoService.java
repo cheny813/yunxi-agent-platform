@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import io.yunxi.platform.agent.mcp.McpConfigStore;
 import io.yunxi.platform.agent.mcp.McpServerEntry;
 import io.yunxi.platform.aistio.AistioIntegrationProperties;
-import io.yunxi.platform.contract.dto.DataPlaneInfo;
+import io.yunxi.platform.integration.contract.dto.DataPlaneInfo;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import lombok.RequiredArgsConstructor;
 
@@ -37,7 +37,7 @@ public class AistioInfoService {
     public DataPlaneInfo buildInfo() {
         DataPlaneInfo info = new DataPlaneInfo();
         info.setRuntime("yunxi-agent-platform");
-        info.setVersion("2.0.3");
+        info.setVersion("2.0.4");
         info.setContractLevel(properties.getContractLevel());
         info.setNamespace(properties.getNamespace());
         info.setName(properties.getAgentName());

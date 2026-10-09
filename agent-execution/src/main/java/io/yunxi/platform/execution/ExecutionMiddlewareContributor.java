@@ -9,7 +9,7 @@ import io.yunxi.platform.execution.middleware.AuditMiddleware;
 import io.yunxi.platform.execution.middleware.MetricsMiddleware;
 import io.yunxi.platform.execution.middleware.PhaseMiddleware;
 import io.yunxi.platform.execution.spi.AgentMiddlewareContributor;
-import io.yunxi.platform.shared.mapper.ConversationMapper;
+import io.yunxi.platform.chat.ChatMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -39,12 +39,12 @@ public class ExecutionMiddlewareContributor implements AgentMiddlewareContributo
     }
 
     @Override
-    public List<MiddlewareBase> contribute(AgentDefinition def, ConversationMapper conversationMapper) {
+    public List<MiddlewareBase> contribute(AgentDefinition def, ChatMapper chatMapper) {
         List<MiddlewareBase> middlewares = new ArrayList<>();
         middlewares.add(metricsMiddleware);
         middlewares.add(phaseMiddleware);
-        if (conversationMapper != null) {
-            middlewares.add(new AuditMiddleware(conversationMapper, def.getName()));
+        if (chatMapper != null) {
+            middlewares.add(new AuditMiddleware(chatMapper, def.getName()));
         }
         return middlewares;
     }

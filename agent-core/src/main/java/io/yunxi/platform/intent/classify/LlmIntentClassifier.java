@@ -36,7 +36,7 @@ import io.yunxi.platform.intent.domain.DomainRuntime;
 import io.yunxi.platform.intent.snapshot.TreeSnapshot;
 import io.yunxi.platform.intent.util.IntentKeywordMatcher;
 import io.yunxi.platform.shared.config.AgentModelConfig;
-import io.yunxi.platform.tracing.LlmMetrics;
+import io.yunxi.platform.trace.LlmMetrics;
 
 /**
  * LLM 白名单意图分类器。

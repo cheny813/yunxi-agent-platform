@@ -6,7 +6,7 @@ import java.util.List;
  * 文本嵌入向量服务接口（产品平面统一契约）。
  *
  * <p>为依赖 agent-spi 的下层模块（如 agent-text2sql）提供文本向量化能力抽象，
- * 由 agent-core 的 {@code io.yunxi.platform.embedding.EmbeddingService} 实现。
+ * 由 agent-core 的 {@code io.yunxi.platform.rag.embedding.EmbeddingService} 实现。
  * 单一接口 + 单一实现，避免与具体实现类同名的重复抽象。</p>
  */
 public interface EmbeddingService {

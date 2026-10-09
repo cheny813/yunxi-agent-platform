@@ -7,6 +7,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import io.yunxi.platform.agent.page.PageAgentService;
+
 /**
  * 验证 page 配置经 agentRef 引用 AgentScope Agent 定义（去重营养等领域知识）。
  * 构造无需 Model：properties 传 null 时 chatModel 置为 null，不影响配置解析。

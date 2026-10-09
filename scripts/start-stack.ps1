@@ -8,12 +8,13 @@
 param(
     # yunxi-mcp-servers 仓库根（各 MCP 模块的上级工程）
     [string]$McpServersRoot = '',
-    # AgentScope-Java 仓库根（含 agentscope-service），供 docker compose 引用。
-    # 留空则自动探测同级目录下的 agentscope-java / agentscope-java-2.0GA。
-    [string]$AistioRepoRoot = '',
+    # aistio 官方镜像仓库前缀（如 sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope）；
+    # 留空用官方默认值，可覆盖为私有/加速镜像源。
+    [string]$AistioRegistry = 'sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope',
+    # aistio 镜像版本；须与 yunxi agent-aistio 客户端协商的 API 版本保持一致。
+    [string]$AistioVersion = '2.1.0-BETA1',
     # yunxi 仓库根
     [string]$YunxiRoot = '',
-    [string]$AistioVersion = '2.0.4-SNAPSHOT',
     [switch]$SkipAistio,   # 跳过 aistio 控制面检查/启动
     [switch]$SkipMcp,      # 跳过 5 个 MCP 服务启动
     [switch]$Force,        # 强制重启（MCP 端口占用则先 kill；不强制重建 aistio 容器）
@@ -40,20 +41,8 @@ $SiblingRoot = (Resolve-Path (Join-Path $YunxiRoot '..')).Path
 if ([string]::IsNullOrWhiteSpace($McpServersRoot)) {
     $McpServersRoot = Resolve-SiblingDir -Parent $SiblingRoot -Candidates @('yunxi-mcp-servers') -Label 'yunxi-mcp-servers'
 }
-if ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
-    $AistioRepoRoot = Resolve-SiblingDir -Parent $SiblingRoot -Candidates @('agentscope-java', 'agentscope-java-2.0GA') -Label 'AgentScope-Java'
-}
-# 优先选用真正含 agentscope-service 源码的目录：同名空目录（如仅含书籍的 agentscope-java）应让位给 agentscope-java-2.0GA，
-# 否则 compose 的 AISTIO_SRC 会指向空目录而失败。
-if (-not [string]::IsNullOrWhiteSpace($AistioRepoRoot) -and -not (Test-Path (Join-Path $AistioRepoRoot 'agentscope-service'))) {
-    foreach ($alt in @('agentscope-java-2.0GA', 'agentscope-java')) {
-        $ap = Join-Path $SiblingRoot $alt
-        if ((Test-Path $ap) -and (Test-Path (Join-Path $ap 'agentscope-service'))) {
-            $AistioRepoRoot = (Resolve-Path $ap).Path
-            break
-        }
-    }
-}
+# aistio 现以官方 Docker 镜像提供，不再需要探测本地 AgentScope-Java 源码目录；
+# 镜像坐标由 AISTIO_REGISTRY / AISTIO_VERSION 环境变量控制（见下方 aistio 控制面段落）。
 
 $ErrorActionPreference = 'Stop'
 
@@ -96,7 +85,8 @@ Write-Host '==================================================' -ForegroundColor
 Write-Host '  yunxi stack launcher (MCP x5 + aistio)' -ForegroundColor Cyan
 Write-Host '==================================================' -ForegroundColor Cyan
 Write-Host "  McpServersRoot : $McpServersRoot"
-Write-Host "  AistioRepoRoot : $AistioRepoRoot"
+Write-Host "  AistioRegistry: $AistioRegistry"
+Write-Host "  AistioVersion : $AistioVersion"
 Write-Host "  YunxiRoot      : $YunxiRoot"
 Write-Host ''
 
@@ -105,22 +95,25 @@ if (-not $SkipAistio) {
     $aistioUp = (Test-PortListening 8081) -or (Test-PortListening 18080)
     if ($aistioUp) {
         Write-Host '==> aistio control plane already running (8081/18080), skip' -ForegroundColor DarkGray
-    } elseif ([string]::IsNullOrWhiteSpace($AistioRepoRoot)) {
-        Write-Host '==> WARN: AgentScope-Java repo not found next to this project; skip aistio.' -ForegroundColor Yellow
-        Write-Host '    Clone it to a sibling dir (default names: agentscope-java or agentscope-java-2.0GA),' -ForegroundColor DarkGray
-        Write-Host '    or pass -AistioRepoRoot <path>. Use -SkipAistio to silence this warning.' -ForegroundColor DarkGray
     } else {
-        Write-Host '==> bringing up aistio via docker compose (existing images)...' -ForegroundColor Cyan
-        $env:AISTIO_SRC = Join-Path $AistioRepoRoot 'agentscope-service'
-        $env:AISTIO_ROOT = $AistioRepoRoot
-        $env:AISTIO_VERSION = $AistioVersion
+        Write-Host '==> bringing up aistio via docker compose (official images)...' -ForegroundColor Cyan
+        $env:AISTIO_REGISTRY = $AistioRegistry
+        $env:AISTIO_VERSION  = $AistioVersion
+        $aistioArgs = @('--profile', 'aistio')
+        $envFile = Join-Path $YunxiRoot '.env.aistio'
+        if (Test-Path $envFile) {
+            $aistioArgs += '--env-file'; $aistioArgs += $envFile
+            Write-Host "    using production secrets from $envFile" -ForegroundColor DarkGray
+        } else {
+            Write-Host '    no .env.aistio found; using built-in dev defaults (run scripts/setup-aistio.ps1 to generate secrets).' -ForegroundColor DarkGray
+        }
         Push-Location $YunxiRoot
         try {
-            docker compose --profile aistio up -d
+            docker compose @aistioArgs up -d
             if ($LASTEXITCODE -ne 0) { throw "docker compose failed (exit=$LASTEXITCODE)" }
         } finally { Pop-Location }
         if (-not ((Test-PortListening 8081) -or (Test-PortListening 18080))) {
-            Write-Host '    console did not come up; run scripts/setup-aistio.ps1 to (re)build images first.' -ForegroundColor Yellow
+            Write-Host '    console did not come up; check image pull / registry access (AISTIO_REGISTRY).' -ForegroundColor Yellow
         }
     }
 }
@@ -136,6 +129,17 @@ $mcpServices = @(
 
 $logDir = Join-Path (Join-Path $YunxiRoot 'logs') 'mcp'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+# mcp-milvus 的 milvus.host 默认写死为某开发机 IP（192.168.11.48，见
+# yunxi-mcp-servers/mcp-milvus/src/main/resources/application.yml 的
+# milvus.host: ${MILVUS_HOST:192.168.11.48}）。本机未设 MILVUS_HOST 时会去连
+# 该不存在的地址，导致 40103 起不来（waiting_for_connection）。下面在启动 MCP 栈前
+# 注入回环地址兜底：仅当用户环境变量为空时才设默认值，已显式设置则尊重之。
+# 子 java 进程（mcp-milvus）会继承这些环境变量，使其连上本机 Milvus。
+if ([string]::IsNullOrWhiteSpace($env:MILVUS_HOST))     { $env:MILVUS_HOST     = '127.0.0.1' }
+if ([string]::IsNullOrWhiteSpace($env:MILVUS_PORT))     { $env:MILVUS_PORT     = '19530' }
+if ([string]::IsNullOrWhiteSpace($env:MILVUS_USERNAME)) { $env:MILVUS_USERNAME = 'root' }
+if ([string]::IsNullOrWhiteSpace($env:MILVUS_PASSWORD)) { $env:MILVUS_PASSWORD = 'Milvus' }
 
 if (-not $SkipMcp) {
     foreach ($svc in $mcpServices) {

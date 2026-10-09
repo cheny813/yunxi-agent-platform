@@ -129,7 +129,7 @@ agentscope:
     # ============================================================
     # 通用请求审计配置（agentscope.core.audit，由对话审计中间件读取）
     # 默认关闭；开启后每次调用收尾落库 agent_chat_logs
-    # （ConversationMapper.insertChatLog）。
+    # （ChatMapper.insertChatLog）。
     # ============================================================
     audit:
       enabled: ${AUDIT_ENABLED:false}
@@ -167,12 +167,14 @@ yunxi:
 # 以下均为顶层配置键（不隶属于 agentscope 前缀），对应代码中的 @Value 注入
 # ============================================================
 
-# 对话接口等待超时（秒）—— ConversationController
+# 对话接口等待超时（秒）—— ChatController
 conversation:
   timeout-seconds: ${CONVERSATION_TIMEOUT_SECONDS:300}
-  # 会话列表缓存 TTL（分钟）—— ConversationDomainService
+  # 会话列表缓存 TTL（分钟）—— ChatDomainService
   session-cache-ttl-minutes: ${CONVERSATION_CACHE_TTL_MINUTES:5}
-  # 分布式请求锁 TTL（秒）—— DistributedRequestManager
+
+# 基础设施（分布式请求协调）- DistributedRequestManager
+infrastructure:
   request-lock-seconds: ${CONVERSATION_LOCK_SECONDS:300}
 
 # 页面 Agent 执行阻塞超时（秒）—— PageAgentService

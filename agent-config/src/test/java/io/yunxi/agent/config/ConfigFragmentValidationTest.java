@@ -67,7 +67,7 @@ class ConfigFragmentValidationTest {
 
     @Test
     void testEmbeddingConfigFormat() {
-        validateConfigFile("config/embedding.yml", "io.yunxi.platform.embedding");
+        validateConfigFile("config/embedding.yml", "io.yunxi.platform.rag.embedding");
     }
 
     @Test
@@ -80,11 +80,6 @@ class ConfigFragmentValidationTest {
         // 限流配置前缀必须是顶层 rate-limit（RateLimitInterceptor 的 @Value 绑定），
         // 而非旧 cache.yml 里误写的 api.rate-limit.*（从未被绑定，属死配置）。
         validateConfigFile("config/rate-limit.yml", "rate-limit");
-    }
-
-    @Test
-    void testA2APipelineConfigFormat() {
-        validateConfigFile("config/a2a-pipeline.yml", "a2a.pipeline");
     }
 
     @Test
@@ -142,10 +137,8 @@ class ConfigFragmentValidationTest {
     @Test
     void testRedisConfigUsesBoot3Prefix() {
         String redisYml;
-        String a2aYml;
         try {
             redisYml = Files.readString(Paths.get("src/main/resources/config/redis.yml"));
-            a2aYml = Files.readString(Paths.get("src/main/resources/config/a2a-pipeline.yml"));
         } catch (Exception e) {
             fail("Failed to read redis configs: " + e.getMessage());
             return;
@@ -156,8 +149,6 @@ class ConfigFragmentValidationTest {
         // 旧写法 `spring:\n  redis:` 作为独立层级出现即为回归（注意与 spring.data.redis 区分）
         assertFalse(redisYml.matches("(?s).*spring:\\s*\\n\\s{2}redis:.*"),
             "config/redis.yml 不应再出现旧的 spring.redis 层级");
-        assertFalse(a2aYml.contains("spring:\n  redis:"),
-            "config/a2a-pipeline.yml 不得再用旧前缀 spring.redis 重复声明连接参数");
     }
 
     // ---- 配置治理红线 ----
@@ -199,7 +190,7 @@ class ConfigFragmentValidationTest {
                 "imports.yml 应仅 aistio-workflow-export.yml 带 optional:，其余必选模块缺失必须启动失败");
             for (String mandatory : new String[]{"server.yml", "datasource.yml", "cache.yml", "async.yml",
                     "redis.yml", "llm.yml", "milvus.yml", "embedding.yml", "persistence.yml", "mcp-core.yml",
-                    "mcp-external.yml", "resilience.yml", "rate-limit.yml", "file-upload.yml", "a2a-pipeline.yml",
+                    "mcp-external.yml", "resilience.yml", "rate-limit.yml", "file-upload.yml",
                     "agentscope.yml", "muse.yml", "intent.yml", "platform.yml", "aistio.yml", "observability.yml",
                     "security.yml"}) {
                 assertTrue(imports.contains("classpath:config/" + mandatory),

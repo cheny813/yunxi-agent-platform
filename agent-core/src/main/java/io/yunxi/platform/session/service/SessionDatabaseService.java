@@ -7,7 +7,7 @@ import io.yunxi.platform.session.entity.SessionSummaryEntity;
 import io.yunxi.platform.session.entity.SessionTagEntity;
 import io.yunxi.platform.session.mapper.SessionSummaryMapper;
 import io.yunxi.platform.session.mapper.SessionTagMapper;
-import io.yunxi.platform.shared.entity.ConversationEntity;
+import io.yunxi.platform.chat.ChatEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -185,7 +185,7 @@ public class SessionDatabaseService {
     }
 
     /** 从会话实体提取关键词 */
-    public List<String> extractKeywords(ConversationEntity conversation) {
+    public List<String> extractKeywords(ChatEntity conversation) {
         List<String> keywords = new ArrayList<>();
         if (conversation.getTitle() != null && !conversation.getTitle().isBlank()) {
             keywords.addAll(Arrays.asList(conversation.getTitle().split("\\s+")));

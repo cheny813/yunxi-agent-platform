@@ -49,6 +49,3 @@ memory:
   # 场景检测开关
   scene-detection:
     enabled: true
-  # 自动记忆提取开关
-  auto-extract:
-    enabled: true

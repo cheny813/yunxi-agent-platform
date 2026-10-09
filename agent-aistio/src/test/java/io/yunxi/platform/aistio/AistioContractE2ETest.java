@@ -23,7 +23,6 @@ import io.agentscope.core.agent.Agent;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.Task;
-import io.agentscope.core.state.Task.State;
 import io.agentscope.core.state.TaskContextState;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.yunxi.platform.aistio.contract.AistioDataPlaneContract;
@@ -35,16 +34,16 @@ import io.yunxi.platform.aistio.service.SessionInventoryService;
 import io.yunxi.platform.aistio.service.SubagentTopologyService;
 import io.yunxi.platform.aistio.service.WorkspaceInventoryService;
 import io.yunxi.platform.agent.model.ModelFactory;
-import io.yunxi.platform.contract.DataPlaneContract;
-import io.yunxi.platform.contract.dto.DataPlaneInfo;
-import io.yunxi.platform.contract.dto.HealthResponse;
-import io.yunxi.platform.contract.dto.SessionState;
-import io.yunxi.platform.contract.dto.TaskInfo;
+import io.yunxi.platform.integration.contract.DataPlaneContract;
+import io.yunxi.platform.integration.contract.dto.DataPlaneInfo;
+import io.yunxi.platform.integration.contract.dto.HealthResponse;
+import io.yunxi.platform.integration.contract.dto.SessionState;
+import io.yunxi.platform.integration.contract.dto.TaskInfo;
 import io.yunxi.platform.agent.service.AgentService;
 import io.yunxi.platform.agent.mcp.McpConfigStore;
-import io.yunxi.platform.conversation.ConversationDomainService;
-import io.yunxi.platform.persistence.repository.ConversationRepository;
-import io.yunxi.platform.registry.ActiveSessionRegistry;
+import io.yunxi.platform.chat.ChatDomainService;
+import io.yunxi.platform.chat.ChatRepository;
+import io.yunxi.platform.session.registry.ActiveSessionRegistry;
 import io.yunxi.platform.shared.config.AgentDefinition;
 import io.yunxi.platform.shared.config.AgentDefinitionLoader;
 import io.yunxi.platform.shared.config.OrchestrationConfig;
@@ -68,9 +67,9 @@ class AistioContractE2ETest {
     @Mock
     private AgentService agentService;
     @Mock
-    private ConversationDomainService conversationDomainService;
+    private ChatDomainService chatDomainService;
     @Mock
-    private ConversationRepository conversationRepository;
+    private ChatRepository chatRepository;
     @Mock
     private AgentDefinitionLoader agentDefinitionLoader;
     @Mock
@@ -93,11 +92,11 @@ class AistioContractE2ETest {
                 new AistioInfoService(properties, mcpConfigStore, agentDefinitionLoader);
         ContextSnapshotCompactor contextCompactor = new ContextSnapshotCompactor(modelFactory, properties);
         SessionInventoryService sessionInventory = new SessionInventoryService(
-                registry, conversationDomainService, properties, agentResolver, contextCompactor);
+                registry, chatDomainService, properties, agentResolver, contextCompactor);
         SubagentTopologyService subagentTopology = new SubagentTopologyService(agentDefinitionLoader);
         WorkspaceInventoryService workspaceInventory = new WorkspaceInventoryService(registry);
         GovernanceService governance =
-                new GovernanceService(registry, properties, agentService, conversationDomainService, agentResolver);
+                new GovernanceService(registry, properties, agentService, chatDomainService, agentResolver);
         contract = new AistioDataPlaneContract(
                 infoService, sessionInventory, subagentTopology, workspaceInventory, governance);
     }
@@ -218,7 +217,7 @@ class AistioContractE2ETest {
         AgentState state = mock(AgentState.class);
         TaskContextState tcs = mock(TaskContextState.class);
         Task task = mock(Task.class);
-        State taskState = mock(State.class);
+        Task.State taskState = mock(Task.State.class);
 
         when(agentService.getAgentInstance("test-agent")).thenReturn(harness);
         when(harness.getDelegate()).thenReturn(delegate);

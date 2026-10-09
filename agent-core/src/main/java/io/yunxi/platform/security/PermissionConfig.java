@@ -1,0 +1,364 @@
+package io.yunxi.platform.security;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import io.agentscope.core.permission.PermissionBehavior;
+import io.agentscope.core.permission.PermissionContextState;
+import io.agentscope.core.permission.PermissionMode;
+import io.agentscope.core.permission.PermissionRule;
+import io.yunxi.platform.shared.config.HITLConfig;
+import io.yunxi.platform.shared.config.ReasoningReviewConfig;
+import io.yunxi.platform.shared.config.ToolGateConfig;
+import org.springframework.stereotype.Component;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * 将 yunxi 既有 HITL 配置（ToolGate / ReasoningReview）映射为 AgentScope 2.0.0 原生权限上下文。
+ *
+ * <p>本类<b>不封装</b> AgentScope 的权限模式枚举，{@link PermissionMode} 的 5 种取值
+ * （{@code DEFAULT} / {@code ACCEPT_EDITS} / {@code EXPLORE} / {@code BYPASS} / {@code DONT_ASK}）
+ * 由框架使用者直接透传，yunxi 不做裁剪。这样既能让使用本框架的用户在特殊场景下选择任意模式
+ * （例如本地文件编辑型 agent 用 {@code ACCEPT_EDITS} / {@code EXPLORE}），也能在 AgentScope 升级新增模式时
+ * 无需同步修改 yunxi 代码。
+ *
+ * <p>AgentScope 权限引擎没有独立的 ALLOW / ASK / DENY 语义开关；"需要人工审批"统一通过
+ * {@code DEFAULT} 模式叠加针对具体工具的 {@code addAskRule(..., PermissionBehavior.ASK)} 实现：
+ * 执行被点名的工具时，权限引擎会挂起并向用户请求确认。
+ * yunxi 仅负责把 HITL 配置翻译成上述 ASK 规则，底层放行/拦截语义完全交给 AgentScope。</p>
+ *
+ * <p>危险路径保护与平台类型无关，由 AgentScope 框架在 {@code ToolBase} / {@code ToolDangerousPathConstants} 层
+ * 自动处理：自定义 tool 可在 {@code @Tool} 注解上追加 {@code dangerousFiles} / {@code dangerousDirectories}
+ * 把额外路径并入受保护集合，命中后<b>即便在 {@code BYPASS} 模式下也会强制 ASK</b>。yunxi 不重复实现该能力。</p>
+ *
+ * <p>注意（AgentScope 已知行为）：{@link PermissionMode#DONT_ASK} 下 AgentScope 的 {@code checkAskRules} 不区分 mode，
+ * 显式 ASK 规则仍会挂起等应答，导致无人值守场景死锁。因此 {@link #build(HITLConfig, PermissionMode)}
+ * 在模式为 {@code DONT_ASK} 时<b>不注入任何 ASK 规则</b>；其安全由 AgentScope 危险路径保护兜底。</p>
+ */
+@Component
+public class PermissionConfig {
+
+    /**
+     * Spring 装配后的单例引用，供静态的会话级状态修正钩子
+     * （{@code AgentConfigurer#activateSessionToolGroups}）读取权限模板。
+     *
+     * <p>本类是<b>无状态纯函数组件</b>（仅含静态常量与将配置翻译为权限上下文的纯方法），
+     * 因此以静态引用暴露不引入共享可变状态。这样做的原因是：会话级修正钩子为静态方法
+     * （由多个调用期策略类直接静态调用），无法通过实例注入拿到本组件。</p>
+     */
+    private static volatile PermissionConfig instance;
+
+    public PermissionConfig() {
+        instance = this;
+    }
+
+    /**
+     * 返回 Spring 装配的实例；未装配（如单元测试直构）时为 {@code null}。
+     *
+     * @return 组件实例或 null
+     */
+    public static PermissionConfig instance() {
+        return instance;
+    }
+
+    /** 权限规则来源标识，便于在 AgentScope 权限引擎日志/状态中区分 yunxi 注入的规则 */
+    private static final String RULE_SOURCE = "yunxi-hitl";
+
+    /**
+     * 平台级危险工具黑名单基线（无人值守默认拒绝）。
+     * 这些工具具有执行代码 / 命令 / 文件写入等外部副作用，绝不应在无人值守 Agent 中静默放行。
+     * 被列入后，即便 Agent 处于 {@code BYPASS}（默认全放行）模式，也会在判定第 1 步被显式 DENY 拦截。
+     * 业务 Agent 可在 HITL.deniedTools 中追加更多需禁止的工具；基线始终与业务黑名单合并生效。
+     */
+    private static final List<String> DEFAULT_DENIED_BASELINE = List.of("node_command");
+
+    /**
+     * AgentScope 内置任务清单工具名（由 {@code HarnessAgent.Builder.enableTaskList(true)} 注册）。
+     */
+    private static final String TODO_WRITE_TOOL = "todo_write";
+
+    /**
+     * MUSE 自进化元工具名（由 {@code MuseToolRegistrarImpl} 注册到 {@code muse} 工具组）。
+     * 属平台级治理能力，需在所有权限模式下放行；仅在 {@code yunxi.muse.enabled=true} 时注册。
+     */
+    private static final List<String> MUSE_META_TOOLS = List.of(
+            "muse_skill_eval", "muse_skill_evolve", "muse_skill_prune");
+
+    /** 平台级放行工具全集（任务清单 + MUSE 元工具），仅用于诊断日志输出。 */
+    private static final List<String> PLATFORM_ALLOW_TOOLS;
+    static {
+        List<String> all = new java.util.ArrayList<>();
+        all.add(TODO_WRITE_TOOL);
+        all.addAll(MUSE_META_TOOLS);
+        PLATFORM_ALLOW_TOOLS = List.copyOf(all);
+    }
+
+    private static final Logger log = LoggerFactory.getLogger(PermissionConfig.class);
+
+    /**
+     * 判断 HITL 配置是否包含需要人工确认（ASK）的工具。
+     *
+     * <p>ToolGate 启用且工具列表非空，或 ReasoningReview 启用且 ToolGate 含工具，均视为有 ASK 工具。
+     * 用于决定透传的 AgentScope 权限模式：有 → {@code DEFAULT}（挂起向用户确认），无 → {@code BYPASS}（全放行）。
+     * 同时被 {@link AgentConfigurer#injectHITLMiddlewares}（构建期）与
+     * 执行引擎（请求期权限快照，原 {@code PermissionContextInterceptor} 已删除）复用，保证两种注入路径模式决定一致。</p>
+     *
+     * @param hitl HITL 配置（可为 null）
+     * @return 是否配置了需人工确认的工具
+     */
+    public static boolean hasAskTools(HITLConfig hitl) {
+        if (hitl == null) {
+            return false;
+        }
+        ToolGateConfig toolGate = hitl.getToolGate();
+        if (toolGate != null && toolGate.isEnabled()
+                && toolGate.getTools() != null && !toolGate.getTools().isEmpty()) {
+            return true;
+        }
+        ReasoningReviewConfig reasoningReview = hitl.getReasoningReview();
+        if (reasoningReview != null && reasoningReview.isEnabled()
+                && toolGate != null && toolGate.getTools() != null && !toolGate.getTools().isEmpty()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 按调用方透传的 AgentScope 原生模式构建权限上下文。
+     *
+     * <p>模式完全由调用方决定（{@link PermissionMode} 5 种均可），yunxi 不裁剪、不重映射。
+     * 仅当模式非 {@code DONT_ASK} 时，才把 HITL 配置中的 ToolGate / ReasoningReview 工具
+     * 注册为 ASK 规则；{@code DONT_ASK} 为无人值守安全姿态，跳过 ASK 规则以避免挂死。
+     *
+     * @param hitl HITL 配置（可为 null）
+     * @param mode 调用方指定的 AgentScope 原生权限模式（直接透传）
+     * @return AgentScope 权限上下文
+     */
+    public PermissionContextState build(HITLConfig hitl, PermissionMode mode) {
+        PermissionContextState.Builder builder = PermissionContextState.builder();
+        builder.mode(mode);
+        addPlatformToolAllowRules(builder);
+        if (mode != PermissionMode.DONT_ASK) {
+            addAskRules(builder, hitl);
+        }
+        return builder.build();
+    }
+
+    /**
+     * 构建无人值守（{@code DONT_ASK}）权限上下文。
+     *
+     * <p>用于未配置 HITL 的 Agent：该模式下 AgentScope 兜底判定会把未命中规则的工具调用
+     * 从 ASK 降级为 DENY（避免无人值守场景挂起等待）。因此任务清单工具同样必须显式放行，
+     * 否则 {@code todo_write} 会被直接拒绝、任务清单完全不可用。
+     * 本方法与 {@link #build} 保持一致的放行策略，仅模式固定为 {@code DONT_ASK}。
+     *
+     * <p>构建期（{@code AgentConfigurer.injectHITLMiddlewares}）与请求期
+     * （执行引擎权限快照，原 {@code PermissionContextInterceptor} 已删除）两条注入路径均复用本方法，
+     * 避免各自构造上下文导致放行策略漏配。</p>
+     *
+     * <p><b>已知取舍</b>：本模式下未命中 ALLOW 规则的工具一律被拒绝，<b>包括
+     * {@code list_files} / {@code read_file} 等只读工具</b>——工具的 {@code readOnly=true}
+     * 属性仅在 {@code EXPLORE} / {@code ACCEPT_EDITS} 模式下参与判定，在
+     * {@code DONT_ASK} 下不生效。只读 MCP 工具不受影响（{@code McpTool} 工具自检直接放行）。</p>
+     *
+     * <p><b>为何不用 EXPLORE</b>（语义上更贴近"只读放行"，曾被考虑）：
+     * {@code PermissionEngine} 的判定顺序为
+     * {@code deny → ask →[(EXPLORE/ACCEPT_EDITS 模式判定) 或 工具自检] → allow → BYPASS → 兜底}，
+     * EXPLORE 的模式判定位于 ALLOW 规则<b>之前</b>且立即返回
+     * （{@code PermissionEngine.checkExploreMode} L241-248 对非只读工具直接 DENY）。
+     * 而任务清单工具 {@code todo_write} 的 {@code readOnly=false}
+     * （{@code TodoTools} L96），改用 EXPLORE 会使其被直接 DENY、任务清单失效。
+     * 换言之：EXPLORE 与"为特定工具注入 ALLOW 放行"二者不可兼得，
+     * 故保留 DONT_ASK + ALLOW 规则的组合。
+     * </p>
+     *
+     * <p>若将来业务确实需要在此模式下使用框架内置只读工具，可行方案是：
+     * 在请求期通过 Agent 实例的 toolkit 枚举 {@code isReadOnly()} 为 true 的工具并注入
+     * ALLOW 规则（注意不能用装配期的 toolkit——实测其视图不完整：即便在 Agent 构建
+     * 完成后，其中也只含装配期注册的工具，框架在 build 阶段注册的工具不在其中）。</p>
+     *
+     * @return 无人值守权限上下文
+     */
+    public PermissionContextState unattendedContext() {
+        PermissionContextState.Builder builder = PermissionContextState.builder();
+        builder.mode(PermissionMode.DONT_ASK);
+        addPlatformToolAllowRules(builder);
+        return builder.build();
+    }
+
+    /**
+     * 带业务工具白名单的无人值守权限上下文。
+     *
+     * <p>在 {@link #unattendedContext()} 基础上，对 {@code allowedTools} 中的每个工具名显式注入
+     * ALLOW 规则（命中于判定第 4 步、早于兜底 DENY）。这样纯查询/评分类 Agent 可在无人值守时
+     * 正常调用其 MCP / 表单 / 数据库等业务工具，而 {@code write_file} / {@code edit_file} /
+     * {@code execute} 等危险工具因不在白名单中仍被兜底 DENY，不会退化为 BYPASS 全放行。
+     *
+     * <p>注意：McpTool 在 DONT_ASK 模式下并不会被"工具自检"自动放行（其
+     * {@code checkPermissions} 对未标注只读的工具返回 PASSTHROUGH，最终落到底盘 DENY），
+     * 因此必须在此显式声明业务工具白名单，而非依赖框架自检。
+     *
+     * @param allowedTools 业务工具名白名单（精确匹配 {@code Tool.getName()}），可为空或 null
+     * @return 无人值守权限上下文
+     */
+    public PermissionContextState unattendedContext(List<String> allowedTools) {
+        PermissionContextState.Builder builder = PermissionContextState.builder();
+        builder.mode(PermissionMode.DONT_ASK);
+        addPlatformToolAllowRules(builder);
+        if (allowedTools != null) {
+            for (String tool : allowedTools) {
+                if (tool != null && !tool.isBlank()) {
+                    builder.addAllowRule(tool,
+                            new PermissionRule(tool, null, PermissionBehavior.ALLOW, RULE_SOURCE));
+                }
+            }
+        }
+        return builder.build();
+    }
+
+    /**
+     * 带业务工具黑名单的权限上下文（BYPASS 模式 + DENY 规则）。
+     *
+     * <p>与 {@link #unattendedContext(List)} 的白名单互补：白名单须逐一列出"允许"的工具，
+     * 漏列即被兜底 DENY（且 McpTool 在 DONT_ASK 下不会被框架自检放行，必须显式声明）；
+     * 黑名单则基于 {@link PermissionMode#BYPASS}（默认全放行），仅对 {@code deniedTools}
+     * 中的少数危险工具注入 DENY 规则（判定第 1 步，优先级最高），
+     * 适用于"禁止的少、允许的多"的场景——只需列出少数危险工具，其余全部放行。</p>
+     *
+     * <p>平台级危险工具基线 {@link #DEFAULT_DENIED_BASELINE} 作为可选参数与 {@code deniedTools} 合并生效；
+     * 若不需要全局基线（即"未在黑名单列出的工具一律放行"），调用方应传入 {@code null} 基线，
+     * 否则即便业务 Agent 不配置 deniedTools 也会自动拒绝平台级危险工具（如 node_command）。</p>
+     *
+     * @param deniedTools 业务工具名黑名单（精确匹配 Tool.getName()），可为空或 null
+     * @return 权限上下文
+     */
+    public PermissionContextState blacklistContext(List<String> deniedTools) {
+        return blacklistContext(deniedTools, DEFAULT_DENIED_BASELINE);
+    }
+
+    /**
+     * 带业务工具黑名单的权限上下文（BYPASS 模式 + DENY 规则），可指定平台级基线。
+     *
+     * @param deniedTools   业务工具名黑名单（精确匹配 Tool.getName()），可为空或 null
+     * @param baselineTools 平台级危险工具基线（全局默认拒绝），可为空或 null
+     * @return 权限上下文
+     */
+    public PermissionContextState blacklistContext(List<String> deniedTools, List<String> baselineTools) {
+        PermissionContextState.Builder builder = PermissionContextState.builder();
+        builder.mode(PermissionMode.BYPASS);
+        addTodoWriteAllowRule(builder); // todo_write 在 BYPASS 下本就放行，显式保留以防退化
+        Set<String> merged = new LinkedHashSet<>();
+        if (baselineTools != null) {
+            baselineTools.stream().filter(Objects::nonNull).filter(t -> !t.isBlank()).forEach(merged::add);
+        }
+        if (deniedTools != null) {
+            deniedTools.stream().filter(Objects::nonNull).filter(t -> !t.isBlank()).forEach(merged::add);
+        }
+        for (String tool : merged) {
+            builder.addDenyRule(tool, new PermissionRule(tool, null, PermissionBehavior.DENY, RULE_SOURCE));
+        }
+        return builder.build();
+    }
+
+    /**
+     * 为任务清单工具注入放行规则（ALLOW）。
+     *
+     * <p><b>为什么必须显式放行</b>：AgentScope 权限引擎的判定顺序为
+     * {@code deny → ask → tool 自检 → allow → BYPASS → 兜底判定}，兜底判定
+     * （{@code PermissionEngine.defaultDecisionAsk}）在 {@code DEFAULT} 模式下返回
+     * {@code ASK}、在 {@code DONT_ASK} 模式下返回 {@code DENY}。{@code todo_write}
+     * 属于写类工具且无显式规则，会一路落到兜底判定：
+     *
+     * <ul>
+     *   <li>配了 HITL 的 Agent（{@code DEFAULT} 模式）→ 触发人工确认并挂起，Agent 停止推进，
+     *       请求直接结束，任务清单永远无法写入；</li>
+     *   <li>未配 HITL 的 Agent（{@code DONT_ASK} 模式）→ 直接被拒绝执行，任务清单完全不可用。</li>
+     * </ul>
+     *
+     * 由于 ALLOW 规则命中于第 4 步、早于兜底判定，注入该规则即可让 {@code todo_write}
+     * 在任何权限模式下正常执行。
+     * </p>
+     *
+     * <p><b>安全性</b>：{@code todo_write} 仅读写当前会话的
+     * {@code AgentState.tasksContext}，不落盘业务数据、不执行命令、不访问网络，
+     * 与 {@code shell_execute} / {@code file_write} 等有外部副作用的工具有本质区别，
+     * 故不纳入人工确认范围。该规则仅在 Agent 启用任务清单
+     * （{@code plan.taskList=true}）注册了该工具后才可能命中；未启用时无副作用。
+     * </p>
+     *
+     * <p>注：本规则为 ALLOW 而非 ASK，不受 {@link #build} 中
+     * “{@code DONT_ASK} 模式不注入 ASK 规则”的约束（ALLOW 不会挂起等待）。</p>
+     */
+    private void addTodoWriteAllowRule(PermissionContextState.Builder builder) {
+        builder.addAllowRule(TODO_WRITE_TOOL,
+                new PermissionRule(TODO_WRITE_TOOL, null, PermissionBehavior.ALLOW, RULE_SOURCE));
+    }
+
+    /**
+     * 平台级治理工具放行：任务清单工具与 MUSE 自进化元工具。
+     *
+     * <p>这些工具不属于任何单个业务 Agent 的职责，而是平台治理能力，因此不参与
+     * Agent 的业务工具白名单/黑名单——白名单模式下若不一并放行，会被兜底 DENY 拒绝，
+     * 出现「工具已注册、工具组已激活，但模型调用时报 permission denied」的现象。</p>
+     *
+     * <p><b>安全性</b>：MUSE 三工具（{@code muse_skill_eval} / {@code muse_skill_evolve} /
+     * {@code muse_skill_prune}）作用于技能库元数据与技能目录，不触碰用户业务数据；
+     * 其入参为技能描述与技能正文，且执行范围受技能目录约束。是否可用由
+     * {@code yunxi.muse.enabled} 决定（关闭时这些工具根本不注册，规则无副作用）。
+     * 与 {@code node_command} 等有外部副作用的工具不同，故不纳入人工确认范围。</p>
+     *
+     * <p>注：本规则为 ALLOW 而非 ASK，不受「{@code DONT_ASK} 模式不注入 ASK 规则」约束。</p>
+     *
+     * <p><b>变更生效范围（重要）</b>：权限上下文只在<b>新建会话</b>时从此处模板生成；
+     * 已有会话从持久化的会话状态加载旧权限快照，框架不比对模板是否变更。因此修改本方法后，
+     * <b>存量会话仍按旧规则运行</b>，表现为「改了规则但调用仍被拒」。验证与灰度时请用全新
+     * userId/conversationId 发起调用，或先清空会话状态，勿依赖热更新。</p>
+     */
+    private void addPlatformToolAllowRules(PermissionContextState.Builder builder) {
+        addTodoWriteAllowRule(builder);
+        for (String tool : MUSE_META_TOOLS) {
+            builder.addAllowRule(tool,
+                    new PermissionRule(tool, null, PermissionBehavior.ALLOW, RULE_SOURCE));
+        }
+    }
+
+    /**
+     * 将 HITL 配置中的 ToolGate / ReasoningReview 工具注册为 ASK 规则。
+     *
+     * @return 是否注册了任意规则
+     */
+    private boolean addAskRules(PermissionContextState.Builder builder, HITLConfig hitl) {
+        boolean hasRule = false;
+
+        if (hitl != null) {
+            ToolGateConfig toolGate = hitl.getToolGate();
+            ReasoningReviewConfig reasoningReview = hitl.getReasoningReview();
+
+            // ToolGate：对配置中的每个工具注册 ASK 规则（执行前需人工确认）
+            if (toolGate != null && toolGate.isEnabled()
+                    && toolGate.getTools() != null && !toolGate.getTools().isEmpty()) {
+                for (String tool : toolGate.getTools()) {
+                    builder.addAskRule(tool,
+                            new PermissionRule(tool, null, PermissionBehavior.ASK, RULE_SOURCE));
+                    hasRule = true;
+                }
+            }
+
+            // ReasoningReview：将 ToolGate 中的危险工具同样纳入 ASK 规则
+            if (reasoningReview != null && reasoningReview.isEnabled()
+                    && toolGate != null && toolGate.getTools() != null) {
+                for (String tool : Set.copyOf(toolGate.getTools())) {
+                    builder.addAskRule(tool,
+                            new PermissionRule(tool, null, PermissionBehavior.ASK, RULE_SOURCE));
+                    hasRule = true;
+                }
+            }
+        }
+
+        return hasRule;
+    }
+}

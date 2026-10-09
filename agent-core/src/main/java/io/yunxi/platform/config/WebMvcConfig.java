@@ -1,6 +1,7 @@
 package io.yunxi.platform.config;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -16,6 +17,7 @@ import org.springframework.http.converter.json.MappingJackson2HttpMessageConvert
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.CorsRegistration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
@@ -85,12 +87,27 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         String[] origins = resolveCorsOrigins();
-        registry.addMapping("/**")
-                .allowedOriginPatterns(origins)
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+        boolean hasOrigins = origins.length > 0;
+        boolean wildcardOnly = hasOrigins
+                && Arrays.stream(origins).allMatch(o -> "*".equals(o.trim()));
+        CorsRegistration registration = registry.addMapping("/**")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD")
                 .allowedHeaders("*")
-                .allowCredentials(true)
+                .exposedHeaders("X-Total-Count", "X-Request-Id", "Content-Disposition")
                 .maxAge(3600);
+        if (hasOrigins && !wildcardOnly) {
+            // 仅当来源为显式（非通配符）列表时才允许携带凭据。
+            // allowedOrigins 必须显式列出、不可为 null/空，否则 Spring 在 allowCredentials=true 时
+            // 因 allowedOrigins 为空而抛出 IllegalArgumentException
+            // （"When allowCredentials is true, allowedOrigins cannot contain the special value *"）。
+            registration.allowedOrigins(origins).allowedOriginPatterns(origins).allowCredentials(true);
+        } else if (wildcardOnly) {
+            // 通配符来源仅允许无凭据跨域，规避「allowCredentials=true 时 allowedOrigins 不能含 *」的限制。
+            registration.allowedOrigins("*").allowCredentials(false);
+        } else {
+            // 未配置来源：默认拒绝任何源（不开放跨域），且不携带凭据，避免空 allowedOrigins 触发校验异常。
+            registration.allowedOrigins(new String[0]).allowCredentials(false);
+        }
     }
 
     /**
@@ -105,7 +122,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     + "生产/联调环境应通过配置显式列出已知前端源（如 http://localhost:5173），避免任意源携带凭据访问。");
             return new String[0];
         }
-        return java.util.Arrays.stream(corsAllowedOrigins.split(","))
+        return Arrays.stream(corsAllowedOrigins.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toArray(String[]::new);
