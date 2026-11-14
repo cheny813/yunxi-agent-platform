@@ -1,0 +1,120 @@
+# yunxi 平台接入 AgentScope-Service aistio 控制面的本地 / 开发编排。
+#
+# 镜像：2.1.0-BETA1（默认；可用 AISTIO_VERSION / AISTIO_REGISTRY 覆盖）。
+# 容器：控制面 / 数据面 / 调度面 / 网关 / 元数据库 共 5 个，自洽运行，不拉起 yunxi 自有基础设施。
+# 主机端口映射到空闲高位段（18081/18082/18083/18090），避免与本地已占用端口（5432/8080/8081 等）冲突。
+#
+# 密钥策略：所有敏感值用 ${VAR:-dev默认值} 内联兜底，零配置即可以开发默认值启动；
+# 生产环境在同级目录放置 .env（已被 .gitignore 忽略）覆盖全部变量，切勿向仓库提交明文密钥。
+# 可复制 .env.example 作为起点：cp .env.example .env
+name: yunxi-aistio
+
+services:
+  aistio-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: builder
+      POSTGRES_USER: builder
+      POSTGRES_PASSWORD: ${AISTIO_POSTGRES_PASSWORD:-builder}
+    volumes:
+      - aistio-db-data:/var/lib/postgresql/data
+      - ./01-create-schemas.sql:/docker-entrypoint-initdb.d/01-create-schemas.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U builder -d builder"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [aistio-net]
+
+  aistio-control:
+    image: ${AISTIO_REGISTRY:-sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope}/as-controlplane:${AISTIO_VERSION:-2.1.0-BETA1}
+    command: >-
+      --storage-driver=postgres
+      --storage-dsn=postgres://builder:${AISTIO_POSTGRES_PASSWORD:-builder}@aistio-db:5432/builder?sslmode=disable&search_path=rt
+      --log-format=console
+    environment:
+      AISTIO_ENABLE_KUBERNETES: "false"
+      AISTIO_PRODUCT_DSN: "postgres://builder:${AISTIO_POSTGRES_PASSWORD:-builder}@aistio-db:5432/builder?sslmode=disable&search_path=rt"
+      AISTIO_HTTP_BIND: ":8080"
+      BUILDER_JWT_SECRET: "${BUILDER_JWT_SECRET:-builder-compose-dev-secret-change-in-production-32chars}"
+      BUILDER_INTERNAL_TOKEN: "${BUILDER_INTERNAL_TOKEN:-compose-local-internal-token-at-least-32chars}"
+      BUILDER_VAULT_MASTER_KEY: "${BUILDER_VAULT_MASTER_KEY:-}"
+      CONTROL_PLANE_BOOTSTRAP_PASSWORD: "${CONTROL_PLANE_BOOTSTRAP_PASSWORD:-admin}"
+      BUILDER_DATA_URL: "http://aistio-data:8082"
+    ports:
+      - "18081:8080"
+    depends_on:
+      aistio-db:
+        condition: service_healthy
+    networks: [aistio-net]
+
+  aistio-data:
+    image: ${AISTIO_REGISTRY:-sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope}/as-dataplane:${AISTIO_VERSION:-2.1.0-BETA1}
+    environment:
+      SPRING_PROFILES_ACTIVE: "jdbc"
+      BUILDER_DB_URL: "jdbc:postgresql://aistio-db:5432/builder?currentSchema=dp"
+      BUILDER_DB_USER: "builder"
+      BUILDER_DB_PASSWORD: "${AISTIO_POSTGRES_PASSWORD:-builder}"
+      BUILDER_JWT_SECRET: "${BUILDER_JWT_SECRET:-builder-compose-dev-secret-change-in-production-32chars}"
+      BUILDER_INTERNAL_TOKEN: "${BUILDER_INTERNAL_TOKEN:-compose-local-internal-token-at-least-32chars}"
+      BUILDER_VAULT_MASTER_KEY: "${BUILDER_VAULT_MASTER_KEY:-}"
+      BUILDER_CONTROL_URL: "http://aistio-control:8080"
+      BUILDER_DATA_URL: "http://aistio-data:8082"
+      SERVER_PORT: "8082"
+      BUILDER_DATAPLANE_PUBLIC_URL: "http://aistio-data:8082"
+    ports:
+      - "18082:8082"
+    depends_on:
+      aistio-db:
+        condition: service_healthy
+      aistio-control:
+        condition: service_started
+    networks: [aistio-net]
+
+  aistio-scheduler:
+    image: ${AISTIO_REGISTRY:-sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope}/as-scheduler:${AISTIO_VERSION:-2.1.0-BETA1}
+    environment:
+      SPRING_PROFILES_ACTIVE: "jdbc"
+      BUILDER_DB_URL: "jdbc:postgresql://aistio-db:5432/builder?currentSchema=dp"
+      BUILDER_DB_USER: "builder"
+      BUILDER_DB_PASSWORD: "${AISTIO_POSTGRES_PASSWORD:-builder}"
+      BUILDER_JWT_SECRET: "${BUILDER_JWT_SECRET:-builder-compose-dev-secret-change-in-production-32chars}"
+      BUILDER_INTERNAL_TOKEN: "${BUILDER_INTERNAL_TOKEN:-compose-local-internal-token-at-least-32chars}"
+      BUILDER_VAULT_MASTER_KEY: "${BUILDER_VAULT_MASTER_KEY:-}"
+      BUILDER_CONTROL_URL: "http://aistio-control:8080"
+      BUILDER_DATA_URL: "http://aistio-data:8082"
+      BUILDER_SCHEDULER_URL: "http://aistio-scheduler:8083"
+      SERVER_PORT: "8083"
+    ports:
+      - "18083:8083"
+    depends_on:
+      aistio-control:
+        condition: service_started
+      aistio-data:
+        condition: service_started
+    networks: [aistio-net]
+
+  aistio-gateway:
+    image: ${AISTIO_REGISTRY:-sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope}/as-gateway:${AISTIO_VERSION:-2.1.0-BETA1}
+    environment:
+      SERVER_PORT: "8080"
+      BUILDER_CONTROL_URL: "http://aistio-control:8080"
+      BUILDER_DATA_URL: "http://aistio-data:8082"
+      BUILDER_SCHEDULER_URL: "http://aistio-scheduler:8083"
+    ports:
+      - "18090:8080"
+    depends_on:
+      aistio-control:
+        condition: service_started
+      aistio-data:
+        condition: service_started
+      aistio-scheduler:
+        condition: service_started
+    networks: [aistio-net]
+
+volumes:
+  aistio-db-data:
+
+networks:
+  aistio-net:
+    driver: bridge

@@ -2,32 +2,6 @@
 
 生产环境部署与运维指南。
 
-## 部署架构理论
-
-### 什么是部署架构
-
-**部署架构**定义了软件系统如何在硬件环境中运行和分布。
-
-**关键考虑因素**：
-| 因素 | 说明 | 影响 |
-|------|------|------|
-| **可用性** | 系统持续可用的时间 | 99.9% vs 99.99% |
-| **可扩展性** | 处理增长负载的能力 | 水平/垂直扩展 |
-| **容错性** | 故障时的恢复能力 | 自动故障转移 |
-| **性能** | 响应时间和吞吐量 | 用户体验 |
-| **成本** | 硬件和运维成本 | 预算控制 |
-
-### 部署模式对比
-
-| 模式 | 说明 | 适用场景 |
-|------|------|----------|
-| **单机部署** | 所有组件在一台服务器 | 开发测试、小流量 |
-| **主从部署** | 主节点+备份节点 | 中等可用性要求 |
-| **集群部署** | 多节点负载均衡 | 高可用、高并发 |
-| **微服务** | 服务独立部署 | 大型复杂系统 |
-
----
-
 ## 部署架构
 
 ### 单机部署
@@ -84,22 +58,33 @@
 - 共享存储，节点间共享
 - 负载均衡，故障自动转移
 
-**CAP 理论**：
+> 平台采用 AP 取向（可用性 + 分区容错，最终一致性），适合多副本水平扩展场景。
+
+### 生产集群必设项
+
+平台默认 `yunxi.cluster.mode=standalone`（单机 / 开发），**生产多实例部署必须显式切到 `cluster`**。否则分布式状态、沙箱跨实例守卫、RAG 租户隔离等横切关切仍按单机语义运行，集群下会出现数据分叉与安全缺口。切换为**纯配置驱动，无需改动代码**——在统一配置中心的 `config/cluster.yml`（`config/*.yml` 之一）设置：
+
+```yaml
+yunxi:
+  cluster:
+    mode: cluster            # 生产必设：启用 Redis 分布式运行时
+    key-prefix: ${YUNXI_CLUSTER_KEY_PREFIX:yunxi:}   # 多套环境共用一套 Redis 时用此前缀隔离命名空间
 ```
-┌─────────────────────────────────────────┐
-│  CAP 定理                                │
-│                                         │
-│  分布式系统最多同时满足两项：              │
-│                                         │
-│  C - Consistency (一致性)               │
-│  A - Availability (可用性)              │
-│  P - Partition Tolerance (分区容错)      │
-│                                         │
-│  本框架选择：AP (可用性 + 分区容错)        │
-│  - 最终一致性                            │
-│  - 高可用性                              │
-└─────────────────────────────────────────┘
-```
+
+切换 `cluster` 后，横切关切自动按集群语义装配（详见 [06. 配置指南](./06-configuration.md)）：
+
+| 关切 | standalone 行为 | cluster 行为 |
+|------|----------------|--------------|
+| 分布式状态（Agent 状态 / 记忆 / 会话） | 进程内存储（重启即失） | 共享 Redis（全局 `StringRedisTemplate`，单连接工厂，不私建客户端） |
+| 沙箱执行隔离 | 本地子进程沙箱 | Docker 沙箱（强隔离；另可由 `muse-docker` profile 强制开启） |
+| 沙箱跨实例并发守卫 | 进程内信号量（仅单实例有效） | 基于 Redis 的分布式锁（SET NX + Lua 释放），同 key 跨实例互斥 |
+
+> **cluster 形态下分布式锁为 fail-closed**：Redis 不可用时获取锁失败即抛异常、沙箱执行受阻，不会静默降级为进程内信号量（否则多实例并发越权 / last-write-wins 覆盖）。运维须保证 Redis 高可用。standalone 形态无跨实例隔离需求，不受此约束。
+| RAG 分块存储 | 按（tenant, collection, userId, chunkId）实体键化 | 同左，且 **tenant 为自然键首位**，存储主键按租户派生，跨租户不可见 |
+
+> 生产集群硬性前置：必须提供**共享 Redis**，连接参数走 `spring.data.redis.*`（Spring Boot 3.x 绑定前缀）。未设 `mode=cluster` 时即便拉起多个实例也仍按单机装配——属配置缺口，运行时不会自动降级为集群。
+
+> RAG 租户隔离依赖请求期 `TenantContext` 绑定（由租户解析器在入口注入）。多租户场景须确保入口已正确解析并绑定租户，否则检索回落单租户语义。
 
 ---
 
@@ -112,8 +97,8 @@
 # 构建项目
 mvn clean package -DskipTests
 
-# 启动服务（可执行模块为 agent-app）
-java -jar agent-app-*.jar \
+# 启动服务（可执行模块为 yunxi-app）
+java -jar yunxi-app-*.jar \
   --spring.profiles.active=prod \
   --server.port=40001
 ```
@@ -123,7 +108,7 @@ java -jar agent-app-*.jar \
 java -Xms2g -Xmx2g \
   -XX:+UseG1GC \
   -XX:MaxGCPauseMillis=200 \
-  -jar agent-app-*.jar
+  -jar yunxi-app-*.jar
 ```
 
 | 参数 | 说明 |
@@ -145,97 +130,86 @@ java -Xms2g -Xmx2g \
 
 #### 基础设施一键启动
 
-项目根目录的 `docker-compose.yml` 提供了完整基础设施的一键启动。在 IDE 终端或 PowerShell 中执行：
+仓库 `deploy/infra/docker-compose.yml` 提供了平台自有基础设施的一键启动（不含 yunxi-app 本身，应用另用 `mvn spring-boot:run -pl yunxi-app` 或 `java -jar yunxi-app-*.jar` 启动）。在 PowerShell 中执行：
 
 ```powershell
-# 在项目根目录下执行
+# 在仓库 deploy/infra 目录下执行
+cd deploy/infra
 docker compose up -d
 ```
 
-将启动以下服务（默认 profile，共 8 个容器，全部默认启动，含链路追踪与可视化组件）：
+将启动以下服务（共 9 个容器，全部默认启动，含链路追踪与可视化组件）：
 
 | 容器 | 镜像 | 端口 | 用途 |
 |------|------|------|------|
 | yunxi-mysql | mysql:8.0 | 3306 | 主数据库 |
-| yunxi-redis | redis:7-alpine | 6379 | 缓存/会话 |
+| yunxi-redis | redis:7-alpine | 6379 | 缓存/会话/分布式状态 |
 | yunxi-milvus | milvusdb/milvus:v2.3.3 | 19530 | 向量数据库 |
 | yunxi-milvus-etcd | etcd:v3.5.5 | 2379 | Milvus 元数据 |
 | yunxi-milvus-minio | minio/minio | 9000 | Milvus 存储 |
-| yunxi-otel-collector | otel/opentelemetry-collector-contrib:0.97.0 | 4318 | 链路追踪收集 |
+| yunxi-nacos | nacos/nacos-server:v3.2.4 | 8848 / 8080 / 9848 | MCP 注册中心 + 配置热更新 + AI Registry |
+| yunxi-otel-collector | otel/opentelemetry-collector-contrib:0.97.0 | 4317 / 4318 | 链路追踪收集 |
 | yunxi-jaeger | jaegertracing/all-in-one:1.57 | 16686 | 链路追踪可视化（默认启用） |
 | yunxi-attu | zilliz/attu:v2.4 | 8000 | Milvus Web 管理界面（默认启用） |
 
-> Milvus 依赖 etcd 与 minio 先进入 healthy 后才会启动，首次启动约需 30-60 秒。`milvus` 服务的 `command: ["milvus", "run", "standalone"]` 不可省略，否则容器会瞬间 `Exited (1)` 退出（详见 FAQ 安装部署章节）。
+> Milvus 依赖 etcd 与 minio 先进入 healthy 后才会启动，首次启动约需 30-60 秒。`milvus` 服务的 `command: ["milvus", "run", "standalone"]` 不可省略，否则容器会瞬间 `Exited (1)` 退出。Nacos 3.x 控制台在 `8080`（已从 `8848` 解耦）、gRPC 客户端端口为 `9848`（`8848 + 1000`）；应用 SDK 实际连接 `nacos:9848`。
 
-OTel Collector 的配置文件位于 `scripts/deploy/otel-collector-config.yaml`，默认将 trace 输出到 Docker 日志。
+> aistio 管控面不在此编排内，如需 Agent 管控 / 治理可视化能力，单独见 [aistio 控制面本地编排](#aistio)（`deploy/aistio/`）。
 
-#### 可选启用 aistio 管控面<a name="aistio"></a>
+#### aistio 控制面本地编排<a name="aistio"></a>
 
-若需要 **Agent 管控 / 治理可视化 / 会话干预** 能力，可在默认基础设施之外追加 `--profile aistio` 一并拉起 AgentScope-Service 管控面：
+若需要 **Agent 管控 / 治理可视化 / 会话干预 / 任务接活** 能力，单独拉起 AgentScope-Service 控制面。编排脚本与说明位于仓库 `deploy/aistio/`（`docker-compose.yml` + `01-create-schemas.sql` + `.env.example` + `README.md`），不依赖 yunxi 自有基础设施（MySQL / Redis / Milvus 等），可独立运行。
 
-```powershell
-# 同时拉起 yunxi 自有基础设施 + aistio 管控面（共 13 个容器）
-docker compose --profile aistio up -d
-```
-
-aistio 以 AgentScope-Java 官方发布的 Docker 镜像提供（见官方文档 https://java.agentscope.io/v2/zh/service/quickstart），启动前需先拉起控制面。镜像坐标由 `AISTIO_REGISTRY` / `AISTIO_VERSION` 环境变量控制（默认仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，默认版本 `2.0.4`；**镜像版本须与 yunxi `agent-aistio` 客户端协商的 API 版本一致**，否则控制面握手可能失败）。一键拉起：
+aistio 以 AgentScope-Java 官方 Docker 镜像提供（见官方文档 https://java.agentscope.io/v2/zh/service/quickstart）。镜像默认 `2.1.0-BETA1`（由 `AISTIO_VERSION` / `AISTIO_REGISTRY` 环境变量覆盖），须与 `yunxi-fabric` 中 aistio 客户端协商的 API 版本一致，否则控制面握手可能失败。
 
 ```powershell
-# 拉取官方镜像并启动 aistio 管控面（默认 2.0.4，与 yunxi agent-aistio 客户端构建版本对齐）
-.\scripts\setup-aistio.ps1
-# 指定版本：  .\scripts\setup-aistio.ps1 -AistioVersion 2.0.4
-# 指定镜像源：.\scripts\setup-aistio.ps1 -AistioRegistry my-reg.io/agentscope
+# 在仓库 deploy/aistio 目录下执行
+cd deploy/aistio
+docker compose up -d        # 拉起控制面 / 数据面 / 调度面 / 网关 / 元数据库共 5 容器
 ```
 
-> **镜像版本选择**：本编排默认拉取 `2.0.4`，与 yunxi `agent-aistio` 集成客户端当前的构建版本（`agentscope.version=2.0.4`）对齐，可避免控制面握手失败。如需使用官方预览版 `2.1.0-BETA1`，须先将 `agent-aistio` 客户端升级到 `2.1.0-BETA1` 后，再 `setup-aistio.ps1 -AistioVersion 2.1.0-BETA1`（详见 [06. 配置指南 - aistio](./06-configuration.md#aistio)）。
 
-> **注意**：官方镜像为预编译产物，无需克隆 AgentScope-Java 源码、无需 Maven / Go / npm 构建。本仓库的 `scripts/setup-aistio.ps1` 已内置生产密钥初始化：默认会用 CSPRNG 生成 `AISTIO_POSTGRES_PASSWORD` / `BUILDER_JWT_SECRET` / `BUILDER_INTERNAL_TOKEN` / `BUILDER_VAULT_MASTER_KEY` / `CONTROL_PLANE_BOOTSTRAP_PASSWORD`，写入仓库根 `.env.aistio`（已被 `.gitignore` 忽略，文件权限仅当前用户可读写）。该文件幂等保留旧值（重生成请用 `-Rotate`，会使 Vault 已加密数据失效），初始管理员密码会打印到控制台。也可改用官方 compose 包的 `init-env.sh` 生成 `.env` 密钥。仅供本地 / 开发可用 `-Dev` 跳过生成、回退内置开发明文默认值。
+> 所有敏感值用 `${VAR:-dev默认值}` 兜底，零配置即以开发默认值启动（`BUILDER_INTERNAL_TOKEN=compose-local-internal-token-at-least-32chars` 等）；生产环境在 `deploy/aistio/` 放置同级 `.env`（已被 `.gitignore` 忽略）覆盖全部密钥，切勿向仓库提交明文。控制面首次启动会在 PostgreSQL 注入种子用户，本地开发用 **admin / admin** 登录。
 
-aistio profile 包含 5 个容器（均在 `aistio` profile 下，默认不启动）：
 
-| 容器 | 构建来源 | 端口 | 用途 |
-|------|----------|------|------|
-| yunxi-aistio-db | postgres:17 | 5432（可选映射） | aistio 元数据库（库/用户/密码均为 `builder`） |
-| yunxi-aistio-control | `as-controlplane`（官方镜像） | 8081（内部） | 控制面 |
-| yunxi-aistio-data | `as-dataplane`（官方镜像） | 8082（内部） | 数据面 |
-| yunxi-aistio-scheduler | `as-scheduler`（官方镜像） | 8083（内部） | 调度面 |
-| yunxi-aistio-gateway | `as-gateway`（官方镜像） | 18080（对外） | 网关，对外发布到主机 18080（避开 Nacos 控制台已占用的 8080） |
 
-- 内部 token 为 `compose-local-internal-token-at-least-32chars`（compose 本地联调用，生产务必替换）。
-- `aistio-db` 的 `5432` 映射仅用于本地调试，与宿主机已有 Postgres 冲突时可删除该映射行。
-- yunxi 侧接入需在 `application.yml` 配置 `yunxi.aistio.*`（详见 [配置指南 · aistio 管控面](./06-configuration.md#aistio)）。
 
-> 配套的内置 MCP 服务（来自 `yunxi-mcp-servers` 项目，端口 40101 / 40102 / 40103 / 40602 / 40601）不在此 `docker compose` 内。开发联调可用 `scripts/start-stack.ps1` 一键拉起 5 个 MCP 服务 + aistio 控制面（幂等，详情见仓库 README）。
->
-> 关闭时同样用配套脚本：`scripts/stop-stack.ps1`（加 `-IncludeYunxi` 连 yunxi 平台一起关）；想把 MySQL / Redis / Milvus 等基础容器也停掉则直接 `docker compose down`。MCP 日志在 `logs/mcp/<服务名>.out.log`，aistio 日志用 `docker compose --profile aistio logs -f`。
+aistio 编排包含 5 个容器（均默认启动）：
+
+| 容器 | 镜像 | 主机端口 | 用途 |
+|------|------|----------|------|
+| aistio-db | postgres:17 | 不映射（仅容器内网） | 元数据库（库/用户/密码均为 `builder`） |
+| aistio-control | `as-controlplane`（官方镜像） | 18081 | 控制面（yunxi `yunxi.aistio.control-plane-url=http://localhost:18081`） |
+| aistio-data | `as-dataplane`（官方镜像） | 18082 | 数据面 |
+| aistio-scheduler | `as-scheduler`（官方镜像） | 18083 | 调度面 |
+| aistio-gateway | `as-gateway`（官方镜像） | 18090 | 网关，对外发布到主机 18090（避开常见 8080 占用） |
+
+- 主机端口统一落在空闲高位段，避开本地已占用的 5432 / 8080 / 8081 等；如需本地调试数据库，可在 `aistio-db` 的 `ports` 中自行加 `"5432:5432"`（与宿主机 Postgres 冲突时勿加）。
+- yunxi 侧接入需在 `config/aistio.yml`（统一配置中心的 `config/*.yml` 之一）配置 `yunxi.aistio.*`（详见 [配置指南 · aistio 管控面](./06-configuration.md#aistio)）。
+
+> 配套的 MCP 服务（来自 `yunxi-mcp-servers` 项目）不在此编排内：平台 `config/mcp.yml` 当前仅声明 `nutrition-mcp`（40602）与 `text2sql-mcp`（40110），且默认关闭。开发联调时按需拉起对应 Java 进程并置 `enabled: true`（详情见仓库 README）。
 
 确认 aistio 各平面健康：
 
 ```powershell
-docker compose --profile aistio ps
-# 网关就绪后访问 http://localhost:18080
-```
-
-aistio 控制台（`http://localhost:18080/login`，亦提供于 `:8081`）首次启动会在 PostgreSQL 自动注入种子用户，本地开发用 **admin / admin** 登录即可（其余种子账号 `bob/bob`、`alice/alice`；用户已存在则不会重复注入）。详见 [仓库 README · 登录 aistio 控制台](../../README.md)。
-
-确认所有服务就绪：
-
-```powershell
 docker compose ps          # 查看容器状态
+docker compose logs -f     # 跟踪日志
 ```
+
+aistio 控制台（`http://localhost:18090/login`，亦提供于 `http://localhost:18081`）首次启动会在 PostgreSQL 自动注入种子用户，本地开发用 **admin / admin** 登录即可（其余种子账号 `bob/bob`、`alice/alice`；用户已存在则不会重复注入）。详见 [仓库 README · 接入 aistio 控制面](../../README.md)。
 
 关闭服务：
 
 ```powershell
 docker compose down           # 停止但保留数据
-docker compose down -v        # 停止并清除所有数据（彻底重置）
+docker compose down -v        # 停止并清除所有数据（彻底重置，下次 up 重新建 schema）
 ```
 
 #### 应用容器构建
 
 ```bash
-# 构建镜像（Dockerfile 位于项目根目录，多阶段构建，产物为 agent-app 的 Spring Boot 可执行 jar）
-docker build -t yunxi-agent-platform:latest .
+# 构建镜像（多阶段 Dockerfile 位于 yunxi-app/，产物为 yunxi-app 的 Spring Boot 可执行 jar）
+docker build -f yunxi-app/Dockerfile -t yunxi-agent-platform:latest .
 
 # 运行容器
 docker run -d \
@@ -246,15 +220,6 @@ docker run -d \
 ```
 
 ### Kubernetes 部署
-
-**K8s 核心概念**：
-| 概念 | 说明 |
-|------|------|
-| **Pod** | 最小部署单元 |
-| **Deployment** | 管理 Pod 的副本 |
-| **Service** | 提供网络访问 |
-| **ConfigMap** | 配置管理 |
-| **Secret** | 敏感信息管理 |
 
 ```yaml
 apiVersion: apps/v1
@@ -271,12 +236,12 @@ spec:
     spec:
       containers:
       - name: agent-platform
-        image: yunxi/agent-platform:2.0.4
+        image: yunxi/agent-platform:2.1.0
         ports:
         - containerPort: 40001
 ```
 
-> 以上为最小示例，与仓库 `k8s/deployment.yaml` 保持一致；完整生产清单（滚动更新策略、探针、资源限制、反亲和、Prometheus 注解等）以 `k8s/` 目录为准。
+> 以上为最小示例；完整生产清单（滚动更新策略、探针、资源限制、反亲和、Prometheus 注解等）请以 [06. 配置指南](./06-configuration.md) 与 `deploy/infra/docker-compose.yml` 为基线自行编排。当前仓库**未随附** `k8s/` 目录的 Kubernetes 清单与 `helm/` Chart（部署目录仅有 `deploy/`，含 `infra/` 与 `aistio/` 的 docker-compose 基线）。
 
 ---
 
@@ -306,26 +271,6 @@ sudo apt install redis-server
 ---
 
 ## 监控与告警
-
-### 可观测性体系
-
-```
-┌─────────────────────────────────────────┐
-│  监控体系                                │
-├─────────────────────────────────────────┤
-│  Metrics (指标)                         │
-│  - CPU、内存、请求量、错误率              │
-│  - Prometheus + Grafana                 │
-├─────────────────────────────────────────┤
-│  Logging (日志)                         │
-│  - 应用日志、访问日志                     │
-│  - ELK Stack / Loki                     │
-├─────────────────────────────────────────┤
-│  Tracing (追踪)                         │
-│  - 请求链路追踪                          │
-│  - Jaeger / Zipkin                      │
-└─────────────────────────────────────────┘
-```
 
 ### Prometheus 配置
 

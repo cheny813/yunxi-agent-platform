@@ -99,8 +99,9 @@
 ### 环境要求
 - JDK 17+
 - Maven 3.8+
-- MySQL 8.0+（开发测试）
-- Redis 6.0+
+- Redis 6.0+（应用必需：会话状态 / 轨迹 / 跨实例锁）
+- （可选）MySQL 8.0+ —— 仅当运行 `mcp-nutrition` MCP 服务时；Milvus / 本机 Ollama —— 仅当启用向量检索类工具时
+- Docker / Docker Compose —— 仅当使用 `deploy/infra` 本地基础设施栈时
 
 ### 快速开始
 ```bash
@@ -108,34 +109,40 @@
 git clone https://gitcode.com/chenyao813/yunxi-agent-platform.git
 cd yunxi-agent-platform
 
-# 安装依赖
-mvn clean install -DskipTests
+# 安装依赖并打包全部模块到本地仓库
+mvn -pl yunxi-app -am install -DskipTests
 
 # 运行测试
 mvn test
 
-# 启动应用
-mvn spring-boot:run -pl agent-app
+# 启动应用（PowerShell 启动脚本，自动打包并拉起后端，端口 40001）
+.\start-yunxi.ps1
+# 或：同时拉起前端 dev server（http://localhost:5173）
+.\start-yunxi.ps1 -Web
 ```
 
 ## 项目结构
 
 ```
 yunxi-agent-platform/
-├── agent-app/                # 启动入口
-├── agent-config/             # 统一配置
-├── agent-core/               # 核心框架
-├── agent-muse/               # 自进化引擎（MUSE）
-├── agent-text2sql/           # Text-to-SQL
-├── agent-spi/                # SPI 接口
-├── agent-integration-test/   # 集成测试
-├── sdk-js/                   # JavaScript SDK
-├── scripts/                  # 构建与工具脚本
-├── k8s/                      # Kubernetes 部署
-├── helm/                     # Helm Chart
+├── yunxi-app/                # 启动入口（@SpringBootApplication + 四协议 HTTP 暴露 + 安全）
+├── yunxi-config/             # 统一配置中心（config/*.yml）
+├── yunxi-runtime/            # 核心装配（Agent 装配 / 统一执行门面 / 定义加载）
+├── yunxi-intelligence/       # 意图引擎 + 自进化引擎（MUSE）
+├── yunxi-capability/         # 能力平面（MCP / 技能 / 数据接入）
+├── yunxi-definition/         # 唯一契约平面（AgentSpec / SPI / 编解码）
+├── yunxi-fabric/             # aistio 管控面对接（单一集成点）
+├── yunxi-ingress/            # 统一入口网关（四协议聚合）
+├── yunxi-observability/      # 可观测性中间件
+├── yunxi-integration-test/   # 集成测试
+├── agent-web-sdk/            # JavaScript SDK
+├── yunxi-nutritionist-web/   # 营养师前端（参考示例）
+├── deploy/                   # 部署编排（infra / aistio / helm / k8s）
+├── scripts/                  # 工具脚本
 ├── docs/                     # 文档
-├── docker-compose.yml        # 本地开发基础设施
-└── Dockerfile                # 容器镜像构建
+├── start-yunxi.ps1           # 后端启动脚本
+├── start-yunxi-web.ps1       # 前端启动脚本
+└── pom.xml                   # Maven 根（多模块）
 ```
 
 ## 许可证
@@ -145,7 +152,7 @@ yunxi-agent-platform/
 ## 联系方式
 
 - GitCode Issues: https://gitcode.com/chenyao813/yunxi-agent-platform/issues
-- 邮箱: dev@yunxi.cn
+- 邮箱: 23938340@qq.com
 
 ## 致谢
 

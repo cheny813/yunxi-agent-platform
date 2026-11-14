@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>yunxi-app</artifactId>
+    <name>yunxi-app</name>
+    <description>
+        应用打包与启动：装配全部核心 Bean、暴露四协议 HTTP 入口，并内置平台安全配置（SecurityConfig）。
+        Spring Boot 可执行 jar。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-definition</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-config</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-observability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-capability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-runtime</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-ingress</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-fabric</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-intelligence</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 框架协议层 Spring Boot starters：四协议（AG-UI / admin / Chat Completions）服务端由框架提供，
+             yunxi 仅把构建好的 HarnessAgent 注册进框架协议层 registry，不重建协议服务（避免同一职责在两端重复实现）。
+             agui starter 同时传递 agentscope-extensions-agui（AguiAgentRegistry）。
+             admin starter：运维/管控平面（Agent inventory 列示 + session 运维），由 AgentProvisioner 把 HarnessAgent
+             注册进框架 AgentRegistry（沿用单一真相源）；Actuator 端点经 observability.yml 暴露、经 SecurityConfig 要求认证。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-agui-spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-chat-completions-web-starter</artifactId>
+        </dependency>
+        <!-- admin 运维平面 starter：提供 /actuator/agentscope-* 只读盘点端点与 /v1/admin/* session 运维端点。
+             Actuator 依赖为 optional，yunxi 已在下方（spring-boot-starter-actuator）显式引入。
+             全局开关 agentscope.admin.enabled 在 config/agentscope.yml 显式开启。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-admin-spring-boot-starter</artifactId>
+        </dependency>
+        <!-- A2A 目前仅提供 server 库（无独立 web starter）：AgentScopeA2aServer + JSON-RPC 传输，
+             yunxi 在自身 Web 容器同端口以 /a2a/{agentId} 路径暴露，复用框架 AgentRegistryService 发布 AgentCard。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-a2a-server</artifactId>
+        </dependency>
+        <!-- A2A server 的 MessageConvertUtil 运行时实例化 a2a-client 的 PartParserRouter（server 以 provided+optional
+             声明该依赖，不传递），故此处显式以 compile 作用域引入，否则 A2A 消息解析抛 NoClassDefFoundError。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-a2a-client</artifactId>
+        </dependency>
+        <!-- 框架调度能力：由 agentscope-bom 统一锁版，yunxi 只做接线、不自研调度内核。
+             默认关闭（yunxi.scheduler.enabled），关闭时本依赖不参与任何装配。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-scheduler-quartz</artifactId>
+        </dependency>
+        <!-- quartz 模块把 common 声明为 provided + optional，不会传递进消费模块的编译期 classpath，
+             故此处显式以 compile 作用域引入（版本仍由 BOM 锁定）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-scheduler-common</artifactId>
+        </dependency>
+        <!-- Quartz Job 由 Spring 创建以注入平台 Bean（SpringBeanJobFactory）。 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context-support</artifactId>
+        </dependency>
+        <!-- XXL-JOB 触发通道：仅在 yunxi.scheduler.backend=xxl-job 时装配 executor。
+             版本由根 pom dependencyManagement 统一锁定。 -->
+        <dependency>
+            <groupId>com.xuxueli</groupId>
+            <artifactId>xxl-job-core</artifactId>
+        </dependency>
+        <!-- JDBC JobStore 后端所需驱动；版本由 Spring Boot parent 管理，凭证走外部配置。
+             runtime 作用域同时覆盖测试 classpath。 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!-- Quartz JDBC JobStore 默认连接池提供器为 C3p0PoolingConnectionProvider；
+             quartz 将 c3p0 声明为 provided（不传递），缺省不进消费模块 classpath，
+             会导致生产 JDBC 存储或测试启动 Quartz 时抛
+             NoClassDefFoundError: com/mchange/v2/c3p0/ComboPooledDataSource。
+             显式以 compile 作用域引入，与 quartz-2.5.2 自带声明 API 兼容（版本由根 pom 锁定，本地仓库已缓存）。 -->
+        <dependency>
+            <groupId>com.mchange</groupId>
+            <artifactId>c3p0</artifactId>
+        </dependency>
+        <!-- 真实大模型 provider：example-assistant 默认路由 qwen3.8-27b（兜底 qwen-plus）经框架 ModelRegistry 解析，
+             需本扩展在运行时 classpath 上 + DASHSCOPE_API_KEY 环境变量（模型扩展由运行时环境提供）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-dashscope</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-ollama</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!-- IM 渠道：经 ChannelManager 接入 AgentScope-Java 原生 DingTalkChannel，收敛到统一 HarnessGateway。
+             框架 DingTalkCallbackController 提供回调端点，yunxi 仅显式声明其 Bean 并注入 YunxiChannelRuntimeContextResolver。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-dingtalk</artifactId>
+        </dependency>
+        <!-- 企业微信同构于钉钉：经 ChannelManager 接入 AgentScope-Java 原生 WeComChannel，
+             收敛到统一 HarnessGateway；框架 WeComCallbackController 提供回调端点，yunxi 显式声明其 Bean。
+             版本钉 2.0.4（与 dingtalk 的 2.1.0-BETA1 跨版本，由根 pom 统一锁定）；已验证可编译且回调端点可用，
+             企微默认关闭不触达执行路径。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-wecom</artifactId>
+        </dependency>
+        <!-- 飞书同构于钉钉 / 企业微信：经 ChannelManager 接入 AgentScope-Java 原生 FeishuChannel，
+             收敛到统一 HarnessGateway；框架 FeishuCallbackController 提供回调端点，yunxi 显式声明其 Bean。
+             版本钉 2.0.4（与 dingtalk 的 2.1.0-BETA1 跨版本，由根 pom 统一锁定）；已验证可编译且回调端点可用，
+             飞书默认关闭不触达执行路径。
+             飞书 FeishuAccessTokenProvider 运行时经 Spring WebClient 拉取 access_token，复用上方已引入的 spring-webflux。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-feishu</artifactId>
+        </dependency>
+        <!-- GitHub 同构于钉钉 / 企业微信 / 飞书：经 ChannelManager 接入 AgentScope-Java 原生 GitHubChannel，
+             收敛到统一 HarnessGateway；框架 GitHubWebhookController 提供 webhook 端点，yunxi 显式声明其 Bean。
+             版本钉 2.0.4（与 dingtalk 的 2.1.0-BETA1 跨版本，由根 pom 统一锁定）；已验证可编译且 webhook 端点可用，
+             GitHub 默认关闭不触达执行路径。
+             GitHub 出站（评论回写）经 Spring WebClient，复用上方已引入的 spring-webflux。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-github</artifactId>
+        </dependency>
+        <!-- GitLab 同构于钉钉 / 企业微信 / 飞书 / GitHub：经 ChannelManager 接入 AgentScope-Java 原生 GitLabChannel，
+             收敛到统一 HarnessGateway；框架 GitLabWebhookController 提供 webhook 端点，yunxi 显式声明其 Bean。
+             版本钉 2.0.4（与 dingtalk 的 2.1.0-BETA1 跨版本，由根 pom 统一锁定）；已验证可编译且 webhook 端点可用，
+             GitLab 默认关闭不触达执行路径。
+             GitLab 出站（评论回写）与启动期 bot 身份解析均经 Spring WebClient，复用上方已引入的 spring-webflux。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-gitlab</artifactId>
+        </dependency>
+        <!-- 微信（iLink）渠道：经 ChannelManager 接入 AgentScope-Java 原生 WeixinChannel，长轮询 iLink 服务端
+             （无 HTTP 入站端点，故 SecurityConfig 无需放行）。凭据为 iLink botToken（固定凭据，非扫码登录），
+             经 WeixinCredentialProvider.fixed 注入；状态持久化由 yunxi 自实现 RedisWeixinStateStore 负责
+             （复用平台全局 RedisConnectionFactory，重启可恢复 cursor / lease / inbox / context token）。
+             版本钉 2.0.4（与 dingtalk 的 2.1.0-BETA1 跨版本，由根 pom 统一锁定）。Weixin 长轮询与启动期出站
+             均经 Spring WebClient，复用下方已引入的 spring-webflux。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-weixin</artifactId>
+        </dependency>
+        <!-- 微信（iLink）渠道的持久化状态存储 RedisWeixinStateStore 复用平台全局 RedisConnectionFactory：
+             本模块直接声明 spring-boot-starter-data-redis（compile，父 BOM 管版本）以保证编译期直接引用
+             RedisConnectionFactory / StringRedisTemplate 的可见性。连接参数走 spring.data.redis.*，不私建 Lettuce 连接工厂。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- 企业微信 WeComChannel 运行时经 Spring WebClient 拉取 access_token 与下发消息；
+             平台为 webmvc 应用默认不含 webflux，显式引入 spring-webflux 仅提供 WebClient 客户端
+             （不引入响应式 Web 服务器，servlet 容器仍为 Tomcat；WebClient.Builder 自动配置无害）。
+             钉钉等同类回调渠道若需 WebClient 同样受益。 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webflux</artifactId>
+        </dependency>
+        <!-- MCP 动态注册的 Nacos 协调底座客户端（yunxi.mcp.nacos.enabled 开启时使用；
+             未开启时优雅退化为本地内存目录，不影响平台启动）。 -->
+        <dependency>
+            <groupId>com.alibaba.nacos</groupId>
+            <artifactId>nacos-client</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>io.yunxi.app.YunxiApplication</mainClass>
+                    <!-- 把可执行 fat-jar 挂为 classifier=exec 的次要构件，主构件（yunxi-app.jar）保留为
+                         普通库 jar（类在根、不在 BOOT-INF/classes）。yunxi-integration-test 依赖主构件编译，
+                         此前缺此配置时 repackage 把主构件整体替换为 fat-jar，导致集成测试编译期
+                         “package io.yunxi.app does not exist”。可执行 jar 改名为 yunxi-app-exec.jar，
+                         deploy 的 java -jar yunxi-app-*.jar glob 仍命中。 -->
+                    <classifier>exec</classifier>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

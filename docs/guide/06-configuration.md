@@ -18,21 +18,20 @@
 
 ### 配置的来源与优先级
 
-**配置来源**（按优先级从高到低）：
+**配置来源**（按优先级从高到低，标准 Spring Boot 外部化配置顺序）：
 ```
 1. 命令行参数
 2. JVM 系统属性 (-D)
 3. 环境变量
-4. application-{profile}.yml
-5. application.yml
-6. @PropertySource
-7. 默认值
+4. yunxi-config 的 config/*.yml（由 config/imports.yml 全量加载，统一配置中心）
+5. yunxi-app 的 application.yml（bootstrap 默认值）
+6. @ConfigurationProperties / @PropertySource 默认值
 ```
 
-**优先级原理**：
-- 越靠近运行时的配置优先级越高
-- 高优先级配置覆盖低优先级
-- 便于在不同环境灵活调整
+**说明**：
+- yunxi **不使用** `application-{profile}.yml` 分层文件承载业务配置；所有业务配置片段（`server` / `redis` / `models` / `mcp` / `a2a` / `security` / `observability` / `aistio` 等）均放在 `yunxi-config/src/main/resources/config/`，由 `config/imports.yml` 一次性 `spring.config.import` 全量加载（见 [06. 配置指南 · 配置文件结构](#配置文件结构)）。
+- `spring.profiles.active` 仅控制带 `@Profile` 注解的 Bean 启用（当前仅 `muse-docker` 等少数 Bean 用它切环境），**不改变**配置文件的加载范围。
+- 越靠近运行时的配置优先级越高（命令行 > 环境变量 > `config/*.yml` > 默认值），高优先级覆盖低优先级。
 
 ---
 
@@ -46,18 +45,15 @@
 │  - 命令行参数                           │
 │  - 环境变量                             │
 ├─────────────────────────────────────────┤
-│  环境配置                               │
-│  - application-dev.yml                  │
-│  - application-test.yml                 │
-│  - application-prod.yml                 │
+│  统一配置中心（config/*.yml）           │
+│  - config/server.yml / redis.yml        │
+│  - config/models.yml（模型 catalog）    │
+│  - config/mcp.yml / a2a.yml             │
+│  - config/security.yml / observability  │
+│  （均由 config/imports.yml 加载）       │
 ├─────────────────────────────────────────┤
-│  模块配置                               │
-│  - application-datasource.yml           │
-│  - application-llm.yml                  │
-│  - application-security.yml             │
-├─────────────────────────────────────────┤
-│  默认配置（最低优先级）                  │
-│  - application.yml                      │
+│  bootstrap 默认配置                      │
+│  - application.yml（yunxi-app）         │
 └─────────────────────────────────────────┘
 ```
 
@@ -102,7 +98,9 @@ public DataSource prodDataSource() { }
 
 ### 数据库配置
 
-**连接池原理**：
+> **yunxi 平台运行时默认不连接 MySQL**。会话状态、跨实例锁等运行时数据走 Redis（见下节，`redis.yml` 以 `spring.data.redis` 前缀配置）；轨迹存储目前只有内存实现（`InMemoryTraceStore`，且运行时尚未写入）。`deploy/infra` 编排中的 MySQL 容器仅服务于**可选的** `mcp-nutrition` MCP 服务（独立 Java 进程，库 `yunxi_nutrition`，表结构由 `deploy/infra/init/nutrition-schema.sql` 初始化）。
+
+**连接池原理（MySQL 适用场景）**：
 ```
 ┌─────────────────────────────────────────┐
 │  连接池（Connection Pool）               │
@@ -119,9 +117,10 @@ public DataSource prodDataSource() { }
 ```
 
 ```yaml
+# 仅 mcp-nutrition 等需要 MySQL 的组件使用；yunxi 平台本身无需配置数据源。
 spring:
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:yunxi_agent_platform}?useUnicode=true&characterEncoding=utf-8
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:yunxi_nutrition}?useUnicode=true&characterEncoding=utf-8
     username: ${MYSQL_USERNAME:root}
     password: ${MYSQL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -156,43 +155,46 @@ spring:
 
 ### LLM 配置
 
-**多提供商支持原理**：
-```
-┌─────────────────────────────────────────┐
-│  LLM 抽象层                              │
-│  - 统一接口                              │
-│  - 多提供商支持                           │
-├─────────────────────────────────────────┤
-│  Provider A    Provider B    Provider C │
-│  - DashScope   - OpenAI      - Claude   │
-│  - 通义千问    - GPT         - 克劳德   │
-└─────────────────────────────────────────┘
-```
+模型以「命名模型清单」形式外部化配置在 `yunxi-config/src/main/resources/config/models.yml` 的 `yunxi.models` 段，代码与 Agent 定义中均不出现具体模型名。
 
-LLM 提供商的配置键统一挂在 `agentscope.core.<provider>` 前缀下（见 `agent-config/src/main/resources/config/llm.yml`），支持 dashscope / openai / baidu / huawei 等：
+- `catalog`：命名模型清单，每条声明 `provider` / `model` / `api-key-env` / `type`（`llm` / `decision` / `embedding`）。
+- `routing`：将 `agentId` 映射到 `catalog` 中的主模型（`primary`）+ 兜底（`fallbacks`）；未声明路由的 Agent 走**自动选型**（`AutoModelProvider` 按任务信号动态选最便宜且满足能力的模型）。
+- `defaults`：各用途分类默认模型（`llm` / `decision` / `embedding`）。
 
 ```yaml
-agentscope:
-  core:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY:}
-      model: qwen-max
-      base-url: https://dashscope.aliyuncs.com/api/v1
-      timeout: 30s
-    openai:
-      api-key: ${OPENAI_API_KEY:}
-      model: gpt-4o
-      base-url: https://api.openai.com/v1
-      timeout: 30s
-    baidu:
-      api-key: ${BAIDU_API_KEY:}
-      model: ernie-4.0
-    huawei:
-      api-key: ${HUAWEI_API_KEY:}
-      model: pangu-ultra
+yunxi:
+  models:
+    catalog:
+      qwen-plus:
+        provider: dashscope
+        model: qwen-plus
+        api-key-env: DASHSCOPE_API_KEY
+        type: llm
+      qwen3-8-27b:
+        provider: dashscope
+        model: qwen3.8-27b
+        api-key-env: DASHSCOPE_API_KEY
+        type: llm
+      local-decision:
+        provider: ollama
+        model: tev1:0.8b
+        type: decision
+      local-embedding:
+        provider: ollama
+        model: bge-m3:latest
+        type: embedding
+    routing:
+      example-assistant:
+        primary: auto
+        fallbacks: [qwen-plus]
+    defaults:
+      llm: qwen3-8-27b
+      decision: local-decision
+      embedding: local-embedding
 ```
 
-> **切换默认模型**：Agent 定义 YAML 的 `model.provider` / `model.modelName` 决定实际使用哪个提供商与模型；`agentscope.core.<provider>` 提供该提供商账号级配置。自定义提供商（baidu/huawei）由平台 `BaiduModelProvider` / `HuaweiModelProvider` 注册为模型工厂。
+> 密钥经环境变量注入（`DASHSCOPE_API_KEY` / `OPENAI_API_KEY` 等），不写进 YAML。本地 Ollama 模型（decision / embedding）需本机已拉取对应模型且 `ollama` 服务在 `OLLAMA_BASE_URL`（默认 `http://localhost:11434`）可达。多模态（图文 / 视频）与多语言输入由自动选型按信号分支到 `qwen3.8-omni-flash` / `qwen-mt-uni` 等候选。
+> 为某 Agent 固定模型：在 `routing` 段为该 `agentId` 显式声明 `primary`（覆盖系统默认自动选型）。
 
 ### 生成参数配置
 
@@ -240,10 +242,10 @@ model:
 
 平台的多租户在架构层是工作空间/数据隔离（`RuntimeContext(userId,sessionId)` 共享 Agent 实例），模型在 Agent 创建时构建一次、跨租户复用。因此「同一 Agent 运行时由每个终端用户带各自 LLM Key」这种重多租户不必要，但 `model.apiKey` / `model.baseUrl` 提供轻量多租户能力：
 
-- **单租户（默认）**：不填 `apiKey`/`baseUrl` → 回退到全局 `agentscope.core.*` 或对应环境变量，所有 Agent 共用平台账号。
-- **多租户（按需）**：在 Agent 定义中显式填写 `apiKey`/`baseUrl` → 经框架 `ModelCreationContext` 透传给对应提供商工厂，实现每 Agent 独立账号。openai / dashscope / anthropic / claude / deepseek 此前为死字段，现已修复生效；gemini / ollama 无自定义工厂，由 SPI 提供商经同一 context 自动消费。
+- **单租户（默认）**：不填 `apiKey`/`baseUrl` → 回退到 `models.yml` catalog 中同名模型的 `api-key-env` 环境变量，所有 Agent 共用平台账号。
+- **多租户（按需）**：在 Agent 定义中显式填写 `apiKey`/`baseUrl` → 经框架 `ModelCreationContext` 透传给对应提供商工厂，实现每 Agent 独立账号。openai / dashscope / anthropic / claude / deepseek 经框架 `ModelCreationContext` 透传 apiKey/baseUrl，实现每 Agent 独立账号；gemini / ollama 无自定义工厂，由 SPI 提供商经同一 context 自动消费。
 
-**配置优先级（统一）**：`AgentModelConfig` 显式值 > provider 级配置（`agentscope.core.<provider>`）> 全局配置（`agentscope.core.api-key` 等）> 环境变量。
+**配置优先级（统一）**：`routing.<agentId>.primary`（显式路由）> `defaults.<type>`（按用途默认：llm / decision / embedding）> 自动选型（`AutoModelProvider` 按任务信号动态选最便宜且满足能力的模型）。密钥经 `models.yml` catalog 中各模型的 `api-key-env` 环境变量注入，不写进 YAML。
 
 > **实现要点**：`ModelFactory` 注册的是 `ModelRegistry` 的 `ContextModelFactory`（`create(modelId, context)` 两参）重载，而非仅 1 参的 `ModelFactory`；`create()` 通过 `ModelRegistry.resolve(modelId, context)` 解析，把 `apiKey`/`baseUrl`/`stream`/`GenerateOptions` 封装为 `ModelCreationContext` 传递，确保官方提供商也能消费这些覆盖值。
 
@@ -262,7 +264,7 @@ model:
 - **`DISABLED`**：永不缓存，每次解析都新建 Model 实例。
 - **`ENABLED`**：显式开启缓存；必须以 `cacheId(...)` 表达租户或配置维度的身份。若搭配 `option(...)` / `component(...)` 使用却未提供 `cacheId`，框架会抛 `IllegalArgumentException`。
 
-**缓存策略对自定义工厂与 SPI 提供方一致生效**：`ModelRegistry` 解析顺序为 named → cache → 用户工厂（最新注册在前）→ SPI 提供方。yunxi 注册的 `openai` / `dashscope` / `anthropic` / `claude` / `deepseek` / `baidu` / `huawei` 七条正则走 `ContextModelFactory`（两参，消费 `ModelCreationContext`）；其中 `baidu` / `huawei` 框架未内置，用自定义 `BaiduModelProvider` / `HuaweiModelProvider` 注册为工厂，路径与内置 Provider 完全一致。`gemini` / `ollama` 及任何未注册的提供商由 `ServiceLoader` 从 `META-INF/services/io.agentscope.core.model.spi.ModelProvider` 自动发现并调用 `provider.create(modelId, context)`。SPI 接口为简单提供方保留了 `supports(String)` / `create(String)` 的兼容默认实现（`context` 参数在 `default` 方法中被忽略），因此只实现旧 1 参 API 的厂商也能即开即用。
+**缓存策略对自定义工厂与 SPI 提供方一致生效**：`ModelRegistry` 解析顺序为 named → cache → 用户工厂（最新注册在前）→ SPI 提供方。yunxi **不注册 Provider 正则、也不自建 Provider**——`ModelFactory` 只把 `provider:model` 透传给 `ModelRegistry.resolve`，DashScope / OpenAI / Anthropic / Gemini / DeepSeek / Ollama 等由框架内置 Provider 创建；未内置的提供商由 `ServiceLoader` 从 `META-INF/services/io.agentscope.core.model.spi.ModelProvider` 自动发现并调用 `provider.create(modelId, context)`。SPI 接口为简单提供方保留了 `supports(String)` / `create(String)` 的兼容默认实现（`context` 参数在 `default` 方法中被忽略），因此只实现旧 1 参 API 的厂商也能即开即用。
 
 > **可选优化（非必须）**：若希望「仅带生成参数、但配置完全相同的单租户 Agent」也能命中缓存，可在 `buildContext` 中改用 `.cachePolicy(ENABLED).cacheId(<配置指纹>)`，但必须为 `GenerateOptions` 组件提供显式 `cacheId`，否则会触发框架校验异常。当前保持 `DEFAULT` 是最稳妥的安全默认。
 
@@ -285,65 +287,52 @@ agentscope:
 
 ## 知识库（RAG）配置
 
-> **⚠️ V2.0 变更说明**：原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已随 AgentScope-Java 2.0 升级整体删除（框架 `io.agentscope.core.rag` 包 `@Deprecated(forRemoval=true)`）。应用层 RAG 由平台自建的 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，检索后端复用 `FileVectorService`（Milvus + EmbeddingService）。
+> **⚠️ 实现说明**：yunxi 的 RAG 检索是**产品平面自持能力**，由自研 `@Tool` `rag_retrieve` 经 `RagToolRegistrar` SPI 挂入 Agent toolkit 的 `rag` 工具组，**不依赖**框架 `io.agentscope.core.rag` 包（`Knowledge` / `GenericRAGHook`）——该包自框架 2.0.0 起已标记为 `@Deprecated(forRemoval = true)`，官方明确“RAG 包已移除，检索应在应用层自行集成”。因此 yunxi 在框架之上自持检索抽象 `DocumentChunkStore` 与嵌入/向量后端，而非接入框架已废弃的 RAG 契约。
 
-### 理论基础：检索增强生成
+### 检索默认参数（向量检索）
 
-RAG 使 Agent 能够从外部知识库中检索相关信息，弥补 LLM 知识截止日期和领域知识不足的问题。本框架通过文件级向量检索（Milvus）实现 RAG。
-
-### 检索默认参数（FileVectorService）
-
-文件检索由 `config/milvus.yml` 控制（配置前缀为 `milvus`），默认 `topK=5`：
+RAG 检索由 `yunxi.rag.*` 配置驱动，默认走**向量检索（仅向量模式）**：
 
 ```yaml
-milvus:
-  enabled: true                              # 源码默认启用（无 MILVUS_ENABLED 环境变量，需直接修改配置）
-  host: ${MILVUS_HOST:192.168.11.48}
-  port: ${MILVUS_PORT:19530}
-  database: ${MILVUS_DATABASE:default}
-  username: ${MILVUS_USERNAME:root}
-  password: ${MILVUS_PASSWORD:root}
+yunxi:
+  rag:
+    enabled: true                 # 启用 RAG 检索（启用后默认走向量检索）
+    default-top-k: 5              # rag_retrieve 默认返回条数
+    milvus:                       # 向量库连接（docker-compose 预置 Milvus:19530）
+      host: ${MILVUS_HOST:127.0.0.1}
+      port: ${MILVUS_PORT:19530}
+      database: ${MILVUS_DATABASE:default}
+      username: ${MILVUS_USERNAME:root}
+      password: ${MILVUS_PASSWORD:Milvus}
+      collection-prefix: yunxi_rag # 集合名前缀；多租户/多知识库经 collection 字段过滤隔离
+      dimension: 1024             # 与嵌入模型维度一致（bge-m3 = 1024）
+    embedding:                    # 嵌入服务（Ollama bge-m3，本机:11434）
+      host: ${OLLAMA_HOST:127.0.0.1}
+      port: ${OLLAMA_PORT:11434}
+      model: bge-m3
 ```
 
-> **降级说明**：Milvus 未启用时 `FileVectorService` 不可用，`ApplicationRAG` 中间件自动降级为透传，Agent 对话不受影响（仅无 RAG 增强）。
+> **降级说明（重要）**：RAG 当前为**仅向量模式**，无关键词静默回退。Milvus 或 Ollama 嵌入服务不可用时，`rag_retrieve` 调用将返回明确的"检索暂不可用"提示，而非降级为无增强透传。请在生产环境确保 Milvus + Ollama(bge-m3) 可达。
 
-### 工作模式
-
-RAG 模式在 Agent 定义 YAML 的 `agent.ragMode` 字段设置（默认 `GENERIC`），请求级 `ragMode` 字段可覆盖：
-
-| 模式 | 行为 | 注入位置 |
-|------|------|---------|
-| `NONE` | 不启用 RAG | — |
-| `GENERIC` | 检索结果注入系统提示前缀（默认） | 消息列表头部 |
-| `AGENTIC` | 检索结果注入用户消息，Agent 自主决定如何使用 | 消息列表头部 |
-
-```yaml
-agent:
-  name: business-assistant
-  ragMode: AGENTIC   # NONE / GENERIC / AGENTIC（请求级 ragMode 可覆盖）
-```
-
-### 检索架构
+### 数据存储与检索架构
 
 ```
-用户上传文件（POST /api/files/upload）
-    ↓ FileVectorService（向量化 + 写入 Milvus）
-Milvus 向量库（按 userId 隔离）
-    ↓ 查询时相似度检索（topK=5）
-ApplicationRAG.createMiddleware(ragMode, userId)
-    ↓ 注入消息列表头部
-HarnessAgent MiddlewareChain → LLM 生成
+文档分块入库：DocumentChunkStore.save(chunk)
+    → Ollama(bge-m3) 嵌入文本
+    → 正排内容写 BaseStore（命名空间 ["yunxi-rag", collection]，唯一真相源）
+    → 向量写 Milvus（派生索引，可由正排重建）
+
+查询：rag_retrieve({collection, query, topK})
+    → Ollama(bge-m3) 嵌入 query
+    → Milvus 最近邻（filter: collection == X && user_id == Y）
+    → 回查 BaseStore 还原内容 → 返回 DocumentChunk 列表
 ```
 
-参考 [03. 核心概念](./03-concepts.md#应用层-ragapplicationrag) 中的 RAG 说明。
+参考 [03. 核心概念](./03-concepts.md#应用层-ragapplicationrag) 中的 RAG 说明。检索能力由 yunxi 产品平面的 `DocumentChunkStore` 抽象与自研 `@Tool` `rag_retrieve` 承载，框架原生 rag 包自 2.0.0 起已废弃。
 
 ---
 
 ## Agent 多 Profile 配置
-
-### 理论基础：多态配置
-
-一个 Agent 可以定义多个 Profile（配置档），每个 Profile 代表一种工作模式。业务层只需在 YAML 中通过 `mode` 字段选择内置模式，无需理解底层参数。
 
 ### 配置结构
 
@@ -356,8 +345,7 @@ agent:
   # 编排模式：single / supervisor / pipeline / routing
   orchestration: single
 
-  # 默认 RAG 模式（请求未指定时使用此值，可选 GENERIC / AGENTIC / NONE）
-  ragMode: GENERIC
+  # 默认 RAG 模式：yunxi 当前不在 AgentSpec 暴露该字段，统一走框架默认 GENERIC
 
   # 默认 prompt（未指定 profile 时使用）
   prompt: |
@@ -473,34 +461,6 @@ Agent 级别默认配置
 
 ## 安全配置
 
-### 安全基础理论
-
-**身份认证 vs 授权**：
-| 概念 | 说明 | 示例 |
-|------|------|------|
-| **认证（Authentication）** | 验证你是谁 | 用户名密码登录 |
-| **授权（Authorization）** | 你能做什么 | 管理员/普通用户权限 |
-
-**Token 认证原理**：
-```
-┌─────────┐      ┌─────────┐      ┌─────────┐
-│  客户端  │ ──→  │ 认证服务 │ ──→  │  服务端  │
-└─────────┘      └─────────┘      └─────────┘
-     │                │                │
-     │ 1. 登录        │                │
-     │──────────────→│                │
-     │                │ 2. 验证身份     │
-     │                │ 3. 生成 Token   │
-     │←───────────────│                │
-     │   返回 Token   │                │
-     │                                 │
-     │ 4. 请求 API (带 Token)          │
-     │───────────────────────────────→│
-     │                                 │ 5. 验证 Token
-     │←───────────────────────────────│
-     │        返回数据                  │
-```
-
 ### 鉴权与安全模型
 
 > **说明**：本框架不设独立的网关 Token / MCP 网关鉴权配置（`agent.gateway.token`、`mcp.auth` 均不存在）。安全模型由两层构成：**应用层**通过 `SecurityContext` 完成用户认证（见下）；**Agent 执行层**由 AgentScope 原生权限引擎在 `onActing` 阶段强制执行（平台 `PermissionConfig` 将 YAML 中的 HITL / 权限规则映射为框架原生 `PermissionContextState` 的 ASK 规则）。
@@ -591,7 +551,7 @@ boolean valid = securityContext.validateJwtToken(token);
 
 yunxi 业务层现已统一采集每次 LLM 调用的 token 消耗与耗时，并在日志与指标两个维度暴露，便于排查成本、性能与异常。
 
-**采集入口**：`io.yunxi.platform.tracing.LlmMetrics#recordAndLogUsage(model, provider, ChatUsage)`。该方法接收 AgentScope 的 `io.agentscope.core.model.ChatUsage`（含 `inputTokens` / `outputTokens` / `cachedTokens` / `totalTokens` / `time` 秒），`usage` 为 null 时直接返回，不打印也不报错（某些 provider 不回填 usage 属正常）。
+**采集入口**：yunxi 业务层统一封装的 usage 采集（落 `yunxi-observability` 的 `MetricRegistry` / `TraceStore`），接收 AgentScope 的 `io.agentscope.core.model.ChatUsage`（含 `inputTokens` / `outputTokens` / `cachedTokens` / `totalTokens` / `time` 秒），`usage` 为 null 时直接返回，不打印也不报错（某些 provider 不回填 usage 属正常）。
 
 **1. 日志（INFO）**
 
@@ -605,15 +565,15 @@ yunxi 业务层现已统一采集每次 LLM 调用的 token 消耗与耗时，�
 
 | 调用点 | 维度 `model` 取值 | `provider` | 额外打印 |
 |--------|------------------|-----------|---------|
-| `ChatAppService.chat()` | agent 名 | `yunxi` | — |
-| `ChatAppService.chatWithConversation()` | conversation 的 agent 名 | `yunxi` | — |
-| `ChatAppService` 流式 `AGENT_RESULT` | `conversationId`（无则 `stream`） | `yunxi` | — |
-| `PageAgentService.execute()` | `page-agent` | `yunxi` | `TextBlock`(文本) / `ThinkingBlock`(推理) / `ToolUseBlock`(工具名+入参) / `DataBlock`(名称+来源)，长文本截断至 200 字 |
-| `PageAgentService` OpenAI 代理 | `page-agent-proxy` | `yunxi` | 同上；且代理返回的 `usage` 由硬编码 0 改为聚合真实 `ChatUsage` |
+| `ExecutionFacade.execute(AgentCommand)` | agent 名 | `yunxi` | — |
+| `ConversationController`（会话入口） | conversation 的 agent 名 | `yunxi` | — |
+| `ExecutionFacade` 流式 `Flux<AgentEvent>` | `conversationId`（无则 `stream`） | `yunxi` | — |
+| `page` 工具组（`pagegen_*` 工具） | `page-agent` | `yunxi` | `TextBlock`(文本) / `ThinkingBlock`(推理) / `ToolUseBlock`(工具名+入参) / `DataBlock`(名称+来源)，长文本截断至 200 字 |
+| `page` 工具组 OpenAI 代理 | `page-agent-proxy` | `yunxi` | 同上；且代理返回的 `usage` 由硬编码 0 改为聚合真实 `ChatUsage` |
 
 **2. OpenTelemetry 指标**
 
-指标由 `ObservabilityAutoConfiguration` 创建的 `LlmMetrics` Bean 上报（需在 `yunxi.observability.enabled=true` 默认开启时生效），可通过 `management.metrics.export.prometheus` 暴露给 Prometheus：
+指标落 `yunxi-observability` 的 `MetricRegistry`（需在 `yunxi.observability.enabled=true` 默认开启时生效），可通过 `management.metrics.export.prometheus` 暴露给 Prometheus：
 
 | 指标名 | 类型 | 单位 | 维度（attribute） | 说明 |
 |--------|------|------|------------------|------|
@@ -669,7 +629,7 @@ management:
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | REDIS_PASSWORD | Redis 密码 | 空 |
-| MILVUS_HOST | Milvus 主机 | 192.168.11.48 |
+| MILVUS_HOST | Milvus 主机 | 127.0.0.1（默认本地；生产环境替换为真实 Milvus 地址） |
 | MILVUS_PORT | Milvus 端口 | 19530 |
 | MILVUS_DATABASE | Milvus 数据库 | default |
 | MILVUS_USERNAME | Milvus 用户名 | root |
@@ -708,7 +668,7 @@ spring:
 
 logging:
   level:
-    io.yunxi.platform: debug
+    io.yunxi: debug
 ```
 
 ### 生产环境
@@ -720,10 +680,10 @@ spring:
 
 logging:
   level:
-    io.yunxi.platform: warn
+    io.yunxi: warn
 ```
 
-> **说明**：所有 `config/*.yml` 由 `config/imports.yml` 全量加载（其中 `aistio-workflow-export.yml` 标记为 `optional`，缺失仅告警不报错；其余片段为必需），`spring.profiles.active` 只控制 `@Profile` 注解 Bean 的启用。当前代码中仅 `muse-docker` 一个 `@Profile` 开关（`agent-muse` 沙箱实现切换），其余列出的 profile 名仅作配置分组说明，并无对应 `@Profile` Bean。
+> **说明**：所有 `config/*.yml` 由 `config/imports.yml` 全量加载，`spring.profiles.active` 只控制 `@Profile` 注解 Bean 的启用。当前代码中仅 `muse-docker` 一个 `@Profile` 开关（`yunxi-intelligence` 沙箱实现切换），其余列出的 profile 名仅作配置分组说明，并无对应 `@Profile` Bean。
 
 ---
 
@@ -796,11 +756,51 @@ agent:
 
 **不配 `tools` 字段时，Agent 默认仅激活 `memory` 组**，只能查询记忆，无法读写文件或执行命令。
 
+### 工具箱裁剪（按 Agent 摘除框架默认工具）
+
+**关键事实：框架默认工作区工具**。以下工具**不是 yunxi 自己实现的，而是 AgentScope-Java 在构建每个 Agent 时自动装备的框架默认工作区工具**（由框架 `ToolFilter` / `ToolsConfig` 注册，处于"未分组、始终活跃"状态，普通工具组开关管不到它们）：
+
+- `read_file` / `write_file` / `list_files` / `grep_files` / `glob_files` / `execute`
+
+纯业务 Agent（如营养师）不需要文件系统 / 代码执行能力时，应在 Agent 定义 YAML 中声明 `toolkit.deniedToolNames`，于构建期把这些工具从工具箱**彻底移除**（yunxi 唯一装配点 `AgentConfigurer` 将其翻译为框架 `ToolsConfig.deny` 注入 `HarnessAgent.Builder`）。效果：
+
+- 杜绝 LLM 反复调用被权限拒绝的内置工具造成的空转（生成慢的根因之一）；
+- 避免向业务 Agent 暴露无关的文件 / 代码执行能力。
+
+> **`load_skill_through_path` 不属于框架默认工具，请勿照搬到 `deniedToolNames`**。
+> 它是技能查看器工具，只在 Agent 配置了技能仓库（AgentSkillRepository，如 MUSE 自进化挂载的元工具）时才由框架注册，并非对所有 Agent 无条件装备。只有「明确不让该 Agent 加载技能」时才 deny 它，否则会破坏需要技能的 Agent 的技能加载。营养师因系统提示词已声明"禁止加载技能"，才在下方示例中额外 deny 它。
+
+```yaml
+# agent-definitions/<name>.yml
+agent:
+  name: nutrition-assistant
+  # 工具箱裁剪：营养师是纯业务 Agent，关闭两类工具。
+  toolkit:
+    deniedToolNames:
+      # 1) 框架默认工作区工具：每个 Agent 自动装备，营养师不需要文件读写 / 代码执行。
+      - read_file
+      - write_file
+      - list_files
+      - grep_files
+      - glob_files
+      - execute
+      # 2) load_skill_through_path：技能查看器工具，仅在挂了技能中间件时存在。
+      #    营养师系统提示词已声明「禁止加载技能」，故额外 deny；需要技能的 Agent 请勿照搬此行。
+      - load_skill_through_path
+```
+
+需要文件 / 代码执行能力的 Agent：
+
+- 直接**不声明** `toolkit` 字段（保留框架默认的全部内置工具）；或
+- 从 `deniedToolNames` 中**移除对应工具名**即可，不要新增等价工具。
+
+> 该配置是定义平面（`AgentSpec.ToolkitConfig`）的纯数据，框架语义翻译留在装配点。
+
 ---
 
 ## MCP 动态注册配置（Nacos 协调底座）
 
-平台支持运行期通过 REST API 动态注册/注销 MCP 服务器（接口见 [09. API 参考 · MCP 动态注册](./09-api-reference.md#mcp-动态注册运行时-rest-api)）。该能力的协调底座基于 **Nacos 配置中心**：
+平台支持运行期通过 REST API 动态注册/注销 MCP 服务器（接口见 [09. API 参考 · MCP 工具（外部服务器注册）](./09-api-reference.md#mcp-工具外部服务器注册)）。该能力的协调底座基于 **Nacos 配置中心**：
 
 - **目录持久化**：每个服务器条目写入 Nacos `dataId`（默认 `yunxi.mcp-servers.json`），进程重启不丢失；
 - **跨实例广播**：通过 Nacos Naming 在协调服务名 `yunxi-mcp-coordinator` 下注册实例，多实例可统一感知服务器上下线；
@@ -823,17 +823,18 @@ yunxi:
 
 ### 行为说明
 
-- 启动引导（`bootstrap`）会一次性合并发布所有在 `agentscope.core.mcp-servers` 中标记为 `enabled: true` 的静态服务器到目录，保证静态与动态服务器处于同一权威目录；
+- 启动引导（`bootstrap`）会一次性合并发布所有在 `yunxi.mcp.static-servers` 中标记为 `enabled: true` 的静态服务器到目录，保证静态与动态服务器处于同一权威目录；
 - 注册/注销采用「内存权威目录 + Nacos 全量快照」机制：所有写操作先更新内存目录，再发布完整快照，避免并发读-改-写导致的覆盖丢失，从而解决多实例最终一致下的目录竞态；
 - 目标服务器不可达时仅 WARN 降级，首次调用时自动重连，不阻塞 HTTP 请求；
-- 动态注册的服务器与静态 `agentscope.core.mcp-servers` 段共享同一套 `Toolkit` 注册逻辑，工具同样按服务器名分组、由 Agent 在对话中自主调用。
+- 动态注册的服务器与静态 `yunxi.mcp.static-servers` 段共享同一套 `Toolkit` 注册逻辑，工具同样按服务器名分组、由 Agent 在对话中自主调用。
 
 ---
 
 ## 任务清单（TodoList）配置
 
 任务清单是 **AgentScope-Java 2.0 原生能力**：启用后由框架注册 `todo_write` 工具与 `TaskReminderMiddleware`，
-Agent 可维护结构化任务清单，yunxi 侧经 `todo_update` SSE 事件透出给前端。**yunxi 不自建工具、不自建存储**，仅提供开关。
+Agent 可维护结构化任务清单，yunxi 侧经前端 SDK `yunxi-chat.js` 解析 `todo_write` 工具的 `TOOL_RESULT_TEXT_DELTA` 透出（后端 `ConversationController.stream` 纯透传框架事件，**无 `todo_update` 事件类型**）。**yunxi 不自建工具、不自建存储**，仅提供开关。
+yunxi 已在 `AgentConfigurer.configure()` 装配点接线该开关，默认关闭（全局开关与 per-Agent 字段均默认 false），对既有 Agent 零回归。
 
 ### 启用方式（二者之一生效）
 
@@ -846,14 +847,14 @@ agent:
 ```
 
 ```yaml
-# 方式二：全局配置（agentscope.yml，对所有 Agent 生效）
-agentscope:
-  core:
-    plan:
-      task-list: true                   # 默认 false
+# 方式二：全局开关（Spring 环境属性，对所有 Agent 生效；application.yml / 环境变量 / 启动参数均可）
+yunxi:
+  agent:
+    taskList:
+      enabled: true                     # 默认 false
 ```
 
-启用条件与计划模式（`plan.enabled`）一致，取 **YAML 级 或 全局级** 二者之一。
+启用条件与计划模式（`plan.enabled`）一致，取 **per-Agent `agent.plan.taskList` 或 全局 `yunxi.agent.taskList.enabled`** 二者之一（OR 生效）。
 
 ### 与计划模式（PlanMode）的关系
 
@@ -869,27 +870,23 @@ agentscope:
 - **写入语义**：全量替换（full-list-replace）——模型每次提交完整列表，不做增量合并
 - **状态**：`pending`（待执行）/ `in_progress`（执行中）/ `completed`（已完成），同一时刻至多一个 `in_progress`（违反时工具返回错误，任务列表不被破坏）
 - **持久化**：存于 `AgentState.tasksContext`，随 AgentState 按 (userId, sessionId) 槽位持久化，跨会话续传天然具备
-- **默认即有持久化**：框架默认装配文件存储（`~/.agentscope/state/<agentId>/`），无需额外配置即可跨会话续传；仅**跨实例/多副本**部署时才需启用 `agentscope.core.session.type=redis`
+- **默认即有持久化**：框架默认装配文件存储（`~/.agentscope/state/<agentId>/`），无需额外配置即可跨会话续传；仅**跨实例/多副本**部署时才需启用 `agentscope.core.stateStore（Redis 后端，经 DistributedRuntimeConfig 装配）`
 
-### SSE 事件（前端契约）
+### 透出机制（前端契约）
 
-```json
-{
-  "type": "todo_update",
-  "timestamp": "2026-08-28T10:00:00Z",
-  "conversationId": "conv-123",
-  "content": "{\"todos\":[{\"id\":\"a1b2c3…\",\"subject\":\"查询营养成分\",\"state\":\"completed\",…}]}"
-}
-```
-
-说明：`content` 为 **JSON 字符串**（与 `tool_result` 等结构化事件同一编码惯例），需二次解析后取 `todos` 数组：
+后端 `ConversationController.stream` 以 `event: agent-event` **纯透传**框架 `AgentEvent`，**不合成** `todo_update` 事件（框架 `AgentEventType` 无此类型）。任务清单随 `todo_write` 工具执行，以 `TOOL_RESULT_TEXT_DELTA`（`toolCallName=todo_write`，即 `TodoTools.render()` 的 markdown）流式下发，`TOOL_RESULT_END` 收尾；前端 SDK `yunxi-chat.js` 按 `toolCallId` 累积增量、在 `TOOL_RESULT_END` 还原为结构化列表并经 `onTodo` 回调透出（full-list-replace 语义）：
 
 ```javascript
-const payload = JSON.parse(evt.content);
-renderTodoCard(payload.todos);
+yunxiChat({
+  mode: 'stream',
+  onTodo: (todos, meta) => {
+    // todos: [{ content, status, priority }] 全量列表；meta: { toolCallId, revision }
+    renderTodoPanel(todos);
+  }
+});
 ```
 
-`todo_update` 为**全量透出**，前端应整体替换清单而非合并。注意 `created_at` / `blocked_by` 为下划线命名。
+任务清单为**全量透出**，前端应整体替换清单而非合并。
 
 ---
 
@@ -969,7 +966,7 @@ agent:
 
 ## MUSE 配置
 
-[MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 的配置集中在 `agent-config` 的 `config/muse.yml`（前缀 `yunxi.muse`，默认关闭，需显式 `enabled: true`）：
+[MUSE 自进化引擎](./10-skills.md#muse-自进化引擎) 的配置前缀为 `yunxi.muse`（由 `EvolutionConfig` 绑定，**代码默认开启**；平台未提供默认 `muse.yml`，需覆盖时在 `application.yml` 或环境变量中声明）：
 
 ```yaml
 yunxi:
@@ -977,7 +974,7 @@ yunxi:
     enabled: true                       # 是否启用自进化能力
     model: qwen-plus                    # 修补用的 LLM 模型名（走 yunxi ModelFactory）
     provider: dashscope                 # 模型供应商
-    builtin-export-dir: .agentscope/workspace/skills
+    builtin-export-dir: .agentscope/workspace/skills   # 内置技能 tests/ 物化目录（MUSE 评估器执行用）
     sandbox:
       mode: local                       # local=本机子进程 / docker=容器沙箱（推荐）
       timeout: 60s
@@ -999,102 +996,40 @@ yunxi:
         general-usage-threshold: 3      # 使用者广度达标 → 撤销低使用率归档
 ```
 
-在 `config/muse.yml` 中设置 `yunxi.muse.enabled: true` 即可全局启用，无需改动 Agent 定义 YAML。
+MUSE 默认开启，无需改动 Agent 定义 YAML；如需关闭，在 `application.yml` 或环境变量中设置 `yunxi.muse.enabled: false`。
+
+> **注意**：下列 `pruner.profile-aware.*` 仅完成配置绑定（`EvolutionConfig.ProfileAware`），聚合器 `UsageProfileAggregator` **尚未实现**，当前配置不产生任何效果；剪枝实际只用「使用率 + 相似度」两条判据。
 
 | 配置项 | 默认 | 说明 |
 |--------|------|------|
-| `pruner.profile-aware.enabled` | `true` | 是否启用画像驱动剪枝判据；关闭后仅保留使用率与相似度两条原有规则 |
-| `pruner.profile-aware.scan-limit` | `500` | 轨迹枚举上限（轨迹存储无按技能反查能力，此为扫描成本护栏；超长历史下聚合为近似） |
-| `pruner.profile-aware.overfit-usage-threshold` | `5` | 去重使用者数为 1 且调用次数达到该值 → 标记 `OVERFIT`（需泛化，不删除） |
-| `pruner.profile-aware.general-usage-threshold` | `3` | 去重使用者数达到该值 → 视为有通用价值，撤销低使用率归档 |
+| `pruner.profile-aware.enabled` | `true` | 画像驱动剪枝判据开关（设计态，当前无消费者） |
+| `pruner.profile-aware.scan-limit` | `500` | 轨迹枚举上限（设计态；轨迹存储无按技能反查能力，此为扫描成本护栏） |
+| `pruner.profile-aware.overfit-usage-threshold` | `5` | 去重使用者数为 1 且调用次数达到该值 → 标记 `OVERFIT`（设计态） |
+| `pruner.profile-aware.general-usage-threshold` | `3` | 去重使用者数达到该值 → 视为有通用价值，撤销低使用率归档（设计态） |
 
-> **数据来源与降级**：画像驱动判据只**读**调用轨迹与用户画像，绝不回写画像。画像或轨迹数据缺失、或 `enabled: false` 时，聚合返回空值，剪枝退化为原有两条规则，行为与未引入该特性时一致。详见 [10. 技能系统 - 画像驱动的剪枝判据](./10-skills.md#画像驱动的剪枝判据)。
+> **设计上的数据来源与降级**（聚合器 `UsageProfileAggregator` 尚未实现）：画像驱动判据只**读**调用轨迹与用户画像，绝不回写画像。画像或轨迹数据缺失、或 `enabled: false` 时，聚合返回空值，剪枝退化为原有两条规则。详见 [10. 技能系统 - 画像驱动的剪枝判据（设计态）](./10-skills.md#画像驱动的剪枝判据设计态未接入)。
 
 ## 意图引擎配置
 
-[意图引擎](./16-intent-engine.md) 的配置集中在 `agent-config` 的 `config/intent.yml`（前缀 `yunxi.intent`），通过 `imports.yml` 随 Spring 配置自动导入：
+[意图引擎](./15-intent-engine.md) 当前是一个**关键词 → Agent 的极简路由库**，位于 `yunxi-intelligence` 模块（包 `io.yunxi.intelligence`）。以代码为准，**没有** `yunxi.intent.*` 外部化配置，也**没有** `config/intent/*.yml` 数据文件（NER 词典 / 改写术语表 / 意图树 / 映射表 / 路由 / 分类通道 / 多域 / 热更新均不在当前代码范围内）。
 
-```yaml
-yunxi:
-  intent:
-    enabled: true                       # 总开关（false = 仅场景模式，等价旧 SceneDetectionService）
-    ner-dictionary: classpath:config/intent/ner-dictionaries.yml   # NER 实体词典（部署业务数据）
-    rewrite-enabled: true               # 改写阶段是否启用
-    rewrite-processors: [terminology]   # 改写处理器名列表（按序执行；不存在名字 warn 跳过）
-    terminology-table: classpath:config/intent/terminology.yml     # 术语/别名归一表
-    intent-tree: classpath:config/intent/intent-tree.yml           # 意图树（分类规则）
-    mapping-table: classpath:config/intent/intent-mapping.yml      # 意图 → Agent 路由映射表
-    # ── 意图路由（默认关闭，渐进式上线）──
-    routing:
-      enabled: false                    # 开启后 routeHint 参与会话入口路由决策（advisory）
-      min-route-score: 0.5              # 最低采纳分数（低于此值不改道）
-    # ── 分类通道 ──
-    classification:
-      mode: rule                        # rule | llm | hybrid
-      rule-confidence-threshold: 0.6    # hybrid 模式规则高分直出阈值
-      llm:
-        enabled: false                  # LLM 通道总开关（false 时 llm/hybrid 退化为纯规则）
-        model: ${INTENT_MODEL:qwen-plus}          # 低成本快模型（-DINTENT_MODEL 可覆盖）
-        timeout-ms: ${INTENT_TIMEOUT_MS:10000}    # 超时（-DINTENT_TIMEOUT_MS 可覆盖）
-        min-confidence: 0.5             # LLM 输出最低采纳置信度
-        max-intents: 30                 # 白名单上限
-        cache: { ttl-days: 7, max-size: 10000 }   # LLM 结果缓存
-    # ── 多域（单域部署保持默认即可）──
-    resolver:
-      default: base                     # 未命中规则的默认域
-      rules: []                         # 多域路由规则（agent 前缀 / profile 归属）
-      domains: {}                       # 业务域数据源（缺省项继承 base）
-    # ── 热更新 ──
-    reload:
-      enabled: true                     # reload 开关（actuator 端点受控）
-      poll-seconds: -1                  # >0 时轮询 file: 前缀资源 mtime（默认关闭）
-```
+关键词规则由构造 `KeywordIntentResolver(Map<String, List<String>> rules, String defaultAgentId)` 时以代码传入；如需从配置加载，应在装配层新增读取 `yunxi.intent.*` 的配置类并构建 `KeywordIntentResolver`（当前未实现）。扩展分类能力可实现 `IntentResolver` 并注册进 `DefaultIntentEngine`。
 
-各配置项说明（默认值 = 框架最小演示集路径；`agent-config` 显式覆盖为部署业务数据；**fat jar 部署下建议统一使用 `classpath:` 前缀**）：
-
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `yunxi.intent.enabled` | `true` | 总开关；`false` 时仅返回场景名，跳过 NER/改写/分类/映射 |
-| `yunxi.intent.ner-dictionary` | `classpath:intent/ner-dictionaries.yml` | NER 词典文件（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
-| `yunxi.intent.rewrite-enabled` | `true` | 改写阶段开关 |
-| `yunxi.intent.rewrite-processors` | `[terminology]` | 改写处理器链 |
-| `yunxi.intent.terminology-table` | `classpath:intent/terminology.yml` | 术语归一表（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
-| `yunxi.intent.intent-tree` | `classpath:intent/intent-tree.yml` | 意图树（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
-| `yunxi.intent.mapping-table` | `classpath:intent/intent-mapping.yml` | 路由映射表（base 域）；支持 `classpath:` / `file:` / `url:` 前缀 |
-| `yunxi.intent.routing.enabled` | `false` | 意图路由开关；开启后 `routeHint` 参与会话入口路由（advisory，目标缺失或分低不改道） |
-| `yunxi.intent.routing.min-route-score` | `0.5` | 路由建议最低采纳分数 |
-| `yunxi.intent.classification.mode` | `rule` | 分类模式：`rule` / `llm` / `hybrid` |
-| `yunxi.intent.classification.rule-confidence-threshold` | `0.6` | hybrid 模式规则高分直出阈值 |
-| `yunxi.intent.classification.llm.enabled` | `false`（部署默认；代码字段默认 `true`，但 `mode=rule` 时不装配） | LLM 通道总开关（false 时 llm/hybrid 退化为纯规则兜底） |
-| `yunxi.intent.classification.llm.model` | `qwen-turbo` | 低成本快模型 |
-| `yunxi.intent.classification.llm.timeout-ms` | `2000` | 模型调用超时（resilience4j TimeLimiter） |
-| `yunxi.intent.classification.llm.min-confidence` | `0.5` | LLM 输出最低采纳置信度 |
-| `yunxi.intent.classification.llm.max-intents` | `30` | 白名单上限，超限按查询关键词粗筛 Top-N |
-| `yunxi.intent.classification.llm.cache.ttl-days` | `7` | LLM 结果缓存 TTL |
-| `yunxi.intent.classification.llm.cache.max-size` | `10000` | 缓存 LRU 上限 |
-| `yunxi.intent.resolver.default` | `base` | 默认域；未命中规则时回落 |
-| `yunxi.intent.resolver.rules` | `[]` | 多域路由规则（agent 名前缀 / profile 归属） |
-| `yunxi.intent.resolver.domains` | `{}` | 业务域数据源映射，缺省项继承 `base` |
-| `yunxi.intent.reload.enabled` | `true` | 热更新总开关（actuator 端点前置条件） |
-| `yunxi.intent.reload.poll-seconds` | `-1` | 文件轮询间隔秒；`>0` 时对 `file:` 前缀资源按 mtime 自动 reload |
-
-> **框架通用性**：意图引擎是框架层通用能力，与具体业务解耦，采用**数据两级模型**——`agent-core` 内置最小演示集（兜底），`agent-config` 的 `config/intent/*.yml` 为部署业务数据，也支持 `file:` 前缀完全外部化。业务方只需修改上表配置项指向自己的文件即可整体替换，无需改动 Java 代码。热更新端点见 [16. 意图引擎](./16-intent-engine.md#热更新与运维)，完整定制指南见 [16. 意图引擎](./16-intent-engine.md#业务定制指南)。
+> **历史说明**：早期方案文档曾描述一套完整的 `yunxi.intent.*` 配置（NER / 改写 / 意图树 / 映射表 / 路由 / 分类通道 / 多域 / 热更新），该描述对应已被简化的早期方案，与当前代码不符，请勿据此配置。意图引擎当前未接进对话请求主链路。
 
 ---
 
 ## AgentScope Service 管控面配置（yunxi 集成模块名 aistio）<a name="aistio"></a>
 
-yunxi 通过应用内 `io.yunxi.platform.aistio` 适配层接入底层框架的 **AgentScope Service** 管控面，补齐 **Agent 管控 / 治理可视化 / 会话干预** 能力。该能力默认关闭，需显式开启并指向一个已运行的 AgentScope Service 控制面（见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)）。
+yunxi 通过应用内 `io.yunxi.fabric.aistio` 适配层接入底层框架的 **AgentScope Service** 管控面，补齐 **Agent 管控 / 治理可视化 / 会话干预** 能力。该能力默认关闭，需显式开启并指向一个已运行的 AgentScope Service 控制面（见 [08. 部署指南 · aistio 控制面本地编排](./08-deployment.md#aistio)）。
 
 ### 术语对照（yunxi 模块名 ↔ 底层框架官方名）
 
-本章出现的 "aistio" 是 yunxi 对 AgentScope-Java 生态 **AgentScope Service** 管控面的集成模块命名，同时也是 AgentScope Service 后端（`agentscope-service` 仓库）自身的部署代号（Go 二进制 `aistiod`、平面 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`，容器间经 `BUILDER_DATA_URL=http://aistio-data:8082` 等硬编码主机名互联）。因此代码层沿用 `yunxi.aistio.*` 配置前缀与 `io.yunxi.platform.aistio` 适配包、docker 服务名沿用 `aistio-gateway` / `aistio-scheduler` / `aistio-data`，以与真实后端保持一致，不可改名。底层框架对外发布的官方产品名为 **AgentScope Service**（官方文档：<https://java.agentscope.io/v2/zh/service>，当前为预览版，且官方站点称 "AgentScope Service"、源码与容器称 "aistio"，二者同源）。yunxi 的 docker-compose 中上述 service 的镜像坐标使用官方发布产物 `as-controlplane` / `as-dataplane` / `as-gateway` / `as-scheduler`（仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，为官方预编译镜像，**非** `agentscope-service` 源码构建），详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)。为降低开源后的学习门槛，本章行文统一使用框架官方概念名，关键映射如下：
+本章出现的 "aistio" 是 yunxi 对 AgentScope-Java 生态 **AgentScope Service** 管控面的集成模块命名，同时也是 AgentScope Service 后端（`agentscope-service` 仓库）自身的部署代号（Go 二进制 `aistiod`、平面 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`，容器间经 `BUILDER_DATA_URL=http://aistio-data:8082` 等硬编码主机名互联）。因此代码层沿用 `yunxi.aistio.*` 配置前缀与 `io.yunxi.fabric.aistio` 适配包、docker 服务名沿用 `aistio-gateway` / `aistio-scheduler` / `aistio-data`，以与真实后端保持一致，不可改名。底层框架对外发布的官方产品名为 **AgentScope Service**（官方文档：<https://java.agentscope.io/v2/zh/service>，当前为预览版，且官方站点称 "AgentScope Service"、源码与容器称 "aistio"，二者同源）。yunxi 的 docker-compose 中上述 service 的镜像坐标使用官方发布产物 `as-controlplane` / `as-dataplane` / `as-gateway` / `as-scheduler`（仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，为官方预编译镜像，**非** `agentscope-service` 源码构建），详见 [08. 部署指南 · aistio 控制面本地编排](./08-deployment.md#aistio)。为降低开源后的学习门槛，本章行文统一使用框架官方概念名，关键映射如下：
 
 | yunxi 文档用语 | AgentScope Service 官方概念 |
 | --- | --- |
 | aistio 管控面 / 控制面 | AgentScope Service 管控面（Control Plane） |
-| 编排图挂载（workflow 挂载） | Workflow（步骤、依赖、分支与人工关口） |
-| 编排定义 artifact | Artifact（编排定义导出物） |
 | 人工审批节点 | Approval（人工关口） |
 | 命名空间 | Namespace |
 | 控制台 / 网关 | AgentScope Service 控制台 / 网关 |
@@ -1105,9 +1040,17 @@ yunxi 通过应用内 `io.yunxi.platform.aistio` 适配层接入底层框架的 
 yunxi:
   aistio:
     enabled: false                                  # 总开关（默认 false，不连接管控面）
-    control-plane-url: http://localhost:8081        # aistio 控制面地址（REST/控制台，docker-compose 中 control 发布端口）
-    internal-token: compose-local-internal-token-at-least-32chars   # 与 aistio 侧 BUILDER_INTERNAL_TOKEN 一致
-    base-url: http://localhost:40001                 # yunxi 数据面对管控面可达的基座地址（裸 host:port，管控面自行拼接 /agentscope/*）
+    control-plane-url: http://localhost:18081        # aistio 控制面 REST/控制台 地址
+    control-plane: ""                                # aistio gRPC 端点（host:port）；仅 start-grpc=true 时需要
+    internal-token: compose-local-internal-token-at-least-32chars   # 与 aistio 各平面 BUILDER_INTERNAL_TOKEN 一致
+    base-url: http://localhost:40001                 # yunxi 数据面对管控面可达的基座地址（裸 host:port）
+    namespace: default                               # 上报至管控面的命名空间
+    instance-key: ""                                 # 实例键；留空自动取 ${app}-${host}-${port} 稳定唯一
+    workspace-root: ${java.io.tmpdir}/yunxi-workspaces  # 工作区定义 Agent 本地根目录
+    contract-http-port: 40001                        # 数据面契约 HTTP 端口
+    enable-events: false                             # Level-2 事件流（当前默认关）
+    start-http-register: true                        # 启动期 HTTP 自注册 + 周期心跳
+    start-grpc: false                                # 是否启用 gRPC 对话流
 ```
 
 ### 配置说明
@@ -1115,71 +1058,32 @@ yunxi:
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `yunxi.aistio.enabled` | `false` | 是否启用管控面接入；开启后平台向 aistio 注册 Agent、上报会话事件并接收干预指令 |
-| `yunxi.aistio.control-plane-url` | — | aistio 控制面地址；docker-compose 默认发布到主机 `8081`，故填 `http://localhost:8081` |
+| `yunxi.aistio.control-plane-url` | — | aistio 控制面地址；`deploy/aistio` 编排默认发布到主机 `18081`，故填 `http://localhost:18081` |
 | `yunxi.aistio.internal-token` | — | 内部令牌，须与 aistio 各平面的 `BUILDER_INTERNAL_TOKEN` 环境变量完全一致（compose 本地默认 `compose-local-internal-token-at-least-32chars`） |
 | `yunxi.aistio.base-url` | `http://localhost:40001` | yunxi 数据面**对管控面可达**的基座地址（裸 host:port，管控面自行拼接 `/agentscope/health` 等），用于两处：① 管控面 prober 轮询 `base-url/agentscope/health` 探活；② 管控面回调本平台会话。注意此处是从**管控面容器视角**解析的地址，**绝不能填 `localhost`**——当管控面运行在 Docker 中、yunxi 运行在宿主机时，容器内的 `localhost` 指向容器自身而非宿主机，prober 连接被拒，Agent 全部显示 `unavailable`。正确填法：Windows/Mac Docker Desktop 用 `http://host.docker.internal:40001`，或宿主机局域网 IP `http://<host-ip>:40001`（如 `http://192.168.x.x:40001`） |
-| `yunxi.aistio.agent-key` | `yunxi-agent-platform` | 本数据面在管控面目录中的稳定标识（Agent key）；同名 Agent 已存在时复用并新建 instance |
-| `yunxi.aistio.agent-name` | `yunxi-agent-platform` | 数据面展示名（displayName），仅用于控制台显示 |
-| `yunxi.aistio.tenant` | `default` | 上报至管控面的租户 |
 | `yunxi.aistio.namespace` | `default` | 上报至管控面的命名空间 |
+| `yunxi.aistio.instance-key` | — | 实例键；留空自动取 `${app}-${host}-${port}` 稳定唯一，覆盖框架默认 UUID（对齐实例键稳定唯一约定） |
+| `yunxi.aistio.workspace-root` | `${java.io.tmpdir}/yunxi-workspaces` | 工作区定义 Agent 本地根目录；受控面派发含 `definition` 的任务时启用 |
+| `yunxi.aistio.contract-http-port` | `40001` | 数据面契约 HTTP 端口 |
+| `yunxi.aistio.enable-events` | `false` | Level-2 事件流开关（当前默认关，相关设计规范尚存未决歧义） |
+| `yunxi.aistio.start-http-register` | `true` | 启动期 HTTP 自注册（`HttpSelfRegistration`）+ 周期心跳 |
+| `yunxi.aistio.start-grpc` | `false` | 是否启用 gRPC 对话流（控制面经 gRPC 推对话、yunxi 回传事件） |
 
-> **Agent key 是什么（与 yunxi 工作流 `agentId` 的区别）**：管控面「新建 Agent」表单的 **Agent key** 是该 Agent 在 `(tenant, namespace)` 范围内的**稳定身份 slug**，格式仅含小写字母、数字、`-`、`_`（建议 kebab-case，如 `purchase-review-agent`）。它在同一 `(tenant, namespace)` 内唯一，且不随显示名（displayName）变更而变；与后端自动生成的 UUID `id`、显示名均属不同概念。
+> **Agent key 是什么**：管控面「新建 Agent」表单的 **Agent key** 是该 Agent 在 `namespace` 范围内的**稳定身份 slug**，格式仅含小写字母、数字、`-`、`_`（建议 kebab-case，如 `purchase-review-agent`）。它在同一 `namespace` 内唯一，且不随显示名（displayName）变更而变；与后端自动生成的 UUID `id`、显示名均属不同概念。
 >
-> - **yunxi 自动注册，通常无需手动建**：开启 `yunxi.aistio.enabled=true` 后，yunxi 在启动期通过 AgentScope-Java 原生 `aistio` 扩展的 `HttpSelfRegistration` 向管控面 `POST /api/v1/agent-registrations` 注册自身数据面，并完成周期心跳与握手身份回填（由 `AistioGrpcConnector` 装配 `AistioConfig.startHttpRegister(true)` 触发）。所用 Agent key 即 `yunxi.aistio.agent-key`（默认 `yunxi-agent-platform`），落在 `yunxi.aistio.tenant` / `yunxi.aistio.namespace`（均默认 `default`）。因此一般不必在控制台手动新建同名 Agent；该表单用于注册**其他** Agent（托管 Agent 或额外外部数据面）。手动建 Agent 时其 key 不要与 `yunxi-agent-platform` 冲突，否则会被复用而非新建。
-> - **yunxi 工作流引用的是 UUID，不是 Agent key**：yunxi 编排图挂载中 `type: agent` 节点的 `agentId` 填的是 Agent 的 UUID（控制台目录详情页的 `id`），**不是** Agent key slug。在控制台手动建的 Agent 若要被 yunxi 工作流引用，须从目录详情页复制其 UUID `id` 填入 `agentId`，切勿填 Agent key。
+> - **yunxi 自动注册，通常无需手动建**：开启 `yunxi.aistio.enabled=true` 后，yunxi 在启动期通过 AgentScope-Java 原生 `aistio` 扩展的 `HttpSelfRegistration` 向管控面 `POST /api/v1/agent-registrations` 注册自身数据面，并完成周期心跳与握手身份回填（由 `AistioConnector` 装配 `AistioConfig.startHttpRegister(true)` 触发）。本数据面在管控面目录中的身份由 `HarnessAgent` 的名称与 `yunxi.aistio.instance-key`（默认 `${app}-${host}-${port}`）共同决定，落在 `yunxi.aistio.namespace`（默认 `default`）。因此一般不必在控制台手动新建同名 Agent；该表单用于注册**其他** Agent（托管 Agent 或额外外部数据面）。手动建 Agent 时其 key 不要与 yunxi 默认实例身份冲突，否则会被复用而非新建。
 
 > **Agent 在控制台显示 `unavailable` 的根因**：状态由管控面 **prober 轮询数据面 `base-url/agentscope/health`** 决定，连不通即 `unavailable`，与你在控制台怎么填 Agent key / 显示名无关。最常见原因有二：① `yunxi.aistio.base-url` 填了 `localhost` 而管控面在 Docker 中（见上表，容器内 `localhost` 不等于宿主机）——把 base-url 改为 `host.docker.internal` 或宿主机 IP 后重启 yunxi 即可；② 该 Agent 没有真实运行的数据面认领它（例如仅在控制台建了目录条目、却无 yunxi 或上游 dataplane 实例在跑）。yunxi 自身的 `yunxi-agent-platform` 要 available，前提是 yunxi 已启动且 `yunxi.aistio.enabled=true`，并以容器可达的 base-url 注册。修复后 prober 下一轮轮询才会翻绿，非即时生效。
 
-### 接入步骤（docker-compose 方式）
+### 接入步骤（deploy/aistio 方式）
 
-1. 用 `scripts/setup-aistio.ps1` 拉取官方镜像并拉起管控面（详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio)；生产环境该脚本会生成 `.env.aistio` 强随机密钥）；
-2. 启动管控面：`docker compose --profile aistio up -d`；
-3. 在 yunxi 的 `application.yml`（或环境变量）设置上表四项，将 `enabled` 置为 `true`；
-4. 重启 yunxi（`mvn spring-boot:run -pl agent-app`），观察启动日志确认 `aistio` 适配层连接成功；
-5. 浏览器访问 `http://localhost:18080` 打开管控面，验证 Agent 注册与会话干预。
+1. 在仓库 `deploy/aistio/` 目录执行 `docker compose up -d` 拉起管控面（详见 [08. 部署指南 · aistio 控制面本地编排](./08-deployment.md#aistio)；生产环境在 `deploy/aistio/` 放置 `.env` 强随机密钥）；
+2. 启动管控面：`cd deploy/aistio && docker compose up -d`；
+3. 在 yunxi 的 `application.yml`（或环境变量）将 `enabled` 置为 `true`，并填好 `control-plane-url` / `internal-token` / `base-url` 等必填项；
+4. 重启 yunxi（`mvn spring-boot:run -pl yunxi-app`），观察启动日志确认 `aistio` 适配层连接成功；
+5. 浏览器访问 `http://localhost:18090`（网关）或 `http://localhost:18081`（控制面）打开管控面，验证 Agent 注册与会话干预。
 
-> 生产环境务必用 `scripts/setup-aistio.ps1` 生成 `.env.aistio`（CSPRNG 强随机密钥，文件权限受限且已被 `.gitignore` 忽略），不要沿用内置开发默认值（如 `BUILDER_INTERNAL_TOKEN=compose-local-internal-token-...`、`AISTIO_POSTGRES_PASSWORD=builder`），并避免将 `aistio-db` 的 `5432` 端口直接映射到公网。
-
-### 编排图导出与自动推送（Workflow Artifact Exporter）
-
-yunxi 启动期（`@PostConstruct`）扫描所有 Agent 定义里 `kind: workflow` 的编排挂载，把内联或引用的编排图校验并翻译为 AgentScope Service **编排定义 Artifact**（`*.definition.json` + `*.manifest.json`），供 AgentScope Service 管控面导入。开启 `push-enabled` 后还会把这些 Artifact 自动 `POST` 到管控面，免去 AgentScope Service 控制台手工导入。该能力默认关闭，由 `yunxi.aistio.workflow.*` 控制（默认配置见 `config/aistio-workflow-export.yml`）。
-
-> 它属于 yunxi 平台侧能力，不修改 AgentScope-Java 框架本身；仅复用框架已暴露的控制台账号通道（控制台 PAT）推送 artifact。
-
-**与「AgentScope Service 管控面接入」的关系**：`yunxi.aistio.enabled` 负责 Agent 注册 / 会话干预 / 治理可视化（数据面接入）；`yunxi.aistio.workflow.*` 负责把声明式 workflow 挂载导出为编排定义并推送到管控面（Artifact 分发）。两者相互独立开关，后者不依赖前者开启。
-
-**配置项**
-
-```yaml
-yunxi:
-  aistio:
-    workflow:
-      export-enabled: false            # 启动期导出总开关（默认 false，零额外开销）
-      export-dir: ./workflow-artifacts # artifact 落盘目录（相对进程工作目录）
-      registered-entity-ids: []        # 已注册实体 UUID 白名单（节点 agentId / teamRef 等）；空=跳过 E3 拦截
-      push-enabled: false              # 导出后是否自动推送到管控面（默认 false）
-      push-token: ""                   # 推送所用的控制台账号令牌（PAT，Authorization: Bearer）；空=不推送
-      push-namespace: ""               # 推送目标命名空间；空=default 命名空间
-```
-
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `yunxi.aistio.workflow.export-enabled` | `false` | 启动期是否扫描 workflow 挂载并产出 Artifact |
-| `yunxi.aistio.workflow.export-dir` | `./workflow-artifacts` | Artifact 落盘目录（相对进程工作目录） |
-| `yunxi.aistio.workflow.registered-entity-ids` | `[]` | 已注册实体 UUID 白名单；非空时 translator 据此做节点引用 E3 校验，空集合则跳过、依赖 AgentScope Service 导入期校验 |
-| `yunxi.aistio.workflow.push-enabled` | `false` | 导出完成后是否自动推送每个 `definition.json` 到管控面 |
-| `yunxi.aistio.workflow.push-token` | `""` | 推送鉴权用的控制台账号令牌（PAT）；为空则不推送 |
-| `yunxi.aistio.workflow.push-namespace` | `""` | 推送目标命名空间；留空落到 `default`（管控面 global 命名空间） |
-
-**推送鉴权（重要）**：编排定义创建端点要求**登录账号身份**，数据面内部令牌（`X-Builder-Internal-Token`）不足以创建编排定义。因此自动推送使用 **AgentScope Service 控制台 PAT**（`push-token`），由运维在 AgentScope Service 控制台一次性签发后配置于此；进程启动即自动推送，无需手工导入。
-
-> 受「增强类改动不得修改框架本体」约束，本推送只能复用框架已暴露的控制台账号通道，不能改动服务端鉴权。
-
-**命名空间**：管控面个人命名空间形如 `personal-<hash>`（非 `ns-<userId>`），无法从 PAT 的 JWT 声明推导。留空推送到 `default`（PAT 拥有者通常具备 developer / operator 写权限）；若需推送到个人命名空间，须显式配置 `push-namespace` 真实名称，否则管控面返回 403。
-
-**行为**：推送在后台线程执行，失败仅记 WARN 并有限重试（最多 3 次、间隔 10s），**绝不阻塞启动**；推送异常不影响 Artifact 落盘，仍可稍后在 AgentScope Service 控制台手工导入。校验未通过的挂载（如节点引用了本环境未注册实体、或编排图语法错误）会被跳过并记 ERROR。
-
-**完整声明格式**：见 [`agent-definitions/workflow-export-example.yml`](../../agent-config/src/main/resources/agent-definitions/workflow-export-example.yml)（模板，默认 `enabled: false` 不被加载），演示了内联图（`body.graph`）与引用顶层图（`body.definition`）两种挂载写法，以及 `agent` / `condition` / `approval` / `join` / `timer` / `signal` 等节点类型。编排图中的条件表达式遵循 AgentScope Service 的 CEL 语法（条件节点只声明 `run` / `issue` / `trigger` / `nodes` 变量，引用上游节点输出须用 `nodes.<nodeKey>.<field>` 而非裸变量名）。
+> 生产环境务必在 `deploy/aistio/` 放置 `.env`（CSPRNG 强随机密钥，文件权限受限且已被 `.gitignore` 忽略），不要沿用内置开发默认值（如 `BUILDER_INTERNAL_TOKEN=compose-local-internal-token-...`、`AISTIO_POSTGRES_PASSWORD=builder`），并避免将 `aistio-db` 的 `5432` 端口直接映射到公网。
 
 ---
 

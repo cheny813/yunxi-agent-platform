@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>yunxi-ingress</artifactId>
+    <name>yunxi-ingress</name>
+    <description>
+        传输适配器与统一入口网关，聚合 web / A2A / AG-UI / Chat Completions 四种协议，
+        并把外部协议请求翻译为运行时命令、把结算结果回写为协议响应；不含推理语义。
+        HTTP 入口由 ConversationController 暴露。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-runtime</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-definition</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-intelligence</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-config</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

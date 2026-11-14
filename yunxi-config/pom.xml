@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>yunxi-config</artifactId>
+    <name>yunxi-config</name>
+    <description>
+        唯一的配置中心，拥有每一个配置片段（model / state / routing / observability），
+        并把 AgentSpec 解析为 ResolvedConfig；任何配置片段不得被其他平面绑定（配置唯一真相源）。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-definition</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

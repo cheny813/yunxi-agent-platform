@@ -1,0 +1,12 @@
+# AgentScope-Java 框架开关：关闭框架默认单例 Agent（agentscopeReActAgent），
+# 启用 Chat Completions 协议层（转换器 / 流式服务 Bean；yunxi 以覆盖 Controller 实现多 Agent 按 id 选取）。
+agentscope:
+  agent:
+    enabled: false
+  chat-completions:
+    enabled: true
+  # admin 运维平面开关：默认 false。开启后框架提供 /actuator/agentscope-* 只读盘点端点与 /v1/admin/* session 运维端点，
+  # AgentProvisioner 把 HarnessAgent 注册进框架 AgentRegistry；写操作默认经框架 WriteGuard 门禁（writeEnabled=false）。
+  # 所有端点经 yunxi SecurityConfig 要求 HTTP Basic 认证（仅 /actuator/health 放行）。
+  admin:
+    enabled: true

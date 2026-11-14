@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>yunxi-integration-test</artifactId>
+    <name>yunxi-integration-test</name>
+    <description>
+        目标架构的启动与契约测试平面；在本 reactor 内运行，不依赖 legacy 的 agent-* 模块。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-app</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-runtime</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-fabric</artifactId>
+        </dependency>
+        <!-- 企业微信同构于钉钉：版本由根 pom dependencyManagement 统一锁定（2.0.4）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-wecom</artifactId>
+        </dependency>
+        <!-- 飞书同构于钉钉 / 企业微信：版本由根 pom dependencyManagement 统一锁定（2.0.4）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-feishu</artifactId>
+        </dependency>
+        <!-- GitHub 同构于钉钉 / 企业微信 / 飞书：版本由根 pom dependencyManagement 统一锁定（2.0.4）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-github</artifactId>
+        </dependency>
+        <!-- GitLab 同构于钉钉 / 企业微信 / 飞书 / GitHub：版本由根 pom dependencyManagement 统一锁定（2.0.4）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-gitlab</artifactId>
+        </dependency>
+        <!-- 微信（iLink）同构于钉钉 / 企业微信 / 飞书 / GitHub：版本由根 pom dependencyManagement 统一锁定（2.0.4）。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-channel-weixin</artifactId>
+        </dependency>
+        <!-- 真实大模型联调（默认禁用，仅 -Dreal.llm=true 激活）：用 AgentScope-Java 原生 DashScope provider
+             构造真实 HarnessAgent，注册到真实 aistio 控制面验证端到端接线。key 仅从 DASHSCOPE_API_KEY 读取。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-dashscope</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,32 @@
+# ============================================================
+# 多租户轴（A-03）配置片段：租户解析 + 租户配额
+# ============================================================
+# 本片段是 yunxi.tenant.* 单一真相源（根前缀唯一归属本文件）。
+# 说明：以下全部为「可选覆盖」——不写即沿用代码默认值（见
+#   io.yunxi.app.config.TenantProperties / TenantQuotaProperties），
+#   因此本文件留空/注释态时运行时行为完全不变（fail-open）。
+#
+# 【启用配额】默认全不限额（两默认上限为 null + tenants 为空 → 不限额）。
+#   要限额，取消对应行的注释并填值即可，无需改其他文件。
+# ============================================================
+
+yunxi:
+  tenant:
+    # ---- 多租户轴开关（TenantProperties）----
+    # 是否启用租户键空间隔离：false = 装饰器透传，存量数据零迁移（默认 false）。
+    # enabled: false
+    # 未解析到租户时的回落租户（默认 "default"）。
+    # default-tenant: default
+    # 承载租户标识的入站 HTTP 头名（由 HeaderTenantResolver 读取，默认 "X-Tenant-Id"）。
+    # header-name: X-Tenant-Id
+
+    # ---- 租户配额（TenantQuotaProperties，3b 实现）----
+    # 全局默认每日请求上限（null = 不限）。所有租户共用，除非被 tenants.<id> 覆盖。
+    # default-daily-request-limit: null
+    # 全局默认并发会话上限（null = 不限）。
+    # default-concurrent-session-limit: null
+    # 每租户覆盖：仅对显式列出的租户生效；未列出的租户回落到上面两个全局默认。
+    # tenants:
+    #   example-tenant:
+    #     daily-request-limit: 1000          # 该租户每日最多 1000 次请求（超额 → HTTP 429）
+    #     concurrent-session-limit: 10        # 该租户最多 10 个并发会话（超额 → HTTP 429）

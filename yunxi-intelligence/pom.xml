@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>yunxi-intelligence</artifactId>
+    <name>yunxi-intelligence</name>
+    <description>
+        智能平面：意图引擎（混合 LLM + 关键词兜底路由）与 MUSE 技能自进化引擎
+        （评估 → 精炼 → 持久化 → 剪枝闭环）。MUSE 内核零业务耦合，复用 AgentScope-Java
+        的模型与技能仓库；仅在 yunxi.muse.enabled=true 时装配。
+    </description>
+
+    <dependencies>
+		<dependency>
+			<groupId>io.yunxi</groupId>
+			<artifactId>yunxi-runtime</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.yunxi</groupId>
+			<artifactId>yunxi-config</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-observability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-capability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-definition</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-jev</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

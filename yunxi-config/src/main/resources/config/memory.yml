@@ -1,0 +1,26 @@
+# ============================================================
+# 记忆策略配置片段
+# ============================================================
+# 会话内上下文压缩（in-session compaction）与跨轮次记忆留存，由 yunxi 显式拥有所有权，
+# 不静默沿用 AgentScope-Java 框架默认。默认值与 MemoryProperties 一致，可在此按业务负载覆盖。
+#
+# 前缀 yunxi.memory 由 io.yunxi.runtime.MemoryProperties 绑定。
+# ============================================================
+yunxi:
+  memory:
+    # 会话内上下文压缩策略：对话超过阈值后，将早期消息摘要化以释放上下文窗口。
+    compaction:
+      trigger-messages: 50          # 累计多少轮对话后触发一次压缩
+      keep-tokens-min: 2000         # 压缩后保留的最小 token 数
+      keep-tokens-max: 8000         # 压缩后保留的最大 token 数
+      keep-tokens-ratio: 0.25       # 相对上下文窗口的保留比例
+      reserved: 2000                # 预留给系统提示词与工具 schema 的 token 预算
+      keep-messages: 20             # 无论如何都保留的最近消息条数
+      flush-before-compact: true    # 压缩前是否先落盘本轮增量
+    # 跨轮次记忆留存策略：工作区记忆文件的保留时长与合并节奏。
+    retention:
+      daily-file-retention-days: 180       # 每日记忆文件保留天数
+      consolidation-min-gap-minutes: 30    # 两次合并的最小间隔（分钟）
+      consolidation-max-tokens: 8000       # 单次合并处理的最大 token 数
+      flush-trigger: ALWAYS                # 落盘触发模式：ALWAYS / NEVER / THROTTLED
+      flush-throttle-minutes: 1            # THROTTLED 模式下的节流间隔（分钟）

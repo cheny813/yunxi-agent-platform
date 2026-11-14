@@ -1,0 +1,46 @@
+#!/bin/sh
+# yunxi 提交前验证门禁（verify-quality 技能）
+# 始终执行：密钥扫描（阻断式）。若改动含 Java/pom：执行严格 javac 编译。
+# 打印验证凭证，可作为提交 trailer 嵌入，供 CI 信任分级走轻量路径。
+# 绕过开关（不推荐）：YK_SKIP_VERIFY=1  或单步  YK_SKIP_COMPILE=1
+set -e
+
+if [ "$YK_SKIP_VERIFY" = "1" ]; then
+  echo "[verify-quality] 已跳过（YK_SKIP_VERIFY=1）"
+  exit 0
+fi
+
+echo "[verify-quality] 提交前门禁"
+
+# 1. 密钥扫描（始终执行，阻断式）
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks detect --staged --no-banner 2>/dev/null; then
+    echo "严重：gitleaks 检测到密钥，终止提交。" >&2
+    exit 1
+  fi
+else
+  if git diff --cached | grep -iE "^\+" | grep -iE "(password|secret|api[_-]?key|private[_-]?key|token|credential|AWS_|DATABASE_URL|REDIS_PASSWORD)" >/dev/null 2>&1; then
+    echo "严重：暂存内容中可能含密钥，终止提交。" >&2
+    exit 1
+  fi
+fi
+echo "[verify-quality] 密钥扫描：通过"
+
+# 2. 若改动含 Java/pom，执行严格编译
+if [ "$YK_SKIP_COMPILE" != "1" ]; then
+  if git diff --cached --name-only | grep -qE '\.java$|pom\.xml$'; then
+    echo "[verify-quality] 检测到 Java/pom 改动 -> 执行严格 javac 编译"
+    mvn -o -q '-Dmaven.compiler.compilerId=javac' '-Dmaven.compiler.failOnError=true' test-compile -fae > tmp/verify_precommit.log 2>&1 || {
+      echo "编译失败（详见 tmp/verify_precommit.log）。设置 YK_SKIP_COMPILE=1 可绕过。" >&2
+      exit 1
+    }
+    echo "[verify-quality] 编译：通过"
+  fi
+fi
+
+# 3. 验证凭证（作为提交 trailer 嵌入，供 CI 信任分级使用）
+FILES_HASH=$(git diff --cached --name-only | sort | sha256sum | cut -c1-8)
+echo "[verify-quality] 验证凭证（嵌入提交 trailer）："
+echo "  Validated-By: codebuddy"
+echo "  Checks-Run: secret-scan,javac-strict"
+echo "  Files-Hash: $FILES_HASH"

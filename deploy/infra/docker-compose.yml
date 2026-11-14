@@ -1,0 +1,356 @@
+# ============================================================
+# yunxi-agent-platform 基础设施一键启动（单机验证版）
+# ============================================================
+# 启动全部（9 个服务，开箱即用）：
+#   docker compose up -d
+# 停止： docker compose down
+# 重置： docker compose down -v && docker compose up -d
+#
+# 单机版说明：本文件面向「功能验证 / 试用推广 / 低配机器」场景，
+#   Nacos 采用 standalone 单机（内置 Derby，免外部 MySQL），对机器要求低、开箱即用。
+#   生产高可用（3 节点集群 + Raft）请自管 Nacos 集群。
+#
+# 服务清单（共 9 个容器，全部默认启动）：
+#   核心：MySQL / Redis / etcd / MinIO / Milvus / Nacos
+#   默认启用：Attu UI / OTel Collector / Jaeger
+#   Ollama 为本地进程（端口 11434），不在此编排，需单独安装 ollama pull。
+#   aistio 管控面（AgentScope-Service）不在此文件，见同级 deploy/aistio/。
+#
+# ┌──────────────────┬───────────┬───────────────────────────────────┐
+# │ 服务              │ 端口       │ 说明                              │
+# ├──────────────────┼───────────┼───────────────────────────────────┤
+# │ MySQL 8.0        │ 3306      │ 主数据库（会话/技能/配置持久化）    │
+# │ Redis 7          │ 6379      │ 缓存/分布式状态/会话（其余特性）   │
+# │ Milvus Standalone │ 19530     │ 向量数据库（记忆/语义检索）      │
+# │ MinIO (Milvus)   │ 9000      │ Milvus 对象存储（内部）            │
+# │ etcd (Milvus)    │ 2379      │ Milvus 元数据协调（内部，不暴露）  │
+# │ Nacos 单机        │ 8848/8080 │ MCP 注册中心+配置热更新+AI Registry │
+# ├──────────────────┼───────────┼───────────────────────────────────┤
+# │ Attu UI          │ 8000      │ Milvus 向量库 Web 管理界面（可选）  │
+# │ OTel Collector   │ 4317/4318 │ 链路追踪收集器（可选，转发至 Jaeger）│
+# │ Jaeger UI        │ 16686     │ 链路追踪可视化（可选）             │
+# └──────────────────┴───────────┴───────────────────────────────────┘
+#
+# 本编排只负责平台自有依赖（中间件），yunxi 应用本身（yunxi-app，端口 40001）
+# 不在容器内运行，请用 `mvn spring-boot:run -pl yunxi-app` 或 `java -jar yunxi-app-*.jar` 启动。
+# Milvus 首次启动需要 30-60 秒，请耐心等待。可选服务不启动也不影响核心功能。
+#
+# 注意：LLM API Key 请在启动 yunxi-app 的环境变量中配置。
+
+services:
+  # ============================================================
+  # MySQL 8.0 — 主数据库
+  # ============================================================
+  mysql:
+    image: mysql:8.0
+    container_name: yunxi-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: yunxi_agent_platform
+      TZ: Asia/Shanghai
+    command:
+      [
+        "--character-set-server=utf8mb4",
+        "--collation-server=utf8mb4_unicode_ci",
+      ]
+    healthcheck:
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - yunxi-mysql-data:/var/lib/mysql
+      # mcp-nutrition 依赖的 yunxi_nutrition 库及全部表（建库脚本来自 legacy 项目，
+      # 挂载进 MySQL init 目录，数据卷首次初始化时自动执行；已存在数据卷需 down -v 重建）。
+      - ./init/nutrition-schema.sql:/docker-entrypoint-initdb.d/02-nutrition-schema.sql:ro
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Redis 7 — 缓存 & 分布式状态
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: yunxi-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "redispass",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - yunxi-redis-data:/data
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # etcd — Milvus 元数据协调（内部组件，不暴露端口）
+  # ============================================================
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: yunxi-milvus-etcd
+    restart: unless-stopped
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    # advertise-client-urls 必须用容器可达的服务名/地址（etcd:2379），
+    # 不能用 127.0.0.1（仅本容器回环），否则其他容器按广播地址无法连接。
+    command: >
+      etcd
+      -advertise-client-urls=http://etcd:2379
+      -listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    volumes:
+      - yunxi-etcd-data:/etcd
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # MinIO — Milvus 对象存储（内部组件）
+  # 镜像 minio/minio:RELEASE.2025-04-22T22-12-26Z 经 docker load 离线加载
+  # （minio/minio 在可达镜像源被库级拒绝，docker pull 不可达，需先
+  #  docker load -i deploy/dockerEngine/minio-image.tar）。
+  # ============================================================
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: yunxi-milvus-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    command: minio server /minio_data --console-address :9001
+    healthcheck:
+      test:
+        ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    volumes:
+      - yunxi-minio-data:/minio_data
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Milvus Standalone — 向量数据库
+  # ============================================================
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    container_name: yunxi-milvus
+    restart: unless-stopped
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+    # 关键：milvusdb/milvus 独立镜像无默认 Cmd（镜像 Config.Cmd=null，entrypoint 仅 ["/tini","--"]）。
+    # 必须显式指定启动命令，否则 /tini 无程序可执行，容器会在 0.x 秒内 Exited(1) 秒退。
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - yunxi-milvus-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Nacos 3.2.4 — 单机版（standalone，内置 Derby，免外部 MySQL）
+  # 平台统一协调底座：MCP 注册中心 + 配置热更新 + AI Registry（MCP/Skill/Agent/Prompt）
+  # 应用连接地址（docker 网络内）：nacos:8848
+  #   nacos-client 自动以 port+1000 推导 gRPC 端口(9848)
+  # 端口说明（Nacos 3.x）：
+  #   8848 = 主 API（HTTP）
+  #   8080 = 控制台（Nacos 3.x 从 8848 解耦出来的新控制台端口）
+  #   9848 = gRPC 客户端端口（=8848+1000，应用 SDK 实际连这个）
+  # 单机版为「试用/验证/低配机器」场景，鉴权默认关闭以零配置启动；
+  #   生产高可用请用自建 Nacos 集群（3 节点，鉴权开启）。
+  # ============================================================
+  nacos:
+    image: nacos/nacos-server:v3.2.4
+    container_name: yunxi-nacos
+    hostname: yunxi-nacos
+    restart: unless-stopped
+    environment:
+      - MODE=standalone
+      - NACOS_AUTH_ENABLE=false
+      - NACOS_AUTH_IDENTITY_KEY=yunxi-nacos-key
+      - NACOS_AUTH_IDENTITY_VALUE=yunxi-nacos-2026
+      - NACOS_AUTH_TOKEN=VGhpc0lzQW5OdWNhQ29zQXV0aFRva2VuRm9yWW91blhpMjAyNlN0YW5kYWxvbmU=
+    volumes:
+      - yunxi-nacos-data:/home/nacos/data
+      - yunxi-nacos-logs:/home/nacos/logs
+    ports:
+      - "8848:8848"   # 主 API（HTTP）
+      - "8080:8080"   # 控制台（Nacos 3.x 新解耦端口）
+      - "9848:9848"   # gRPC 客户端端口（应用 SDK 连接）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Attu — Milvus 向量库 Web 管理界面
+  #   访问 http://127.0.0.1:8000 ，连接 milvus:19530
+  # ============================================================
+  attu:
+    image: zilliz/attu:v2.4
+    container_name: yunxi-attu
+    restart: unless-stopped
+    environment:
+      - MILVUS_URL=milvus:19530
+    ports:
+      - "8000:3000" # Attu Web UI（容器内 3000）
+    depends_on:
+      - milvus
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # OpenTelemetry Collector — 链路追踪
+  #   端口 4317(gRPC)/4318(HTTP) 接收应用 trace 上报。
+  # ============================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.97.0
+    container_name: yunxi-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    configs:
+      # 配置内联于本文件顶层 configs.otel-collector-config.content，
+      # 不再依赖外部 otel-collector-config.yaml 文件。
+      - source: otel-collector-config
+        target: /etc/otel-collector-config.yaml
+    networks:
+      - yunxi-net
+
+  # ============================================================
+  # Jaeger — 链路追踪可视化
+  #   访问 http://127.0.0.1:16686 查看调用链
+  #   trace 由 otel-collector 通过 otlp/jaeger exporter 转发至此
+  # ============================================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: yunxi-jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger UI
+    depends_on:
+      - otel-collector
+    networks:
+      - yunxi-net
+
+# ============================================================
+# OpenTelemetry Collector 配置（内联，避免依赖外部文件）
+# ============================================================
+configs:
+  otel-collector-config:
+    content: |
+      # ============================================================
+      # OpenTelemetry Collector 配置
+      # ============================================================
+      # 用途：接收应用端 OTLP trace / metrics 数据，输出到本地日志，
+      #       消除应用侧 "Failed to export ... HTTP status code 404" 错误。
+      #
+      # 原理说明（避免再次出现 404）：
+      #   Collector 的 OTLP HTTP 接收端（4318）对 /v1/traces、/v1/metrics、
+      #   /v1/logs 每个信号，只有在 service.pipelines 中存在「消费该信号的
+      #   活跃管线」时才会受理请求；否则直接返回 404（"no consumers"）。
+      #   因此：
+      #   1) metrics 必须单独配置一条 pipeline（本文件已补上），否则 /v1/metrics 404。
+      #   2) traces 管线若引用了不可达的 exporter（如 jaeger 未启动），该 exporter
+      #      在启动时解析不到主机导致整条管线启动失败，同样会让 /v1/traces 返回 404。
+      #      所以下面 traces 同时使用 logging 与 otlp/jaeger（yunxi-jaeger 已在
+      #      yunxi-net 网络内常驻，故 jaeger 不可达时才会导致管线失败 → /v1/traces 404）。
+      #
+      # 若后续需要将 trace 发送到 Prometheus 等，在 exporters 段追加即可。
+
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+      processors:
+        batch:
+          timeout: 5s
+          send_batch_size: 100
+
+      exporters:
+        logging:
+          loglevel: info
+          sampling_initial: 5
+          sampling_thereafter: 200
+        # 转发 trace 到 Jaeger（yunxi-jaeger 已在 yunxi-net 网络内常驻，
+        # 故可安全启用；jaeger 不可达时才会导致 traces 管线启动失败 → /v1/traces 返回 404）。
+        otlp/jaeger:
+          endpoint: jaeger:4317
+          tls:
+            insecure: true
+
+      service:
+        pipelines:
+          traces:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [logging, otlp/jaeger]
+          metrics:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [logging]
+
+networks:
+  yunxi-net:
+    driver: bridge
+
+volumes:
+  yunxi-mysql-data:
+  yunxi-redis-data:
+  yunxi-etcd-data:
+  yunxi-minio-data:
+  yunxi-milvus-data:
+  yunxi-nacos-data:
+  yunxi-nacos-logs:

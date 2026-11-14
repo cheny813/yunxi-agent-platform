@@ -1,0 +1,26 @@
+# ============================================================
+# Redis 连接（全局 RedisConnectionFactory 唯一权威来源）
+# ============================================================
+# 全平台所有 Redis 消费方（会话状态 / 跨实例锁与闸门 / 轨迹 TraceStore /
+# 用户画像节流 / A2A pipeline 状态）统一复用 Spring Boot 的全局
+# RedisConnectionFactory，绑定 spring.data.redis.*（Boot 3.x 前缀）。
+# 本片段是该前缀的唯一真相源；禁止在其它片段重复写 spring.data.redis.*。
+#
+# 默认密码 redispass 对齐 deploy/infra/docker-compose.yml 的 Redis
+# （redis-server --requirepass redispass）；非 Docker 部署通过环境变量覆盖：
+#   REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DATABASE
+# ============================================================
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redispass}
+      database: ${REDIS_DATABASE:0}
+      timeout: 5000
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 1
+          max-wait: 3000

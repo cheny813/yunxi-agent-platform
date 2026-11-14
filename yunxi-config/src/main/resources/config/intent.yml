@@ -1,0 +1,42 @@
+# 智能意图识别配置（yunxi.intent.*）
+#
+# 管线：归一化/槽位抽取 -> 候选收窄（租户过滤 + 唯一候选短路 + 关键词收窄）
+#       -> 闭集分类（本地决策模型，可选 JEV 云端增强） -> 决策融合与三级降级（模型 -> 关键词 -> 默认 Agent）
+# 装配点：IntentEngineConfiguration（新增解析器 / 判定器只需在此接线）
+#
+# enabled: false  -> 不创建管线，未显式指定 agentId 的请求一律走 default-agent-id（旧默认行为）。
+# strategy: keyword -> 仅关键词匹配，零模型调用（回滚路径）。
+# strategy: llm / auto -> 本地决策模型判定为主；模型不可用 / 超时 / 输出非法时降级关键词再降默认。
+yunxi:
+  intent:
+    enabled: true
+    strategy: auto                  # keyword | llm | auto（auto 与 llm 同管线，关键词显式目标命中时短路）
+    default-agent-id: example-assistant
+    min-confidence: 0.6             # 低于该置信度回落默认 Agent（标签保留供观测）
+    max-candidates: 8               # 进入分类的候选上限
+    max-input-chars: 2000           # 送入分类模型的文本长度上限（字符）
+
+    # 本地决策模型：经 ModelResolver 解析 defaults.decision -> local-decision（本机 Ollama）。
+    # classifier.impl: jev 为可选增强（复用框架 JEV 契约，需 JEV_API_KEY；默认 local，无数据外发）。
+    classifier:
+      impl: local
+      model-id: decision
+      timeout-millis: 3000
+      max-tokens: 512
+      structured-output: true       # 模型不支持 jsonSchema 时自动回退普通调用 + 容错解析
+
+    rewrite:
+      enabled: true                 # 槽位抽取与实体改写（结果写入上下文 yunxi.intent.*，不替换用户原文）
+
+    # 实体槽位正则（按名覆盖内置槽位：orderId / dateRange / amount / phone / email）。
+    slots: {}
+
+    # 关键词规则：意图标签 -> 触发关键词列表（在本地决策模型不可用时兜底；auto 策略下用于候选收窄）。
+    # targets: 标签 -> 目标 Agent 的显式映射；命中且声明了目标时直接路由到该 Agent（零模型调用）。
+    rules: {}
+    #  rules:
+    #    text2sql: [查询, sql, 报表, 数据库]
+    #    nutrition: [饮食, 营养, 血糖, 减脂]
+    #  targets:
+    #    text2sql: text2sql-assistant
+    #    nutrition: resident-nutrition-assistant

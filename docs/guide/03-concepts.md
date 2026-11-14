@@ -1,35 +1,6 @@
 # 03. 核心概念
 
-> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.4（正式版）**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
-
-## 理论基础
-
-### 什么是 Agent 的核心能力
-
-Agent 的核心能力可以用 **"感知-思考-行动"** 循环来概括：
-
-```
-┌─────────────────────────────────────────┐
-│           Agent 核心能力模型              │
-├─────────────────────────────────────────┤
-│                                         │
-│   感知层          认知层          行动层   │
-│  ┌─────┐        ┌─────┐        ┌─────┐  │
-│  │输入 │───────→│推理 │───────→│输出 │  │
-│  │解析 │        │规划 │        │执行 │  │
-│  └─────┘        └─────┘        └─────┘  │
-│     ↑              ↑              ↑     │
-│     └──────────────┴──────────────┘     │
-│              记忆/知识库                  │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-**感知层**：理解用户输入、解析环境信息
-**认知层**：推理、规划、决策
-**行动层**：调用工具、生成回复、修改状态
-
----
+> **核心概念更新**：yunxi-agent-platform 基于 **AgentScope-Java 2.1.0-BETA1**。该版本将 Hook 体系替换为 Middleware 体系（拦截点），`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API），`ModelRegistry` 提供统一模型工厂机制，`Event`/`EventType` 已替换为 `AgentEvent`/`AgentEventType`。包结构已扁平化（移除 framework/infra 分层），编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用框架原生 `AgentSkillRepository`。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担。`Model.stream()` 为 Model 层调用方式，`Agent.streamEvents()` 为 Agent 层事件流 API。
 
 ## Agent
 
@@ -43,88 +14,45 @@ Agent 是具备自主决策能力的智能实体，能够：
 
 ### Agent 的组成
 
-```
-Agent = LLM + 记忆 + 工具 + 提示词
-
-┌─────────────────────────────────────────┐
-│                Agent                    │
-├─────────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐ │
-│  │   LLM   │  │  记忆   │  │  工具   │ │
-│  │ (大脑)  │  │ (经验)  │  │ (手脚)  │ │
-│  └────┬────┘  └────┬────┘  └────┬────┘ │
-│       │            │            │      │
-│       └────────────┼────────────┘      │
-│                    │                   │
-│              ┌─────▼─────┐             │
-│              │  提示词   │             │
-│              │ (指令)   │             │
-│              └───────────┘             │
-└─────────────────────────────────────────┘
-```
-
-**LLM（大脑）**：负责推理和决策
-**记忆（经验）**：存储历史对话和重要信息
-**工具（手脚）**：与外部世界交互的能力
-**提示词（指令）**：定义 Agent 的行为和目标
+Agent = LLM（推理决策）+ 记忆（历史与经验）+ 工具（与外部世界交互）+ 提示词（行为指令）。
 
 ### 在本框架中的实现
 
-本框架中，Agent 通过 YAML 配置定义：
+本框架中，Agent 通过 YAML 配置定义（扁平 `AgentSpec`，由 `AgentDefinitionLoader` 扫描 `classpath*:agent-definitions/**/*.yml` 加载，一个文件一个 Agent）：
 
 ```yaml
-agent:
-  name: business-assistant
-  description: "业务数据管理助手"
-  prompt: "你是业务专家..."  # 提示词
-  model:
-    provider: dashscope
-    modelName: qwen-max
-    temperature: 0.7
-  orchestration: supervisor   # 编排模式: single / supervisor / pipeline / routing
-  runtime:
-    maxIterations: 10
-  toolsGroup:
-    systemToolsGroup: default
-    mcpServersToolsGroup: mcp-nutrition
-  ragMode: GENERIC            # 应用层 RAG: NONE / GENERIC / AGENTIC
-  profiles:
-    api:
-      label: "API 助手"
-      description: "面向开发者的 API 助手"
-      prompt: "你是 API 专家..."
+# agent-definitions/business-assistant.yml
+identity:
+  agentId: business-assistant     # 必填，Agent 唯一标识，同时作为 ModelRoutingPolicy 路由键
+  name: 业务数据管理助手           # 必填，展示名
+  description: 你是业务专家，用简洁准确的中文回答用户问题。   # 作为系统提示词
+mcp:
+  servers: [mcp-nutrition]        # 订阅 mcp.yml 中 yunxi.mcp.static-servers 的命名服务器
+state:
+  store: inmemory
+  persist: false
+permission:
+  toolGate:
+    enabled: false
+    tools: []
+    message: ""
+# 模型不在 AgentSpec 中声明，统一由 yunxi-config/config/models.yml 的 routing 段按 identity.agentId 解析（未声明则走自动选型）
+# 多 Agent 编排（supervisor / pipeline / routing）、任务迭代上限、RAG 模式等由 AgentScope-Java 框架能力支撑，不在当前 AgentSpec 字段内声明
 ```
 
 ---
 
 ## 知识库 (RAG)
 
-### 理论基础：检索增强生成
-
-RAG（Retrieval-Augmented Generation）是一种将信息检索与文本生成相结合的技术。Agent 在回答用户问题前，先从知识库中检索相关信息，再将检索结果作为上下文交给 LLM 生成回答。
-
-```
-用户问题
-    ↓
-┌─────────────────────┐
-│  知识库检索          │
-│  - 向量相似度搜索     │
-│  - 语义匹配           │
-└─────────┬───────────┘
-          ↓
-┌─────────────────────┐     ┌─────────────────┐
-│  检索结果            │────→│  LLM 生成回答    │
-│  (相关文本片段)       │     │  (结合上下文)    │
-└─────────────────────┘     └─────────────────┘
-```
-
 ### 应用层 RAG（ApplicationRAG）
 
-**说明**：V2.0（AgentScope-Java 2.0）升级后，原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已删除（框架 `io.agentscope.core.rag` 包整体 `@Deprecated(forRemoval=true)`）。本框架的应用层 RAG 由 `ApplicationRAG`（`io.yunxi.platform.rag`）承担，它复用平台既有的**文件级向量检索后端** `FileVectorService`（Milvus + EmbeddingService），与 `ChatAppService` 共用同一条检索链路。
+RAG（Retrieval-Augmented Generation）将信息检索与文本生成结合：Agent 回答前先从知识库检索相关信息，作为上下文交给 LLM 生成回答。
+
+**说明**：V2.0（AgentScope-Java 2.0）升级后，原 `knowledge-bases` 配置段（bailian/dify/ragflow/simple）及对应的 `KnowledgeAutoConfiguration` / `*KnowledgeCreator` 已删除（框架 `io.agentscope.core.rag` 包整体 `@Deprecated(forRemoval=true)`）。应用层 RAG 由 AgentScope-Java 框架 `io.agentscope.core.rag` 包承担，yunxi 不自建 RAG 中间件。
 
 ### 工作模式
 
-`ApplicationRAG.createMiddleware(ragMode, userId)` 通过 AgentScope 原生 `MiddlewareBase.onAgent` 钩子将检索结果注入对话：
+RAG 由 AgentScope-Java 框架 `io.agentscope.core.rag` 提供，检索结果经框架 Middleware 注入对话（yunxi 不自建 RAG 中间件）：
 
 | 模式 | 行为 | 注入位置 |
 |------|------|---------|
@@ -134,99 +62,29 @@ RAG（Retrieval-Augmented Generation）是一种将信息检索与文本生成�
 
 - 检索基于用户最新查询文本（从输入消息中提取），按 `userId` 隔离
 - 默认 `topK=5`，命中为空时跳过注入
-- **Milvus 未启用时 `FileVectorService` 不可用，中间件自动降级为透传**，不影响 Agent 正常对话
+- **Milvus 未启用时向量检索不可用，RAG 自动降级为透传**，不影响 Agent 正常对话
 
 ### 开启方式
 
-RAG 模式可在两处设置（请求级优先）：
+> **当前 yunxi `AgentSpec`（`identity` / `skill` / `mcp` / `state` / `permission` / `toolkit`）不含 `ragMode` 字段**。RAG 模式（`NONE` / `GENERIC` / `AGENTIC`）由 AgentScope-Java 的 `ReActAgent.Builder.ragMode(RAGMode)` 构建期方法控制（该 API 自 2.0.0 起已 `@Deprecated(forRemoval=true)`，且 rag 核心包已移除，检索应放在应用层集成），yunxi 现不在 `AgentConfigurer` 装配路径设置该值，统一走框架默认 `GENERIC`，RAG 检索在配置向量库后始终生效。请勿在 AgentSpec YAML 中写 `agent.ragMode`（旧 schema，会被忽略）。
 
-1. **Agent 定义级**（`agent-definitions/*.yml` 的 `agent.ragMode` 字段，默认 `GENERIC`）：
-```yaml
-agent:
-  name: business-assistant
-  ragMode: AGENTIC   # NONE / GENERIC / AGENTIC
-```
-
-2. **请求级**（`POST /api/conversations/chat` 请求体的 `ragMode` 字段，覆盖 Agent 默认值）：
-```json
-{
-  "message": "根据知识库回答：...",
-  "agentName": "business-assistant",
-  "ragMode": "GENERIC"
-}
-```
-
-### 在 API 请求中使用
-
-```json
-{
-  "message": "根据知识库回答：查询产品信息",
-  "agentName": "business-assistant",
-  "ragMode": "GENERIC"
-}
-```
-
-> 说明：RAG 知识来源已收敛为「Agent 工作空间文档 + 文件向量检索」（`FileVectorService` + Milvus），请求体不再使用 `knowledgeBases` 字段。上述 `ragMode` 请求级覆盖即为唯一入口，与 Agent 定义 YAML 中的 `ragMode` 默认值联动。
+对话请求体为 `ConversationRequest`（`yunxi-ingress`）：`agentId` / `userId` / `sessionId` / `text` / `protocol` / `context`，**不含 `ragMode` / `message` / `agentName` 字段**；同步用 `POST /api/conversations`，流式用 `POST /api/conversations/stream`（SSE）。若需请求级覆盖 RAG 模式，需框架在请求协议层暴露对应字段，当前 yunxi 未暴露，故统一走框架默认配置。
 
 ---
 
 ## 场景 (Scene)
 
-### 理论基础：上下文管理
-
-**核心问题**：同样的用户输入，在不同场景下需要不同的处理方式。
-
-**示例**：
-- 用户说"苹果"：在商品场景指水果，在科技场景指公司
-- 用户说"分析"：在报表场景分析指标，在代码场景分析逻辑
-
-### 场景的定义
-
-场景是特定业务上下文下的工作模式，包含：
-- **场景标识**：唯一标识符
-- **领域归属**：属于哪个业务领域
-- **关键词**：触发该场景的关键词
-- **上下文组装**：如何准备上下文信息
-- **提示词模板**：该场景下的系统提示词
-
-### 场景识别流程
-
-```
-用户输入
-    ↓
-关键词匹配
-    ↓
-┌─────────────────┐
-│ 场景候选列表     │
-│ - 场景A (置信度0.8)│
-│ - 场景B (置信度0.6)│
-│ - 场景C (置信度0.3)│
-└────────┬────────┘
-         ↓
-置信度排序
-         ↓
-选择最高置信度场景
-         ↓
-组装场景上下文
-         ↓
-调用对应 Agent
-```
-
 ### 在本框架中的实现
 
-场景识别当前由**意图引擎**（`io.yunxi.platform.intent.IntentEngine`）承载：请求到达时，先经 `DomainResolver` 解析领域（多域模型，显式 domain → 规则 → default → base），再走四阶段前置管道（NER → 改写 → 分类 → 映射）产出结构化意图结果，其中 `sceneName` 字段由 `RuleIntentClassifier.detectSceneName` 的三级链计算（自定义场景 → 概念域 → 内置关键词 → `GENERAL`），语义与原 `SceneDetectionService` 严格等价。
+场景识别由**意图引擎**（`io.yunxi.intelligence.IntentEngine`）承载：`yunxi-intelligence` 模块提供一个关键词 → Agent 的极简路由库（`DefaultIntentEngine` 组合多个 `IntentResolver`，内置 `KeywordIntentResolver`），按关键词命中返回 `Intent`（`label` / `confidence` / `targetAgentId`）并路由到目标 Agent。意图引擎已**接入对话请求主链路**：入口织面 `IngressGateway` 在请求未显式指定 `agentId` 时调用 `IntentEngine.resolve(text)` 推断目标 Agent 并回填，从而把「未指定 Agent 的通用请求」路由到合适 Agent；显式指定 `agentId` 的请求优先级更高，不触发意图解析。路由规则经 `yunxi.intent.*` 配置（默认兜底到 `example-assistant`，运营可在 `config/intent.yml` 以 `rules` 增删关键词规则，无需改码）。完整的字段结构与扩展方式见 [15. 意图引擎](./15-intent-engine.md)。
 
-原 `SceneDetectionService` 仍保留（`io.yunxi.platform.prompt`），Bean 供存量引用兼容。场景配置由 `MemorySceneRegistry` 管理：内置场景通过 `memory.scene.builtins` 配置字符串声明（格式 `name:displayName:description:retentionDays:keywords`），自定义场景通过 `register()` 在运行时注册，无需重启。意图引擎的完整说明见 [16. 意图引擎](./16-intent-engine.md)。
+> yunxi 不维护场景注册表类（`MemoryScene` / `MemorySceneRegistry` / `SceneDetectionService` 均不存在于当前代码），意图引擎当前实现也不产出 `sceneName`；场景化记忆由框架 Harness 统一管理（见下方「场景化记忆」）。
 
 ---
 
 ## Profile (配置档)
 
-### 理论基础：多态配置
-
-**核心问题**：同一个 Agent 在不同场景下需要不同的行为模式，但传统做法需要创建多个独立的 Agent 配置。
-
-**Profile 的解决方案**：一个 Agent 可以定义多个 Profile，每个 Profile 是一组配置参数的集合，代表 Agent 的一种工作模式。
+Profile 是 AgentScope-Java 框架原生能力：一个 Agent 可定义多个 Profile，每个 Profile 是一组配置参数的集合，代表 Agent 的一种工作模式。
 
 ### Profile 的定义
 
@@ -286,34 +144,27 @@ Agent 级别默认配置
 
 ### 在本框架中的实现
 
+> **当前 yunxi `AgentSpec` 不含 `profiles` / `prompt` / `orchestration` 字段**。`Profile`（一个 Agent 多工作模式）是 AgentScope-Java 框架原生能力，其声明位置与覆盖规则由框架定义，不在当前 AgentSpec YAML schema 内（系统提示词经 `identity.description` 承载，非独立 `prompt` 字段）。下方为 Profile 概念示意，不可直接抄写为 AgentSpec 字段：
+
 ```yaml
-agent:
-  name: business-assistant
-  description: 业务数据管理助手
-  prompt: 你是一个专业的业务数据管理助手...
-  orchestration: single   # single / supervisor / pipeline / routing
+# Profile 概念示意（框架原生能力，非 yunxi AgentSpec 字段）
+profiles:
+  chat:                         # Profile 1：聊天模式
+    label: 智能咨询
+    description: 面向用户的对话模式
+    prompt: 你是一个业务顾问...
 
-  profiles:
-    chat:                         # Profile 1：聊天模式
-      label: 智能咨询
-      description: 面向用户的对话模式
-      prompt: 你是一个业务顾问...
-
-    business-make:                # Profile 2：内容生成模式
-      label: 内容生成
-      description: 面向内容生成的专家模式
-      prompt: 你是内容生成专家...
+  business-make:                # Profile 2：内容生成模式
+    label: 内容生成
+    description: 面向内容生成的专家模式
+    prompt: 你是内容生成专家...
 ```
 
 ---
 
 ## Mode (模式)
 
-### 理论基础：策略模式
-
-**核心问题**：不同任务对 Agent 的能力要求不同——简单问答不需要工具，复杂任务需要多专家协作。
-
-**Mode 的解决方案**：框架预定义四种内置模式，业务层只需选择模式，无需理解底层参数。
+框架预定义四种内置模式，业务层只需选择模式，无需理解底层参数。
 
 ### 四种内置模式
 
@@ -381,9 +232,9 @@ public enum BuiltinMode {
 
 ## 记忆系统 (Memory System)
 
-### 理论基础：记忆分层
+### 记忆分层
 
-记忆系统为 Agent 提供持久化和结构化的记忆能力，支持短期记忆、长期记忆和场景化记忆管理。框架委托 `agentscope-harness` 模块管理 Agent 运行时记忆，业务层通过 `MemorySceneRegistry` 定义场景分类。
+记忆系统为 Agent 提供持久化和结构化的记忆能力，支持短期记忆、长期记忆和场景化记忆管理。框架委托 `agentscope-harness` 模块管理 Agent 运行时记忆，业务层直接通过框架记忆 API 与工作区文件访问记忆。
 
 ```
 ┌─────────────────────────────────────────┐
@@ -425,24 +276,26 @@ HarnessAgent 通过内置 Middleware 自动管理 Agent 执行过程中的记忆
 | `CompactionMiddleware` | 上下文溢出时通过 LLM 摘要压缩，然后重试调用 |
 | `ToolResultEvictionMiddleware` | 将过大的工具调用结果卸载到文件系统 |
 
-当前集成阶段，这些 Middleware 默认**启用**，无需额外配置。如有特殊需求可通过 HarnessAgent.Builder 的 `disableMemoryTools()` 方法关闭 `memory_search` / `memory_get` / `session_search` 三个内置记忆工具。
+跨会话长期记忆直接复用框架原生的 `MEMORY.md` 机制（`MemoryFlushMiddleware` / `MemoryMaintenanceMiddleware` + 内置 `memory_search` / `memory_get` / `session_search` 工具），yunxi 不再自建跨会话长期记忆存储，避免与框架原生机制形成双份真相（保持产品平面纯净，不重复实现框架已有能力）。会话内上下文压缩（`CompactionMiddleware`）不受影响。
 
-#### 记忆管理的两层架构
+#### 记忆管理的架构分层
 
-记忆系统由**底层框架层**和**应用框架层**共同完成：
+记忆系统由「会话内上下文压缩（框架底层）」与「跨会话长期记忆（yunxi 应用平面）」两层职责构成：
 
 | 层 | 所属项目 | 职责 | 可控性 |
 |---|---|---|---|
-| **底层框架** | `agentscope-harness`（外部依赖） | MemoryFlushMiddleware → 写 `memory/YYYY-MM-DD.md`（每日流水）<br>MemoryMaintenanceMiddleware → `MemoryConsolidator`（LLM 合并 → MEMORY.md） | 不可直接修改，提示词写死在 `MemoryConsolidator.java` 的 `private static final` 常量中 |
-| **应用框架** | `yunxi-agent-platform`（本项目） | Agent 系统提示词中的回答风格约束<br>Agent 定义 YAML 中的行为规范<br>工作区文件的维护和清理 | 完全可控，通过修改 `agent-definitions/*.yml` 的 `prompt` 字段实现 |
+| 会话内上下文压缩 | `agentscope-harness`（外部依赖） | `CompactionMiddleware` 将当前会话历史压成会话级摘要，释放上下文窗口 | 不可直接修改，但 yunxi 经 `MemoryProperties.compaction` 显式拥有阈值 |
+| 跨会话长期记忆 | `agentscope-harness`（外部依赖，yunxi 复用） | 框架原生 `MEMORY.md` 文件系统记忆（`MemoryFlushMiddleware`/`MemoryMaintenanceMiddleware` 沉淀，内置工具召回）；yunxi 经 `MemoryProperties` 拥有阈值与刷新策略，不另建存储 | 不可直接修改存储实现，但阈值 / 刷新可由 `yunxi.memory.*` 配置 |
+
+**复用框架原生记忆（不另建）**：yunxi 直接复用框架原生的 `MEMORY.md` 跨会话记忆，故不存在与框架原生机制的重叠，也不需关闭框架原生记忆工具（`disableMemoryTools` / `disableMemoryHooks` 不再使用）。框架是固定基线，跨会话记忆由其原生实现承载，yunxi 只经 `MemoryProperties` 配置阈值与刷新策略，符合产品平面纯净原则（不重复实现框架已有能力）。
 
 **典型问题处理链路（以 Agent 回复 verbose 为例）：**
 
 ```
-底层框架 MemoryConsolidator (LLM)
-  ↓ 生成 verbose 风格的 MEMORY.md（含 emoji、营销话术）
+框架原生 MEMORY.md 沉淀（MemoryFlushMiddleware 写侧，多副本经共享存储一致）
+  ↓ 持久化的跨会话事实（工作区文件系统记忆）
   ↓
-Agent 读取 MEMORY.md 作为参考上下文
+内置 memory_search / memory_get 读侧召回，注入系统提示词作为参考上下文
   ↓
 系统提示词约束（优先级更高）
   └─ food-chat.yml 中已添加：
@@ -452,43 +305,17 @@ Agent 最终回复 → 遵循系统提示词，过滤掉 verbose 风格
 ```
 
 **要点：**
-- 系统提示词的约束优先级高于 MEMORY.md 的参考上下文，即使底层框架生成的 MEMORY.md 带有 emoji 或营销话术，Agent 仍会按提示词的要求输出干净回复。
-- 如果 MEMORY.md 积累过多冗余内容，可以直接删除，框架会自动从每日流水中重新合并生成。
-- 如需从根本上控制 MEMORY.md 的内容风格，需要在 `agentscope-harness` 中修改 `MemoryConsolidator.java` 的 `CONSOLIDATION_PROMPT`，本文成稿时该提示词不支持从外部配置。
+- 跨会话长期记忆直接由框架原生 `MEMORY.md` 承载，yunxi 不另建存储；系统提示词的约束优先级仍高于记忆参考上下文，即使记忆沉淀带有 verbose 风格，Agent 仍会按提示词要求输出干净回复。
+- 记忆沉淀 / 合并的粒度由框架 `MemoryConsolidator` 与 `MemoryProperties` 阈值控制，如需调整抽取粒度或事实格式，改框架记忆配置（`yunxi.memory.*`）即可，不修改 yunxi 代码。
+- 记忆文件的整理与淘汰由框架 `MemoryMaintenanceMiddleware` 负责，yunxi 经 `MemoryProperties` 配置刷新触发与节流，不必直接删文件。
 
-### MemoryScene / MemorySceneRegistry（场景化管理）
+### 场景化记忆
 
-MemoryScene 和 MemorySceneRegistry 提供场景化的识别能力，根据不同的业务场景关键词自动匹配场景。
+yunxi 不单独维护场景注册表类（`MemoryScene` / `MemorySceneRegistry` 均不存在于当前代码）。跨会话长期记忆复用框架原生 `MEMORY.md`，yunxi 不自建记忆层，业务层经框架内置 `memory_search` / `memory_get` 工具接入，不直接操作底层存储文件。
 
-**MemoryScene**：是**常量类**（`io.yunxi.platform.memory.MemoryScene`），预置两个标准场景常量：
+意图引擎当前实现（`Intent` 仅含 `label` / `confidence` / `targetAgentId`，见 [15. 意图引擎](./15-intent-engine.md)）不产出 `sceneName`，也未接入口层；如需按场景差异化记忆，应使用框架原生记忆的多工作区 / 多 Agent 隔离能力，而非在 yunxi 自建记忆层扩展。
 
-| 常量 | 值 | 说明 |
-|------|-----|------|
-| `PERSONAL_ASSISTANT` | `"personal_assistant"` | 通用个人助手场景 |
-| `GENERAL` | `"general"` | 兜底通用场景（未匹配时返回） |
-
-并提供 `isLongTerm(String sceneName)` 静态方法判断场景是否为长期记忆场景（`PERSONAL_ASSISTANT` 为 true）。
-
-**MemorySceneRegistry**：管理全局场景注册表（`io.yunxi.platform.memory.MemorySceneRegistry`）：
-- 内置场景通过配置声明：`memory.scene.builtins`（格式 `name:displayName:description:retentionDays:keywords`）
-- 自定义场景通过 `register()` 在运行时注册，无需重启
-- 根据用户输入关键词自动匹配场景（`detect()`），未匹配时回退到 `GENERAL`
-
-```java
-// 注册自定义场景（5 参数）
-sceneRegistry.register("school_meal", "校园餐", "校园餐业务场景", 90,
-        List.of("校园餐", "营养餐", "菜谱"));
-
-// 检测场景：从用户输入中按关键词匹配
-String scene = sceneRegistry.detect("帮我推荐一份校园营养餐");   // → "school_meal"
-
-// 场景查询
-boolean longTerm = sceneRegistry.isLongTerm(scene);
-int retentionDays = sceneRegistry.getRetentionDays(scene);
-List<SceneEntry> scenes = sceneRegistry.getScenes();             // 全部场景
-```
-
-> **说明**：场景化识别用于记忆保留策略（不同场景不同保留天数）。框架层记忆由 agentscope-harness 的文件系统记忆（`MEMORY.md` + `memory/*.md`）承载，场景只决定保留策略，不替代框架记忆实现。
+> **说明**：跨会话长期记忆的单一真相源是框架原生 `MEMORY.md` 文件系统记忆（由 `agentscope-harness` 实现，yunxi 经 `MemoryProperties` 配置）；yunxi 不另建跨会话记忆存储，符合产品平面纯净原则（不重复实现框架已有能力）。
 
 ### Harness 内置文件系统记忆
 
@@ -503,33 +330,7 @@ List<SceneEntry> scenes = sceneRegistry.getScenes();             // 全部场景
 
 ## MCP 协议
 
-### 理论基础：标准化接口
-
-**类比理解**：
-- USB 协议：让不同厂商的设备可以互联互通
-- MCP 协议：让不同厂商的 LLM 和工具可以互联互通
-
-**核心思想**：
-1. **标准化**：统一工具定义和调用方式
-2. **解耦**：工具独立部署，Agent 动态发现
-3. **安全**：工具自主控制访问权限
-
-### MCP 协议栈
-
-```
-┌─────────────────────────────────────────┐
-│  应用层：Tool Definition                 │
-│  - 工具名称、描述、参数 Schema            │
-├─────────────────────────────────────────┤
-│  协议层：JSON-RPC 2.0                    │
-│  - 请求格式：{jsonrpc, method, params, id}│
-│  - 响应格式：{jsonrpc, result/error, id} │
-├─────────────────────────────────────────┤
-│  传输层：HTTP / SSE                      │
-│  - HTTP：请求/响应式调用                  │
-│  - SSE：服务器推送事件                    │
-└─────────────────────────────────────────┘
-```
+MCP（Model Context Protocol）是 LLM 与工具之间的标准化接口，统一工具定义与调用方式，工具独立部署、Agent 动态发现，工具自主控制访问权限。
 
 ### 工具定义示例
 
@@ -570,7 +371,7 @@ List<SceneEntry> scenes = sceneRegistry.getScenes();             // 全部场景
 
 ```java
 @Component
-public class DatabaseTool {
+public class MyBusinessTools {
     @Tool(name = "database_query", description = "执行只读SQL查询，获取数据库数据")
     public String query(
             @ToolParam(name = "sql", description = "SQL查询语句（仅支持SELECT）") String sql,
@@ -581,82 +382,50 @@ public class DatabaseTool {
 }
 ```
 
-> **说明**：注解位于 `io.agentscope.core.tool.Tool` / `io.agentscope.core.tool.ToolParam`，方法需为 `public` 且返回 `String`（或自动转换）。内置业务工具见 `io.yunxi.platform.tool.impl`（`HttpTool`、`DatabaseTool`、`CalculatorTool`、`NodeTool`、`SessionSearchTool` 等，其中 `SessionSearchTool` 以 `session_history_search` 对外注册，避免与框架内置的 `session_search` 重名）。MCP 服务器工具则通过 `tools.mcpServers` 配置 + `AgentConfigurer.registerMcpServers` 注册为工具组。
+> **说明**：注解位于 `io.agentscope.core.tool.Tool` / `io.agentscope.core.tool.ToolParam`，方法需为 `public` 且返回 `String`（或自动转换）。yunxi 不内置业务工具类，业务工具由你的 `@Component` + `@Tool` 提供；MCP 服务器工具则通过 AgentSpec 的 `mcp.servers` 订阅命名服务器 + `AgentConfigurer` 经 `McpDirectory` 按名解析注册为工具组。
 
 ---
 
 ## SPI 扩展机制
 
-### 理论基础：依赖倒置与插件化
-
-**依赖倒置原则 (DIP)**：
-- 高层模块不应该依赖低层模块，两者都应该依赖抽象
-- 抽象不应该依赖细节，细节应该依赖抽象
-
-**插件化架构**：
-- 框架定义扩展点（接口）
-- 业务方实现扩展点
-- 框架运行时加载实现
+SPI（Service Provider Interface）是框架定义扩展点、业务方实现并运行时加载的插件化机制。
 
 ### SPI 工作流程
 
-```
-┌─────────────────────────────────────────┐
-│              SPI 工作流程                │
-├─────────────────────────────────────────┤
-│                                         │
-│  1. agent-spi 模块定义接口                │
-│     public interface VectorSearchProvider│
-│                                         │
-│  2. 业务实现接口                          │
-│     @Service                             │
-│     public class DataVectorSearchProvider│
-│         implements VectorSearchProvider  │
-│                                         │
-│  3. Spring 自动扫描                       │
-│     发现并注册所有实现类                   │
-│                                         │
-│  4. 框架使用实现                          │
-│     @Autowired                           │
-│     ObjectProvider<VectorSearchProvider> │
-│                                         │
-│  5. 调用业务逻辑                          │
-│     provider.search(query, topK)         │
-│                                         │
-└─────────────────────────────────────────┘
-```
+yunxi 的扩展遵循「框架原生扩展点 + yunxi 契约平面」两层：
+
+1. AgentScope-Java 框架提供横切扩展点（`Middleware` / `Tool` / `ModelProvider` / `Store` / `Formatter`），通过 Spring 自动扫描与 `ObjectProvider<T>` 注入，由 yunxi 统一装配点（`AgentConfigurer`）统一拾取。
+2. `yunxi-definition` 是当前唯一契约平面，承载与框架技术无关的契约类型（`AgentSpec` / `AgentSpecValidator` / `SpecCodec` / `YamlSpecCodec`），不定义业务 SPI 子包。
 
 ### 核心扩展点
 
 | 扩展点 | 用途 | 说明 |
 |--------|------|------|
-| **Agent 定义 YAML** | 配置 Agent 行为 | agent-definitions/*.yml（顶层键 `agent:`） |
-| **@Tool 注解** | 注册自定义工具 | Spring @Component + @Tool 注解 |
-| **CacheProvider** | 缓存 SPI | agent-spi 模块 `cache` 包 |
-| **UserProfileProvider** | 用户画像 SPI | agent-spi 模块 `profile` 包 |
-| **DatabaseClient / Text2SqlFacade / EmbeddingService** | 数据查询与向量化 SPI | agent-spi 模块 `text2sql` 包 |
-| **VectorPersistenceProvider / VectorSearchProvider** | 向量存储与检索 SPI | agent-spi 模块 `vector` 包 |
-| **IntelligentLlmService** | 简化 LLM 调用封装 | intelligent/ 模块 |
+| **Agent 定义 YAML** | 配置 Agent 行为 | `classpath*:agent-definitions/**/*.yml`（顶层即 `AgentSpec` 字段，无 `agent:` 包裹；由 `yunxi-definition` 的 `YamlSpecCodec` 反序列化为 `AgentSpec`，`AgentDefinitionLoader` 加载并校验后注册进 `ConfigCenter`） |
+| **@Tool 注解** | 注册自定义工具 | Spring `@Component` + `@Tool` 注解，框架自动扫描 |
+| **Middleware / ModelProvider / Store / Formatter** | 框架横切扩展 | AgentScope-Java 原生扩展点，yunxi 经 `AgentConfigurer` 统一装配（对所有协议生效） |
+| **IntelligentLlmService** | 简化 LLM 调用封装 | `yunxi-intelligence` 模块 `io.yunxi.intelligence` 包 |
 
 ### 分层职责
 
 ```
 ┌─────────────────────────────────────────┐
 │           Business 业务层                │
-│  - 实现 SPI 接口 (agent-spi)             │
+│  - 实现框架扩展点 (@Tool / Middleware)    │
 │  - 编写业务逻辑                          │
 ├─────────────────────────────────────────┤
-│  SPI 接口 ←── 实现                       │
+│  扩展点 ←── 实现                         │
 ├─────────────────────────────────────────┤
-│          Platform 平台层                 │
-│  - 30+ 个功能包定义业务 SPI              │
-│  - 调用 SPI 实现                         │
-│  - 编排业务流程                          │
+│      AgentScope-Java 框架层              │
+│  - 30+ 个扁平功能包提供横切扩展点        │
+│  - 调用扩展实现、编排业务流程             │
 ├─────────────────────────────────────────┤
-│  SPI 接口 ←── 实现                       │
+│  扩展点 ←── 实现                         │
 ├─────────────────────────────────────────┤
-│           agent-spi 模块                 │
-│  - 定义技术无关的 SPI 接口                │
+│       yunxi-definition 契约平面          │
+│  - AgentSpec / AgentSpecValidator /      │
+│    SpecCodec / YamlSpecCodec             │
+│    （技术无关契约类型）                    │
 └─────────────────────────────────────────┘
 ```
 
@@ -670,24 +439,24 @@ public class DatabaseTool {
 用户请求
     ↓
 ┌─────────────────────────────────────────┐
-│ 1. ChatController               │
-│    POST /api/conversations/chat         │
-│    - 解析 UnifiedChatRequest            │
-│    - 认证 (SecurityContext)             │
+│ 1. ConversationController（yunxi-ingress）        │
+│    POST /api/conversations（同步）或 /api/conversations/stream（SSE） │
+│    - 解析 ConversationRequest（agentId / text / userId / sessionId） │
+│    - 认证（Spring Security）                        │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 2. ChatAppService (对话编排)             │
-│    - 意图路由 (IntentAwareAgentResolver) │
-│    - RAG 模式选择 (ragMode)             │
-│    - 组装 RuntimeContext(userId, sessionId) │
+│ 2. ConversationController / IngressGateway (对话入口 + 协议适配) │
+│    - 按 agentId 路由（意图引擎为关键词路由，当前未接入口层，见 16）       │
+│    - （RAG 检索在配置向量库后由框架自动生效，入口层不选择 ragMode）                │
+│    - 组装 AgentCommand(userId, sessionId)  │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 3. AgentExecutionEngine (执行编排)         │
-│    execute(agentName, request)           │
-│    - 拦截器链(Auth/Memory/Intent/RAG/Audit)│
-│    - 调用 streamEvents/call + 事件适配    │
+│ 3. ExecutionFacade (执行编排)             │
+│    execute(AgentCommand)                  │
+│    - 协议无关 Middleware（审计/HITL/追踪/限流）│
+│    - 调用 streamEvents + 事件适配         │
 └─────────────┬───────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
@@ -700,8 +469,7 @@ public class DatabaseTool {
               ↓
 ┌─────────────────────────────────────────┐
 │ 5. 工具层                                │
-│    - 内置 @Tool (HttpTool/DatabaseTool) │
-│    - MCP 服务器工具 (远程转发)           │
+│    - 业务 @Tool（你的 @Component）+ MCP 服务器工具（远程转发） │
 └─────────────┬───────────────────────────┘
               ↓
    AgentEvent 流 → SSE 响应 → 返回结果

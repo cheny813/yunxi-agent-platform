@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>yunxi-fabric</artifactId>
+    <name>yunxi-fabric</name>
+    <description>
+        aistio 控制面 / 数据面接入（AistioConnector）、框架适配桥（YunxiFrameworkAdapter）
+        与分布式运行时后端接线（DistributedRuntimeConfig + SessionTurnGateWiring）。
+        仅本平面依赖 AgentScope-Java 的 aistio 扩展。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-runtime</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-capability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-definition</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-controlplane</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-redis</artifactId>
+        </dependency>
+        <dependency>
+            <!-- 全局 Redis 客户端唯一（红线）：跨实例轮次闸门复用 app 侧全局 RedisConnectionFactory
+                 支撑的 StringRedisTemplate；此处仅引入 API，连接工厂由应用平面自动配置提供。 -->
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

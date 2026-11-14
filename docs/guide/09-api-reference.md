@@ -2,84 +2,19 @@
 
 完整的 API 文档。
 
-## API 设计理论
+## API 设计原则
 
-### RESTful API 设计原则
-
-**REST（Representational State Transfer）** 是一种软件架构风格：
-
-| 原则 | 说明 | 示例 |
-|------|------|------|
-| **资源识别** | 使用 URI 标识资源 | `/api/users/{id}` |
-| **统一接口** | 使用标准 HTTP 方法 | GET、POST、PUT、DELETE |
-| **无状态** | 每个请求独立 | 请求包含所有必要信息 |
-| **可缓存** | 响应可被缓存 | Cache-Control 头 |
-
-**HTTP 方法语义**：
-| 方法 | 操作 | 幂等性 |
-|------|------|--------|
-| GET | 获取资源 | 是 |
-| POST | 创建资源 | 否 |
-| PUT | 更新资源（全量） | 是 |
-| PATCH | 更新资源（部分） | 否 |
-| DELETE | 删除资源 | 是 |
-
-### API 版本控制
-
-**为什么需要版本控制**：
-- 向后兼容
-- 平滑升级
-- 支持多版本共存
-
-**版本策略**：
-```
-# URL 路径版本
-/api/v1/users
-/api/v2/users
-
-# Header 版本
-Accept: application/vnd.api.v1+json
-```
+平台对外暴露 REST 风格的 HTTP 端点，统一以 `/api` 为前缀、使用标准 HTTP 方法（GET/POST/PUT/DELETE）与状态码，接口按资源语义组织（会话、轨迹、MCP 服务器等）。下文按功能分组列出端点；完整契约以各模块实际 Controller 为准。
 
 ---
 
 ## 认证方式
 
-### 认证理论
-
-**认证 vs 授权**：
-| 概念 | 说明 | 示例 |
-|------|------|------|
-| **认证** | 验证身份 | 用户名密码、Token |
-| **授权** | 验证权限 | 角色、权限列表 |
-
-**Token 认证流程**：
-```
-┌─────────┐      ┌─────────┐      ┌─────────┐
-│  客户端  │ ──→  │ 认证服务 │ ──→  │  业务服务 │
-└─────────┘      └─────────┘      └─────────┘
-     │                │                │
-     │ 1. 登录        │                │
-     │──────────────→│                │
-     │                │ 2. 验证身份     │
-     │                │ 3. 生成 Token   │
-     │←───────────────│                │
-     │   返回 Token   │                │
-     │                                 │
-     │ 4. 请求 API (带 Token)          │
-     │───────────────────────────────→│
-     │                                 │ 5. 验证 Token
-     │←───────────────────────────────│
-     │        返回数据                  │
-```
-
-### 请求头认证
+平台 web 协议以请求头传递身份：`X-User-Id` 标识用户，`Authorization: Bearer <jwt>` 用于 A2A 跨服务 JWT 鉴权。IM 渠道的身份由框架 Channel 验签后在 `RuntimeContext` 注入（见 [16.8 IM 渠道网关](./16-ingress-gateway.md)）。应用层安全模型（端点放行、角色约束）见 [06. 配置指南 · 安全配置](./06-configuration.md#安全配置)。
 
 ```http
 X-User-Id: your-user-id
 ```
-
-### Bearer Token（A2A JWT）
 
 ```http
 Authorization: Bearer your-jwt-token
@@ -91,21 +26,24 @@ Authorization: Bearer your-jwt-token
 
 ## Chat API
 
-统一入口：`POST /api/conversations/chat`（`mode` 决定返回方式）；流式专用入口：`POST /api/conversations/chat/stream`（SSE）。
+统一入口：`POST /api/conversations`（非流式，一次性返回 `ConversationResponse`）；流式专用入口：`POST /api/conversations/stream`（SSE，事件以 `event: agent-event` 命名事件下发）。
+
+> **端点范围说明**：`yunxi-ingress` 当前仅由 `ConversationController` 暴露这两个端点。下方「会话管理」「Agent 中断控制」「MCP 动态注册」等端点表描述的是其他模块 Controller 提供的附加能力（分属 capability / yunxi-app 等），**不**在 `ConversationController` 内，使用前请对照实际 Controller 校验路径与字段；「推理轨迹」一节仅为设计态，当前无对应端点。
 
 ### 发送消息（同步）
 
 **请求**
 
 ```http
-POST /api/conversations/chat
+POST /api/conversations
 Content-Type: application/json
 X-User-Id: user001
 
 {
-  "agentName": "general-assistant",
-  "message": "你好",
-  "mode": "sync"
+  "agentId": "example-assistant",
+  "userId": "user001",
+  "sessionId": "s-001",
+  "text": "你好"
 }
 ```
 
@@ -113,84 +51,68 @@ X-User-Id: user001
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `message` | string | 是 | 用户消息 |
-| `agentName` | string | 是 | Agent 名称（必填，如 `general-assistant`） |
-| `mode` | string | 否 | `stream`（默认，SSE 流式）/ `sync`（完整回复） |
-| `conversationId` | string | 否 | 会话 ID，缺省自动创建新会话 |
+| `agentId` | string | 是 | Agent 唯一标识（对应 AgentSpec 的 `identity.agentId`，如 `example-assistant`） |
+| `text` | string | 是 | 用户消息文本 |
+| `userId` | string | 否 | 用户标识（建议填写，用于身份与多轮隔离；经 `X-User-Id` 头或字段传入均可） |
+| `sessionId` | string | 否 | 会话 ID，缺省由框架自动创建新会话 |
+| `protocol` | string | 否 | 协议类型，默认 `web`（web / a2a / agui / chat-completions 共用同一请求类型） |
+| `context` | object | 否 | 附加上下文（Map，透传给运行时） |
 
 **响应（sync）**
 
+`POST /api/conversations` 返回 `ConversationResponse`（HTTP 状态码由 `Settle.Status` 映射：`OK`→200、`NO_AGENT`→404、`BUSY`/`STATE_CONFLICT`→409、`REJECTED`/`OVERLOAD`→429、`EXECUTION_ERROR`→500）：
+
 ```json
 {
-  "reply": "你好！有什么可以帮助你的？",
-  "conversationId": "conv-xxx"
+  "agentId": "example-assistant",
+  "sessionId": "s-001",
+  "text": "你好！有什么可以帮助你的？",
+  "status": "OK",
+  "errorCode": null
 }
 ```
-
-> 说明：同步响应体为 `ChatResponse`，字段为 `reply`（回复文本）与 `conversationId`（会话 ID；非会话模式下为 `null`）。
 
 ### 发送消息（流式 SSE）
 
 ```http
-POST /api/conversations/chat/stream
+POST /api/conversations/stream
 Content-Type: application/json
 X-User-Id: user001
 
 {
-  "message": "你好",
-  "agentName": "general-assistant"
+  "agentId": "example-assistant",
+  "userId": "user001",
+  "sessionId": "s-001",
+  "text": "你好"
 }
 ```
 
-流式响应为 `text/event-stream`，每条 `data:` 行包含 `{type, timestamp, content}` 结构事件，`type` 取值包括 `content`（回复增量）、`thinking`（思考过程）、`tool_call`、`tool_result`、`agent_status`、`todo_update`（任务清单，需启用）、`error` 等。
+流式响应为 `text/event-stream`，每条事件以 **`event: agent-event`** 命名事件下发，其 `data:` 为一条 AgentScope-Java `AgentEvent` JSON（含 `type` / `timestamp` / `content` 等字段），`type` 取值包括 `content`（回复增量）、`thinking`（思考过程）、`tool_call`、`tool_result`、`agent_status`、`error` 等。框架 `AgentEventType` **无 `todo_update` 类型**——任务清单不经由独立事件下发（详见 [任务清单透出机制](#任务清单透出机制)）。
 
-#### todo_update 事件（任务清单）
+#### 任务清单透出机制
 
-Agent 执行长任务时，可通过内置 `todo_write` 工具维护结构化任务清单，服务端在任务状态变化后推送该事件。
+任务清单（`todo_write`）是 AgentScope-Java 框架原生能力，由 `HarnessAgent.Builder.enableTaskList()` 构建期开关控制。yunxi 已在 `AgentConfigurer.configure()` 唯一装配点接线该开关，采用双通道、默认关闭：**全局开关 `yunxi.agent.taskList.enabled`**（Spring 环境属性，默认 false）与 **per-Agent `agent.plan.taskList`**（经 `AgentSpec.PlanConfig`，YAML 反序列化 `FAIL_ON_UNKNOWN_PROPERTIES=false` 容忍旧定义，默认 false）二者 OR 生效。即 `agent.plan.taskList: true` 已正式生效，无需额外配置即可按 Agent 开启任务清单。
 
-**启用条件**：Agent 定义 YAML 的 `plan.taskList: true`，或全局 `agentscope.core.plan.task-list: true`（默认关闭）。
+**透出链路（与代码/前端实现一致）**：后端 `ConversationController.stream` 以 `event: agent-event` **纯透传**框架 `AgentEvent`，**不合成** `todo_update` 事件；任务清单随 `todo_write` 工具执行，以 `TOOL_RESULT_TEXT_DELTA`（`toolCallName=todo_write`，即 `TodoTools.render()` 的 markdown）流式下发，`TOOL_RESULT_END` 收尾。前端 SDK `yunxi-chat.js` 按 `toolCallId` 累积这些增量、在 `TOOL_RESULT_END` 还原为结构化列表并经 `onTodo` 回调透出（full-list-replace 语义）。
 
-**触发时机**：Agent 调用 `todo_write` 工具后（每次提交完整列表）；进入已有会话时，若该会话存在历史任务清单，流开始即补发一次。
-
-**事件负载**（与 `tool_result` 等结构化事件同一编码惯例：**`content` 为 JSON 字符串**，需二次解析后取 `todos` 数组；元素为 AgentScope `Task` 序列化结果）：
-
-```json
-{
-  "type": "todo_update",
-  "timestamp": "2026-08-28T10:00:00Z",
-  "conversationId": "conv-123",
-  "content": "{\"todos\":[{\"id\":\"a1b2c3…\",\"subject\":\"查询营养成分\",\"description\":\"查询营养成分\",\"state\":\"completed\",\"metadata\":{\"priority\":\"high\"},\"created_at\":\"2026-08-28T09:59:01+08:00\",\"owner\":null,\"blocks\":[],\"blocked_by\":[]},{\"id\":\"d4e5f6…\",\"subject\":\"生成配餐方案\",\"state\":\"in_progress\",…}]}"
-}
-```
-
-`content` 解析后的结构：
-
-```json
-{
-  "todos": [
-    { "id": "a1b2c3…", "subject": "查询营养成分", "description": "查询营养成分",
-      "state": "completed", "metadata": { "priority": "high" },
-      "created_at": "2026-08-28T09:59:01+08:00", "owner": null,
-      "blocks": [], "blocked_by": [] },
-    { "id": "d4e5f6…", "subject": "生成配餐方案", "description": "生成配餐方案",
-      "state": "in_progress", "metadata": {}, "created_at": "…", "owner": null,
-      "blocks": [], "blocked_by": [] }
-  ]
-}
-```
-
-前端取数示意：
+**前端取数**：
 
 ```javascript
-const payload = JSON.parse(evt.content);   // content 为 JSON 字符串
-renderTodoCard(payload.todos);
+yunxiChat({
+  mode: 'stream',
+  onTodo: (todos, meta) => {
+    // todos: [{ content, status, priority }] 全量列表；meta: { toolCallId, revision }
+    renderTodoPanel(todos);
+  }
+});
 ```
+
+> 框架原生另提供 `CUSTOM`（`name=state_updated`）结构化信号表达任务/权限状态变更，可作为未来更健壮的取数来源；本次透出机制以已实现的 `TOOL_RESULT_TEXT_DELTA` 解析为准。
 
 **说明**：
 
-- `state` 取值：`pending`（待执行）/ `in_progress`（执行中）/ `completed`（已完成）；同一时刻至多一个 `in_progress`（模型违反约束时工具返回错误，清单不被破坏）
+- `status` 取值：`pending`（待执行）/ `in_progress`（执行中）/ `completed`（已完成）；同一时刻至多一个 `in_progress`（模型违反约束时工具返回错误，清单不被破坏）
 - **全量透出**：AgentScope 采用 full-list-replace 语义，前端应**整体替换**任务列表渲染，不做增量合并
-- 注意 `created_at` 与 `blocked_by` 为下划线命名（与 Java 字段名 camelCase 不同）
 - 任务状态持久化于 `AgentState.tasksContext`，默认即有文件存储（`~/.agentscope/state/<agentId>/`），跨会话续传开箱可用；仅多副本部署时需配置 Redis 会话存储
 
 #### REQUIRE_USER_CONFIRM 事件（人机确认）
@@ -234,14 +156,15 @@ Agent 调用需人工确认的工具时（由 Agent 配置的 `extensions.hitl.t
 `confirmResults`（每项对应一个待确认工具调用，字段取自事件中的 `toolCalls[]`）：
 
 ```http
-POST /api/conversations/chat/stream
+POST /api/conversations/stream
 Content-Type: application/json
 X-User-Id: user001
 
 {
-  "agentName": "general-assistant",
+  "agentId": "example-assistant",
   "conversationId": "conv-123",
-  "message": "确认执行",
+  "sessionId": "s-001",
+  "text": "确认执行",
   "confirmResults": [
     { "toolCallId": "call_b96c5668e76847468992f1",
       "approved": true,
@@ -288,29 +211,11 @@ X-User-Id: user001
 | GET | `/api/conversations/agent/{name}/status` | 查询 Agent 执行状态 |
 | POST | `/api/conversations/agent/{name}/resume` | 恢复 Agent（清除中断状态；框架采用协作式中断、执行会自动继续，此端点兼容保留） |
 
-### 推理轨迹（Trace）
+### 推理轨迹（Trace，设计态未接线）
 
-内核只维护一条结构化推理轨迹（`ReasoningSpan` 快照序列），SSE 与 AG-UI 是它的两种**投影**（One Trace, Many Projections）。轨迹默认落 Redis（`conversation.trace-storage-type=redis`），多实例部署下跨实例可读；未装 Redis 时回退内存实现（仅本实例可见）。
+`yunxi-observability` 目前只提供轨迹的**数据模型与存储接口**：`TraceRecord`（`traceId` / `userId` / `sessionId` / `createdAt` / `spans`）、`TraceStore`、`InMemoryTraceStore`，由 `RuntimeConfiguration` 暴露为 bean；但**运行时尚未向 `TraceStore` 写入**，仓库内也**没有轨迹查询 / 回放 HTTP 端点**（无 `/api/traces` 控制器，框架 starter 亦不提供）。SSE / AG-UI 两条输出直接由框架 Agent 事件流产生，不经过轨迹库。
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| GET | `/api/traces?userId=&sessionId=` | 查询轨迹列表（按用户 / 会话过滤） |
-| GET | `/api/traces/stream?userId=&sessionId=` | 轨迹**实时流**（SSE），订阅指定范围的快照增量 |
-| DELETE | `/api/traces?userId=&sessionId=` | 删除指定范围的轨迹 |
-| GET | `/api/traces/{traceId}` | 按 traceId 查询单条轨迹的完整快照序列 |
-| GET | `/api/traces/{traceId}/stream` | 按 traceId **回放**轨迹（SSE，从 `TraceStore` 读快照后经投影输出） |
-| GET | `/api/traces/{traceId}/ag-ui` | 按 traceId 以 **AG-UI 事件**形式回放（SSE，`AguiProjection` 投影） |
-
-**说明**：
-
-- `/stream` 系列的实时推送能力受存储后端限制：内存后端只推送本实例写入的快照；Redis 后端的历史部分跨实例全量可读，但实时增量仍限于本实例（跨实例实时推送需 Pub/Sub，当前未实现）。
-- `/ag-ui` 端点把轨迹映射为 AG-UI 协议事件（`TURN→RUN_*`、`TEXT/REASONING→MESSAGE_*`、`TOOL_CALL→TOOL_CALL_*`、`PLAN/TASK→STATE_SNAPSHOT`、`SUBAGENT→SUBAGENT_*`、`HITL→RUN_PAUSED/RUN_RESUMED` 等）。AG-UI 1.0 规范截至 2026-09 仍为草案，per-model usage 字段暂以 `CUSTOM` 事件占位，协议冻结后回填。
-
-**示例**：回放某条轨迹的 AG-UI 事件流
-
-```bash
-curl -N http://localhost:40001/api/traces/drill-001/ag-ui
-```
+> 规划中的 `GET/DELETE /api/traces*` 与 AG-UI 回放（含跨实例实时增量）尚未实现，落地前请勿按本节调用。运行时可观测请见 [14. 可观测](./14-observability.md)。
 
 ### 健康检查
 
@@ -324,33 +229,32 @@ GET /actuator/health
 {
   "status": "UP",
   "components": {
-    "db": { "status": "UP" },
     "redis": { "status": "UP" }
   }
 }
 ```
 
-> 健康检查包含 `db` 与 `redis` 两个组件：任一不可用都会让聚合状态变为 `DOWN`（HTTP 503）。Redis 连接参数统一由 `config/redis.yml` 提供（`spring.data.redis.*`，Spring Boot 3.x 的绑定前缀），库号由 `REDIS_DATABASE` 环境变量控制。若 `redis` 组件报 `NOAUTH`，说明连接未带上密码——先确认配置前缀是否为 `spring.data.redis`（写成旧的 `spring.redis` 会被静默忽略，表现为「配置看着全对但健康检查 503」）。
+> 健康检查的核心组件为 `redis`（`spring.data.redis.*`，Spring Boot 3.x 的绑定前缀）：Redis 不可用时聚合状态变为 `DOWN`（HTTP 503）。平台默认不连接 MySQL，故通常不含 `db` 组件；库号由 `REDIS_DATABASE` 环境变量控制。若 `redis` 组件报 `NOAUTH`，说明连接未带上密码——先确认配置前缀是否为 `spring.data.redis`（写成旧的 `spring.redis` 会被静默忽略，表现为「配置看着全对但健康检查 503」）。
 
 ---
 
 ## MCP 工具（外部服务器注册）
 
-平台**不对外暴露** HTTP MCP 端点（不存在 `POST /mcp` 或 `X-MCP-Token` 请求头）。MCP 服务器作为独立进程运行（见 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers)，端口 40101+），平台作为 MCP **客户端**连接它们，并把工具注册进 Agent 的 Toolkit。
+平台**不对外暴露** HTTP MCP 端点（不存在 `POST /mcp` 或 `X-MCP-Token` 请求头）。MCP 服务器作为独立进程运行（见 [yunxi-mcp-servers](https://gitcode.com/chenyao813/yunxi-mcp-servers)，端口以各服务 README 为准，如 `nutrition-mcp` 40602、`text2sql-mcp` 40110），平台作为 MCP **客户端**连接它们，并把工具注册进 Agent 的 Toolkit。
 
 ### 注册机制
 
-Agent 启动时由 `AgentConfigurer.registerMcpServers()` 读取 `agentscope.core.mcp-servers` 配置段（见 `agent-config/src/main/resources/config/mcp-core.yml`），使用框架原生 `McpClientBuilder` 以 SSE / stdio / Streamable HTTP 三种传输方式连接服务器，随后通过 `Toolkit.registration().mcpClient(...).group(name).apply()` 把工具按服务器名分组注册进各 Agent。启用/停用由 `enabled` 开关控制（可配环境变量覆盖）。
+Agent 启动时由 `AgentConfigurer` 经 `McpDirectory` 读取 MCP 服务器配置段（见 `yunxi-config/src/main/resources/config/mcp.yml` 的 `yunxi.mcp.static-servers`），使用框架原生 `McpClientBuilder` 以 SSE / stdio / Streamable HTTP 三种传输方式连接服务器，随后通过 `Toolkit.registration().mcpClient(...).group(name).apply()` 把工具按服务器名分组注册进各 Agent。启用/停用由 `enabled` 开关控制（可配环境变量覆盖）。
 
 ### 配置示例（SSE 模式）
 
 ```yaml
-agentscope:
-  core:
-    mcp-servers:
-      database:
-        enabled: true            # 环境变量：MCP_DATABASE_ENABLED
-        type: sse
+yunxi:
+  mcp:
+    static-servers:
+      - name: database
+        enabled: true            # 环境变量：YUNXI_MCP_STATIC_SERVERS_0_ENABLED
+        transport: sse
         url: http://localhost:40101/mcp/sse
         timeout: 60000
         description: "数据库操作 MCP 服务器"
@@ -359,12 +263,12 @@ agentscope:
 ### 配置示例（stdio 模式）
 
 ```yaml
-agentscope:
-  core:
-    mcp-servers:
-      puppeteer:
+yunxi:
+  mcp:
+    static-servers:
+      - name: puppeteer
         enabled: false
-        type: stdio
+        transport: stdio
         command: npx
         args: ["-y", "@modelcontextprotocol/server-puppeteer"]
 ```
@@ -382,7 +286,7 @@ agentscope:
 - 目标服务器不可达时，该服务器仅 WARN 降级并在下次调用时自动重连，**不会**阻塞 HTTP 请求或抛 500；
 - Nacos 未启用时自动退化为本地内存目录（单实例、重启即清空）。
 
-> 说明：动态注册的服务器与静态 `agentscope.core.mcp-servers` 段共享同一套 `Toolkit` 注册逻辑，工具同样按服务器名分组、由 Agent 在对话中自主调用。所有接口位于 `/api/mcp/servers`，受平台统一安全模型保护（见 [06. 配置指南 · 安全配置](./06-configuration.md#安全配置)）。
+> 说明：动态注册的服务器与静态 `yunxi.mcp.static-servers` 段共享同一套 `Toolkit` 注册逻辑，工具同样按服务器名分组、由 Agent 在对话中自主调用。所有接口位于 `/api/mcp/servers`，受平台统一安全模型保护（见 [06. 配置指南 · 安全配置](./06-configuration.md#安全配置)）。
 
 **列出当前目录**
 
@@ -390,7 +294,7 @@ agentscope:
 GET /api/mcp/servers
 ```
 
-返回 `McpServerEntry` 列表（字段对齐 MCP 官方 `server.json` 规范，便于生态互认）。示例：
+返回 `McpServerConfig` 列表（字段对齐 MCP 官方 `server.json` 规范，便于生态互认；`status` 为运行时只读字段）。示例：
 
 ```json
 [
@@ -500,7 +404,7 @@ DELETE /api/mcp/servers/{name}
 
 ## SDK 使用
 
-平台提供官方 **JavaScript/TypeScript SDK**（`sdk-js`，npm 包 `yunxi-agent-client`），支持 Node.js 与浏览器。当前无官方 Java SDK，Java 侧可直接调用上文 REST 端点。
+平台提供官方 **JavaScript/TypeScript SDK**（`agent-web-sdk`，npm 包 `@yunxi/web-sdk`），支持 Node.js 与浏览器。当前无官方 Java SDK，Java 侧可直接调用上文 REST 端点。
 
 ### JavaScript SDK（推荐）
 
@@ -533,7 +437,7 @@ await client.chatStreamEvents('查询今天天气', {
 
 **常用方法**：`chatSync(message, options)`、`chatStream(message, onChunk, options)`、`chatStreamIterator`、`chatStreamEvents`、`chatStructured(message, schema)`、`isAvailable()`、`getServiceInfo()`。
 
-浏览器中也可直接使用内置静态资源（`http://localhost:40001/static/js/AgentClient.js`），完整 API 见 [sdk-js/README.md](../../sdk-js/README.md)。
+浏览器中也可直接使用内置静态资源（`http://localhost:40001/static/js/AgentClient.js`），完整 API 见 [agent-web-sdk/README.md](../../agent-web-sdk/README.md)。
 
 ---
 

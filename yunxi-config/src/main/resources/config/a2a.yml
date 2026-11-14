@@ -1,0 +1,6 @@
+# A2A 协议层暴露参数：在 yunxi 自身 Web 容器同端口以 path-prefix/{agentId} 暴露 JSON-RPC。
+yunxi:
+  a2a:
+    host: localhost
+    port: ${server.port:8080}
+    path-prefix: /a2a

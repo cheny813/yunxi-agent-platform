@@ -1,0 +1,19 @@
+# MCP 动态注册「配置中心」：第三方或自研（yunxi-mcp-servers）MCP 服务均在此声明，启动期由
+# NacosMcpRegistrationSource.seedLocalServers 动态注入内存权威目录 McpDirectory，Agent 构建期按名解析。
+# Nacos 未启用（默认）时即本地内存目录；启用 yunxi.mcp.nacos.enabled=true 后该列表作为 Nacos 快照种子。
+yunxi:
+  mcp:
+    nacos:
+      # 本地种子服务器列表（Nacos 关闭时即唯一来源；Nacos 开启时作为初始快照）。
+      # 名称须与 agent 定义中 mcp.servers 订阅名一致（如 nutritionist 订阅 nutrition-mcp）。
+      static-servers:
+        - name: nutrition-mcp
+          transport: sse
+          url: http://localhost:40602/mcp/sse
+          enabled: false
+          description: 营养数据 MCP 服务（菜品 / 食材 / 营养标准检索与评分）
+        - name: text2sql-mcp
+          transport: sse
+          url: http://localhost:40110/mcp/sse
+          enabled: false
+          description: Text2SQL MCP 服务（两步法自然语言转 SQL，对应 yunxi-mcp-servers/mcp-text2sql；启用前需先拉起该服务并配置数据库与 LLM）

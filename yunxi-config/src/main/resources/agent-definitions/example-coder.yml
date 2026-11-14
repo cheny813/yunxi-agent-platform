@@ -1,0 +1,41 @@
+# 示例 Agent 定义：声明真实沙箱后端（容器内执行代码的样例）
+#
+# 由 AgentDefinitionLoader 在启动期扫描 classpath*:agent-definitions/**/*.yml 加载，
+# 反序列化为 io.yunxi.definition.AgentSpec。顶层即 AgentSpec 字段，未知字段被忽略。
+#
+# 本样例演示：主路径代码执行（execute）经 sandbox.backend=docker 在容器内放行，
+# 而非在宿主文件系统上运行。toolkit.deniedToolNames 显式保留其余受限工具（不误开），
+# 并对 execute 显式放行；缺省全局 deny 仍覆盖未显式列出的受限工具。
+
+identity:
+  agentId: example-coder
+  name: 示例编码助手
+  description: 你是一个在容器沙箱中执行代码的助手，只运行用户明确请求的程序。
+mcp:
+  servers: []
+state:
+  store: inmemory
+  persist: false
+permission:
+  allowedTools:
+    - memory
+  toolGate:
+    enabled: false
+    tools: []
+    message: ""
+toolkit:
+  deniedToolNames:
+    - write_file
+    - edit_file
+    - list_files
+    - grep_files
+    - glob_files
+subagents:
+  subagents: []
+sandbox:
+  backend: docker
+  image: ubuntu:22.04
+  workspaceRoot: /workspace
+  isolationScope: SESSION
+  snapshot:
+    type: noop

@@ -6,6 +6,30 @@
 
 ---
 
+## [Unreleased] - 2026-11-13
+
+### ⚠️ 破坏性变更（框架整体重构）
+
+- **模块体系重建**：放弃旧的 `agent-*` 模块体系，按平面重组为全新的 `yunxi-*` 目标架构（统一 `io.yunxi.*` 命名）：
+  - `yunxi-definition`（定义平面：AgentSpec 唯一定义契约）、`yunxi-config`（配置中心）、`yunxi-capability`（能力装配）、`yunxi-runtime`（Agent 运行时与装配）、`yunxi-ingress`（接入网关）、`yunxi-fabric`（编排）、`yunxi-intelligence`（智能平面：意图引擎 / 技能自进化）、`yunxi-observability`（可观测）、`yunxi-app`（启动入口）、`yunxi-integration-test`（统一集成测试）。
+  - 横切关切收敛：全仓单一装配入口，红线「同一横切关切只允许一个实现位置」。
+- **旧实现整体归档**：旧模块（`agent-app` / `agent-codec` / `agent-web` 等）、旧 Dockerfile 与 `.dockerignore`、旧前端 / SDK 资产移入 `legacy/`，仅作历史参照，不参与构建。
+- **文档站重排**：`docs/guide` 章节统一两位编号，新增 / 重写智能系统、A2A 协议、可观测、意图引擎、接入网关、执行引擎、端口规划等章节。
+- **部署资产**：新增 `deploy/`（初始化 SQL、部署配置样例）与启动脚本。
+
+### 新增
+
+- **智能意图识别（四段式管线）**：未显式指定 `agentId` 的请求不再只靠关键词子串匹配——
+  - `yunxi-intelligence` 新增管线：文本归一化与槽位实体抽取（`IntentTextNormalizer` / `SlotExtractor`）→ 候选收窄（`ConfigCenterAgentCandidateProvider`：Agent 目录 ∩ 租户允许集合，唯一候选短路）→ 闭集分类（`LocalDecisionIntentClassifier`：`temperature=0` + jsonSchema 结构化输出 + 超时/非法输出容错，经 `defaults.decision` 走本机决策模型）→ 决策融合（`IntentDecider`：候选闭集校验、置信度阈值、关键词兜底、默认兜底三级 fail-open）。
+  - 契约升级：`IntentEngine` / `IntentResolver` 迁移为带上下文的 `resolve(IntentRequest) -> IntentResolution`（含实体与改写文本）；`Intent` 保留为轻量投影；`DefaultIntentEngine` 由 `HybridIntentEngine` 取代。
+  - 入口透传：`IngressGateway` 解析结果以 `yunxi.intent.*` 写入请求上下文并回填目标 Agent，`AbstractProtocolAdapter` 把意图标签透传到 `AgentCommand.intent`（模型路由 / 观测可消费）。
+  - 可观测：解析来源计数（llm / keyword / fallback / llm_fail / rejected / low_conf）、耗时 gauge、`intent.resolve` 审计事件。
+  - 回滚路径：`strategy=keyword` 一键回退纯关键词路由（零模型调用）；关键词规则新增 `targets` 显式目标映射（修正旧实现"命中也回落默认 Agent"的缺陷）。
+- **分类卡片显式声明（`AgentSpec.intent.hint`）**：定义平面可选声明一句话职责卡片，意图分类时优先于从 `identity.description` 自动派生的首句卡片；旧 YAML 不声明 `intent` 段零迁移。
+- **JEV 云端判定（可选增强，`classifier.impl=jev`）**：复用框架 `agentscope-extensions-jev` 类型化契约（`ChoiceQuestion` 闭集单选 + 概率分布），候选卡片即选项、`unknown` 为闭集兜底项；云端 Key（`TYPESAFE_API_KEY` / `JEV_API_KEY`）缺失、调用失败或选择越出闭集时自动回落本地决策模型，降级链路不变。默认仍为 `impl=local`（无数据外发）。
+
+---
+
 ## [2.0.3] - 2026-09-16（架构升级补充）
 
 > 本节记录 **应用智能体架构升级**（One Trace, Many Projections）的落地成果。版本号不变（仍为 2.0.3，与底层 AgentScope-Java 同步）。
@@ -72,7 +96,7 @@
 - **docker-compose 默认启用可视化组件**：`attu` / `otel-collector` / `jaeger` 三个服务由 `--profile optional` 可选改为默认启动，`docker compose up -d` 即可拉起全部 9 个容器，无需再带 `--profile optional`。
 
 - 模型缓存策略文档化：单租户按 `modelId` 复用实例，多租户默认不复用，避免不同账号的 Key / BaseURL 串用。
-- 意图引擎配置项扩展（`routing` / `classification` / `resolver` / `reload`），详见 [16. 意图引擎](./docs/guide/16-intent-engine.md)。
+- 意图引擎配置项扩展（`routing` / `classification` / `resolver` / `reload`），详见 [15. 意图引擎](./docs/guide/15-intent-engine.md)。
 
 ---
 

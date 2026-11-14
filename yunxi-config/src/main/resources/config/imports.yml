@@ -1,0 +1,35 @@
+# ============================================================
+# 配置加载清单（config/ 下所有片段的唯一真相源）
+# ============================================================
+# 此文件被 yunxi-app 的根 application.yml 通过 spring.config.import 引用。
+# 下面列出的 yml 在应用启动时被加载，顺序即覆盖顺序（后者覆盖前者）。
+#
+# 【想新增一个配置文件】只需在此添加一行（文件放 config/ 目录），并补一条
+#   ConfigFragmentValidationTest 的存在性断言，防止改名后静默失效。
+#
+# 【必选 vs 可选】
+#   - 不带 optional: 的为必选模块：文件缺失会启动失败（fail-fast），
+#     避免“配置看着写了、实际没加载”的静默黑洞。
+#   - 后续若有默认关闭的能力（如工作流导出），在此行加 optional: 前缀。
+#
+# 【约束】每个片段只拥有约定好的根前缀、只服务一个模块；
+#   跨切面段各归其位：management 在 observability.yml、logging.* 在 logging.yml，
+#   禁止在其它片段重复写 management.* / logging.* 顶层键。
+# ============================================================
+spring:
+  config:
+    import: >
+      classpath:config/server.yml,
+      classpath:config/redis.yml,
+      classpath:config/cluster.yml,
+      classpath:config/agentscope.yml,
+      classpath:config/a2a.yml,
+      classpath:config/security.yml,
+      classpath:config/models.yml,
+      classpath:config/mcp.yml,
+      classpath:config/intent.yml,
+      classpath:config/observability.yml,
+      classpath:config/memory.yml,
+      classpath:config/im.yml,
+      classpath:config/scheduler.yml,
+      classpath:config/tenant.yml

@@ -1,0 +1,11 @@
+# 可观测性 / actuator 暴露。
+# 红线：management.* 集中在 observability.yml，禁止在其它片段重复声明 management 顶层键。
+management:
+  endpoints:
+    web:
+      # 仅暴露只读盘点端点。写操作类端点（commands / drain / shutdown / doctor）故意不暴露，且框架 WriteGuard 默认 writeEnabled=false。
+      exposure:
+        include: health,info,agentscope-agents,agentscope-status,agentscope-tools,agentscope-models,agentscope-usage
+  endpoint:
+    health:
+      show-details: when-authorized

@@ -176,7 +176,7 @@
 │  - 智能服务：自适应策略、自我改进、监控                         │
 ├─────────────────────────────────────────────────────────────┤
 │  框架层：AgentScope-Java + yunxi Core                        │
-│  - ChatAppService：对话编排与 Agent 推理执行                   │
+│  - IngressGateway + AgentConfigurer：协议路由与 Agent 运行时装配 │
 │  - MCP Client：工具调用                                      │
 │  - A2A Protocol：Agent 间通信                                │
 ├─────────────────────────────────────────────────────────────┤
@@ -256,10 +256,10 @@ ReAct 循环：
 
 | 文档中的命名 | 真实含义 | 说明 |
 |------|------|------|
-| **aistio**（含 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`、`yunxi.aistio.*` 配置前缀、`io.yunxi.platform.aistio` 适配包） | AgentScope Service 管控面（Control Plane） | aistio 是 AgentScope-Java 生态 **AgentScope Service**（`agentscope-service` 仓库）的部署代号，yunxi 复用其命名，并非自创私有代号。框架官方产品名为 **AgentScope Service**，源码与容器则称 aistio，二者同源 |
+| **aistio**（含 `aistio-control` / `aistio-data` / `aistio-scheduler` / `aistio-gateway`、`yunxi.aistio.*` 配置前缀、`io.yunxi.fabric.aistio` 适配包） | AgentScope Service 管控面（Control Plane） | aistio 是 AgentScope-Java 生态 **AgentScope Service**（`agentscope-service` 仓库）的部署代号，yunxi 复用其命名。框架官方产品名为 **AgentScope Service**，源码与容器则称 aistio，二者同源 |
 | **AgentScope Service** | 框架官方的 Agent 管控 / 治理可视化 / 会话干预平台 | 预览版，官方站点与 aistio 为同一产品 |
 
-> 配置键与包名（如 `yunxi.aistio.*`、`io.yunxi.platform.*`）是代码中的真实命名，与源码保持一致以便对照。完整术语映射见 [06. 配置指南 - aistio 管控面](./06-configuration.md#aistio)。
+> 配置键与包名（如 `yunxi.aistio.*`、`io.yunxi.*`）是代码中的真实命名，与源码保持一致以便对照。完整术语映射见 [06. 配置指南 - aistio 管控面](./06-configuration.md#aistio)。
 
 ### 3. 领域驱动设计 (DDD)
 
@@ -273,7 +273,7 @@ ReAct 循环：
 | **限界上下文** | 领域的边界 | 通过域名划分（营养、食谱等） |
 | **实体 (Entity)** | 有唯一标识的对象 | Agent、Session |
 | **值对象** | 无标识的属性集合 | AgentConfigDto、ChatRequest |
-| **领域服务** | 跨实体的业务逻辑 | ChatAppService、AgentConfigurer |
+| **领域服务** | 跨实体的业务逻辑 | AgentConfigurer、IngressGateway |
 
 **为什么使用 DDD**：
 - 业务逻辑与技术实现分离
@@ -361,7 +361,7 @@ public class MyService {
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   执行编排层 (Execution Layer)                │
-│      AgentExecutionEngine (运行于 agent-core 内)             │
+│      ExecutionFacade 统一执行门面 (运行于 yunxi-runtime 内)      │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
 │  │  拦截器链    │ │  执行策略    │ │  事件适配    │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
@@ -372,15 +372,15 @@ public class MyService {
 ┌─────────────────────────────────────────────────────────────┐
 │                      业务层 (Business Layer)                  │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ agent-app   │ │ agent-muse  │ │ agent-text2sql│           │
-│  │  通用Agent  │ │  MUSE自进化  │ │  SQL生成     │            │
+│  │ yunxi-app   │ │ yunxi-intelligence │ │ yunxi-capability │        │
+│  │  通用Agent  │ │ 意图引擎+MUSE │ │ MCP/技能注册表 │          │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      核心层 (Core Layer)                      │
-│                      agent-core                               │
+│                      yunxi-runtime                               │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
 │  │  领域模型    │ │  场景编排    │ │  上下文管理  │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
@@ -390,8 +390,8 @@ public class MyService {
 ┌─────────────────────────────────────────────────────────────┐
 │                      基础设施层 (Infra Layer)                 │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ agent-spi   │ │agent-config  │ │   sdk-js    │
-│  │  SPI扩展点  │ │  配置管理    │ │  JS SDK     │            │
+│  │ yunxi-definition │ │ yunxi-config │ │     MCP      │
+│  │  契约/SPI   │ │  配置管理    │ │  工具接入    │            │
 │  └─────────────┘ └─────────────┘ └─────────────┘            │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -400,11 +400,11 @@ public class MyService {
 
 | 层级 | 职责 | 主要模块 |
 |------|------|----------|
-| **接入层** | 用户交互界面 | Web、桌面、移动端 |
-| **网关层** | 执行编排、事件适配、拦截器链 | agent-core（AgentExecutionEngine + AgentScope-Java 2.0 Channel） |
-| **业务层** | 业务逻辑实现 | agent-app, agent-muse, agent-text2sql |
-| **核心层** | 框架核心能力 | agent-core |
-| **基础设施层** | 技术实现 | agent-config, agent-spi, sdk-js, MCP |
+| **接入层** | 用户交互界面与 IM 渠道接入 | Web、桌面、移动端；IM 渠道（钉钉/企微/飞书/GitHub/GitLab/微信）经 GatewayBootstrap 接入 |
+| **网关层** | 执行编排、事件适配、拦截器链 | yunxi-runtime（ExecutionFacade 统一执行门面 + 协议无关 Middleware 链） |
+| **业务层** | 业务逻辑实现 | yunxi-app, yunxi-intelligence, yunxi-capability |
+| **核心层** | 框架核心能力 | yunxi-runtime |
+| **基础设施层** | 技术实现 | yunxi-config, yunxi-definition, MCP |
 
 ---
 

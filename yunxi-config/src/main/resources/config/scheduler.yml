@@ -1,0 +1,16 @@
+# 调度能力配置（默认关闭；开启后按 backend 选择触发通道）
+# 连接参数由环境变量占位注入，源码不含凭证。
+yunxi:
+  scheduler:
+    enabled: ${YUNXI_SCHEDULER_ENABLED:false}
+    backend: ${YUNXI_SCHEDULER_BACKEND:harness-quartz}   # harness-quartz | xxl-job
+    store: ${YUNXI_SCHEDULER_STORE:ram}                   # ram | jdbc（jdbc 需先执行 quartz-tables.sql）
+    scheduler-id: ${YUNXI_SCHEDULER_ID:}
+    table-prefix: QRTZ_
+    jdbc-driver: com.mysql.cj.jdbc.Driver
+    jdbc-url: ${MYSQL_JDBC_URL:}
+    jdbc-user: ${MYSQL_USER:}
+    jdbc-password: ${MYSQL_PASSWORD:}
+    xxl-admin-addresses: ${XXL_JOB_ADMIN_ADDRESSES:}
+    xxl-appname: ${XXL_JOB_APPNAME:yunxi-agent-platform}
+    xxl-port: ${XXL_JOB_PORT:9999}

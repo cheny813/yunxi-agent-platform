@@ -12,40 +12,13 @@
 
 ### 分层架构理论
 
-**分层架构**是软件设计中最经典的架构模式之一：
-
-```
-┌─────────────────────────────────────────┐
-│  第 4 层: 应用层                          │
-│  - 业务逻辑                              │
-│  - 用户界面                              │
-├─────────────────────────────────────────┤
-│  第 3 层: 框架层                          │
-│  - 通用能力封装                          │
-│  - 业务编排                              │
-├─────────────────────────────────────────┤
-│  第 2 层: 运行时层                        │
-│  - Agent 执行引擎                        │
-│  - 工具调用                              │
-├─────────────────────────────────────────┤
-│  第 1 层: 基础设施层                      │
-│  - 存储、缓存、网络                       │
-└─────────────────────────────────────────┘
-```
-
-**分层的好处**：
-| 好处 | 说明 |
-|------|------|
-| **关注点分离** | 每层只关注自己的职责 |
-| **易于替换** | 可以替换某层实现而不影响其他层 |
-| **便于测试** | 可以独立测试每层 |
-| **降低复杂度** | 将复杂系统分解为可管理的部分 |
+**分层与职责**：yunxi 的分层边界、各平面职责与运行时关系见 [04. 架构总览](./04-architecture.md) 与 [05. 模块说明](./05-modules.md)；下方仅列出本平台实际依赖的技术栈层次。
 
 ### 本框架的技术栈层次
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  基础设施层: Spring Boot / Redis / MySQL                      │
+│  基础设施层: Spring Boot / Redis /（可选）MySQL                 │
 │  - Web 容器、缓存、数据库                                      │
 ├─────────────────────────────────────────────────────────────┤
 │  模型层: DashScope / OpenAI / OLLAMA (本地)                   │
@@ -70,7 +43,7 @@
 - **JDK**: 17 或更高版本
 - **Maven**: 3.8 或更高版本
 - **Docker Desktop**：用于一键启动数据库、缓存、向量库等基础设施（推荐）
-- **数据库**: MySQL 8.0+ 或 PostgreSQL 14+
+- **数据库（可选）**: 仅当运行 `mcp-nutrition` MCP 服务时需要 MySQL 8.0+（平台运行时数据走 Redis，无需数据库）
 - **缓存**: Redis 6.0+
 - **向量数据库**: Milvus Standalone v2.3.3（知识库/语义检索）
 - **操作系统**: Windows / Linux / macOS
@@ -88,20 +61,20 @@
 
 ### 一键启动基础设施
 
-项目根目录提供了 `docker-compose.yml`，一键拉起所有依赖服务。在 IDE 终端或 Windows PowerShell 中执行：
+基础设施编排位于 `deploy/infra/docker-compose.yml`，一键拉起所有依赖服务。在 Windows PowerShell 中执行：
 
 ```powershell
 # 进入项目根目录
 cd yunxi-agent-platform
 
-# 启动所有基础设施（MySQL + Redis + Milvus + etcd + MinIO + OTel Collector + Jaeger + Attu）
-docker compose up -d
+# 启动所有基础设施（MySQL + Redis + etcd + MinIO + Milvus + Nacos + OTel Collector + Jaeger + Attu，共 9 个）
+docker compose -f deploy/infra/docker-compose.yml up -d
 
 # 确认所有容器就绪
-docker compose ps
+docker compose -f deploy/infra/docker-compose.yml ps
 ```
 
-启动的容器清单（默认 profile，共 8 个）：
+启动的容器清单（共 9 个）：
 
 | 容器名 | 镜像 | 端口 | 说明 |
 |--------|------|------|------|
@@ -110,23 +83,25 @@ docker compose ps
 | yunxi-milvus | milvusdb/milvus:v2.3.3 | 19530 | 向量数据库 |
 | yunxi-milvus-etcd | quay.io/coreos/etcd:v3.5.5 | 2379（内部） | Milvus 元数据协调 |
 | yunxi-milvus-minio | minio/minio | 9000 | Milvus 对象存储 |
+| yunxi-nacos | nacos/nacos-server:v3.2.4 | 8848 / 8080 / 9848 | MCP 注册中心 + 配置热更新 + AI Registry |
 | yunxi-otel-collector | otel/opentelemetry-collector-contrib | 4318 | 链路追踪接收器 |
 | yunxi-jaeger | jaegertracing/all-in-one | 16686（WebUI）/ 4317（gRPC） | 链路追踪可视化 |
 | yunxi-attu | zilliz/attu:v2.3.3 | 8000 | Milvus Web 管理界面 |
 
-> **可选：启用 AgentScope-Service（aistio）管控面**。需要 Agent 管控 / 治理可视化 / 会话干预能力时，追加 `--profile aistio` 一并拉起：
+> **可选：启用 AgentScope-Service（aistio）管控面**。需要 Agent 管控 / 治理可视化 / 会话干预 / 任务接活能力时，单独拉起控制面（不依赖本平台基础设施）：
 > ```powershell
-> docker compose --profile aistio up -d
+> cd deploy/aistio
+> docker compose up -d
 > ```
-> aistio 以 AgentScope-Java 官方 Docker 镜像提供（仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，平面 `as-controlplane` / `as-dataplane` / `as-gateway` / `as-scheduler`）。如需启用，先 `.\scripts\setup-aistio.ps1` 拉取镜像并拉起控制面（详见 [08. 部署指南 · 可选启用 aistio 管控面](./08-deployment.md#aistio) 与 [配置指南](./06-configuration.md#aistio)）。该 profile 包含 5 个额外容器，见下表：
+> aistio 以 AgentScope-Java 官方 Docker 镜像提供（仓库 `sca-registry.cn-hangzhou.cr.aliyuncs.com/agentscope`，平面 `as-controlplane` / `as-dataplane` / `as-gateway` / `as-scheduler`），默认版本 `2.1.0-BETA1`（须与 `yunxi-fabric` 客户端 API 版本一致）。编排脚本与说明见 `deploy/aistio/`（详见 [08. 部署指南 · aistio 控制面本地编排](./08-deployment.md#aistio) 与 [配置指南](./06-configuration.md#aistio)）。该编排包含 5 个容器，见下表：
 
 | 容器名 | 镜像/构建 | 端口 | 说明 |
 |--------|----------|------|------|
-| yunxi-aistio-db | postgres:17（官方镜像） | 5432 | aistio 元数据库（builder/builder） |
-| yunxi-aistio-control | as-controlplane（官方镜像） | 8081（内部） | 控制面 |
-| yunxi-aistio-data | as-dataplane（官方镜像） | 8082（内部） | 数据面 |
-| yunxi-aistio-scheduler | as-scheduler（官方镜像） | 8083（内部） | 调度面 |
-| yunxi-aistio-gateway | as-gateway（官方镜像） | 18080（对外） | 网关（对外发布到主机 18080，避开 Nacos 控制台 8080） |
+| aistio-db | postgres:17（官方镜像） | 不映射（仅容器内网） | aistio 元数据库（builder/builder） |
+| aistio-control | as-controlplane（官方镜像） | 18081（对外） | 控制面（yunxi `yunxi.aistio.control-plane-url=http://localhost:18081`） |
+| aistio-data | as-dataplane（官方镜像） | 18082（对外） | 数据面 |
+| aistio-scheduler | as-scheduler（官方镜像） | 18083（对外） | 调度面 |
+| aistio-gateway | as-gateway（官方镜像） | 18090（对外） | 网关（对外发布到主机 18090，避开常见 8080 占用） |
 
 首次启动约 30-60 秒。Ollama 向量嵌入需在宿主机单独安装：
 
@@ -138,13 +113,13 @@ ollama pull bge-m3
 关闭所有服务：
 
 ```powershell
-docker compose down          # 停止但保留数据
-docker compose down -v       # 停止并清除所有数据（彻底重置）
+docker compose -f deploy/infra/docker-compose.yml down          # 停止但保留数据
+docker compose -f deploy/infra/docker-compose.yml down -v       # 停止并清除所有数据（彻底重置）
 ```
 
-> **`docker compose up -d` 不含 5 个内置 MCP 服务**：它们来自配套项目 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers)，是独立 Java 进程（端口 40101 / 40102 / 40103 / 40602 / 40601）。`mcp-core.yml` 中 `database` / `redis` / `milvus` / `nutrition` / `formfill` 默认 `enabled: true`，外部进程未就绪时平台会连接超时。需要这些 MCP 工具时，运行 `scripts/start-stack.ps1` 一键拉起（详见 [仓库 README · 启动内置 MCP 外部服务](../../README.md)）；暂不需要也可把对应 `enabled` 设为 `false` 先跑平台。
+> **`docker compose up -d` 不含 MCP 服务**：它们来自配套项目 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers)，是独立 Java 进程。平台在 `yunxi-config/src/main/resources/config/mcp.yml` 按名声明，当前仅声明两个且均默认关闭：`nutrition-mcp`（端口 40602）与 `text2sql-mcp`（端口 40110）。需要对应工具时，先按 [yunxi-mcp-servers 仓库说明](https://gitcode.com/chenyao813/yunxi-mcp-servers) 拉起 Java 进程，再把该条目改为 `enabled: true`（详见 [仓库 README · MCP 服务（可选）](../../README.md)）；不启用时平台正常启动，仅相关工具不可用。
 >
-> **关闭这些服务**：`start-stack.ps1` 把 5 个 MCP 以隐藏窗口的 java 进程后台启动、aistio 以 Docker 容器运行，可用配套的 `scripts/stop-stack.ps1` 一键关闭（`.\scripts\stop-stack.ps1`，或用 `-IncludeYunxi` 连 yunxi 平台一并关闭）。MCP 日志在 `logs/mcp/<服务名>.out.log`，aistio 日志用 `docker compose --profile aistio logs -f`。详见 [仓库 README · 关闭外部依赖栈](../../README.md)。
+> **关闭这些服务**：MCP 为独立 Java 进程，按需停止对应进程即可（aistio 控制面不在此范围内，需在 `deploy/aistio` 单独用 `docker compose down` 关闭）；aistio 日志用 `cd deploy/aistio && docker compose logs -f`。详见 [仓库 README · MCP 服务（可选）](../../README.md)。
 
 ### 检查环境
 
@@ -241,9 +216,13 @@ export OLLAMA_EMBEDDING_MODEL=bge-m3
 - 不同环境不同配置
 - 便于容器化部署
 
-### 2. 初始化数据库
+### 2. 初始化数据库（仅可选 MCP 服务需要）
 
-yunxi 以 MyBatis 作为持久层框架（并非 JPA/Hibernate），数据库表结构不依赖 JPA/Hibernate 的 DDL Auto 自动创建；首次运行请按 [06. 配置](./06-configuration.md) 中的数据库初始化说明建表。
+> **yunxi 平台本身不连接 MySQL**：会话状态、跨实例锁等运行时数据走 Redis（由 `yunxi-config/src/main/resources/config/redis.yml` 以 `spring.data.redis` 前缀配置），无需任何数据库表结构即可启动并对话（轨迹存储仅有内存实现，见 [14. 可观测](./14-observability.md)）。
+> `deploy/infra` 编排中的 MySQL 容器仅服务于**可选的** `mcp-nutrition` MCP 服务（配套项目 `yunxi-mcp-servers` 的独立 Java 进程），库名 `yunxi_nutrition`。
+
+- **仅当启用 mcp-nutrition 时**：执行 `deploy/infra/init/nutrition-schema.sql` 初始化脚本（建 `yunxi_nutrition` 库及菜品 / 食材 / 营养素表，与平台运行时无关）；MySQL 容器已在 `docker compose up -d` 时自动挂载该脚本完成初始化。
+- **不运行 mcp-nutrition 时**：跳过本步骤，平台照常工作。
 
 ---
 
@@ -251,23 +230,23 @@ yunxi 以 MyBatis 作为持久层框架（并非 JPA/Hibernate），数据库表
 
 ### 启动顺序
 
-yunxi Agent Platform 已整合为单体服务（agent-app），一键启动即可：
+yunxi Agent Platform 已整合为单体服务（yunxi-app），一键启动即可：
 
 ```bash
-# 启动 agent-app（整合所有模块，端口 40001）
-mvn spring-boot:run -pl agent-app
+# 启动 yunxi-app（整合所有模块，端口 40001）
+mvn spring-boot:run -pl yunxi-app
 ```
 
 ### 方式二：脚本启动（Windows PowerShell）
 
 ```powershell
-# 推荐：使用统一启动脚本（自动打包并启动 agent-app，端口 40001）
-.\启动项目.ps1
+# 推荐：使用统一启动脚本（自动打包并启动 yunxi-app，端口 40001）
+.\start-yunxi.ps1
 
 # 可选参数：
-.\启动项目.ps1 -Fast     # 快速启动（已打包时使用，跳过打包步骤）
-.\启动项目.ps1 -Maven    # Maven spring-boot:run 模式（支持热重载）
-.\启动项目.ps1 -Clean    # 清理并重新打包启动
+.\start-yunxi.ps1 -Fast     # 快速启动（已打包时使用，跳过打包步骤）
+.\start-yunxi.ps1 -Web      # 一并拉起前端 dev server（http://localhost:5173）
+.\start-yunxi.ps1 -Port 8080 # 自定义后端端口
 ```
 
 ---
@@ -295,17 +274,28 @@ curl http://localhost:40001/actuator/prometheus
 ### 通过 Web API 发送消息
 
 ```bash
-# 同步模式：一次性返回完整回复
-curl -X POST http://localhost:40001/api/conversations/chat \
+# 同步模式：POST /api/conversations，一次性返回完整回复
+curl -X POST http://localhost:40001/api/conversations \
   -H "Content-Type: application/json" \
   -d '{
-    "agentName": "general-assistant",
-    "message": "你好",
-    "mode": "sync"
+    "agentId": "example-assistant",
+    "userId": "u-001",
+    "sessionId": "s-001",
+    "text": "你好"
+  }'
+
+# 流式模式：POST /api/conversations/stream，以 SSE 透传 AgentScope-Java 事件流
+curl -X POST http://localhost:40001/api/conversations/stream \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "example-assistant",
+    "userId": "u-001",
+    "sessionId": "s-001",
+    "text": "你好"
   }'
 ```
 
-> 说明：`message` 与 `agentName` 均为必填字段（示例使用 `general-assistant`，可换成任意已配置的 Agent 名）；`mode` 默认 `stream`（SSE 流式输出），设为 `sync` 则等待完整回复后一次性返回。
+> 请求体为 `ConversationRequest`：`agentId` 与 `text` 为必填字段（`agentId` 可换成 `yunxi-config/src/main/resources/agent-definitions/` 下任一已加载 Agent 的 `identity.agentId`，如 `example-assistant`）；`userId` / `sessionId` 建议填写以打通身份与多轮会话；`protocol` 默认 `web`（web / a2a / agui / chat-completions 四协议共用同一请求类型）。同步用 `/api/conversations`，流式用 `/api/conversations/stream`，由端点而非 `mode` 字段决定。
 
 ### 请求处理流程
 
@@ -314,26 +304,22 @@ curl -X POST http://localhost:40001/api/conversations/chat \
     │
     ▼
 ┌─────────────────────────────────────────┐
-│ Agent App (端口 40001)                    │  ← yunxi 统一入口
-│ - WebSocket · SSE · 飞书 · 钉钉 · 企业微信 │
+│ yunxi-app (端口 40001)                    │  ← yunxi 统一入口进程
+│  web / A2A / AG-UI / Chat Completions：ConversationController + IngressGateway │
+│  IM 渠道（钉钉/企微/飞书/GitHub/GitLab/微信 iLink/ChatUi）：GatewayBootstrap→框架 HarnessGateway │
 └─────────────────────────────────────────┘
     │
-    ▼
+    ▼  （两条入口路径最终都收敛到框架 HarnessAgent）
 ┌─────────────────────────────────────────┐
-│ ChatAppService                            │  ← yunxi 编排层
-│ - 场景路由、推理、工具调用                  │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ MCP Server (如 mcp-nutrition 端口 40602)  │  ← MCP 工具层
-│ - 数据库查询、文件操作等                  │
+│ HarnessAgent（AgentScope-Java 运行时）     │  ← 协议终结后经 AgentConfigurer 装配的推理型 Agent
+│  · AgentScope-Java 负责 LLM 交互与工具调用  │
+│  · MCP 工具经框架 McpClientBuilder 注册进 Toolkit（如 mcp-nutrition 端口 40602） │
 └─────────────────────────────────────────┘
 ```
 
 **关键点**：
-- 你的 Agent 业务逻辑通过 `agent-config/src/main/resources/agent-definitions/` 下的 YAML 配置文件定义（角色提示词、工具、MCP 服务器等），由 `AgentConfigurer` 在启动时装配为 Harness Agent
-- yunxi 负责路由、编排（`ProfileRouter` 按用户档案分配 Agent；`ChatAppService` 管理对话生命周期）
+- 你的 Agent 业务逻辑通过 `yunxi-config/src/main/resources/agent-definitions/` 下的 YAML 配置文件定义（角色提示词、工具、MCP 服务器等），由 `AgentProvisioner` 在启动期经 `AgentConfigurer.configure(AgentSpec)` 装配为 HarnessAgent 并注册进框架协议层
+- yunxi 负责协议路由与编排：web 协议经 `IngressGateway` 翻译为协议无关的 `ConversationRequest` 并路由到运行时；IM 渠道（钉钉/企微/飞书/GitHub/GitLab/微信 iLink）/ 编程式 ChatUi 则经 `GatewayBootstrap` 接入框架 `HarnessGateway`（详见 [16.8 IM 渠道网关](./16-ingress-gateway.md)）；两条路径最终都收敛到框架 `HarnessAgent`。身份、鉴权、追踪等横切关切由运行时协议无关 Middleware 链统一承载，对所有协议生效
 - AgentScope-Java 负责实际的 LLM 交互和工具调用
 
 ---
@@ -349,7 +335,7 @@ curl -X POST http://localhost:40001/api/conversations/chat \
 
 **Q: 启动失败，提示端口被占用？**
 
-A: 修改对应模块的 `application.yml` 中的 `server.port`。
+A: 修改 `yunxi-config/src/main/resources/config/server.yml` 中的 `server.port`（统一配置中心，非各模块 `application.yml`）。
 
 **Q: 数据库连接失败？**
 

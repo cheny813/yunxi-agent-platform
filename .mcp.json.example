@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "repowise-yunxi": {
+      "command": "repowise",
+      "args": [
+        "mcp",
+        ".",
+        "--tools",
+        "get_context,get_symbol,search_codebase,get_risk,get_change_risk,get_why,get_overview,get_health,get_dead_code"
+      ]
+    },
+    "repowise-framework": {
+      "command": "repowise",
+      "args": [
+        "mcp",
+        "../agentscope-java-2.0GA",
+        "--tools",
+        "get_context,get_symbol,search_codebase,get_risk,get_change_risk,get_why,get_overview,get_health,get_dead_code"
+      ]
+    }
+  }
+}

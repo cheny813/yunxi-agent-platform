@@ -1,0 +1,5 @@
+# 平台访问口令。user-password 必须显式设置；此处不提供默认值，避免携带默认口令上线。
+# 生产部署前通过 yunxi.security.user-password 或环境变量 YUNXI_SECURITY_USER_PASSWORD 设置（留空平台拒绝启动）。
+yunxi:
+  security:
+    user-name: admin

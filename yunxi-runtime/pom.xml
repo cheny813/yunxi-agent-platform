@@ -1,0 +1,123 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.yunxi</groupId>
+        <artifactId>yunxi-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>yunxi-runtime</artifactId>
+    <name>yunxi-runtime</name>
+    <description>
+        唯一装配点（AgentConfigurer）、统一执行门面与运行时上下文富化；
+        统一执行门面（ExecutionFacade）、每调用运行时上下文富化与主备模型提供器。
+        它是平台的心脏：其余所有平面要么向它供给数据，要么消费它。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-definition</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-config</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-observability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-capability</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <!-- 身份归一：ProtocolUserIdResolver 解析认证主体 / 请求头为 userId，四协议共用单一真相源。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-harness</artifactId>
+        </dependency>
+        <!-- 定义加载：classpath:agent-definitions/**/*.yml 反序列化为 AgentDefinition（含编排门禁校验）。 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <!-- 可观测：链路追踪埋点（OTel span 上下文 + 指标），复用 AgentScope-Java 同版本，避免双份链路真相。 -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-context</artifactId>
+        </dependency>
+        <!-- 韧性：熔断 / 限流，复用 resilience4j 原语，避免自研同义实现。 -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-circuitbreaker</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-ratelimiter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 真实大模型联调验证（默认禁用，仅 -Dreal.llm=true 时激活）：用 AgentScope-Java 原生
+             DashScope provider 驱动一次真实 call，确认 yunxi 装配 + 真实模型链路端到端可行。
+             key 仅从 DASHSCOPE_API_KEY 环境变量读取，不进入任何源码/配置文件。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-model-dashscope</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- RAG 向量后端（store-type=milvus 时启用）：稠密向量语义检索，复用「高级 RAG」思路。
+             默认 store-type=inmemory，不引入该依赖到主链路；仅向量后端装配条件化生效。 -->
+        <dependency>
+            <groupId>io.milvus</groupId>
+            <artifactId>milvus-sdk-java</artifactId>
+        </dependency>
+
+        <!-- 技能仓库外部后端：复用框架原生 AgentSkillRepository 扩展（JdbcAgentSkillRepository /
+             GitSkillRepository），不新建 yunxi 平行抽象。版本与 agentscope.version 严格对齐，
+             避免与框架 core/harness API 产生错配。 -->
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-jdbc</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.agentscope</groupId>
+            <artifactId>agentscope-extensions-skill-git-repository</artifactId>
+            <version>${agentscope.version}</version>
+        </dependency>
+        <!-- JDBC 技能后端数据源与驱动（复用调度 MySQL）：HikariCP 提供 DataSource 实现，MySQL 驱动运行时加载。
+             spring-jdbc（JdbcTemplate）由 agentscope-core 经 Spring Boot 传递引入。 -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+</project>

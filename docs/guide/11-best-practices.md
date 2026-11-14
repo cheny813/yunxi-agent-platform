@@ -1,71 +1,8 @@
 # 11. 最佳实践
 
-## 软件工程原则
-
-### SOLID 原则回顾
-
-**SOLID** 是面向对象设计的五大原则：
-
-| 原则 | 全称 | 核心思想 | 在本框架中的体现 |
-|------|------|----------|-----------------|
-| **S** | Single Responsibility | 单一职责 | 每个 Service 只负责一件事 |
-| **O** | Open/Closed | 开闭原则 | 通过 SPI 扩展，不修改框架 |
-| **L** | Liskov Substitution | 里氏替换 | 接口实现可互换 |
-| **I** | Interface Segregation | 接口隔离 | 细粒度 SPI 接口 |
-| **D** | Dependency Inversion | 依赖倒置 | 依赖接口而非实现 |
-
-### 其他重要原则
-
-#### DRY（Don't Repeat Yourself）
-
-**核心思想**：不要重复自己
-
-**实践方式**：
-```java
-// 不好的做法 - 重复代码
-public void method1() {
-    // 相同的 10 行代码
-}
-
-public void method2() {
-    // 相同的 10 行代码
-}
-
-// 好的做法 - 提取公共方法
-private void commonLogic() {
-    // 公共的 10 行代码
-}
-
-public void method1() {
-    commonLogic();
-}
-
-public void method2() {
-    commonLogic();
-}
-```
-
-#### KISS（Keep It Simple, Stupid）
-
-**核心思想**：保持简单
-
-**实践方式**：
-- 避免过度设计
-- 优先使用简单方案
-- 代码应该易于理解
-
-#### YAGNI（You Aren't Gonna Need It）
-
-**核心思想**：你不会需要它
-
-**实践方式**：
-- 不要实现当前不需要的功能
-- 避免预测未来需求
-- 需要时再添加
-
----
-
 ## Agent 设计原则
+
+> 平台遵循通用软件工程原则（单一职责、开闭、依赖倒置、DRY、KISS、YAGNI）。下文聚焦与 yunxi 平台落地直接相关的设计实践。
 
 ### 1. 单一职责
 
@@ -104,13 +41,12 @@ Agent 应该是无状态的，依赖外部存储保存状态。
 public class MyAgent {
     
     @Autowired
-    private ChatAppService chatAppService; // 外部存储
-    
-    public AgentResponse handleRequest(AgentRequest request) {
-        // 从外部存储获取状态
-        Conversation conv = chatAppService.getConversation(request.getSessionId());
+    private ExecutionFacade executionFacade; // 对话执行（无状态门面）
+
+    public AgentResponse handleRequest(AgentCommand command) {
+        // 不保存任何实例变量状态；每次调用经 ExecutionFacade 驱动 agent.streamEvents
+        Flux<AgentEvent> events = executionFacade.execute(command);
         // 处理请求...
-        // 不保存任何实例变量状态
     }
 }
 ```
@@ -126,35 +62,7 @@ public class MyAgent {
 
 ## 提示词工程
 
-### 提示词工程理论基础
-
-**什么是提示词工程**：
-- 设计和优化给 LLM 的输入（Prompt）
-- 影响 LLM 输出的质量和准确性
-- 是开发 AI 应用的核心技能
-
-**提示词的基本结构**：
-```
-┌─────────────────────────────────────────┐
-│  角色定义 (Role)                         │
-│  "你是..."                               │
-├─────────────────────────────────────────┤
-│  任务描述 (Task)                         │
-│  "你的任务是..."                          │
-├─────────────────────────────────────────┤
-│  输入格式 (Input)                        │
-│  "用户会提供..."                          │
-├─────────────────────────────────────────┤
-│  输出格式 (Output)                       │
-│  "请以...格式输出"                        │
-├─────────────────────────────────────────┤
-│  约束条件 (Constraints)                  │
-│  "注意..."                               │
-├─────────────────────────────────────────┤
-│  示例 (Examples)                         │
-│  "例如：..."                             │
-└─────────────────────────────────────────┘
-```
+### 提示词工程
 
 ### 1. 清晰的指令
 
@@ -171,9 +79,7 @@ String prompt = """
     """;
 ```
 
-### 2. 少样本学习（Few-Shot Learning）
-
-**理论基础**：通过示例让 LLM 学习模式
+### 2. 少样本学习（Few-Shot）
 
 ```java
 String prompt = """
@@ -193,14 +99,7 @@ String prompt = """
     """;
 ```
 
-**少样本学习的优势**：
-- 不需要微调模型
-- 快速适应新任务
-- 成本低，效果好
-
 ### 3. 思维链（Chain of Thought）
-
-**理论基础**：让 LLM 展示推理过程
 
 ```java
 String prompt = """
@@ -222,69 +121,19 @@ String prompt = """
 
 ## 记忆管理
 
-### 记忆类型理论
-
-**人类记忆的类比**：
-| 类型 | 人类记忆 | AI 系统 | 存储方式 |
-|------|----------|---------|----------|
-| **感觉记忆** | 感官输入 | 原始输入 | 临时变量 |
-| **短期记忆** | 工作记忆 | 上下文 | 内存/Redis |
-| **长期记忆** | 永久存储 | 知识库 | 向量数据库 |
-
 ### 1. 短期记忆
 
-```java
-// 使用会话级别的上下文
-context.put("lastQuery", userQuery);
-```
-
-**适用场景**：
-- 当前对话的上下文
-- 临时计算结果
-- 会话状态
+对话上下文由 AgentScope-Java 的会话状态（`AgentStateStore`）承载，按 `userId + sessionId` 持久化，平台支持进程内 / Redis / MySQL / PostgreSQL 等后端（见 [06. 配置指南 · 语义与状态](./06-configuration.md#语义与状态)）。
 
 ### 2. 长期记忆
 
-```java
-// 使用向量数据库存储
-@Autowired
-private VectorSearchProvider vectorSearch;
+跨会话长期记忆直接复用框架原生 `MEMORY.md`（`agentscope-harness` 的 `MemoryFlushMiddleware` / `MemoryMaintenanceMiddleware` + 内置 `memory_search` / `memory_get` 工具），yunxi 不自建跨会话记忆存储，避免双份真相（保持产品平面纯净，不重复实现框架已有能力）。阈值与刷新策略由 `yunxi.memory.*` 经 `MemoryProperties` 配置，记忆文件落工作区文件系统。
 
-public void remember(String userId, String content) {
-    float[] embedding = embeddingService.embed(content);
-    vectorSearch.save(userId, embedding, content);
-}
-```
-
-**向量数据库原理**：
-```
-┌─────────────────────────────────────────┐
-│  向量数据库工作原理                       │
-├─────────────────────────────────────────┤
-│                                         │
-│  文本 ──→ Embedding 模型 ──→ 向量       │
-│                              [0.1,      │
-│                               0.3,      │
-│                               ...]      │
-│                                         │
-│  相似度搜索：                             │
-│  查询向量 ──→ 计算余弦相似度 ──→ 最相似文本 │
-│                                         │
-└─────────────────────────────────────────┘
-```
+RAG 文档分块存储已迁移到框架共享存储抽象（`BaseStore`）：分布式部署走框架 Redis 实现，单机走 yunxi 内存实现，共用同一抽象使 RAG 检索平面在任意部署形态下可存续，不引入第二份分块存储真相源；检索为轻量「关键词命中率 × 时间衰减」融合打分，见 `yunxi-runtime/rag/SharedStoreBackedDocumentChunkStore`。
 
 ---
 
 ## 安全合规
-
-### 安全理论基础
-
-**安全三要素（CIA）**：
-| 要素 | 说明 | 实践 |
-|------|------|------|
-| **机密性** | 信息不被未授权访问 | 加密、权限控制 |
-| **完整性** | 信息不被篡改 | 校验、签名 |
-| **可用性** | 系统持续可用 | 冗余、限流 |
 
 ### 1. 输入校验
 
@@ -325,32 +174,7 @@ public String maskPhone(String phone) {
 
 ## 性能优化
 
-### 性能优化理论
-
-**性能优化的层次**：
-```
-┌─────────────────────────────────────────┐
-│  算法优化                                │
-│  - 时间复杂度 O(n) → O(log n)           │
-├─────────────────────────────────────────┤
-│  架构优化                                │
-│  - 缓存、异步、并行                       │
-├─────────────────────────────────────────┤
-│  代码优化                                │
-│  - 减少对象创建、避免重复计算              │
-├─────────────────────────────────────────┤
-│  系统优化                                │
-│  - JVM 调优、数据库索引                   │
-└─────────────────────────────────────────┘
-```
-
 ### 1. 缓存使用
-
-**缓存理论**：
-- **缓存命中率**：命中次数 / 总请求次数
-- **缓存穿透**：查询不存在的数据
-- **缓存击穿**：热点数据过期
-- **缓存雪崩**：大量缓存同时过期
 
 ```java
 @Cacheable(value = "agent-response", key = "#userId + ':' + #message")
@@ -360,11 +184,6 @@ public String getResponse(String userId, String message) {
 ```
 
 ### 2. 异步处理
-
-**异步的优势**：
-- 不阻塞主线程
-- 提高系统吞吐量
-- 改善用户体验
 
 ```java
 @Async
@@ -414,7 +233,7 @@ log.info("操作耗时: {}ms", duration);
 
 ## 底层框架适配
 
-本平台基于 **AgentScope-Java**（阿里巴巴开源，2.0.4 正式版），在实际使用中遇到了一些底层框架的设计限制。
+本平台基于 **AgentScope-Java**（阿里巴巴开源，2.1.0-BETA1），在实际使用中遇到了一些底层框架的设计限制。
 
 ### 1. 工具组管理（理解框架内置工具与应用层工具的分组边界）
 
@@ -486,11 +305,21 @@ List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "
 | 框架内置工具（memory_search、agent_spawn 等） | 未分组，始终活跃 | 不受 `updateToolGroups()` 影响 |
 | 应用层工具（Supervisor 的子 Agent、MCP 工具等） | 通过 `registration().group()` 归组 | 受 `updateToolGroups()` 管控 |
 
+#### 按需摘除框架默认工具（而非重新实现）
+
+上述"未分组、始终活跃"的内置工具里，**`read_file` / `write_file` / `list_files` / `grep_files` / `glob_files` / `execute`** 属于 AgentScope-Java 默认工作区工具集，每个 Agent 构建时自动装备。它们**不在** `updateToolGroups()` 的 6 个已知组里，因此工具组开关无法关闭它们——这正是早期"反射 hack 强行归组"被废弃的原因。
+
+> `load_skill_through_path` 是技能查看器工具，只在 Agent 配置了技能仓库（AgentSkillRepository，如 MUSE 自进化挂载的元工具）时才由框架注册。只有「明确不让该 Agent 加载技能」时才 deny 它，否则会破坏需要技能的 Agent 的技能加载。
+
+如果某个业务 Agent 确实不需要文件 / 代码执行能力（如营养师），**正确做法**是在 Agent 定义 YAML 中声明 `toolkit.deniedToolNames`（见 [06. 配置指南 · 工具箱裁剪](./06-configuration.md#工具箱裁剪按-agent-摘除框架默认工具)），由 `AgentConfigurer` 翻译为框架 `ToolsConfig.deny`，于 `HarnessAgent` 构建期从工具箱移除。
+
+> 需要文件能力时，不声明 `toolkit` 字段（保留框架默认）即可，不要新增等价工具。
+
 #### 涉及的文件
 
 | 文件 | 说明 |
 |------|------|
-| `agent-core/.../agent/AgentConfigurer.java` | `applyToolGroupActivation()` 只操作已知的 6 个应用层工具组 |
+| `yunxi-runtime/.../agent/AgentConfigurer.java` | `applyToolGroupActivation()` 只操作已知的 6 个应用层工具组 |
 
 ---
 
@@ -502,23 +331,27 @@ List<String> knownGroups = List.of("agent", "memory", "filesystem", "execute", "
 
 #### 解决方案
 
-通过框架原生的 `Toolkit.registration()` API 在每个 Agent 的 `Toolkit` 中按 MCP 服务器名独立分组注册（`AgentConfigurer.registerMcpServers()`，使用 `McpClientWrapper` 连接外部 MCP 服务器）：
+通过框架原生的 `Toolkit.registration()` API 在每个 Agent 的 `Toolkit` 中按 MCP 服务器名独立分组注册（由 `AgentConfigurer` 经 `McpDirectory` 使用框架原生 `McpClientBuilder` 连接外部 MCP 服务器）：
 
 ```java
 toolkit.registration()
-    .mcpClient(wrapper)   // McpClientWrapper：AgentScope MCP SDK 客户端
+    .mcpClient(wrapper)   // McpClientBuilder：AgentScope MCP SDK 客户端
     .group(serverName)    // 按 MCP 服务器名分组
     .apply();
 ```
 
-然后在 Agent YAML 配置中按需激活（`applyToolGroupActivation()` 收集 `toolsGroup.systemToolsGroup` 与 `toolsGroup.mcpServersToolsGroup`，未配置时默认激活 `memory` 组）：
+然后在 Agent YAML 配置中按需激活（工具组激活由 `SessionToolGroupActivationMiddleware` 承载，按 `permission.toolGate.tools` 与 `toolkit.deniedToolNames` 控制可见工具，未配置时默认激活 `memory` 组）：
 
 ```yaml
-tools:
-  mcpServers: [database]              # 加载并激活 database 服务器
-toolsGroup:
-  systemToolsGroup: [agent, memory]   # 系统内置工具组
-  mcpServersToolsGroup: [database]    # 显式激活的 MCP 工具组
+mcp:
+  servers: [database]                # 订阅 mcp.yml 中同名 static-server，加载并激活 database 服务器
+permission:
+  toolGate:
+    enabled: false
+    tools: []                         # 如需限制可见工具组，在此声明允许的 MCP 服务器名 / 工具组
+    message: ""
+toolkit:
+  deniedToolNames: []                # 显式拒绝的工具名
 ```
 
 ---
@@ -555,4 +388,4 @@ private Toolkit resolveAgentToolkit(Agent agent) {
 ---
 
 **上一页**: [10. 技能系统](./10-skills.md)  
-**下一页**: [12. 常见问题 →](./12-faq.md)
+**下一页**: [常见问题 →](./faq.md)

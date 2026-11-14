@@ -1,0 +1,75 @@
+# ============================================================
+# 渠道配置（应用平面 · 收敛到 HarnessGateway）
+# ============================================================
+# 通过 ChannelManager 接入 AgentScope-Java 原生 DingTalkChannel / WeComChannel / FeishuChannel / GitHubChannel / GitLabChannel（统一 HarnessGateway 入口）。
+# ChatUiChannel 为编程式渠道（进程内、无 HTTP 端点），经 ChannelManager 注册后供 yunxi 内部 Java 代码 / 集成测试直接调用。
+# IM 渠道默认全部关闭；凭据经环境变量注入，不进仓库。
+# 钉钉：机器人配了「加密」时 aesKey 必填；mode=http 且未加密可留空。
+# 飞书：配了 encrypt-key 即开启回调体加密（X-Lark-Signature 验签），verification-token 用于 URL 校验握手与事件鉴权。
+# chatui：默认开启；不对外暴露任何 URL，故不构成第二套 web 对话入口（浏览器 5173 仍走 yunxi 既有 ingress / AG-UI）。
+yunxi:
+  im:
+    default-agent-id: example-assistant
+    dingtalk:
+      enabled: false
+      channel-id: dingtalk
+      app-key: ${YUNXI_IM_DINGTALK_APP_KEY:}
+      app-secret: ${YUNXI_IM_DINGTALK_APP_SECRET:}
+      robot-code: ${YUNXI_IM_DINGTALK_ROBOT_CODE:}
+      mode: http
+      aes-key: ${YUNXI_IM_DINGTALK_AES_KEY:}
+    wecom:
+      enabled: false
+      channel-id: wecom
+      corpid: ${YUNXI_IM_WECOM_CORPID:}
+      corpsecret: ${YUNXI_IM_WECOM_CORPSECRET:}
+      agentid: ${YUNXI_IM_WECOM_AGENTID:}
+      token: ${YUNXI_IM_WECOM_TOKEN:}
+      aes-key: ${YUNXI_IM_WECOM_AES_KEY:}
+    feishu:
+      enabled: false
+      channel-id: feishu
+      app-id: ${YUNXI_IM_FEISHU_APP_ID:}
+      app-secret: ${YUNXI_IM_FEISHU_APP_SECRET:}
+      encrypt-key: ${YUNXI_IM_FEISHU_ENCRYPT_KEY:}
+      verification-token: ${YUNXI_IM_FEISHU_VERIFICATION_TOKEN:}
+    # ChatUi 为编程式渠道（进程内、无 HTTP 端点），经 ChannelManager 注册进 HarnessGateway。
+    # 供 yunxi 内部 Java 代码 / 集成测试以 ChatUiChannel.send(...) 直接驱动 Agent；不绑定任何 URL，
+    # 故不构成第二套 web 对话入口（浏览器 5173 演示端口 仍走 yunxi 既有 web ingress / AG-UI 协议）。
+    chatui:
+      enabled: true
+    # GitHub 渠道：代码托管平台 Issue / PR 机器人（非传统 IM）。经 ChannelManager 接入 AgentScope-Java 原生
+    # GitHubChannel，框架 GitHubWebhookController 提供 webhook 端点。token 与 webhookSecret 必填；
+    # apiBase 默认 https://api.github.com，botUserLogin 留空时启动期联网解析 bot 身份（best-effort，失败仅告警）。
+    github:
+      enabled: false
+      channel-id: github
+      token: ${YUNXI_IM_GITHUB_TOKEN:}
+      webhook-secret: ${YUNXI_IM_GITHUB_WEBHOOK_SECRET:}
+      api-base: ${YUNXI_IM_GITHUB_API_BASE:https://api.github.com}
+      webhook-path: ${YUNXI_IM_GITHUB_WEBHOOK_PATH:}
+      bot-user-login: ${YUNXI_IM_GITHUB_BOT_LOGIN:}
+    # GitLab 渠道：代码托管平台 Issue / MR 机器人（非传统 IM）。经 ChannelManager 接入 AgentScope-Java 原生
+    # GitLabChannel，框架 GitLabWebhookController 提供 webhook 端点（X-Gitlab-Token 头比对验签）。
+    # token 与 webhookToken 必填；apiBase 默认 https://gitlab.com/api/v4，bot 身份由 token 启动期联网
+    # 解析（best-effort，失败仅告警），无 botUserLogin 概念故不暴露该字段。
+    gitlab:
+      enabled: false
+      channel-id: gitlab
+      token: ${YUNXI_IM_GITLAB_TOKEN:}
+      webhook-token: ${YUNXI_IM_GITLAB_WEBHOOK_TOKEN:}
+      api-base: ${YUNXI_IM_GITLAB_API_BASE:https://gitlab.com/api/v4}
+    # 微信（iLink）渠道：微信个人号 / 公众号 iLink 长轮询机器人（非传统 IM、非 Webhook 回调）。
+    # 经 ChannelManager 接入 AgentScope-Java 原生 WeixinChannel，长轮询 iLink 服务端拉取消息（无 HTTP 入站端点，
+    # 故 SecurityConfig 无需放行任何 /api/channels/weixin/* 路径）。凭据为 iLink botToken（固定凭据，非扫码登录），
+    # 经 WeixinCredentialProvider.fixed 注入。状态持久化由 WeixinStateStore 负责：默认 inmemory（重启丢状态），
+    # 设 yunxi.im.weixin.state-store=redis 启用 yunxi 自实现 RedisWeixinStateStore（复用平台全局 Redis，重启可恢复
+    # cursor / lease / inbox / context token）。Weixin 默认关闭不触达执行路径。
+    weixin:
+      enabled: false
+      channel-id: weixin
+      account-id: ${YUNXI_IM_WEIXIN_ACCOUNT_ID:weixin}
+      bot-token: ${YUNXI_IM_WEIXIN_BOT_TOKEN:}
+      base-url: ${YUNXI_IM_WEIXIN_BASE_URL:https://ilinkai.weixin.qq.com}
+      ilink-user-id: ${YUNXI_IM_WEIXIN_ILINK_USER_ID:}
+      state-store: ${YUNXI_IM_WEIXIN_STATE_STORE:inmemory}

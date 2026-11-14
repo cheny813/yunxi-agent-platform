@@ -27,23 +27,23 @@
 └── 11. 最佳实践      → 设计原则与优化建议
 
 第四阶段：精通（可选，约1.5小时）
-├── 12. 常见问题      → FAQ 与故障排查（按需查阅）
-├── 13. 智能系统      → 自适应策略、自我改进
-├── 14. A2A 协议      → 跨服务 Agent 协作
-├── 15. 可观测性      → 追踪、指标与日志
-├── 16. 意图引擎      → 意图识别、实体抽取、Agent 路由
-├── 17. 统一 JSON 编解码机制 → Redis 值编解码与开发约束
-├── 18. 统一入口网关  → 网关分层、职责边界与多协议
-└── 19. 统一执行引擎  → 调用编排、协议边界与阶段状态
+├── 12. 智能系统      → 自适应策略、自我改进
+├── 13. A2A 协议      → 跨服务 Agent 协作
+├── 14. 可观测性      → 追踪、指标与日志
+├── 15. 意图引擎      → 意图识别、实体抽取、Agent 路由
+├── 16. 统一入口网关  → 网关分层、职责边界、多协议接入（含 IM 渠道网关 16.8）与身份注入
+├── 17. 统一执行引擎  → 调用编排、协议边界与阶段状态
+├── 18. Text2SQL 业务示例  → 业务 Agent 端到端设计与验证
+└── 19. 端口规划      → 端口分配与冲突规避
 ```
 
 ### 不同角色的阅读建议
 
 | 角色 | 推荐阅读 | 目的 |
 |------|----------|------|
-| **架构师** | 01、03、04、05、08、13、14 | 理解架构设计，做出技术决策 |
+| **架构师** | 01、03、04、05、08、12、13 | 理解架构设计，做出技术决策 |
 | **后端开发** | 02、03、06、07、10、11 | 掌握开发技能，编写业务代码 |
-| **运维工程师** | 02、06、08、09、12 | 部署运维，故障排查 |
+| **运维工程师** | 02、06、08、09、常见问题 | 部署运维，故障排查 |
 | **产品经理** | 01、03、04 | 了解能力边界，规划产品功能 |
 | **技术管理者** | 01、04、05、11 | 评估技术方案，制定规范 |
 
@@ -53,12 +53,12 @@
 
 | 理论领域 | 涉及章节 | 核心概念 |
 |----------|----------|----------|
-| **AI 理论** | 01、03、14 | AI Agent、多 Agent 系统、ReAct、MCP |
-| **架构设计** | 04、05、08、15、18、19 | 分层架构、微服务、依赖倒置、SPI、网关与执行引擎边界 |
+| **AI 理论** | 01、03、13 | AI Agent、多 Agent 系统、ReAct、MCP |
+| **架构设计** | 04、05、08、14、16、17 | 分层架构、微服务、依赖倒置、SPI、网关与执行引擎边界 |
 | **设计模式** | 04、07、10 | 适配器、门面、策略、状态机 |
 | **软件工程** | 07、11 | SOLID、DRY、KISS、测试理论 |
-| **分布式系统** | 08、15 | CAP、服务发现、负载均衡 |
-| **DevOps** | 08、12 | 容器化、监控、故障排查 |
+| **分布式系统** | 08、14 | CAP、服务发现、负载均衡 |
+| **DevOps** | 08、常见问题 | 容器化、监控、故障排查 |
 
 ---
 
@@ -79,19 +79,20 @@
 | [09. API 参考](./09-api-reference.md) | 完整的 API 文档 | 参考 |
 | [10. 技能系统](./10-skills.md) | 技能开发与管理 | 30 分钟 |
 | [11. 最佳实践](./11-best-practices.md) | 设计原则与优化建议 | 20 分钟 |
-| [12. 常见问题](./12-faq.md) | FAQ 与故障排查 | 参考 |
+| [常见问题](./faq.md) | FAQ 与故障排查（参考附录） | 参考 |
 
 ### 高级功能（可选阅读）
 
 | 章节 | 内容 | 预计时间 |
 |------|------|----------|
-| [13. 智能系统](./13-intelligent-system.md) | 自适应策略、自我改进、智能监控 | 40 分钟 |
-| [14. A2A 协议](./14-a2a-protocol.md) | 跨服务 Agent 协作、分布式架构 | 30 分钟 |
-| [15. 可观测性](./15-observability.md) | 追踪、指标、日志与 OpenTelemetry 集成 | 20 分钟 |
-| [16. 意图引擎](./16-intent-engine.md) | 意图识别、实体抽取、多域模型、分类通道与热更新 | 20 分钟 |
-| [17. 统一 JSON 编解码机制](./17-data-codec.md) | Redis 值编解码单一真相源、开发约束与诊断 | 10 分钟 |
-| [18. 统一入口网关](./18-ingress-gateway.md) | 网关分层、职责边界、多协议接入与身份注入 | 15 分钟 |
-| [19. 统一执行引擎](./19-execution-engine.md) | 调用编排、协议边界、内部组件与阶段状态机 | 15 分钟 |
+| [12. 智能系统](./12-intelligent-system.md) | 自适应策略、自我改进、智能监控 | 40 分钟 |
+| [13. A2A 协议](./13-a2a-protocol.md) | 跨服务 Agent 协作、分布式架构 | 30 分钟 |
+| [14. 可观测性](./14-observability.md) | 追踪、指标、日志与 OpenTelemetry 集成 | 20 分钟 |
+| [15. 意图引擎](./15-intent-engine.md) | 关键词意图识别与 Agent 路由（轻量路由库） | 20 分钟 |
+| [16. 统一入口网关](./16-ingress-gateway.md) | 网关分层、职责边界、多协议接入（含 IM 渠道网关 16.8）与身份注入 | 15 分钟 |
+| [17. 统一执行引擎](./17-execution-engine.md) | 调用编排、协议边界、内部组件与阶段状态机 | 15 分钟 |
+| [18. Text2SQL 业务 Agent](./18-text2sql-assistant.md) | Text2SQL 业务 Agent 的启用、工作流与端到端验证 | 15 分钟 |
+| [19. 端口规划](./19-端口规划.md) | 端口分配、冲突规避与规划 | 10 分钟 |
 
 ---
 
@@ -110,34 +111,34 @@
 → 参考 [08. 部署指南](./08-deployment.md)
 
 **遇到问题需要排查**
-→ 查看 [12. 常见问题](./12-faq.md)
+→ 查看 [常见问题](./faq.md)
 
 **我要了解高级功能**
-→ 查看 [13. 智能系统](./13-intelligent-system.md)、[14. A2A 协议](./14-a2a-protocol.md)、[15. 可观测性](./15-observability.md)、[16. 意图引擎](./16-intent-engine.md)、[17. 统一 JSON 编解码机制](./17-data-codec.md)、[18. 统一入口网关](./18-ingress-gateway.md) 和 [19. 统一执行引擎](./19-execution-engine.md)
+→ 查看 [12. 智能系统](./12-intelligent-system.md)、[13. A2A 协议](./13-a2a-protocol.md)、[14. 可观测性](./14-observability.md)、[15. 意图引擎](./15-intent-engine.md)、[16. 统一入口网关](./16-ingress-gateway.md)、[17. 统一执行引擎](./17-execution-engine.md)、[18. Text2SQL 业务 Agent](./18-text2sql-assistant.md) 和 [19. 端口规划](./19-端口规划.md)
 
 **我要定制意图识别与路由**
-→ 查看 [16. 意图引擎](./16-intent-engine.md)，业务数据（词典/意图树/映射表）均可配置替换
+→ 查看 [15. 意图引擎](./15-intent-engine.md)；当前为关键词→Agent 路由，规则经 `config/intent.yml` 的 `yunxi.intent.rules` 配置化（`KeywordIntentResolver` 只做匹配、不含任何业务词条），扩展分类能力可新增 `IntentResolver` 实现并注册进 `DefaultIntentEngine`
 
 **我要让长任务展示实时进度**
-→ 查看 [07. 开发指南](./07-development.md#为-agent-启用任务清单todolist)；配置与事件契约见 [06. 配置指南](./06-configuration.md#任务清单todolist配置)、[09. API 参考](./09-api-reference.md#todo_update-事件任务清单)
+→ 查看 [07. 开发指南](./07-development.md#为-agent-启用任务清单todolist)；配置见 [06. 配置指南](./06-configuration.md#任务清单todolist配置)、透出机制见 [09. API 参考](./09-api-reference.md#任务清单透出机制)
 
 **我要给危险工具加人工确认**
 → 查看 [06. 配置指南 - 人机确认（HITL）配置](./06-configuration.md#人机确认hitl配置)，确认结果回传用法见 [09. API 参考](./09-api-reference.md#require_user_confirm-事件人机确认)
 
 **我要排查生产问题**
-→ 查看 [12. 常见问题](./12-faq.md) 和 [15. 可观测性](./15-observability.md)
+→ 查看 [常见问题](./faq.md) 和 [14. 可观测性](./14-observability.md)
 
-**意图识别总是 unknown / 日志报分类超时**
-→ 查看 [16. 意图引擎](./16-intent-engine.md) 的「分类超时」说明，可经 `-DINTENT_MODEL` / `-DINTENT_TIMEOUT_MS` 调整
+**意图识别未命中、总落到默认 Agent**
+→ 查看 [15. 意图引擎](./15-intent-engine.md)；当前为关键词路由，未命中任何关键词时回退到 `defaultAgentId`，无 LLM 分类、不存在分类超时；扩展分类能力可新增 `IntentResolver` 实现并注册进 `DefaultIntentEngine`
 
 **我要调整技能剪枝策略（含"只有一个人在用"的技能怎么办）**
-→ 查看 [10. 技能系统 - 画像驱动的剪枝判据](./10-skills.md#画像驱动的剪枝判据) 与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)
+→ 查看 [10. 技能系统 - 画像驱动的剪枝判据（设计态）](./10-skills.md#画像驱动的剪枝判据设计态未接入) 与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)
 
 **我改了权限规则但调用仍被拒**
 → 查看 [06. 配置指南 - 权限规则变更的生效范围](./06-configuration.md#权限规则变更的生效范围)
 
 **我想同时启动前后端**
-→ `.\启动项目.ps1 -Web`，见 [02. 快速开始](./02-quickstart.md)
+→ `.\start-yunxi.ps1 -Web`，见 [02. 快速开始](./02-quickstart.md)
 
 ---
 
@@ -145,10 +146,9 @@
 
 - **代码仓库**: 各模块代码和详细实现
 - **开发规范**: [11. 最佳实践](./11-best-practices.md) 与 `CONTRIBUTING.md`（提交/分支规范）
-- **运行时技能**: `.agentscope/workspace/skills/` 内置技能（框架 `project-global-dir` 唯一识别路径）
-- **MUSE 自进化引擎**: 详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎)（含 [画像驱动的剪枝判据](./10-skills.md#画像驱动的剪枝判据)）与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)；模块实现见 [agent-muse README](../../agent-muse/README.md)
+- **运行时技能**: `.agentscope/workspace/skills/` 为框架 Layer3 全局技能目录——内置技能 `SKILL.md` 由 `ClasspathSkillRepository` 从 jar 零复制加载（Layer2），此处仅物化内置技能的 `tests/` 供 MUSE 评估器执行（`yunxi.muse.builtin-export-dir`），MUSE 演进技能写回并覆盖内置
+- **MUSE 自进化引擎**: 详见 [10. 技能系统 - MUSE 自进化引擎](./10-skills.md#muse-自进化引擎)（含 [画像驱动的剪枝判据（设计态）](./10-skills.md#画像驱动的剪枝判据设计态未接入)）与 [06. 配置指南 - MUSE 配置](./06-configuration.md#muse-配置)；模块实现见 [yunxi-intelligence 模块说明](./05-modules.md)
 - **实战示例：食谱生成智能体**: 完整后端协作、MCP 协议与前端设计见 [07. 开发指南 - 实战示例](./07-development.md#实战示例食谱生成智能体)；官方示例与学习资源见同章 [官方示例与学习资源](./07-development.md#官方示例与学习资源) 小节
-- **编排图导出与自动推送（Workflow Artifact Exporter）**: 见 [06. 配置指南 - aistio](./06-configuration.md#aistio) 的「编排图导出与自动推送」小节
 
 ---
 

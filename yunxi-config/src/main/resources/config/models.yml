@@ -1,0 +1,88 @@
+# 模型目录与路由（外部化配置：代码中不出现具体模型名）。
+# catalog 为命名模型清单；routing 为 agentId → 主模型 + 兜底；defaults 为各用途分类默认模型。
+#
+# 拓扑约定（务必遵守，ConfigurableModelRoutingPolicy 会在启动期强制校验）：
+#   - llm 类（对话 / 推理主模型）一律走远程（DashScope 等），本地不承载对话生成；
+#   - decision 类为本地决策模型（文本决策 tev1:0.8b、图片决策 clef-flash），仅用于专项决策节点；
+#   - embedding 类为本地矢量模型（bge-m3），仅用于检索 embedding。
+# 因此 defaults.llm 必须指向真正的对话模型，绝不可把 decision / embedding 模型当 llm 默认。
+yunxi:
+  models:
+    catalog:
+      # 远程对话 / 推理模型（DashScope，密钥经 DASHSCOPE_API_KEY 注入）。
+      qwen-plus:
+        provider: dashscope
+        model: qwen-plus
+        api-key-env: DASHSCOPE_API_KEY
+        type: llm
+      qwen3-8-27b:
+        provider: dashscope
+        model: qwen3.8-27b
+        api-key-env: DASHSCOPE_API_KEY
+        type: llm
+      # 以下为本地 Ollama 模型（需本机已拉取且 ollama 服务在 OLLAMA_BASE_URL 默认 http://localhost:11434 可达）。
+      # 模型名带 :latest 等标签时原样透传给 Ollama，无需去除冒号。
+      # 本地模型只做决策 / 矢量，不参与对话生成（type 不得为 llm）。
+      local-decision:
+        provider: ollama
+        model: tev1:0.8b
+        type: decision
+      clef-flash:
+        provider: ollama
+        model: clef-flash:latest
+        type: decision
+      local-embedding:
+        provider: ollama
+        model: bge-m3:latest
+        type: embedding
+      # 开发测试用阿里 DashScope 的 fast LLM；自动选型在能力满足时默认选成本档 cheap 的最便宜候选。
+      qwen3.8-flash:
+        provider: dashscope
+        model: qwen3.8-flash
+        api-key-env: DASHSCOPE_API_KEY
+        type: llm
+        cost-tier: cheap
+        strengths: [fast]
+        context-window: 131072
+      # 多模态（图文 + 视频）对话 LLM，用于用户请求含图片 / 视频输入时的自动选型分支。
+      qwen3.8-omni-flash:
+        provider: dashscope
+        model: qwen3.8-omni-flash
+        api-key-env: DASHSCOPE_API_KEY
+        type: llm
+        cost-tier: standard
+        strengths: [vision, video, fast]
+        context-window: 131072
+      # 多模态翻译（图文 + 多语）对话 LLM，用于多语言输入场景的自动选型分支。
+      qwen-mt-uni:
+        provider: dashscope
+        model: qwen-mt-uni
+        api-key-env: DASHSCOPE_API_KEY
+        type: llm
+        cost-tier: standard
+        strengths: [vision, multilingual]
+        context-window: 32768
+    routing:
+      # 系统默认即「自动选型」：ConfigurableModelRoutingPolicy.route() 对未显式声明路由的 agent
+      # 直接返回 auto（由 AutoModelProvider 按任务信号动态选最便宜且满足能力的模型）。
+      # 整个系统所有 agent 均动态选模型；如需固定模型，在此为该 agent 显式声明 primary 覆盖默认即可。
+      # （原 auto-assistant 仅为动态选型的测试载体，已删除；动态选型现对所有 agent 生效。）
+      example-assistant:
+        primary: auto
+        fallbacks:
+          - qwen-plus
+      resident-nutrition-assistant:
+        primary: auto
+        fallbacks: []
+    defaults:
+      # defaults.llm 仅作为 AutoModelProvider 候选池耗尽时的最终兜底（见 ConfigurableModelRoutingPolicy.resolveAuto），
+      # 不得设为 auto（否则 toFrameworkId("auto") 会抛异常）；保持为真实对话模型。
+      llm: qwen3-8-27b
+      decision: local-decision
+      embedding: local-embedding
+    # 自动选型精排（可选增强，默认关闭）：开启后由本地决策模型对候选做二次排序；
+    # 决策模型不可用或打分失败时自动回退到规则式（能力满足 + 成本最低）。
+    auto:
+      fine-ranking:
+        enabled: false
+        model-id: tev1:0.8b

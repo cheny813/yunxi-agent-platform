@@ -1,8 +1,8 @@
 # 04. 架构设计
 
-> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.0.4（正式版）** 构建。包结构为扁平化的功能包（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository`（由框架 `DynamicSkillMiddleware` 自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。说明：`Model.stream()` 为 Model 层现役调用方式（AgentScope-Java 2.0 未废弃），`Agent.streamEvents()` 为 Agent 层事件流 API，二者属不同层面的接口，并非替代关系。
+> **架构说明**：yunxi-agent-platform 基于 **AgentScope-Java 2.1.0-BETA1** 构建。底层框架采用扁平化的功能包结构（`agent/`、`config/`、`persistence/`、`gateway/`、`conversation/`、`intent/` 等 30+ 个顶层包），yunxi 侧则以 `yunxi-*` 平面模块组织，详见 [模块说明](./05-modules.md)。Hook 体系已全部迁移为框架原生 Middleware 体系，编排支持 single/supervisor/pipeline/routing 四种模式，Skill 系统采用 AgentScope 原生 `AgentSkillRepository` 托管（框架自动装载）。`Session` 包保留（承担会话管理），分布式协调由 `DistributedStore` 承担；`Tracer`/`TracerRegistry` 已废弃（改用 OpenTelemetry 直连 API）。`Model.stream()` 为 Model 层调用方式，`Agent.streamEvents()` 为 Agent 层事件流 API。
 
-## 软件架构理论基础
+## 架构设计原则
 
 ### 什么是软件架构
 
@@ -10,40 +10,6 @@
 - **组件**：系统的组成部分（模块、类、服务）
 - **关系**：组件之间的连接和交互方式
 - **原则**：设计和演进的指导方针
-
-**好的架构特征**：
-| 特征 | 说明 | 本框架体现 |
-|------|------|-----------|
-| **可维护性** | 易于理解和修改 | 分层清晰，职责单一 |
-| **可扩展性** | 易于添加新功能 | SPI 机制，插件化 |
-| **可测试性** | 易于测试 | 依赖接口，便于 Mock |
-| **可靠性** | 稳定运行 | 熔断降级，故障隔离 |
-| **性能** | 响应迅速 | 缓存，异步，并行 |
-
-### 分层架构模式
-
-**分层架构**是最经典的架构模式，将系统分为水平层次：
-
-```
-┌─────────────────────────────────────────┐
-│  表示层 (Presentation)                   │
-│  - 用户界面                              │
-├─────────────────────────────────────────┤
-│  业务层 (Business)                       │
-│  - 业务逻辑                              │
-├─────────────────────────────────────────┤
-│  持久层 (Persistence)                    │
-│  - 数据访问                              │
-├─────────────────────────────────────────┤
-│  数据库 (Database)                       │
-│  - 数据存储                              │
-└─────────────────────────────────────────┘
-```
-
-**分层原则**：
-- **单向依赖**：上层依赖下层，下层不依赖上层
-- **层间隔离**：每层只与相邻层交互
-- **职责分离**：每层有明确的职责
 
 ### 依赖倒置原则 (DIP)
 
@@ -64,8 +30,8 @@
 ```
 
 **本框架的实践**（V2.0 简化后）：
-- 顶层功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等）定义 SPI 接口
-- `agent-spi` 模块定义共享 SPI 扩展点
+- 顶层功能包（`agent/`、`config/`、`persistence/`、`gateway/` 等）是 AgentScope-Java 框架的内部扁平包，定义框架原生 SPI 扩展点
+- `yunxi-definition` 模块是当前唯一契约平面，承载与框架技术无关的契约类型（`AgentSpec` / `AgentSpecValidator` / `SpecCodec` / `YamlSpecCodec`）
 - Spring `@Autowired` 依赖注入实现依赖倒置
 
 ---
@@ -96,12 +62,12 @@
 
 #### AgentScope 核心运行时（底层）
 
-**定位**：第三方 SDK 依赖（AgentScope-Java 2.0.4），不可修改
+**定位**：第三方 SDK 依赖（AgentScope-Java 2.1.0-BETA1），不可修改
 
 **职责**：
 - 提供 Agent/Model/Toolkit/Middleware/State 核心抽象
 - ReActAgent / HarnessAgent 运行时（HarnessAgent 与 ReActAgent 各自实现 Agent 接口）
-- Middleware 洋葱模型、原生技能治理（`AgentSkillRepository` + `DynamicSkillMiddleware`）
+- Middleware 洋葱模型、原生技能治理（`AgentSkillRepository`）
 
 #### Platform 平台层
 
@@ -113,28 +79,7 @@
 - MCP 协议集成、记忆系统（含运行时动态注册与 Nacos 协调底座）
 - 配置管理、持久化、会话管理
 
-**核心包**（`io.yunxi.platform`）：
-```
-agent/        ← Agent 核心（工厂、网关、装配 AgentConfigurer、工作区）
-a2a/          ← A2A 跨服务 Agent 调用（客户端、服务器、注册中心）
-config/       ← 配置类（AgentscopeExtensionProperties、Redis 后端等）
-conversation/ ← 对话编排（ChatAppService、会话管理）
-controller/   ← REST 控制器（对话、Agent、技能、文件、配置管理、MCP 动态注册）
-file/         ← 文件处理（上传、向量化入库）
-gateway/      ← SSE 消息通道（SseEmitterManager / ProgressListener）
-intent/       ← 意图引擎（多域 DomainRegistry、rule/llm/hybrid 分类、reload 热更新）
-lifecycle/    ← 生命周期管理
-memory/       ← 记忆场景管理（MemoryScene、MemorySceneRegistry）
-persistence/  ← 持久化（Milvus 向量库、Repository）
-rag/          ← 应用层 RAG（ApplicationRAG 中间件工厂）
-security/     ← 安全（SecurityContext、认证、审计）
-session/      ← 会话管理（多租户会话）
-shared/       ← 共享 DTO、配置加载（AgentDefinitionLoader）
-tool/         ← 内置业务工具（HttpTool、DatabaseTool 等）
-tracing/      ← 可观测性（OpenTelemetry）
-embedding/    ← Embedding 提供商
-cache/        ← Redis 缓存
-```
+**核心包**（`yunxi-runtime` 扁平包 `io.yunxi.runtime`，入口层在 `yunxi-ingress`）：yunxi 的运行时核心能力落在 `io.yunxi.runtime` 扁平包——`AgentConfigurer`（唯一装配点）、`ExecutionFacade`/`DefaultExecutionFacade`（统一执行门面）、`AgentLookup`（框架 `AguiAgentRegistry` 薄委托 seam）、`ModelFactory`、`AgentDefinitionLoader`、协议无关 `middleware`（审计 / HITL / 追踪 / 限流 / 会话工具组激活）。四协议入口与协议适配在 `yunxi-ingress`：`ConversationController` / `IngressGateway` 终结 web 协议并译为 `AgentCommand`；A2A / AG-UI / Chat Completions 由框架 Starter 直接服务（yunxi 仅在 ingress 提供 `ProtocolAdapter` / `WebProtocolAdapter` 处理 web 协议）。IM 渠道（钉钉 / 企微 / 飞书 / GitHub / GitLab / 微信 iLink）/ 编程式 ChatUi 经 `GatewayBootstrap` 接入框架 `HarnessGateway`，是第二条入口路径，详见 [16.8 IM 渠道网关](./16-ingress-gateway.md) 与 [05. 模块说明](./05-modules.md)。
 
 #### Business 业务层
 
@@ -142,14 +87,14 @@ cache/        ← Redis 缓存
 
 **示例**：
 ```yaml
-# 在 agent-definitions/<name>.yaml 中声明
-name: nutrition-assistant
-workspace: ./workspace/agents/nutrition-assistant
-tools:
-  mcpServers:
-    - name: nutrition-data-mcp
-      type: sse
-      url: http://localhost:40602/sse   # 需先启动对应 MCP 服务（如 mcp-nutrition，端口 40602）
+# 在 agent-definitions/nutrition-assistant.yml 中声明（扁平 AgentSpec）
+identity:
+  agentId: nutrition-assistant
+  name: 校园餐营养助手
+  description: 你是一个校园餐营养助手
+mcp:
+  servers: [nutrition-data-mcp]   # 订阅 mcp.yml 中同名 static-server（连接信息在 mcp.yml 声明，不在 AgentSpec 内）
+# workspace 工作空间由 AgentScope-Java 框架按约定在 .agentscope/workspace/agents/<agentId>/ 下管理，无需在 AgentSpec 声明
 ```
 
 然后在工作区目录中放置 AGENTS.md 定义人格和行为：
@@ -204,7 +149,7 @@ tools:
               │ 依赖
               ▼
 ┌─────────────────────────────────────────┐
-│       AgentScope 2.0.4 核心运行时          │
+│       AgentScope-Java 2.1.0-BETA1 核心运行时  │
 │  Agent/Model/Toolkit/Middleware/State    │
 └─────────────────────────────────────────┘
 ```
@@ -250,33 +195,7 @@ Agent 的生命周期可以看作一个状态机：
 
 **本框架的实现**：
 
-```java
-@Service
-public class AgentService {
-    // Agent 缓存（统一使用 Agent 接口）
-    private final Map<String, Agent> agentInstanceCache = new ConcurrentHashMap<>();
-    
-    public Agent getAgentInstance(String name) {
-        // 从缓存获取，如果不存在则抛出 NotFoundException
-        Agent agent = agentInstanceCache.get(name);
-        if (agent == null) {
-            throw new NotFoundException("Agent not found: " + name);
-        }
-        return agent;
-    }
-    
-    public AgentInfoDto createAgent(String name, AgentConfigDto config) {
-        // 1. 通过 ModelFactory 创建框架 Model 实例（复用 agentscope 内置 Provider)
-        Model model = modelFactory.create(toModelConfig(config));
-        
-        // 2. 注册 prototype Bean（每次 getBean 返回新实例）
-        registerPrototypeAgentBean(name, model, prompt, workspacePath);
-        
-        // 3. 返回摘要信息（Agent 实例由 BeanFactory 按需创建）
-        return new AgentInfoDto(name, prompt, modelName, Instant.now());
-    }
-}
-```
+> yunxi 不维护第二份 Agent 注册表。装配后的 `HarnessAgent` 注册进框架协议层 `AguiAgentRegistry`（进程内单例 Agent 真相源，源自 AgentScope-Java `agentscope-extensions-agui`），由应用平面薄委托 seam `AgentLookup`（`io.yunxi.runtime`）统一收口读取，供 `ExecutionFacade` 与各协议入口使用。
 
 ### MCP 工具集成架构
 
@@ -323,7 +242,7 @@ public class WeatherTools {
 
 `@Tool` 注解的方法会被 `Toolkit.registerTool(Object bean)` 自动扫描注册，无需手动维护注册表。框架自动从方法签名生成 JSON Schema。
 
-MCP 工具注册同样由 AgentScope 框架原生处理：`AgentConfigurer.buildMcpClient()` 通过 `McpClientBuilder` 连接 MCP 服务器，`Toolkit.registration().mcpClient(wrapper).group(name).apply()` 注册工具分组。除静态 YAML 配置外，平台提供运行时动态注册能力：`McpController` 暴露 `GET/POST/DELETE /api/mcp/servers` 接口，配合 `McpConfigStore` + Nacos 配置中心（dataId `yunxi.mcp-servers.json`，group `YUNXI_MCP_GROUP`）持久化配置并向集群内其他实例广播变更，新增或下线 MCP 服务无需重启平台。
+MCP 工具注册同样由 AgentScope 框架原生处理：`AgentConfigurer` 经 `McpDirectory` 取得服务规格、`McpClientBuilder`（`mcpDirectory.buildClient(...)`）连接 MCP 服务器，`Toolkit.registration().mcpClient(wrapper).group(name).apply()` 注册工具分组；断线重连由 yunxi 侧 `ReconnectingMcpClientWrapper` 兜底（框架 `McpClientBuilder` 不原生重连）。除静态 YAML 配置外，平台提供运行时动态注册能力：经 Nacos 配置中心（dataId `yunxi.mcp-servers.json`，group `YUNXI_MCP_GROUP`）持久化配置并向集群内其他实例广播变更，新增或下线 MCP 服务无需重启平台。
 
 ### Supervisor 多 Agent 协作模式
 
@@ -386,57 +305,13 @@ A2A（Agent-to-Agent）协议支持跨服务的 Agent 调用，实现分布式 A
 - **负载均衡**：多实例自动负载均衡
 - **故障转移**：实例故障时自动切换
 
-**详细内容请参考**：[14. A2A 协议](./14-a2a-protocol.md)
+**详细内容请参考**：[13. A2A 协议](./13-a2a-protocol.md)
 
-### ProfileRouter — Profile 路由服务
+### 多 Profile 路由
 
-ProfileRouter 是框架层的核心路由服务，负责根据 `agentName + profileName` 解析对应的 Agent 实例。
+当前的 `AgentSpec`（`identity` / `skill` / `mcp` / `state` / `permission` / `toolkit`）**不含 `profiles` 字段**。`Profile`（一个 Agent 多工作模式）是 AgentScope-Java 框架原生能力，其声明与解析由框架完成；yunxi 不另设 `ProfileRouter` 类，也不维护 `AgentDefinition` 契约类型（Agent 定义经 `AgentDefinitionLoader` 加载为 `AgentSpec` 并注册进 `ConfigCenter`）。
 
-**职责**：
-1. 根据 agentName + profileName 解析对应的 Agent 实例
-2. 无 profile 时回退到默认 Agent
-3. 无 mode 时使用默认模式（向后兼容）
-
-```java
-@Component
-public class ProfileRouter {
-    // 组合键格式：agentName#profileName
-    public String buildCompositeKey(String agentName, String profile) {
-        return agentName + "#" + profile;
-    }
-
-    // 路由逻辑：profile 为空 → 原始 Agent；非空 → 查找/创建 Profile Agent；不存在 → 降级
-    public Agent resolve(String agentName, String profile) {
-        if (profile == null || profile.isBlank()) {
-            return agentService.getAgentInstance(agentName);
-        }
-        String compositeKey = buildCompositeKey(agentName, profile);
-        try {
-            return agentService.getAgentInstance(compositeKey);
-        } catch (Exception e) {
-            // Profile Agent 不存在，降级返回原始 Agent
-            log.warn("Profile '{}' 未找到对应 Agent '{}'，降级返回原始 Agent", profile, agentName);
-            return agentService.getAgentInstance(agentName);
-        }
-    }
-
-    public List<ProfileInfo> getAvailableProfiles(String agentName) {
-        AgentDefinition def = definitionLoader.getAgentDefinition(agentName);
-        if (def == null || def.getProfiles() == null || def.getProfiles().isEmpty()) {
-            return Collections.emptyList();
-        }
-        return def.getProfiles().entrySet().stream()
-                .map(entry -> new ProfileInfo(
-                        entry.getKey(),
-                        entry.getValue().getLabel(),
-                        entry.getValue().getDescription(),
-                        null))
-                .toList();
-    }
-}
-```
-
-> **说明**：`resolve()` 返回的是 AgentScope 框架的 `Agent` 接口实例（`io.agentscope.core.agent.Agent`），而非业务服务。Profile 定义来自 `agent-definitions/*.yml` 的 `profiles` 节点，由 `AgentDefinitionLoader` 加载。
+> 注：`Profile` 的概念示意见 [03. 核心概念 - Profile](./03-concepts.md)，其声明位置由框架定义，不在当前 AgentSpec YAML schema 内。
 
 ---
 ## 与 AgentScope V2.0 的集成
@@ -459,40 +334,34 @@ yunxi-agent-platform = 整车制造平台（含：车身、方向盘、仪表盘
 | 层次 | 能力范畴 | 关键代码 | agentscope 内置？ |
 |------|---------|---------|:--:|
 | **1. Spring Boot 集成层** | 自动配置、Bean 管理、YAML 配置加载 | `AgentscopeAutoConfiguration`、`WebMvcConfig` | 否 |
-| **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `AgentExecutionEngine`（执行编排入口） | 否 |
-| **3. 接入层（渠道能力内置）** | 接入层认证/限流/路由由 AgentScope-Java 2.0 Channel 承接 | 框架 Channel + @PreAuthorize | 否 |
-| **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | `ContentFilterMiddleware`（提示注入防护）、`ChatAppService` | 否 |
-| **5. 模型层** | 复用框架 Model（OpenAI/Claude/DashScope/DeepSeek）+ Baidu/华为适配 | `ModelFactory`、`Model`（框架接口） | 是（框架内置 5 个，自建 2 个） |
-| **6. 持久化与记忆体系** | 5 种持久化策略、多种 Repository、Harness 内置记忆 | `PersistenceManager`、`HybridPersistenceStrategy` | 否 |
+| **2. 统一治理层** | 审计日志、限流、超时控制、优雅关闭、Pre/Post 扩展 | `ExecutionFacade`（统一执行门面） | 否 |
+| **3. 接入层（渠道能力内置）** | IM 渠道认证/限流/路由由 AgentScope-Java Channel 承接（经 GatewayBootstrap→HarnessGateway）；web / AG-UI / A2A / Chat Completions 由 yunxi-ingress 承接 | 框架 Channel + @PreAuthorize | 否 |
+| **4. 生产特性层** | HITL 人工审核、会话管理、分布式缓存、多租户 | 协议无关 Middleware（ChatAudit / Hitl / OtelTracing / Resilience，由 AgentConfigurer 统一装配） | 否 |
+| **5. 模型层** | 复用框架 Model（DashScope / OpenAI / Anthropic / Gemini / DeepSeek 等，经 `ModelRegistry` 按 `provider:model` 解析；yunxi 不维护第二份 Provider） | `ModelFactory`（薄封装 `ModelRegistry.resolve`）、`Model`（框架接口） | 是（全部由框架提供） |
+| **6. 持久化与记忆体系** | 状态存储经框架 `AgentStateStore` 多后端（内存 / JSON 文件 / Redis / JDBC / 对象存储，由 `DistributedRuntimeConfig` 选择）；yunxi 以 `TenantAwareAgentStateStore` 叠加租户隔离；记忆由 Harness 内置 | `AgentStateStore`、`TenantAwareAgentStateStore` | 存储抽象：是；租户装饰：否 |
 | **7. 编排与自动装配层** | YAML 配置驱动、两轮初始化、Supervisor/Routing | `AgentConfigurer`（约 1261 行） | 否 |
 
 ### 关键接线：具体桥接代码解读
 
-#### 1. AgentExecutionEngine — 统一执行编排入口
+#### 1. ExecutionFacade — 统一执行门面
 
-`AgentExecutionEngine` 是**所有 Agent 调用必须经过的统一执行入口**。对外承接 REST 请求（`ChatAppService`），对内串联拦截器链与执行策略，最终调用 AgentScope 原生 `streamEvents/call` 并将框架事件适配为 SSE 流：
+`ExecutionFacade`（`yunxi-runtime`）是**所有 Agent 调用必须经过的统一执行入口**。对外承接 `ConversationRequest`（由 `yunxi-ingress` 的 `IngressGateway` / `ProtocolAdapter` 从各协议请求翻译而来），对内经 `AgentLookup` 取框架 `AguiAgentRegistry`、富化 `RuntimeContext`、驱动 `agent.streamEvents` 并管理会话轮次闸门（`SessionTurnGate`）：
 
-- 拦截器链（按序）：`AuthResolve`（租户/用户上下文）→ `Memory`（记忆构建与 HITL 确认注入）→ `IntentPipeline`（意图路由）→ `RagRetrieval`（知识检索）→ `Audit`（审计日志）；
-- 执行策略：`BlockingStrategy`（结构化阻塞，产出 `ExecutionResult`）/ `StreamingStrategy`（流式，产出 SSE）；
-- 限流、超时、优雅关闭、链路追踪等治理能力**不在此实现**，全部由 AgentScope 框架的 Middleware 体系（`GracefulShutdownMiddleware`、`OtelTracingMiddleware`、`Resilience4j` 熔断等）在 Agent 执行链路中承载。
+- 协议无关横切（审计 / HITL / 追踪 / 限流 / 会话工具组激活）由 `AgentConfigurer` 统一装配为框架 Middleware，对所有协议统一生效；
+- 协议相关适配（web / A2A 专属请求结构，如 `contextData` / `confirmResults`）只存在于 `yunxi-ingress` 的 `ProtocolAdapter`，不渗透运行时；
+- 限流、超时、优雅关闭、链路追踪等治理能力由 AgentScope 框架的 Middleware 体系（`GracefulShutdownMiddleware`、`OtelTracingMiddleware`、`Resilience4j` 熔断等）在 Agent 执行链路中承载。
 
-**关键点**：执行引擎只做"请求编排 + 业务前置/后置管线 + 事件适配"三件事，保持薄适配；Agent 的实际执行、权限、HITL、PlanMode、技能、压缩、追踪均由 AgentScope 完成。
+**关键点**：执行门面只做"Agent 查找 + 上下文富化 + 驱动 streamEvents + 会话闸门"四件事，保持薄适配；Agent 的实际执行、权限、HITL、PlanMode、技能、压缩、追踪均由 AgentScope 完成。
 
 #### 2. AgentConfigurer — 配置驱动的自动装配
 
 ```java
-// AgentConfigurer.java (ApplicationReadyEvent 触发)
-@EventListener(ApplicationReadyEvent.class)
-public void configureAgents() {
-    // 第一轮：初始化所有独立 Agent
-    for (AgentDefinition def : definitions) {
-        if (!isOrchestrated(def))
-            initializeSingleAgent(def);  // YAML → Model → HarnessAgent → 注册
-    }
-    // 第二轮：创建编排 Agent（Supervisor/Pipeline/Routing）
-    for (AgentDefinition def : definitions) {
-        if (isOrchestrated(def))
-            createOrchestratedAgent(def);
+// AgentProvisioner.java（启动期触发，@DependsOn("agentDefinitionLoader")）
+public void provision() {
+    // 遍历 AgentDefinitionLoader 从 classpath*:agent-definitions/**/*.yml 加载的 AgentSpec
+    for (AgentSpec spec : agentDefinitionLoader.loadAllSpecs()) {
+        HarnessAgent agent = agentConfigurer.configure(spec);   // AgentSpec → Model → 中间件 → HarnessAgent
+        aguiAgentRegistry.register(spec.identity().agentId(), agent);  // 注册进框架协议层 AguiAgentRegistry
     }
 }
 ```
@@ -505,7 +374,7 @@ public void configureAgents() {
 
 ```java
 @Component
-public class DatabaseTool {
+public class MyBusinessTools {
     @Tool(name = "database_query", description = "执行 SQL 查询")
     public String query(@ToolParam(description = "SQL 语句") String sql) {
         return jdbcTemplate.queryForList(sql).toString();
@@ -517,39 +386,18 @@ public class DatabaseTool {
 
 #### 4. ModelFactory — 统一模型工厂
 
+yunxi 不维护第二份 Provider 实现，`ModelFactory` 只是 `ModelRegistry` 的薄封装：
+
 ```java
-// ModelFactory 统一经框架 ModelRegistry 创建，不复用自建 Provider 接口
-@Component
-public class ModelFactory {
-
-    @PostConstruct
-    public void init() {
-        // 内置 Provider（openai/dashscope/anthropic/claude/deepseek）通过 ModelRegistry
-        // 内置工厂创建（框架按 provider:modelName 模式自动匹配）
-        // baidu / huawei 框架未内置，用自定义 Provider 注册为工厂，路径与内置完全一致：
-        ModelRegistry.registerFactory("baidu:.+", (id, ctx) -> {
-            String name = id.substring("baidu:".length());
-            return new BaiduModelProvider(ctx.getApiKey(), ctx.getApiKey(), name,
-                    ctx.component(GenerateOptions.class)); // 实际含 null → 全局默认 fallback
-        });
-        ModelRegistry.registerFactory("huawei:.+", (id, ctx) -> {
-            String name = id.substring("huawei:".length());
-            return new HuaweiModelProvider(ctx.getApiKey(), ctx.getApiKey(), name,
-                    ctx.component(GenerateOptions.class));
-        });
-    }
-
-    public Model create(AgentModelConfig config) {
-        // 所有 Provider（含 baidu/huawei）统一走 resolve，由 ModelRegistry 分派工厂
-        ModelCreationContext ctx = buildContext(config);
-        return ModelRegistry.resolve(provider + ":" + modelName, ctx);
-    }
+@Bean
+public ModelFactory modelFactory() {
+    return modelId -> ModelRegistry.resolve(modelId);
 }
 ```
 
-框架的 `Model` 接口负责"发请求、拿响应"，内置了正确的角色映射（`SYSTEM`/`USER`/`ASSISTANT`/`TOOL`）和 Prompt Caching 支持（`cache-control: true` 自动添加 `cache_control: {"type": "ephemeral"}`）。平台层保留百度/华为的自建实现（因认证协议不兼容标准 OpenAI），但已修复角色映射 Bug，现通过 `ModelRegistry` 工厂注册，与内置 Provider 走完全一致的 `ModelRegistry.resolve` 路径（按 Agent 透传 `apiKey`/`options`）。
+模型 id 采用框架约定 `provider:model`（如 `dashscope:qwen-plus`、`ollama:bge-m3`），由 `ModelRegistry` 分派到框架内置 Provider；未内置的提供商经 `ServiceLoader` 从 `META-INF/services/io.agentscope.core.model.spi.ModelProvider` 发现。yunxi 侧不注册 Provider 正则、不自建 Provider，也不包裹 `ChatModelProvider` 之类的私有接口。
 
-**拆除自建 Provider**：原 `ChatModelProvider` 接口 + `OpenAIModelProvider`/`ClaudeModelProvider`/`DashScopeModelProvider` 已删除（约 500 行），全部委托给框架内置实现。详见上文「4. ModelFactory — 统一模型工厂」章节。
+框架的 `Model` 接口负责"发请求、拿响应"，内置了正确的角色映射（`SYSTEM`/`USER`/`ASSISTANT`/`TOOL`）与 Prompt Caching 支持（`cache-control: true` 自动添加 `cache_control: {"type": "ephemeral"}`）；多租户 `apiKey` / `baseUrl` 的隔离经 `ModelCreationContext` 传递，缓存行为见 [06. 配置指南 · 模型缓存策略](./06-configuration.md#模型缓存策略modelregistry-cachepolicy)。
 
 ### 完整架构对比
 
@@ -560,7 +408,7 @@ public class ModelFactory {
 │  第 7 层: 编排与自动装配 (AgentConfigurer)                        │
 │    YAML定义 → 两轮初始化 → Supervisor/Pipeline/Routing            │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 6 层: 持久化与记忆 (PersistenceManager, ChatAppService)  │
+│  第 6 层: 持久化与记忆 (Harness 内置记忆 + Session 后端)  │
 │    5种持久化策略 | Harness 内置记忆 | 分布式会话                            │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 5 层: 模型层 (ModelFactory + 框架 Model 内置 Provider)          │
@@ -569,10 +417,10 @@ public class ModelFactory {
 │  第 4 层: 生产特性 (CircuitBreaker, HITL, Audit, Metrics)        │
 │    熔断器 | 人工审核 | 审计 | 监控 | 多租户 Profile                │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 3 层: 接入层 (AgentScope-Java 2.0 Channel: 企微/钉钉/飞书/Web API)             │
+│  第 3 层: 接入层 (AgentScope-Java Channel：GatewayBootstrap→HarnessGateway)             │
 │    由 agentscope-extensions-channel-* 原生承载                    │
 │  ─────────────────────────────────────────────────────────────── │
-│  第 2 层: 统一治理 (AgentExecutionEngine + 框架 Middleware)       │
+│  第 2 层: 统一治理 (ExecutionFacade + 框架 Middleware)       │
 │    网关薄适配 | GracefulShutdown/Tracing 由框架中间件承载          │
 │  ─────────────────────────────────────────────────────────────── │
 │  第 1 层: Spring Boot 集成 (AutoConfiguration)                    │
@@ -597,19 +445,8 @@ public class ModelFactory {
 | 记忆 | InMemoryMemory | Harness 内置文件系统记忆 + 5 种持久化策略 + 场景管理 | ~15 |
 | MCP | 基础客户端 | 自动重连 + 缓存 + 跨 Agent 共享 + 动态刷新 | ~8 |
 | 多 Agent | A2A 协议 | Supervisor/Routing 编排 + Profile 路由 | ~10 |
-| 接入层 | 无 | 多通道（飞书/钉钉/企微/WebSocket/SSE）+ 会话 + 认证 | ~16 |
+| 接入层 | 框架 Channel（GatewayBootstrap→HarnessGateway） | 钉钉/企微/飞书/GitHub/GitLab/微信 iLink + ChatUi 编程式；渠道级验签/入站翻译/出站推送由框架 Channel 承载 | ~16 |
 | 生产治理 | 无 | 熔断/审计/监控/HITL/优雅关闭 | ~12 |
-
-### 诚实的评估：哪些代码可以优化？
-
-1. **YAML 配置 → DTO 的转换链**：`AgentDefinition` → `AgentConfigDto` → `AgentInfoDto` 有多层映射，部分可以合并
-2. ~~**自建 LLM Provider**~~：✅ **已修复** — 拆除 `ChatModelProvider` 接口及 3 个自建 Provider，复用框架 `ModelRegistry` 工厂机制
-3. ~~**自建 Shell 命令安全**~~：✅ **已修复** — 拆除 `CommandSafetyClassifier`，使用框架 `ShellCommandTool` 白名单/验证器
-4. **Session 会话管理**：`session/` 包保留（多租户会话管理），分布式协调能力由 AgentScope 原生 `DistributedStore` + `RedisDistributedStore.fromJedis()` 承载，二者职责分离、各司其职
-5. ~~**Tracer 废弃适配**~~：✅ **已适配** — 删除 `OpenTelemetryTracer.java`，改用全局 `OpenTelemetry` API
-6. **工具注册**：业务工具直接使用 `@Tool` 注解注册，无需单独的接口或桥接层。
-
-但**绝大多数代码是合理的**——它们解决的是不同层次的问题。业务工具只需用 `@Tool` 注解标注就能被 Agent 调用，这才是平台的价值所在。
 
 ---
 
@@ -680,12 +517,10 @@ agentscope:
 | 数据 | 存储后端 | 职责 | 查询方式 |
 |------|---------|------|---------|
 | Agent 运行时状态 | Session（workspace/redis） | 崩溃恢复、弹性迁移 | `agent.loadIfExists()` |
-| 会话元数据 | MySQL + Redis（ChatAppService） | 前端列表展示、标题搜索 | REST API |
+| 会话元数据 | MySQL + Redis | 前端列表展示、标题搜索 | REST API |
 | 长期记忆 | workspace/agents/{agentName}/ 下的记忆文件 | 跨会话知识积累 | HarnessAgent 内部 Middleware |
 
-三个存储层各司其职，不重复。Session 负责运行时恢复，ChatAppService 负责前端查询，文件系统记忆负责 LLM 可读的上下文。
-
-> **Redis 值编解码统一**：yunxi 自有 Redis 值（会话存储、推理轨迹、用户画像、画像演进节流）的 JSON 编解码已统一收口到 `CodecSpec`（`ObjectMapper` 唯一来源）→ `RedisValueCodec`（Redis 值序列化唯一真相源）→ `RedisTemplates`（模板唯一构造入口），全平台禁止散落的 `new ObjectMapper()` / 自行配置 `RedisSerializer`。四项复用同一全局 `RedisConnectionFactory`；键空间与序列化约定各自独立。详见 [17. 统一 JSON 编解码机制](./17-data-codec.md)。
+三个存储层各司其职，不重复。Session 负责运行时恢复，入口层（`ConversationController`）负责前端查询，文件系统记忆负责 LLM 可读的上下文。
 
 ---
 
@@ -706,7 +541,7 @@ agentscope:
 - Domain：通过 YAML Agent 定义 + 工作区 AGENTS.md 声明
 - Bounded Context：通过模块划分
 - Entity：Agent、Session
-- Domain Service：ChatAppService、AgentConfigurer
+- Domain Service：AgentConfigurer、ExecutionFacade
 
 ### 2. 依赖倒置原则 (DIP)
 
@@ -736,15 +571,14 @@ private final CacheProvider cacheProvider;
 **实践方式**：
 ```yaml
 # 新增业务领域，无需修改框架代码
-# 在 agent-definitions/ 目录新增 YAML 文件
+# 在 agent-definitions/ 目录新增 AgentSpec YAML 文件（扁平 AgentSpec）
 # 在工作区目录新建知识/技能文件即可
-- name: new-business-agent
-  workspace: ./workspace/agents/new-business-agent
-  tools:
-    mcpServers:
-      - name: business-mcp
-        type: sse
-        url: http://localhost:40603/sse
+identity:
+  agentId: new-business-agent
+  name: 新业务助手
+  description: 你是一个新业务助手
+mcp:
+  servers: [business-mcp]   # 订阅 mcp.yml 中同名 static-server
 ```
 
 ### 4. 单一职责原则 (SRP)
@@ -757,8 +591,8 @@ private final CacheProvider cacheProvider;
 
 **实践方式**：
 ```java
-// AgentService：只负责 Agent 生命周期
-// ChatAppService：只负责对话编排
+// AgentLookup / 框架 AguiAgentRegistry：只负责 Agent 查询与注册
+// ExecutionFacade：只负责对话执行编排
 ```
 
 ---

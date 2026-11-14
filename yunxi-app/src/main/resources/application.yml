@@ -1,0 +1,23 @@
+# yunxi 目标架构应用配置（应用层引导壳）。
+# 平台运行时配置由配置中心 yunxi-config 提供，经 config/imports.yml 统一注册加载
+# （见 yunxi-config/src/main/resources/config/）。本文件仅保留「必须留在根层」的引导项：
+#   - spring.config.import：指向 config/imports.yml（片段清单唯一真相源）
+#   - spring.jackson：框架 ChatUsage 反序列化兼容开关
+#   - spring.autoconfigure.exclude：禁用框架 AG-UI Agent 自动扫描，避免与 yunxi AgentService 产生第二套注册路径
+# 任何业务配置都去 config/ 对应片段改，不要写回本文件。
+# 生产部署前必须通过环境变量设置访问口令：YUNXI_SECURITY_USER_PASSWORD（留空平台将拒绝启动）。
+
+spring:
+  config:
+    import: classpath:config/imports.yml
+  # 反序列化时忽略未知属性。AgentScope 的 ChatUsage 序列化会写出 derived 字段 totalTokens，
+  # 但反序列化构造器不含该参数，默认会抛 UnrecognizedPropertyException（导致含 usage 的会话/缓存反序列化失败）。
+  # 关闭该开关使读写对框架模型字段演进保持兼容。
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+  # 关闭框架 AG-UI 内置的 Agent bean 自动扫描（AguiAgentRegistryAutoConfiguration）。
+  # yunxi 的 Agent 由 yunxi-app 的 AgentProvisioner 经框架协议层 AguiAgentRegistry 单一注册
+  # （该 registry 由 RuntimeConfiguration 装配）；禁用框架扫描避免产生第二套注册路径。
+  autoconfigure:
+    exclude: io.agentscope.spring.boot.agui.common.AguiAgentRegistryAutoConfiguration

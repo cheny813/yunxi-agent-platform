@@ -1,0 +1,21 @@
+# ============================================================
+# 部署形态开关（单机 / 集群）
+# ============================================================
+# 控制运行时平面（io.yunxi.runtime.DistributedRuntimeConfig）的分布式后端：
+#   - standalone（默认）：内存兜底后端（io.yunxi.fabric.InMemoryDistributedRuntimeConfig），
+#     无 Redis 依赖，演示 / 开发零配置可启动；仅单 JVM 内会话串行化，无跨实例 CAS。
+#   - cluster：装配 Redis 分布式后端（io.yunxi.fabric.RedisDistributedRuntimeConfig），
+#     启用跨实例 CAS 与会话轮次跨副本互斥。生产集群部署必须设为 cluster，
+#     并确保 spring.data.redis.*（redis.yml 片段）指向共享 Redis。
+#
+# 切换纯配置驱动（RuntimeConfiguration 按 yunxi.cluster.mode 条件装配），无需改程序源码。
+# 覆盖顺序：本片段置于 redis.yml 之后，cluster 模式依赖其 spring.data.redis.* 绑定。
+#
+# key-prefix：cluster 模式下所有分布式 Redis 键的统一命名空间前缀（分布式状态 + 沙箱跨实例锁），
+#   多套环境共用一套 Redis 时通过环境变量 YUNXI_CLUSTER_KEY_PREFIX 区分，避免键冲突。
+#   注意：租户隔离（tenant）位于 RAG 分块自然键首位、独立派生存储主键，与集群 key-prefix 正交，
+#   不受 key-prefix 影响。
+yunxi:
+  cluster:
+    mode: standalone
+    key-prefix: ${YUNXI_CLUSTER_KEY_PREFIX:yunxi:}

@@ -23,16 +23,16 @@
 
 ```
 第 4 层: 你的业务配置与工具
-  - 通过 agent-config/agent-definitions/*.yml 定义 Agent 的提示词、工具、MCP 服务器
+  - 通过 yunxi-config/agent-definitions/*.yml 定义 Agent 的提示词、工具、MCP 服务器
   - 业务工具实现为 Spring @Component + @Tool 注解
   - 编写业务逻辑
 
 第 3 层: yunxi Agent Platform
   - AgentConfigurer (Agent 装配：YAML→HarnessAgent)
-  - ChatAppService (对话管理)
-  - ProfileRouter (用户档案路由)
+  - ConversationController / IngressGateway (传输适配与四协议入口，yunxi-ingress)
+  - ImChannelGatewayConfig (IM 渠道网关：钉钉/企微/飞书/GitHub/GitLab/微信/ChatUi 经 GatewayBootstrap 接入框架 HarnessGateway，见 16.8)
   - ModelFactory (模型创建)
-  - A2AServer (跨服务 Agent 调用协议)
+  - ProtocolAdapter (跨协议适配：Web / A2A / AG-UI / Chat Completions)
 
 第 2 层: AgentScope-Java + Harness
   - HarnessAgent (Agent 运行时包装器，管理记忆/会话/上下文)
@@ -41,13 +41,13 @@
   - A2AProtocol (Agent 间通信协议)
 
 第 1 层: 基础设施
-  - Spring Boot / Redis / MySQL / LLM API
+  - Spring Boot / Redis /（可选）MySQL / LLM API
 ```
 
 **开发原则**：
 1. Agent 行为通过 YAML 配置文件定义，由 `AgentConfigurer` 在启动时装配
 2. 业务工具直接使用 `@Tool` 注解注册，无需额外的桥接层
-3. 对话管理通过 `ChatAppService` 编排（`agent.call()` / `agent.streamEvents()`），透过 `RuntimeContext` 传递 `userId`/`sessionId`
+3. 对话请求经 `ConversationController` → `IngressGateway` → `ProtocolAdapter` 适配为 `AgentCommand`，由 `ExecutionFacade` 执行（`agent.streamEvents()`），透过 `RuntimeContext` 传递 `userId`/`sessionId`
 4. 模型使用通过 `ModelFactory` 统一创建
 
 ---
@@ -59,39 +59,45 @@ Agent 通过 YAML 配置文件定义，由 `AgentConfigurer` 在启动时装配�
 ### Agent 定义示例
 
 ```yaml
-# agent-definitions/my-business-agent.yml（顶层键为 agent:，由 AgentDefinitionLoader 从 classpath 加载）
-agent:
-  name: my-business-agent
-  description: 业务分析助手
-  prompt: "你是一个业务分析助手..."
-  orchestration: single          # single / supervisor / pipeline / routing
-  model:
-    provider: dashscope          # dashscope / openai / baidu / huawei
-    modelName: qwen-plus
-  ragMode: GENERIC               # NONE / GENERIC / AGENTIC
-  toolsGroup:
-    systemToolsGroup: [memory]
-    mcpServersToolsGroup: [database]
+# 以下 AgentSpec 字段结构同真实范本 yunxi-config/src/main/resources/agent-definitions/example-agent.yml
+# （顶层即 AgentSpec 字段，无 agent: 包裹；由 AgentDefinitionLoader 扫描 classpath*:agent-definitions/**/*.yml 加载，一个文件一个 Agent）
+identity:
+  agentId: example-assistant        # 必填，Agent 唯一标识；同时作为 ModelRoutingPolicy 的路由键
+  name: 示例助手                     # 必填，展示名
+  description: 你是一个通用智能助手，用简洁、准确的中文回答用户问题。   # 作为系统提示词（AgentConfigurer.sysPromptOf 取 identity.description）
+mcp:
+  servers: []                       # 订阅 mcp.yml 中 yunxi.mcp.static-servers 的命名服务器（按名解析，不含连接信息）；留空表示不接 MCP
+state:
+  store: inmemory
+  persist: false
+permission:
+  allowedTools:
+    - memory
+  toolGate:
+    enabled: false
+    tools: []
+    message: ""
+# 模型不在 AgentSpec 中声明，统一由 yunxi-config/config/models.yml 的 routing 段按 identity.agentId 解析（未声明则走自动选型）
 ```
 
-配置文件将被 `AgentConfigurer.createAgent()` 方法读取，通过 `ModelFactory.create()` 创建 Model，经由 `HarnessAgent.builder()` 装配 Toolkit（`@Tool` Bean + MCP 工具组）与 Middleware 后构建可运行的 Agent。
+配置文件由 `AgentDefinitionLoader` 在启动期扫描 classpath 的 `agent-definitions/` 反序列化为 `AgentSpec` 并校验后注册进 `ConfigCenter`（全平台 Agent 定义唯一真相源，支持运行时热加载），再经应用平面 `AgentProvisioner` 在启动期调运行时装配入口 `AgentConfigurer.configure(AgentSpec)` 构建为共享的 `HarnessAgent`，注册进框架协议层 `AguiAgentRegistry` / `A2aServerRegistry`（yunxi 不维护第二份注册表）。Agent 定义属于**部署产物**（类比 Spring 中你编写的 `@Controller`），由部署方随镜像或挂载卷放入 classpath 的 `agent-definitions/` 下，平台本身不内置具体业务 Agent；本仓库当前随附 `yunxi-config/src/main/resources/agent-definitions/example-agent.yml` 作为格式范本，首次运行可参考它自行提供。`AgentConfigurer` 是全仓唯一的运行时装配点，开发者无需自建构建逻辑。
 
-### Agent 加载流程
+### Agent 加载与装配流程
 
 ```
-agent-definitions/*.yml
-  → AgentDefinitionLoader 加载定义（AgentDefinition 解析）
-  → AgentConfigurer 为每个定义调用 buildAndRegisterAgent(def)
-  → ModelFactory.create(config) 创建 Model
-  → HarnessAgent.builder()
-      .model(model)
-      .toolkit(toolkit)                // 注册 @Tool Bean + MCP 工具组
-      .addMiddleware(ApplicationRAG / ContentFilterMiddleware ...)
-    .build()
-  → agentService.registerAgentInstance(name, agent)   // 共享 Agent 实例
+classpath*:agent-definitions/**/*.yml   // AgentDefinitionLoader.LOCATION：classpath 扫描根，定义由部署方提供（非框架内置）
+  → AgentDefinitionLoader（@PostConstruct）扫描并反序列化为 AgentSpec，校验后注册进 ConfigCenter（校验不通过则跳过并记严重日志）
+  → 运行时装配入口将每个 AgentSpec 调用 AgentConfigurer.configure(AgentSpec)
+       · ConfigCenter.resolve(spec)            → ResolvedConfig（合并默认 / profile / 环境配置）
+       · ModelRoutingPolicy.route(agentId)     → 主模型 + 备用模型 id
+       · modelFactory.create(primaryModelId)  → Model（FailoverModelProvider 主备兜底）
+       · buildToolkit                          → @Tool Bean + McpDirectory 工具组 + 各 MuseToolRegistrar 元工具
+       · 构建内层 ReActAgent，再 HarnessAgent.builder().fromAgent(inner) 包裹
+       · 按 order 统一挂载协议无关 Middleware（审计 / 追踪 / 人机协同 / 韧性 / 会话级工具组激活）
+  → aguiAgentRegistry.register(agentId, agent)   // 共享 Agent 实例（框架协议层单例真相源）
 ```
 
-对于 Supervisor 模式（专家 Agent 编排），在 YAML 中配置 `experts` 列表，由 `createSupervisorAgent()` 设置 `SubAgentConfig.forwardEvents`。
+当前 `AgentSpec` 聚焦单 Agent 定义（字段为 `identity` / `skill` / `mcp` / `state` / `permission` / `toolkit`，无多 Agent 编排字段）。多 Agent 编排（supervisor / pipeline / routing）由 AgentScope-Java 框架原生 SubAgent 能力支持，不在当前 AgentSpec schema 内声明；需要时在框架层按官方 SubAgent 用法组合，yunxi 不额外封装编排字段。
 
 ---
 
@@ -139,17 +145,16 @@ public class MyBusinessTool {
 ### 本地 @Tool vs 远程 MCP 工具
 
 - **本地 `@Tool`**：在应用内直接执行，适合业务逻辑、内部数据访问；
-- **远程 MCP 工具**：通过 Agent 定义 YAML 的 `tools.mcpServers` 声明，由 `AgentConfigurer.registerMcpServers` 建立连接（sse / stdio / http 三种传输），适合跨服务复用的能力（如 yunxi-mcp-servers 提供的 40+ 即插即用工具）。
+- **远程 MCP 工具**：通过 Agent 定义 YAML 的 `mcp.servers` 订阅命名服务器（如 `[database]`），由 `AgentConfigurer` 经 `McpDirectory` 按名解析连接（连接信息来自 `mcp.yml` 的 `yunxi.mcp.static-servers`，支持 sse / stdio / http 三种传输），适合跨服务复用的能力（如 yunxi-mcp-servers 提供的 40+ 即插即用工具）。
 
 ```yaml
-# agent-definitions/my-business-agent.yml
-agent:
-  name: my-business-agent
-  tools:
-    mcpServers:
-      - name: business-data-mcp
-        type: sse
-        url: http://localhost:40602/sse   # 需先启动对应 MCP 服务
+# 远程 MCP 工具示例（完整 AgentSpec 字段结构见 yunxi-config/src/main/resources/agent-definitions/example-agent.yml；mcp.servers 只写订阅名）
+identity:
+  agentId: example-assistant
+  name: 示例助手
+  description: 你是一个通用智能助手
+mcp:
+  servers: [business-data-mcp]   # 订阅 mcp.yml 中同名 static-server（连接信息在 mcp.yml 声明，不在 AgentSpec 内）
 ```
 
 **注册流程**：
@@ -170,23 +175,9 @@ yunxi 仅负责启用与事件透出——**无需自建工具、存储或状态
 
 ### 1. 启用开关
 
-```yaml
-# agent-definitions/<name>.yml
-agent:
-  name: business-assistant
-  plan:
-    taskList: true          # 默认 false
-```
+> **`AgentSpec`（`io.yunxi.definition.AgentSpec`）已内置 `plan.taskList` 字段（`PlanConfig`），与 `identity` / `skill` / `mcp` / `state` / `permission` / `toolkit` 并列。** 任务清单（`todo_write`）是 AgentScope-Java 框架原生能力，其启用开关为框架级 `HarnessAgent.Builder.enableTaskList()`；yunxi 已在 `AgentConfigurer` 唯一装配点接线该开关，无需自建。
 
-也可全局开启（`agentscope.yml`）：
-
-```yaml
-agentscope:
-  core:
-    plan:
-      task-list: true
-```
-
+该能力由 `HarnessAgent.Builder.enableTaskList()` 构建期开关控制（默认关闭），yunxi 采用双通道、默认关闭：**全局开关 `yunxi.agent.taskList.enabled`**（Spring 环境属性，默认 false）与 **per-Agent `agent.plan.taskList`**（经 `AgentSpec.PlanConfig`）二者 OR 生效。即 `agent.plan.taskList: true` 已正式生效。
 启用条件与计划模式（`plan.enabled`）一致，取 **YAML 级 或 全局级** 二者之一。
 
 ### 2. 引导模型使用
@@ -211,23 +202,23 @@ agentscope:
 
 ### 4. 前端对接
 
-服务端经 SSE `todo_update` 事件推送全量清单，前端应**整体替换**渲染：
+后端 `ConversationController.stream` 经 SSE 以 `event: agent-event` **纯透传**框架 `AgentEvent`（框架 `AgentEventType` 无 `todo_update` 类型）；任务清单由前端 SDK `yunxi-chat.js` 从 `todo_write` 工具的 `TOOL_RESULT_TEXT_DELTA` 累积、`TOOL_RESULT_END` 触发解析（full-list-replace 语义），经 `onTodo` 回调**整体替换**渲染：
 
 ```javascript
 yunxiChat({
   mode: 'stream',
   message: '生成一份营养配餐方案',
   onDelta: (delta, full) => { /* 文本增量 */ },
-  onTodo: (todos, evt) => {
-    // todos: [{ id, subject, state, created_at, ... }]，全量列表
-    renderTodoCard(todos);
+  onTodo: (todos, meta) => {
+    // todos: [{ content, status, priority }] 全量列表；meta: { toolCallId, revision }
+    renderTodoPanel(todos);
   },
   onDone: (full) => { /* 完成 */ }
 });
 ```
 
-> SDK 的 `onTodo` 回调仅在 `mode: 'stream'` 下触发。事件负载与字段说明见
-> [09. API 参考](./09-api-reference.md#todo_update-事件任务清单)，启用配置见
+> SDK 的 `onTodo` 回调仅在 `mode: 'stream'` 下触发。透出机制与字段说明见
+> [09. API 参考](./09-api-reference.md#任务清单透出机制)，启用配置见
 > [06. 配置参考](./06-configuration.md#任务清单todolist配置)。
 
 ### 5. 与计划模式（PlanMode）的关系
@@ -241,158 +232,41 @@ yunxiChat({
 
 ---
 
-## 声明式 Workflow 编排图挂载
+## AgentScope Service 管控面集成（aistio）
 
-yunxi 支持在 Agent 定义里以声明式 YAML 描述一张 DAG 编排图（底层框架官方称 **Workflow**，yunxi 文档亦称「编排图挂载」），由平台在装配期翻译成 AgentScope Service **编排定义 Artifact** 供 AgentScope Service 管控面导入（导出与推送配置见 [06. 配置指南 - aistio](./06-configuration.md#aistio) 的「术语对照」与「编排图导出与自动推送」两节）。编排图由若干「节点 + 有向边」组成，节点类型覆盖 Agent 派发、条件分支、人工审批（Approval）、汇聚、定时等待、外部信号等，适合把"多步骤、需审批或需等待外部事件"的业务流程固化成可复用的编排。
+yunxi 通过 `yunxi-fabric` 模块的 `io.yunxi.fabric.aistio` 适配层接入 AgentScope Service 管控面（底层框架生态称 aistio），把每个已装配的 `HarnessAgent` 注册为一个**被管控的数据面 Agent 实例**，从而获得 Agent 管控、治理可视化与会话干预能力。配置项与启用步骤见 [06. 配置参考 - AgentScope Service 管控面配置（aistio）](./06-configuration.md#aistio)。
 
-> 编排引擎本身运行在 AgentScope Service 管控面（完整 DAG 引擎）。yunxi 侧只做「YAML 声明 → Artifact 翻译」与挂载装配，不新建编排运行时。
+> 接入形态是**数据面实例接入**：yunxi 作为受管控的 Agent 实例，由控制面下发任务、yunxi 执行并经 gRPC 回传事件。把 yunxi 的 Agent 定义反向导出为管控面 DAG 编排定义（声明式 Workflow 编排图挂载）不在当前实现范围，相关能力以 AgentScope Service 官方文档为准。
 
-### 1. 最小声明（内联图）
+### 1. 单一集成点
 
-```yaml
-agent:
-  name: purchase-review-agent
-  orchestration:
-    pattern: workflow
-    mounts:
-      - name: purchase-review
-        group: 采购审批
-        description: 小额免审、大额走人工审批的采购复核流程
-        body:
-          kind: workflow
-          mode: auto
-          graph:
-            nodes:
-              - key: fetch
-                type: agent
-                agentId: 11111111-1111-1111-1111-111111111111
-              - key: check
-                type: condition
-                condition: "amount < 1000"
-              - key: approve
-                type: approval
-                approval:
-                  approverType: role
-                  approverRef: 99999999-9999-9999-9999-999999999999
-                  prompt: 请复核该采购单
-              - key: done
-                type: join
-                join:
-                  mode: all
-              - key: archive
-                type: agent
-                agentId: 22222222-2222-2222-2222-222222222222
-            edges:
-              - from: fetch
-                to: check
-              - from: check
-                to: approve
-                condition: "amount < 1000"
-              - from: check
-                to: done
-                condition: "amount >= 1000"
-              - from: approve
-                to: done
-              - from: done
-                to: archive
-```
+所有 aistio 接线收敛在 `yunxi-fabric` 一处，绝不在其他模块自建注册 / 心跳 / gRPC 逻辑：
 
-### 2. 两种挂载写法
+- `AistioConnector`（`@Component`，`yunxi.aistio.enabled=true` 时装配）—— 单一集成点。对每个已装配的 `HarnessAgent` 调用框架 `Aistio.instrument(agent, AistioConfig, adapter)`，将注册 / 心跳 / gRPC 对话流 / 数据面契约 / 任务接活全部交给框架，yunxi 不重实现。
+- `AistioIntegrationProperties` —— 仅承载 yunxi 侧连接参数（`yunxi.aistio.*`）；注册 / 心跳 / gRPC / 契约等语义由框架 `Aistio.instrument` 负责。
+- `AistioLifecycle` —— 优雅下线闸门（`stopAccepting()`），缩容 / 下线前拒绝新接活。
+- `YunxiFrameworkAdapter` —— 实现框架 `FrameworkAdapter`：承载 `handleAgentTask`（任务接活）、上下文抽取与 observer 中间件等。
+- `YunxiAgentBuilderSupplier` —— 工作区 Agent 构建器底座，仅补平台底座（MCP 工具箱 / MUSE 元工具 / 分布式存储 / 横切中间件），模型经框架全局 `ModelRegistry` 解析（不重实现执行器 / 工具翻译）。
+- `AistioIntegration` —— 实现框架 `AgentBuildContributor`，在 Agent 装配期注入 aistio 接线。
+- `RedisDistributedRuntimeConfig` / `InMemoryDistributedRuntimeConfig` —— 分布式运行时装配（`DistributedStore` + `SessionTurnGate`）。
 
-- **内联图**：`body.graph` 直接写节点与边（上例）。
-- **引用顶层图**：挂载的 `body.definition` 指向同一文件 `orchestration.graph` 里以该名字导出的图，便于多个挂载复用同一张图：
+### 2. 已落地的核心能力
 
-```yaml
-agent:
-  orchestration:
-    pattern: workflow
-    mounts:
-      - name: order-fulfillment-ref
-        group: 订单履约
-        body:
-          kind: workflow
-          mode: auto
-          definition: order-fulfillment   # 引用下方 orchestration.graph 中名为 order-fulfillment 的图
-    graph:
-      nodes:
-        - key: intake
-          type: agent
-          agentId: 33333333-3333-3333-3333-333333333333
-        - key: gate
-          type: condition
-          condition: "input.priority == \"high\""
-        - key: manual
-          type: approval
-          approval:
-            approverType: user
-            approverRef: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
-            prompt: 高优先级订单需人工确认
-        - key: merge
-          type: join
-          join:
-            mode: any
-        - key: wait
-          type: timer
-          timer:
-            durationSeconds: 30
-        - key: notify
-          type: signal
-          signalName: fulfilled
-      edges:
-        - from: intake
-          to: gate
-        - from: gate
-          to: manual
-          condition: "input.priority == \"high\""
-        - from: gate
-          to: merge
-          condition: "input.priority != \"high\""
-        - from: manual
-          to: merge
-        - from: merge
-          to: wait
-        - from: wait
-          to: notify
-```
+| 能力 | 实现 | 说明 |
+|------|------|------|
+| HTTP 自注册 + 心跳 | 框架 `HttpSelfRegistration`（`AistioConfig.startHttpRegister(true)`，默认开） | 启动期向控制面 `POST /api/v1/agent-registrations` 注册并周期心跳；`instanceKey` 默认取 `${app}-${host}-${port}`（覆盖框架默认 UUID，对齐实例键稳定唯一约定） |
+| gRPC 对话流 | 框架 gRPC 传输（`AistioConfig.startGrpc(true)`） | 控制面经 gRPC 推对话、yunxi 回传事件流；`AistioConnector` 默认 `startGrpc=false`，须显式开启 |
+| 任务接活（AgentTask） | `HarnessAgentTaskStarter` + `YunxiFrameworkAdapter.handleAgentTask` | 控制面经 `dispatchExternal` 下推 `AgentTaskAssignment`，yunxi 跑该 Agent；含工作区定义任务时经 `HarnessWorkspaceAgentFactory` 声明 `workspace-definition-v1` 能力，避免定义任务被 skip |
+| 优雅下线 | `AistioLifecycle.stopAccepting()` | 缩容 / 下线前关闭 accepting 闸门 |
+| 跨实例会话串行化 | `RedisSessionTurnGate`（实现框架 `SessionTurnGate`） | 经 `DistributedRuntimeConfig.sessionTurnGate()` 装配，解决跨实例对话互斥（框架 `DistributedStore.sessionTurnGate()` 默认 `null`，yunxi 显式装配） |
+| 分布式状态存储 | `RedisDistributedRuntimeConfig` | 装配 `DistributedStore`，多实例共享 Agent 状态 |
 
-### 3. 节点类型
+### 3. 启用要点
 
-| 类型 | 关键字段 | 说明 |
-|------|----------|------|
-| `agent` | `agentId`（UUID） | 派发单个已注册 Agent 执行 |
-| `team` | `teamRef`（UUID） | 团队协作执行 |
-| `approval` | `approval.approverType` / `approval.approverRef` / `approval.prompt` | 人工审批（HITL） |
-| `condition` | `condition`（CEL 表达式） | 条件分支，按表达式真假走不同边 |
-| `join` | `join.mode` ∈ `all` / `any` / `quorum`；`quorum` 时 `join.quorum > 0` | 汇聚多路输入 |
-| `timer` | `timer.at`（绝对时间）或 `timer.durationSeconds`（相对秒数） | 定时等待 |
-| `signal` | `signalName` | 等待外部信号唤醒 |
-| `subrun` | `definitionRevisionId`（UUID） | 嵌套子图（定义级复用） |
-
-通用字段（任意节点可用）：`timeoutSeconds`（超时秒数）、`retry`（含 `maxAttempts` / `backoffSeconds`）、`failurePolicy` ∈ `fail_fast` / `continue` / `partial_success`。
-
-边（`edges`）字段：`from` / `to`（节点 key）、`condition`（CEL，`true` 时走该边）、`on`（仅接受终态，如 `succeeded`）。
-
-### 4. 条件表达式（CEL）
-
-条件节点与边的 `condition` 使用 CEL 语法，可用变量仅 `run` / `issue` / `trigger` / `nodes`。**引用上游节点输出必须用 `nodes.<nodeKey>.<field>` 形式，不能写裸变量名**。例如：
-
-```yaml
-- key: risk-gate
-  type: condition
-  condition: "nodes.extract.risk > 0.7"
-```
-
-```yaml
-- from: risk-gate
-  to: wait-window
-  condition: "trigger.highRisk != true"
-```
-
-约束：表达式长度上限 4096 字节；编排图为无环 DAG（不允许自环与环）；节点 key 必须非空且唯一。
-
-### 5. 与导出的关系
-
-声明好 `orchestration.mounts` 后，开启 `yunxi.aistio.workflow.export-enabled=true` 即可在启动期把每张图翻译为 DefinitionSpec Artifact 落盘（默认 `./workflow-artifacts`），并在配置 `push-token` 后自动推送到 AgentScope Service 管控面。完整可抄写范本见 [`agent-definitions/workflow-export-example.yml`](../../agent-config/src/main/resources/agent-definitions/workflow-export-example.yml)（默认 `enabled: false`，仅作格式参考、不触发加载）。推送与导出的配置细节见 [06. 配置指南 - aistio](./06-configuration.md#aistio) 的「编排图导出与自动推送」小节。
+- 总开关 `yunxi.aistio.enabled=true` 时才装配 `AistioConnector`，避免禁用时因空控制面 URL 在 Bean 创建期失败。
+- `yunxi.aistio.control-plane-url` 与 `internal-token` 必填；`base-url` 须填**管控面容器可达**的宿主机地址（不可填 `localhost`，否则容器内 prober 探活被拒）。
+- `yunxi.aistio.start-grpc=true` 才启用 gRPC 对话流（默认 `false`）。
+- `yunxi.aistio.instance-key` 未配置时自动取 `${app}-${host}-${port}`，建议保持默认以获得稳定唯一实例键。
 
 ---
 
@@ -406,26 +280,6 @@ Agent 上下文由 AgentScope 框架的 `HarnessAgent.workspaceFor(userId, sessi
 
 ## 单元测试
 
-### 测试理论基础
-
-**为什么需要单元测试**：
-- 验证代码正确性
-- 便于重构（有测试保障）
-- 作为代码文档
-- 提前发现问题
-
-**测试金字塔**：
-```
-         /\
-        /  \
-       / E2E \      端到端测试（少）
-      /--------\
-     /  集成测试 \   集成测试（中）
-    /------------\
-   /   单元测试    \  单元测试（多）
-  /----------------\
-```
-
 ### 编写单元测试
 
 ```java
@@ -433,23 +287,23 @@ Agent 上下文由 AgentScope 框架的 `HarnessAgent.workspaceFor(userId, sessi
 class MyAgentTest {
 
     @Autowired
-    private ChatAppService chatAppService;
+    private ExecutionFacade executionFacade;
 
     @Test
     void testHandleRequest() {
         // 1. 准备测试数据
-        AgentRequest request = AgentRequest.builder()
-            .message("测试消息")
+        AgentCommand command = AgentCommand.builder()
+            .agentId("my-agent")
             .userId("test-user")
+            .messages(List.of(Msg.user("测试消息")))
             .build();
 
         // 2. 执行测试
-        AgentResponse response = agentService.handleRequest("my-agent", request);
+        Settle settle = executionFacade.settle(command).block();
 
         // 3. 验证结果
-        assertNotNull(response);
-        assertNotNull(response.getContent());
-        assertFalse(response.getContent().isEmpty());
+        assertNotNull(settle);
+        assertTrue(settle.ok());
     }
     
     @Test
@@ -501,7 +355,7 @@ log.error("处理失败", exception);
 ### 断点调试
 
 **常用断点位置**：
-- Agent 的 handleRequest 方法
+- ExecutionFacade 的 execute / settle 方法（及 ConversationController 入口）
 - 规则的 evaluate 方法
 - MCP 工具的 execute 方法
 - 上下文组装逻辑
@@ -521,19 +375,19 @@ log.error("处理失败", exception);
 
 | 模块 | 职责 |
 |------|------|
-| `agent-core` | Agent 装配与中间件编排 |
-| `agent-config` | YAML 场景定义与 MCP 配置 |
+| `yunxi-runtime` | Agent 装配与中间件编排 |
+| `yunxi-config` | YAML 场景定义与 MCP 配置 |
 | `mcp-formfill` | 通用表单填写 MCP 服务器（WebSocket 下发填表指令） |
 | `agent-web-sdk` | 前端填表 SDK（`FormFillClient` 桥接层 + `PageAgentDomEngine` 执行引擎） |
-| `agent-nutritionist-web` | 示例前端页面（食谱生成） |
+| `yunxi-nutritionist-web` | 参考业务前端模块（营养师业务） |
 
 ### 后端协作模型
 
 ```
-用户 → 前端页面 (agent-nutritionist-web)
+用户 → 前端页面 (yunxi-nutritionist-web)
                 │ 对话消息
                 ▼
-        ChatAppService (agent-core)
+        ConversationController / IngressGateway (yunxi-ingress)
                 │ 路由到 nutrition-assistant
                 ▼
         HarnessAgent + MCP 工具 (mcp-formfill)
@@ -571,7 +425,7 @@ log.error("处理失败", exception);
 
 `mcp-formfill` 依据 `scenarios/recipe.json` 中的字段映射，生成填表数据，经 WebSocket 推送到前端，由 `FormFillClient` → `PageAgentDomEngine` 完成页面写入。
 
-### 前端设计（agent-web-sdk + agent-nutritionist-web）
+### 前端设计（agent-web-sdk + yunxi-nutritionist-web）
 
 前端采用**单一数据源（Single Source of Truth）**原则：页面状态由 `FormFillClient` 统一管理，用户交互与 Agent 填表都通过同一状态入口，避免双向覆盖冲突。前端执行层 `PageAgentDomEngine` 是纯 DOM 引擎，不持有任何 LLM 决策循环（原 Path A 浏览器端 Agent 循环已退场，决策权统一在后端 AgentScope）。
 
