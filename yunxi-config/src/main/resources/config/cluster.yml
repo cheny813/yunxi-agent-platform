@@ -15,7 +15,14 @@
 #   多套环境共用一套 Redis 时通过环境变量 YUNXI_CLUSTER_KEY_PREFIX 区分，避免键冲突。
 #   注意：租户隔离（tenant）位于 RAG 分块自然键首位、独立派生存储主键，与集群 key-prefix 正交，
 #   不受 key-prefix 影响。
+#
+# config.consistency.enforced：Agent 定义跨实例一致性门禁。cluster 模式下若配置中心仍为进程内实现
+#   （未设 yunxi.config.nacos.enabled=true），运行期创建的 Agent 只在单实例生效，各副本定义目录会静默分叉。
+#   默认仅启动告警；设为 true 则拒绝启动（fail-closed）。单副本以 cluster 形态运行是合法部署，故默认不阻断。
 yunxi:
   cluster:
     mode: standalone
     key-prefix: ${YUNXI_CLUSTER_KEY_PREFIX:yunxi:}
+  config:
+    consistency:
+      enforced: ${YUNXI_CONFIG_CONSISTENCY_ENFORCED:false}

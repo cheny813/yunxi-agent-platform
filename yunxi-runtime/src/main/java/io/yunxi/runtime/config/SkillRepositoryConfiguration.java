@@ -22,8 +22,9 @@ import org.springframework.context.annotation.Primary;
  *
  * <ul>
  *   <li>JDBC（{@link JdbcAgentSkillRepository}）：用户 / MUSE 可写、版本化技能后端，复用调度 MySQL。
- *       经 {@code yunxi.skill.jdbc.*} 配置，默认关闭；须先以 {@code deploy/infra/init/skill-store.sql}
- *       预建表结构（框架 JdbcAgentSkillRepository 构造器不自动建表）。该 bean 为 {@code @Primary}
+ *       经 {@code yunxi.skill.jdbc.*} 配置，默认关闭；表结构见 {@code deploy/infra/init/skill-store.sql}
+ *       （框架构造器不建表，本装配 {@code enableSkillTables=true} 在 dialect build() 阶段自动执行 DDL，
+ *       预建 SQL 作为幂等兜底）。该 bean 为 {@code @Primary}
  *       AgentSkillRepository，使 MUSE 的 SkillRefiner 写回落到版本化 JDBC 后端。</li>
  *   <li>Git（{@link GitSkillRepository}）：团队 / 策展只读技能仓库，经 {@code yunxi.skill.git.*} 配置，
  *       默认关闭。鉴权复用系统级 git 配置（SSH 密钥 {@code ~/.ssh} / HTTPS token 凭据助手 / token 内联 URL），
@@ -63,9 +64,10 @@ public class SkillRepositoryConfiguration {
     @Primary
     @ConditionalOnProperty(name = JDBC_ENABLED, havingValue = "true")
     public JdbcAgentSkillRepository jdbcSkillRepository(DataSource dataSource, JdbcProperties props) {
-        // 当前可用的 JdbcAgentSkillRepository 构造器仅接收 (DataSource, dialect, writeable)，
-        // namespace 固定为默认值（"default"）。多实例共享同一调度 MySQL 时，技能以表级隔离，
-        // 该库即单一真相源，无需自定义 namespace。
+        // 当前发布基线（框架 2.1.0-BETA1）的 JdbcAgentSkillRepository 构造器仅接收
+        // (DataSource, dialect, writeable)，namespace 固定默认值（"default"）；带 namespace 的
+        // 4 参构造器已在框架主干就绪、待发版接入。按租户路由技能仓库的适配层
+        // TenantRoutingSkillRepository 已落地（单测覆盖），本 bean 接线届时切换为路由仓库。
         AbstractJdbcDialect dialect = AbstractJdbcDialect.from(dataSource)
                 .enableSkillTables(true)
                 .build();
@@ -89,8 +91,9 @@ public class SkillRepositoryConfiguration {
         private String username;
         private String password;
         private String driverClassName;
-        // 预留字段：当前 JdbcAgentSkillRepository 仅提供默认 namespace 构造器，自定义 namespace 暂未启用。
-        private String namespace = "yunxi";
+        // 预留字段：发布基线框架构造器仅默认 namespace；租户路由仓库接线届时以其作为
+        // 无租户上下文时的默认 scope（当前取值与框架默认 namespace 一致，保证数据兼容）。
+        private String namespace = "default";
         private Integer maximumPoolSize;
 
         public boolean isEnabled() {

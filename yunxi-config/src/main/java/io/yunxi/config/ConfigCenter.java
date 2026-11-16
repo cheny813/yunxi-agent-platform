@@ -9,9 +9,21 @@ import java.util.Optional;
 
 /**
  * 配置平面。每一个配置片段的唯一拥有者，也是唯一可以把 {@link AgentSpec} 解析为 {@link ResolvedConfig} 的组件。
- * 同时是 Agent 定义的统一真相源：所有 Agent 定义（内置与运行时用户自助）均存于此处，支持热加载与多实例共享。
+ * 同时是 Agent 定义的统一真相源：所有 Agent 定义均存于此处，支持热加载与多实例共享。
+ * 当前唯一生产写入方是发布包加载器；统一写入接口保留给管理端 / 运维写入路径。
  */
 public interface ConfigCenter {
+
+    /**
+     * 写入是否跨实例可见（后端是否为共享存储）。
+     *
+     * <p>默认 {@code false}：进程内实现的写入只在本实例生效。共享后端只有在<b>真正连上</b>共享存储时才返回
+     * {@code true}——「已配置但连接失败而退化为内存」按不可共享对待，否则调用方会误以为写入已持久化到共享存储，
+     * 而实际上各实例的定义目录会静默分叉。
+     */
+    default boolean isSharedAcrossInstances() {
+        return false;
+    }
 
     /** 注册一个配置片段；片段结构与 id / kind / content 齐备性由 {@link FragmentValidator} 校验。 */
     void registerFragment(ConfigFragment fragment);

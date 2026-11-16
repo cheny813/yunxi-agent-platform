@@ -121,6 +121,29 @@ public record AgentSpec(
 
         /** 推理复核：对高风险工具调用前做二次确认；复用 {@link ToolGate#tools()} 作为待复核清单。 */
         public record ReasoningReview(boolean enabled, String strategy, List<String> keywords) {}
+
+        /**
+         * 需要人工确认（ASK）的工具清单：{@code toolGate} 或 {@code reasoningReview} 任一启用时，
+         * 取 {@link ToolGate#tools()}；否则为空（表示「无人值守」）。
+         *
+         * <p>这条派生规则是「有人值守 / 无人值守」的唯一判定来源——定义期校验（能否同时声明白名单与黑名单）
+         * 与构建期翻译（派生 {@code PermissionMode}）都必须读它。历史上两处各写一份判空逻辑，
+         * 一处改动另一处漏改，就会出现「校验通过的配置在运行期落到另一个分支」。
+         */
+        public List<String> askTools() {
+            List<String> tools = toolGate != null ? toolGate.tools() : null;
+            if (tools == null || tools.isEmpty()) {
+                return List.of();
+            }
+            boolean gateOn = toolGate.enabled();
+            boolean reviewOn = reasoningReview != null && reasoningReview.enabled();
+            return gateOn || reviewOn ? tools : List.of();
+        }
+
+        /** 是否声明了「有人值守」能力，等价于 {@code !askTools().isEmpty()}。 */
+        public boolean hasAskTools() {
+            return !askTools().isEmpty();
+        }
     }
 
     /**

@@ -1,11 +1,13 @@
 package io.yunxi.runtime;
 
+import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.event.AgentEvent;
 import io.agentscope.core.event.AgentResultEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.harness.agent.gateway.HarnessGateway;
 import io.agentscope.harness.agent.gateway.MsgContext;
 import io.yunxi.runtime.TenantAgentAllocationService;
+import io.yunxi.runtime.middleware.IntentSignalMiddleware;
 import io.yunxi.runtime.tenant.TenantContext;
 import java.util.List;
 import java.util.Map;
@@ -61,9 +63,14 @@ public class DefaultExecutionFacade implements ExecutionFacade {
                     null,
                     Map.of("agentId", command.agentId()),
                     command.userId());
+            // 入口解析出的意图标签以 RuntimeContext 属性形态随 callerContext 带入网关，
+            // 由 IntentSignalMiddleware 搬进模型调用 options 供按请求选型消费；不编入
+            // MsgContext（extra 参与 canonicalKey，会话键不得随意图漂移）。意图缺失时
+            // 保持 null callerContext，下游选型不受影响。
+            RuntimeContext callerContext = intentCallerContext(command);
             // 网关 runStream 内部已套 SessionTurnGate（按 canonicalKey 串行化）+ 注册表解析 + 身份富化，
             // 返回与 streamEvents 同构的 AgentEvent 流，本协议适配器直接消费。
-            return gateway.runStream(msgContext, command.messages(), null);
+            return gateway.runStream(msgContext, command.messages(), null, callerContext);
         });
     }
 
@@ -94,5 +101,14 @@ public class DefaultExecutionFacade implements ExecutionFacade {
             sessionId = command.agentId();
         }
         return (command.userId() == null ? "" : command.userId()) + ":" + sessionId;
+    }
+
+    private RuntimeContext intentCallerContext(AgentCommand command) {
+        if (command.intent() == null || command.intent().isBlank()) {
+            return null;
+        }
+        return RuntimeContext.builder()
+                .put(IntentSignalMiddleware.CTX_KEY, command.intent().strip())
+                .build();
     }
 }

@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -75,7 +74,7 @@ class SelfEvolutionEngineTest {
         config.getRefine().setStopOnNoProgress(true);
         when(evaluator.evaluate(anyString(), anyString())).thenReturn(report(1, 1));
         when(refiner.refine(anyString(), anyString(), any(), anyInt())).thenReturn("refined");
-        doNothing().when(refiner).persist(any(), any(), any());
+        when(refiner.persist(any(), any(), any())).thenReturn(true);
 
         SelfEvolutionEngine engine = new SelfEvolutionEngine(evaluator, refiner, pruner, config);
         EvolveOutcome outcome = engine.evolve("skill", "/dir", "initial");
@@ -94,7 +93,7 @@ class SelfEvolutionEngineTest {
         config.getRefine().setStopOnNoProgress(false);
         when(evaluator.evaluate(anyString(), anyString())).thenReturn(report(1, 1));
         when(refiner.refine(anyString(), anyString(), any(), anyInt())).thenReturn("refined");
-        doNothing().when(refiner).persist(any(), any(), any());
+        when(refiner.persist(any(), any(), any())).thenReturn(true);
 
         SelfEvolutionEngine engine = new SelfEvolutionEngine(evaluator, refiner, pruner, config);
         EvolveOutcome outcome = engine.evolve("skill", "/dir", "initial");

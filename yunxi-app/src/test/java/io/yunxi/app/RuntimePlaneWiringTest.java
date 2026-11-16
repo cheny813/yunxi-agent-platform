@@ -15,6 +15,8 @@ import io.yunxi.runtime.rag.DocumentChunkStore;
 import io.agentscope.harness.agent.sandbox.SandboxExecutionGuard;
 import io.yunxi.runtime.rag.RagToolRegistrar;
 import io.yunxi.app.shard.AgentShardResolver;
+import io.yunxi.observability.MetricRegistry;
+import io.yunxi.observability.MicrometerMetricRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +38,26 @@ class RuntimePlaneWiringTest {
 
     @Autowired
     private ApplicationContext context;
+
+    @Test
+    void metricRegistryIsBridgedToMicrometer() {
+        MetricRegistry registry = context.getBean(MetricRegistry.class);
+        assertTrue(registry instanceof MicrometerMetricRegistry,
+                "生产装配的 MetricRegistry 应桥接到 Micrometer，而非进程内内存实现");
+
+        io.micrometer.core.instrument.MeterRegistry meters =
+                context.getBean(io.micrometer.core.instrument.MeterRegistry.class);
+        registry.incrementCounter("yunxi.wiring.probe");
+        assertEquals(1.0d, meters.get("yunxi.wiring.probe").counter().count(),
+                "经 MetricRegistry 记录的度量应真实进入 Micrometer registry（可被导出）");
+
+        assertTrue(context.getEnvironment()
+                        .getProperty("management.endpoints.web.exposure.include", "")
+                        .contains("metrics"),
+                "配置片段应把只读 metrics 端点纳入暴露清单");
+        assertEquals("false", context.getEnvironment().getProperty("management.otlp.metrics.export.enabled"),
+                "OTLP 指标导出默认关闭，未部署 Collector 时无外发流量");
+    }
 
     @Test
     void ragEnabledByDefaultRegistersStoreAndToolRegistrar() {

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -16,9 +17,11 @@ import org.mockito.ArgumentCaptor;
 import io.agentscope.harness.agent.gateway.TurnBusyException;
 import io.agentscope.harness.agent.gateway.TurnLease;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 /**
  * {@link RedisSessionTurnGate} 跨实例轮次闸门：NX+PX 抢占、CAS 释放（避免误删他人锁）、
@@ -60,36 +63,21 @@ class RedisSessionTurnGateTest {
     }
 
     @Test
-    void closeDeletesOnlyWhenTokenMatches() throws InterruptedException, TurnBusyException {
+    void closeReleasesLeaseThroughSingleScriptCall() throws InterruptedException, TurnBusyException {
         StringRedisTemplate redis = redis();
         ValueOperations<String, String> ops = redis.opsForValue();
         ArgumentCaptor<String> tokenCap = ArgumentCaptor.forClass(String.class);
         when(ops.setIfAbsent(eq("p:turn:k"), tokenCap.capture(), any(Duration.class))).thenReturn(true);
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class))).thenReturn(1L);
         RedisSessionTurnGate gate = new RedisSessionTurnGate(redis, "p:");
 
         TurnLease lease = gate.acquire("k"); // 捕获本 lease 实际持有的随机 token
-        // acquire 之后 token 已知，再让 get 返回它，close 才会命中 CAS。
-        when(ops.get("p:turn:k")).thenReturn(tokenCap.getValue());
-
         lease.close();
 
-        // 仅当仍持有本 token 时才 compare-and-del，避免误删他人锁。
-        verify(redis).delete("p:turn:k");
-        gate.shutdown();
-    }
-
-    @Test
-    void closeDoesNotDeleteWhenTokenMismatched() throws InterruptedException, TurnBusyException {
-        StringRedisTemplate redis = redis();
-        ValueOperations<String, String> ops = redis.opsForValue();
-        when(ops.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
-        when(ops.get("p:turn:k")).thenReturn("other");
-        RedisSessionTurnGate gate = new RedisSessionTurnGate(redis, "p:");
-
-        TurnLease lease = gate.acquire("k");
-        lease.close();
-
+        // 释放必须是一次原子脚本调用（脚本内比对 token 后再删），不能退化为先读后删。
+        verify(redis).execute(any(RedisScript.class), eq(List.of("p:turn:k")), eq(tokenCap.getValue()));
         verify(redis, never()).delete(anyString());
+        verify(ops, never()).get(anyString());
         gate.shutdown();
     }
 

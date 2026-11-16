@@ -41,11 +41,13 @@ import io.yunxi.runtime.tenant.TenantResolver;
 import io.yunxi.runtime.TenantAgentAllocationService;
 import io.yunxi.intelligence.IntentEngine;
 import io.yunxi.intelligence.IntentEngineConfiguration;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.yunxi.observability.AuditSink;
 import io.yunxi.observability.InMemoryAuditSink;
-import io.yunxi.observability.InMemoryMetricRegistry;
 import io.yunxi.observability.InMemoryTraceStore;
 import io.yunxi.observability.MetricRegistry;
+import io.yunxi.observability.MicrometerMetricRegistry;
 import io.yunxi.observability.TraceStore;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.beans.factory.ObjectProvider;
@@ -72,6 +74,7 @@ import io.agentscope.harness.agent.gateway.HarnessGateway;
 import io.yunxi.app.im.YunxiChannelRuntimeContextResolver;
 import io.yunxi.runtime.middleware.ChatAuditMiddleware;
 import io.yunxi.runtime.middleware.HitlMiddleware;
+import io.yunxi.runtime.middleware.IntentSignalMiddleware;
 import io.yunxi.runtime.middleware.OtelTracingMiddleware;
 import io.yunxi.runtime.middleware.ResilienceMiddleware;
 import io.yunxi.runtime.middleware.SessionToolGroupActivationMiddleware;
@@ -181,8 +184,8 @@ public class RuntimeConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "yunxi.models.auto.fine-ranking", name = "enabled", havingValue = "true")
     public FineRankingScorer telev1FineRankingScorer(
-            @Value("${yunxi.models.auto.fine-ranking.model-id:tev1:0.8b}") String modelId) {
-        // 决策模型经框架 ModelRegistry 按 provider:model 解析；不可解析时由 Telev1FineRankingScorer 回退规则式。
+            @Value("${yunxi.models.auto.fine-ranking.model-id:ollama:tev1:0.8b}") String modelId) {
+        // 决策模型经框架 ModelRegistry 按 provider:model 解析（须带 provider 前缀）；不可解析时回退规则式。
         ModelResolver resolver = ModelRegistry::resolve;
         return new Telev1FineRankingScorer(resolver, modelId);
     }
@@ -212,10 +215,16 @@ public class RuntimeConfiguration {
         return new InMemoryAuditSink();
     }
 
-    /** 默认内存版度量注册表。 */
+    /**
+     * 度量注册表：桥接到进程内 Micrometer registry（导出通道由 {@code management.otlp.metrics.export.*}
+     * 决定，未启用导出时度量仍可经 actuator 指标端点读取）。消费方只依赖 {@link MetricRegistry}，不感知导出实现。
+     *
+     * <p>registry 由容器提供（完整 Boot 上下文中为自动配置的复合 registry）；不启用 Boot 自动配置的轻量上下文
+     * 回退到进程内简单 registry，保证装配在对可观测组件无依赖的场景下仍成立，且桥接实现始终唯一。
+     */
     @Bean
-    public MetricRegistry metricRegistry() {
-        return new InMemoryMetricRegistry();
+    public MetricRegistry metricRegistry(ObjectProvider<MeterRegistry> meterRegistries) {
+        return new MicrometerMetricRegistry(meterRegistries.getIfAvailable(SimpleMeterRegistry::new));
     }
 
     /** 默认内存版轨迹存储（保留插入序，供按时间回放）。 */
@@ -228,7 +237,7 @@ public class RuntimeConfiguration {
     public List<MiddlewareBase> protocolAgnosticMiddlewares(
             AuditSink auditSink, MetricRegistry metricRegistry, ModelRoutingPolicy modelRoutingPolicy,
             SessionToolGroupRegistry sessionToolGroupRegistry, TenantQuotaMiddleware tenantQuotaMiddleware) {
-        // 协议无关横切中间件在此统一装配（审计 / 追踪 / 人机协同 / 韧性 / 会话级工具组激活 / 租户配额）。
+        // 协议无关横切中间件在此统一装配（审计 / 追踪 / 人机协同 / 韧性 / 会话级工具组激活 / 租户配额 / 意图信号透传）。
         // 所有协议（web / A2A / AG-UI / Chat Completions）统一经此链；运行时装配点按 order 挂载。
         // 跨会话长期记忆已下沉为 AgentScope-Java 框架原生的 MEMORY.md（由框架组件扫描注册），
         // 不再由 yunxi 自建中间件接兂，故此处只装配 yunxi 拥有的横切中间件。
@@ -238,7 +247,8 @@ public class RuntimeConfiguration {
                 new OtelTracingMiddleware(metricRegistry),
                 new HitlMiddleware(auditSink, metricRegistry),
                 new ResilienceMiddleware(metricRegistry, auditSink, modelRoutingPolicy),
-                new SessionToolGroupActivationMiddleware(sessionToolGroupRegistry)));
+                new SessionToolGroupActivationMiddleware(sessionToolGroupRegistry),
+                new IntentSignalMiddleware()));
     }
 
     /**

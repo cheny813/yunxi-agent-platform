@@ -4,8 +4,16 @@ management:
   endpoints:
     web:
       # 仅暴露只读盘点端点。写操作类端点（commands / drain / shutdown / doctor）故意不暴露，且框架 WriteGuard 默认 writeEnabled=false。
+      # metrics 为只读度量读数端点：未启用 OTLP 导出时，平台度量经此查看。
       exposure:
-        include: health,info,agentscope-agents,agentscope-status,agentscope-tools,agentscope-models,agentscope-usage
+        include: health,info,metrics,agentscope-agents,agentscope-status,agentscope-tools,agentscope-models,agentscope-usage
   endpoint:
     health:
       show-details: when-authorized
+  otlp:
+    metrics:
+      export:
+        # 默认关闭：未部署 OpenTelemetry Collector 时不产生任何外发流量与连接噪声。
+        enabled: ${YUNXI_OTLP_METRICS_ENABLED:false}
+        # 与 tracing 共用同一个 Collector 的 OTLP/HTTP 端点。
+        url: ${YUNXI_OTLP_METRICS_URL:http://127.0.0.1:4318/v1/metrics}

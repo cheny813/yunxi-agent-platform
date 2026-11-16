@@ -1,7 +1,8 @@
 # 示例 Agent 定义：声明真实沙箱后端（容器内执行代码的样例）
 #
 # 由 AgentDefinitionLoader 在启动期扫描 classpath*:agent-definitions/**/*.yml 加载，
-# 反序列化为 io.yunxi.definition.AgentSpec。顶层即 AgentSpec 字段，未知字段被忽略。
+# 反序列化为 io.yunxi.definition.AgentSpec。顶层即 AgentSpec 字段；字段名严格匹配，
+# 拼错会导致加载失败并提示应改成的字段名（不会静默丢弃整段配置）。
 #
 # 本样例演示：主路径代码执行（execute）经 sandbox.backend=docker 在容器内放行，
 # 而非在宿主文件系统上运行。toolkit.deniedToolNames 显式保留其余受限工具（不误开），

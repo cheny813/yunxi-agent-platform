@@ -56,6 +56,37 @@
 
 Agent 通过 YAML 配置文件定义，由 `AgentConfigurer` 在启动时装配为 HarnessAgent 实例。
 
+### 先分清两类 Agent：发布时定义 vs 运行时定义
+
+Agent 定义有两种来源，区别**不在能力，而在"定义从哪来、归谁改"**。选错会导致"改完不生效"或"升级后行为被悄悄改掉"：
+
+| | **发布时定义**（定义随发布包交付） | **运行时定义**（定义在配置中心创建） |
+|---|---|---|
+| 定义存放在哪 | 发布包 classpath 的 `agent-definitions/*.yml` | 配置中心（共享存储，Nacos 后端） |
+| 谁修改、怎么评审 | 开发者在代码仓库改，走 PR 评审，随版本发布 | 运维 / 业务方在运行时写入，即时生效 |
+| 何时生效 | 发布 / 重启后生效，跟随版本 | 写入后热加载，无需重启 |
+| 回滚方式 | 回滚版本（定义与代码一同回滚） | 改回配置中心上一版内容 |
+| 典型内容 | 带权限模板、工具白名单等安全面配置的平台级 Agent | 某个租户/业务团队自建的 Agent |
+
+**三个场景帮你对号入座：**
+
+- **场景 A（发布时定义）**：平台团队要提供一个"工单助手"，它的提示词、可调用工具白名单、权限模板需要经过代码评审，并且要能随版本一起回滚 → 写成 `agent-definitions/ticket-assistant.yml` 打进发布包。改提示词 = 提 PR + 发版。
+- **场景 B（运行时定义）**：某客户上线后想在管理界面自助创建一个"简历筛选助手"，当天创建、当天调整提示词，不想等平台发版 → 写入配置中心，平台热加载即时生效。
+- **场景 C（同名冲突）**：同一个 `agentId` 在两处都有定义时，**以发布时定义为准**（代码是最终裁决方）；运行时不允许覆盖发布时定义的 ID，需要新的请用新的 `agentId`。
+
+> 一句话记法：**要评审、要随版本回滚的，放进发布包；要当天生效、业务方自己调的，放配置中心。**
+
+Agent 定义最终都经 `ConfigCenter` 进入运行时（运行时只有一条读路径，不存在两套并行加载），区别在于所有权与更新语义：发布时定义在启动期与配置中心内容比对，不一致才覆盖（内容相同则零写入，避免多实例滚动重启引发热加载风暴）；运行时定义由配置中心直接热加载。
+
+### 运行时定义存在哪、能保留多久
+
+运行时定义存于配置中心的 Agent 定义快照（Nacos 后端为 `yunxi.agent-definitions.json`，全量快照），另有一份 Redis 共享读缓存加速多实例读取。要点：
+
+- **是持久存储，但不是版本库**：写入落 Nacos 配置，Nacos 重启后仍在；每次写入覆盖全量快照，平台自身不保留旧版本、不做自动备份。需要回滚请用 Nacos 控制台的配置历史（保留天数由 Nacos 服务端配置决定），或在写入前自行备份。删除该 dataId 等同于清空全部运行时定义。
+- **多人同时编辑必须串行**：写入是"读全量 → 改 → 写全量"，两人同时修改不同 Agent 时，后写者会覆盖前者的修改。开放给多人编辑前，编辑入口需串行化或引入版本校验，不能直接暴露并发的写接口。
+- **定义质量与经验不足的应对**：结构校验在写入前完成（`identity.agentId` / `identity.name` 必填等）；更深一层的提示词质量与工具边界评估、草稿—评审—晋升的完整流程尚未内置，属于后续演进项，不要把它当作已有能力。
+- **降级期写入只在本实例生效**：配置中心未启用或不可达时，定义写入只更新本实例内存、不持久化，日志会明确告警；cluster 部署建议开启 `yunxi.config.consistency.enforced=true`，让"定义无法跨实例共享"在启动期直接失败，而不是静默运行。
+
 ### Agent 定义示例
 
 ```yaml
@@ -70,7 +101,7 @@ mcp:
 state:
   store: inmemory
   persist: false
-permission:
+permission:                           # 必填：显式声明工具策略（白名单 / 黑名单 / 人工确认，语义见 06 章「权限模式」）
   allowedTools:
     - memory
   toolGate:
@@ -80,7 +111,7 @@ permission:
 # 模型不在 AgentSpec 中声明，统一由 yunxi-config/config/models.yml 的 routing 段按 identity.agentId 解析（未声明则走自动选型）
 ```
 
-配置文件由 `AgentDefinitionLoader` 在启动期扫描 classpath 的 `agent-definitions/` 反序列化为 `AgentSpec` 并校验后注册进 `ConfigCenter`（全平台 Agent 定义唯一真相源，支持运行时热加载），再经应用平面 `AgentProvisioner` 在启动期调运行时装配入口 `AgentConfigurer.configure(AgentSpec)` 构建为共享的 `HarnessAgent`，注册进框架协议层 `AguiAgentRegistry` / `A2aServerRegistry`（yunxi 不维护第二份注册表）。Agent 定义属于**部署产物**（类比 Spring 中你编写的 `@Controller`），由部署方随镜像或挂载卷放入 classpath 的 `agent-definitions/` 下，平台本身不内置具体业务 Agent；本仓库当前随附 `yunxi-config/src/main/resources/agent-definitions/example-agent.yml` 作为格式范本，首次运行可参考它自行提供。`AgentConfigurer` 是全仓唯一的运行时装配点，开发者无需自建构建逻辑。
+配置文件由 `AgentDefinitionLoader` 在启动期扫描 classpath 的 `agent-definitions/` 反序列化为 `AgentSpec` 并校验后注册进 `ConfigCenter`（全平台 Agent 定义唯一真相源，支持运行时热加载），再经应用平面 `AgentProvisioner` 在启动期调运行时装配入口 `AgentConfigurer.configure(AgentSpec)` 构建为共享的 `HarnessAgent`，注册进框架协议层 `AguiAgentRegistry` / `A2aServerRegistry`（yunxi 不维护第二份注册表）。上述"发布时定义"属于**部署产物**（类比 Spring 中你编写的 `@Controller`），由部署方随镜像或挂载卷放入 classpath 的 `agent-definitions/` 下，平台本身不预置具体业务 Agent；本仓库随附 `example-agent.yml` 等 4 个文件仅作格式范本，可照此自行提供。`AgentConfigurer` 是全仓唯一的运行时装配点，开发者无需自建构建逻辑。
 
 ### Agent 加载与装配流程
 

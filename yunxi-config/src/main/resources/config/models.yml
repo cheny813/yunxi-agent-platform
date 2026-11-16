@@ -80,9 +80,12 @@ yunxi:
       llm: qwen3-8-27b
       decision: local-decision
       embedding: local-embedding
-    # 自动选型精排（可选增强，默认关闭）：开启后由本地决策模型对候选做二次排序；
+    # 自动选型精排（可选增强）：开启后由本地决策模型对候选做二次排序；
     # 决策模型不可用或打分失败时自动回退到规则式（能力满足 + 成本最低）。
+    # 决策模型（tev1:0.8b） id 须带 provider 前缀；调用带 think=false 关闭思考
+    # （思考型模型回答不落在 content 内则解析恒为空）；决策模型只回首个偏好时按「提首 + 补位」语义成完整序列。
+    # tev1:0.8b 仅作决策模型占位，能力画像质量有限；生产更换更强决策模型后画像自动增强。
     auto:
       fine-ranking:
-        enabled: false
-        model-id: tev1:0.8b
+        enabled: true
+        model-id: ollama:tev1:0.8b

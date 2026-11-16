@@ -224,6 +224,20 @@ class IngressGatewayTest {
     }
 
     @Test
+    void suspendedTenant_rejectedBeforeIntentResolution() {
+        InMemoryConfigCenter cc = new InMemoryConfigCenter();
+        cc.registerTenant(Tenant.active("s2", "S").withStatus(TenantStatus.SUSPENDED));
+        IngressGateway gw = new IngressGateway(facade, List.of(webAdapter()), intent,
+                new TenantLifecycleService(cc));
+        ConversationRequest req = new ConversationRequest("web", "", "u", "s", "血糖偏高怎么吃");
+        req.setTenantId("s2");
+
+        assertThrows(TenantNotServiceableException.class, () -> gw.stream(req));
+        verify(intent, never()).resolve(any(IntentRequest.class));
+        verify(facade, never()).execute(any());
+    }
+
+    @Test
     void stream_allowsActiveTenant() {
         InMemoryConfigCenter cc = new InMemoryConfigCenter();
         cc.registerTenant(Tenant.active("a1", "A"));

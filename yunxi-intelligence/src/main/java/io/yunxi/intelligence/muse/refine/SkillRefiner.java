@@ -10,10 +10,16 @@ import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ToolSchema;
 import io.agentscope.core.skill.AgentSkill;
 import io.agentscope.core.skill.repository.AgentSkillRepository;
+import io.agentscope.harness.agent.gateway.SessionTurnGate;
+import io.agentscope.harness.agent.gateway.TurnBusyException;
+import io.agentscope.harness.agent.gateway.TurnLease;
 import io.yunxi.intelligence.muse.config.EvolutionConfig;
 import io.yunxi.intelligence.muse.model.EvalReport;
 import io.yunxi.runtime.ModelFactory;
+import io.yunxi.runtime.DistributedRuntimeConfig;
 import io.yunxi.intelligence.muse.model.TestCaseResult;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -42,6 +48,10 @@ public class SkillRefiner {
     private final ModelFactory modelFactory;
     private final ObjectProvider<AgentSkillRepository> repoProvider;
     private final EvolutionConfig config;
+    private final DistributedRuntimeConfig runtimeConfig;
+
+    /** 技能演进写锁键前缀：按「技能名」粒度互斥，tenant 前缀位预留（默认 default）。 */
+    private static final String SKILL_LOCK_PREFIX = "muse:skill:default:";
 
     /**
      * 按评估报告的失败反馈，让 LLM 修补技能正文。
@@ -70,31 +80,53 @@ public class SkillRefiner {
     }
 
     /**
-     * 把修补后的技能正文持久化：始终写回磁盘（评估器读磁盘），若配置了技能仓库则同时入库。
+     * 把修补后的技能正文持久化：按技能名粒度进轮次闸门（多副本演进同一技能互斥，
+     * 防止 last-write-wins 互相覆盖），闸门内写回磁盘并入库。
+     *
+     * @return true = 已保存；false = 闸门忙（其他副本正在演进该技能，等待下一轮重试）或写入失败
      */
-    public void persist(String skillName, String content, String skillDir) {
+    public boolean persist(String skillName, String content, String skillDir) {
+        SessionTurnGate gate = runtimeConfig == null ? null : runtimeConfig.sessionTurnGate();
+        if (gate == null) {
+            log.warn("[muse] skill={} 运行时未提供轮次闸门（gate 缺失），退化为无锁直写（多副本部署可能互相覆盖）", skillName);
+            writeAll(skillName, content, skillDir);
+            return true;
+        }
+        try (TurnLease lease = gate.acquire(SKILL_LOCK_PREFIX + skillName)) {
+            writeAll(skillName, content, skillDir);
+            return true;
+        } catch (TurnBusyException e) {
+            log.warn("[muse] skill={} 演进锁被占用（其他副本正在演进），本轮跳过保存等待重试", skillName);
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("[muse] skill={} 等待演进锁时被中断", skillName);
+            return false;
+        } catch (RuntimeException e) {
+            log.warn("[muse] skill={} 保存失败（锁已释放）: {}", skillName, e.getMessage());
+            return false;
+        }
+    }
+
+    private void writeAll(String skillName, String content, String skillDir) {
         if (skillDir != null && !skillDir.isBlank()) {
             try {
                 Path dir = Path.of(skillDir);
                 Files.createDirectories(dir);
                 Files.writeString(dir.resolve("SKILL.md"), content);
-            } catch (Exception e) {
-                log.warn("[muse] skill={} 写回磁盘失败: {}", skillName, e.getMessage());
+            } catch (IOException e) {
+                throw new UncheckedIOException("技能正文写回磁盘失败: " + skillName, e);
             }
         }
         AgentSkillRepository repo = repoProvider.getIfAvailable();
         if (repo != null) {
-            try {
-                AgentSkill skill = AgentSkill.builder()
-                        .name(skillName)
-                        .description(skillName + " (MUSE 自进化生成)")
-                        .skillContent(content)
-                        .source("muse")
-                        .build();
-                repo.save(List.of(skill), true);
-            } catch (Exception e) {
-                log.warn("[muse] skill={} 写入技能仓库失败: {}", skillName, e.getMessage());
-            }
+            AgentSkill skill = AgentSkill.builder()
+                    .name(skillName)
+                    .description(skillName + " (MUSE 自进化生成)")
+                    .skillContent(content)
+                    .source("muse")
+                    .build();
+            repo.save(List.of(skill), true);
         }
     }
 

@@ -86,6 +86,12 @@ public class HybridIntentEngine implements IntentEngine {
         }
 
         IntentResolution keyword = tryKeyword(request);
+        // 规则声明的目标也必须落在本次候选闭集内：候选闭集由「目录 ∩ 租户允许集合」求得，
+        // 规则与目录/分配不一致时按无规则命中处理，交由裁决回落，避免把请求导向闭集外的 Agent。
+        if (keyword != null && keyword.hasTarget() && !containsAgent(candidates, keyword.targetAgentId())) {
+            count("yunxi.intent.keyword.out_of_scope");
+            keyword = null;
+        }
         // 关键词显式目标命中 = 运维显式声明的路由，优先于模型，且零模型调用。
         if (keyword != null && keyword.hasTarget() && !keyword.targetAgentId().equals(properties.getDefaultAgentId())) {
             return finish(keyword, IntentDecider.Outcome.KEYWORD, request, candidates.size(), start);
@@ -104,6 +110,10 @@ public class HybridIntentEngine implements IntentEngine {
 
         IntentResolution result = mergeEntities(decision.resolution(), ruleEntities);
         return finish(result, decision.outcome(), request, candidates.size(), start);
+    }
+
+    private static boolean containsAgent(List<AgentCandidate> candidates, String agentId) {
+        return candidates.stream().anyMatch(candidate -> candidate.agentId().equals(agentId));
     }
 
     private List<AgentCandidate> loadCandidates(IntentRequest request, int limit) {

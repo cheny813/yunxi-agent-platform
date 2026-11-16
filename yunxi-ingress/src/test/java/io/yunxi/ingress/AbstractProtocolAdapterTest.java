@@ -35,6 +35,24 @@ class AbstractProtocolAdapterTest {
     }
 
     @Test
+    void toCommand_carriesResolvedIntentLabel() {
+        ConversationRequest req =
+                new ConversationRequest("web", "resident-nutrition-assistant", "user-1", "sess-1", "血糖偏高怎么吃");
+        req.setContext(Map.of("yunxi.intent.label", "nutrition", "yunxi.intent.confidence", "0.92"));
+
+        AgentCommand cmd = adapter.toCommand(req);
+
+        assertEquals("nutrition", cmd.intent(), "网关解析出的意图标签必须透传到执行侧命令");
+    }
+
+    @Test
+    void toCommand_intentStaysNullWhenNotResolved() {
+        ConversationRequest req = new ConversationRequest("web", "agent-1", "user-1", "sess-1", "hello");
+
+        assertNull(adapter.toCommand(req).intent(), "未经网关解析的请求不得伪造意图标签");
+    }
+
+    @Test
     void toResponse_mapsSettleFields_intoProtocolResponse() {
         ConversationRequest req = new ConversationRequest("web", "agent-1", "user-1", "sess-1", "hello");
         AgentCommand cmd = adapter.toCommand(req);

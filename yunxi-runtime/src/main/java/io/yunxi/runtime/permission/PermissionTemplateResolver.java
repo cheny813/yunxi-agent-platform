@@ -22,6 +22,8 @@ import java.util.List;
  *   <li>平台治理工具（todo_write / MUSE 元工具）在任何模式均放行，避免把治理链路误判为需人工确认；</li>
  *   <li>无人值守黑名单（BYPASS 模式）自动并入 {@code DEFAULT_DENIED_BASELINE}，使宿主代码执行工具
  *       {@code execute} 始终被 DENY，按安全方向收敛（纵深防御；主路径真兜底来自 toolkit 层物理剔除）。</li>
+ *   <li>无人值守白名单（DONT_ASK 模式）下未显式放行的工具一律拒绝，故 {@code allowedTools: []}
+ *       即「除 MCP 订阅与平台治理工具外全部拒绝」；无法判定意图的空壳配置同样按失败封闭处理。</li>
  * </ul>
  *
  * <p>与框架权限判定的对齐（框架六段式：deny → ask → 工具自检 → allow → bypass 兜底 → 默认 ASK）：</p>
@@ -52,7 +54,7 @@ public class PermissionTemplateResolver {
 
     /**
      * 入口：依据产品语义配置派生 {@link PermissionMode} 并构建权限上下文模板。
-     * null 配置视为「无人值守兜底」（DONT_ASK + 平台放行）。
+     * null 配置视为「无人值守兜底」（DONT_ASK + 平台放行，其余工具一律拒绝）。
      */
     public PermissionContextState resolve(AgentSpec.PermissionConfig permission) {
         return resolve(permission, List.of());
@@ -62,18 +64,29 @@ public class PermissionTemplateResolver {
      * 带 MCP 工具名的入口：{@code mcpToolNames} 为本 Agent 实际订阅并装载的 MCP 工具，
      * 由 {@code mcp.servers} / 自动装载派生而来。订阅即授权——这些工具在所有权限模式下均注入 ALLOW，
      * 使 Agent 定义只需声明 MCP 订阅、无需在 allowedTools 里重复列 MCP 工具（装载与放行统一为单一来源）。
+     *
+     * <p>分支判定看的是字段<b>是否被声明</b>（非 null），而不是列表是否非空：{@code allowedTools: []}
+     * 与「不写 allowedTools」是两种意图。前者表示「除 MCP 订阅与平台治理工具外一律拒绝」（纯 MCP 型 Agent
+     * 的常态），后者表示「改用黑名单」。曾按 {@code !isEmpty()} 判定，使 {@code allowedTools: []}
+     * 掉进黑名单分支，实际行为与写作者的意图正好相反。
+     *
+     * <p>三个清单都没声明（空壳）时按失败封闭处理：DONT_ASK 下未显式放行的工具一律拒绝，
+     * 而不是退化成 BYPASS 的「只禁 execute、其余全放行」。定义期校验已拒绝该形态，此处是第二道防线。
      */
     public PermissionContextState resolve(AgentSpec.PermissionConfig permission, List<String> mcpToolNames) {
         if (permission == null) {
             return unattendedContext(mcpToolNames);
         }
-        if (hasAskTools(permission)) {
+        if (permission.hasAskTools()) {
             return build(permission, PermissionMode.DEFAULT, mcpToolNames);
         }
-        if (permission.allowedTools() != null && !permission.allowedTools().isEmpty()) {
+        if (permission.allowedTools() != null) {
             return unattendedContext(permission.allowedTools(), mcpToolNames);
         }
-        return blacklistContext(permission.deniedTools(), mcpToolNames);
+        if (permission.deniedTools() != null) {
+            return blacklistContext(permission.deniedTools(), mcpToolNames);
+        }
+        return unattendedContext(mcpToolNames);
     }
 
     /** 无人值守兜底：DONT_ASK + 平台治理工具放行 + MCP 订阅工具放行。 */
@@ -97,16 +110,44 @@ public class PermissionTemplateResolver {
         return builder.build();
     }
 
-    /** 默认有人值守：DEFAULT 模式 + 平台放行 + ASK 规则（挂起向用户确认）+ MCP 订阅工具放行。 */
+    /**
+     * 默认有人值守：DEFAULT 模式 + 平台放行 + MCP 订阅工具放行 + 三类工具规则。
+     *
+     * <p>有人值守下 allowedTools / deniedTools / toolGate.tools 语义并不冲突，因此三者<b>都要注入</b>：
+     * 允许的免确认、禁止的硬拒、门控的走确认、其余按 DEFAULT 兜底为确认。曾只注入 ASK 规则，
+     * 另外两个列表被整段丢弃——作者写了「放行 / 禁止」却毫无效果。
+     */
     private PermissionContextState build(AgentSpec.PermissionConfig hitl, PermissionMode mode, List<String> mcpToolNames) {
         PermissionContextState.Builder builder = PermissionContextState.builder()
                 .mode(mode);
         addPlatformToolAllowRules(builder);
         addMcpAllowRules(builder, mcpToolNames);
         if (mode != PermissionMode.DONT_ASK) {
+            addDenyRules(builder, hitl.deniedTools());
+            addAllowRules(builder, hitl.allowedTools());
             addAskRules(builder, hitl);
         }
         return builder.build();
+    }
+
+    /** 注入 DENY 规则：DEFAULT 模式下判定顺序为 deny → ask → allow，故它优先于同名的 ASK / ALLOW。 */
+    private void addDenyRules(PermissionContextState.Builder builder, List<String> deniedTools) {
+        if (deniedTools == null) {
+            return;
+        }
+        for (String tool : deniedTools) {
+            builder.addDenyRule(tool, denyRule(tool));
+        }
+    }
+
+    /** 注入 ALLOW 规则：DEFAULT 模式下让显式允许的工具免于逐次确认。 */
+    private void addAllowRules(PermissionContextState.Builder builder, List<String> allowedTools) {
+        if (allowedTools == null) {
+            return;
+        }
+        for (String tool : allowedTools) {
+            builder.addAllowRule(tool, allowRule(tool));
+        }
     }
 
     /**
@@ -151,19 +192,6 @@ public class PermissionTemplateResolver {
                 builder.addAskRule(tool, askRule(tool));
             }
         }
-    }
-
-    /** 是否有人值守 ASK 能力。 */
-    private static boolean hasAskTools(AgentSpec.PermissionConfig hitl) {
-        List<String> tools = hitl.toolGate() != null ? hitl.toolGate().tools() : null;
-        boolean toolsNonEmpty = tools != null && !tools.isEmpty();
-        if (toolsNonEmpty && hitl.toolGate() != null && hitl.toolGate().enabled()) {
-            return true;
-        }
-        if (toolsNonEmpty && hitl.reasoningReview() != null && hitl.reasoningReview().enabled()) {
-            return true;
-        }
-        return false;
     }
 
     private PermissionRule allowRule(String tool) {

@@ -91,7 +91,7 @@ X-User-Id: user001
 
 #### 任务清单透出机制
 
-任务清单（`todo_write`）是 AgentScope-Java 框架原生能力，由 `HarnessAgent.Builder.enableTaskList()` 构建期开关控制。yunxi 已在 `AgentConfigurer.configure()` 唯一装配点接线该开关，采用双通道、默认关闭：**全局开关 `yunxi.agent.taskList.enabled`**（Spring 环境属性，默认 false）与 **per-Agent `agent.plan.taskList`**（经 `AgentSpec.PlanConfig`，YAML 反序列化 `FAIL_ON_UNKNOWN_PROPERTIES=false` 容忍旧定义，默认 false）二者 OR 生效。即 `agent.plan.taskList: true` 已正式生效，无需额外配置即可按 Agent 开启任务清单。
+任务清单（`todo_write`）是 AgentScope-Java 框架原生能力，由 `HarnessAgent.Builder.enableTaskList()` 构建期开关控制。yunxi 已在 `AgentConfigurer.configure()` 唯一装配点接线该开关，采用双通道、默认关闭：**全局开关 `yunxi.agent.taskList.enabled`**（Spring 环境属性，默认 false）与 **per-Agent `agent.plan.taskList`**（经 `AgentSpec.PlanConfig`，旧定义不含该段时解析为 null 即默认 false）二者 OR 生效。即 `agent.plan.taskList: true` 已正式生效，无需额外配置即可按 Agent 开启任务清单。
 
 **透出链路（与代码/前端实现一致）**：后端 `ConversationController.stream` 以 `event: agent-event` **纯透传**框架 `AgentEvent`，**不合成** `todo_update` 事件；任务清单随 `todo_write` 工具执行，以 `TOOL_RESULT_TEXT_DELTA`（`toolCallName=todo_write`，即 `TodoTools.render()` 的 markdown）流式下发，`TOOL_RESULT_END` 收尾。前端 SDK `yunxi-chat.js` 按 `toolCallId` 累积这些增量、在 `TOOL_RESULT_END` 还原为结构化列表并经 `onTodo` 回调透出（full-list-replace 语义）。
 

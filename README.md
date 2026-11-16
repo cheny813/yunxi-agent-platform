@@ -38,7 +38,7 @@ yunxi Agent Platform 是一个**企业级多智能体协作平台**，构建于�
 | **意图路由（缺省 agentId 时）** | 四段式意图管线：归一化/槽位抽取 → 候选收窄（`ConfigCenter` 目录 ∩ 租户允许集合，单候选短路）→ 本地决策模型闭集分类（`temperature=0` + jsonSchema 结构化输出 + 超时容错）→ 决策融合（越权拒绝 / 置信度阈值 / 三级降级）。解析结果（标签 / 实体 / 改写文本）以 `yunxi.intent.*` 上下文随命令透传执行链路；分类卡片支持 `AgentSpec.intent.hint` 显式声明（缺省自动派生），判定器可选 `classifier.impl=jev` 云端增强（默认 `local`，无数据外发）；`strategy=keyword` 可一键回滚为纯关键词路由。详见 [15. 意图引擎](docs/guide/15-intent-engine.md) |
 | **多 Agent 编排** | 编排模式（`supervisor` / `workflow` / `pipeline` / `routing` / `handoffs`）的运行时执行统一委托 aistio 控制面，yunxi 不自持编排运行时；声明型 `workflow` 的导出图在 aistio 执行，不产生 yunxi 侧运行时实例 |
 | **统一执行引擎** | `yunxi-runtime` 的统一执行门面（`ExecutionFacade`）负责 web / A2A 自有协议的调用编排（意图识别、RAG、记忆构建、权限快照、实体注入、指标、阶段状态、审计），经框架 `Agent.streamEvents` 接缝衔接；协议无关的横切（内容安全 / 画像 / 追踪 / 记忆压缩）实现为 AgentScope-Java Middleware 对所有协议统一生效，详见 [17. 统一执行引擎](docs/guide/17-execution-engine.md) |
-| **可观测与轨迹模型** | 运行时经 `OtelTracingMiddleware` 产出 `invoke_agent` / `chat` / `execute_tool` Span，OTLP 上报 Collector → Jaeger，`MetricRegistry` 提供计数指标；轨迹数据模型 `TraceRecord` / `TraceStore`（`InMemoryTraceStore`）已就绪，但**尚未接入运行时写入与查询/回放端点**（轨迹 API 属设计态），详见 [14. 可观测](docs/guide/14-observability.md) |
+| **可观测与轨迹模型** | 运行时经 `OtelTracingMiddleware` 产出 `invoke_agent` / `chat` / `execute_tool` Span，OTLP 上报 Collector → Jaeger，`MetricRegistry` 提供计数指标；轨迹数据模型 `TraceRecord` / `TraceStore`（`InMemoryTraceStore`）随包提供，详见 [14. 可观测](docs/guide/14-observability.md) |
 | **水平扩展（分片路由）** | `yunxi.shard.enabled=true` 后按 `consistentHash(agentId)` 在 Nacos 实例环上选出 owner 实例：每实例只布建 owned Agent，其余请求经 HTTP 转发至 owner；AG-UI SSE 由 HTTP 边界过滤器原字节透传转发（不破坏流式语义），归属表缺失或 owner 不可达时 fail-open 本地兜底 |
 | **AgentScope 深度集成** | 复用 AgentScope-Java 的 `Model`/`Toolkit`/`Middleware`/`DistributedStore` 体系 |
 | **MCP 协议** | 完整支持 Model Context Protocol；MCP 服务定义位于独立的 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) 仓库（30+ 个服务模块，按需选用），由平台 `yunxi-config/src/main/resources/config/mcp.yml` 按名声明接入——当前仅声明 `nutrition-mcp` 与 `text2sql-mcp`，且两者均 `enabled: false`（不启用时平台仍可正常启动对话）；支持运行期动态注册（Nacos 持久化、目标不可达自动重连） |
@@ -105,7 +105,7 @@ $env:DASHSCOPE_API_KEY = "sk-你的真实Key"
 
 切换其它厂商（OpenAI / 百度 / 华为）：在 `yunxi.models.catalog` 新增对应 `provider` 条目并把 `defaults.llm` 指向它；各 Provider 的 `*_API_KEY` 仍经环境变量注入。
 
-本地模型只承担专项节点，不承载对话生成：本机 Ollama 已拉取的 `tev1:0.8b` 是**文本决策模型**（`local-decision`，type=decision），`clef-flash:latest` 是**图片决策模型**（type=decision），`bge-m3:latest` 是**矢量模型**（`local-embedding`，type=embedding）。三者均**不能**作为对话 / 推理主模型；对话与推理一律走远程（见 `defaults.llm`）。若需离线专用，只可在专项决策 / 检索节点按名引用这些本地模型，不可设为 agent 的 `primary`。
+本地模型只承担专项节点，不承载对话生成：`yunxi.models.catalog` 中 `type=decision` 的条目用于意图分类等本地决策，`type=embedding` 的条目用于向量检索；两者均**不能**作为对话 / 推理主模型，对话与推理一律走远程（见 `defaults.llm`）。若需离线专用，只可在专项决策 / 检索节点按名引用这些本地模型，不可设为 agent 的 `primary`。模型标签按实际部署环境拉取的镜像填写，无需与示例一致。
 
 ### 第五步：启动 yunxi 应用
 

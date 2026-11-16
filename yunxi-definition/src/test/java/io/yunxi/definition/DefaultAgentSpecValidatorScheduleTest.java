@@ -16,7 +16,9 @@ class DefaultAgentSpecValidatorScheduleTest {
     private static AgentSpec specWith(AgentSpec.ScheduleConfig schedule) {
         return new AgentSpec(
                 new AgentSpec.Identity("agent-1", "Agent One", "d"),
-                null, null, null, null, null,
+                null, null, null,
+                new AgentSpec.PermissionConfig(null, null, List.of("memory"), null),
+                null,
                 new AgentSpec.SubagentsConfig(List.of()), null, schedule);
     }
 
@@ -101,7 +103,9 @@ class DefaultAgentSpecValidatorScheduleTest {
     void absentScheduleStillValid() {
         AgentSpec spec = new AgentSpec(
                 new AgentSpec.Identity("agent-1", "Agent One", "d"),
-                null, null, null, null, null,
+                null, null, null,
+                new AgentSpec.PermissionConfig(null, null, List.of("memory"), null),
+                null,
                 new AgentSpec.SubagentsConfig(List.of()), null);
         assertTrue(validator.validate(spec).valid(), "不声明 schedule 的既有定义必须保持合法");
     }

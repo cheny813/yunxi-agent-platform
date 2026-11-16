@@ -97,12 +97,31 @@ class AgentConfigurerTest {
             AgentSpecValidator specValidator,
             ApplicationEventPublisher eventPublisher,
             PermissionTemplateResolver permissionTemplateResolver) {
-        return new AgentConfigurer(
+        return stubObjectProviders(new AgentConfigurer(
                 configCenter, mcpDirectory, routingPolicy,
                 modelFactory, distributedRuntimeConfig, specValidator,
                 List.of(), List.of(), List.of(), eventPublisher, List.of(),
                 new SessionToolGroupRegistry(), permissionTemplateResolver, new MemoryProperties(),
-                ".agentscope/workspace/skills", new TenantConfig(false, "default"));
+                ".agentscope/workspace/skills", new TenantConfig(false, "default")));
+    }
+
+    /**
+     * 纯单元测试不经 Spring 容器，{@code @Autowired ObjectProvider} 字段为 null；
+     * 注入空 provider mock（{@code getIfAvailable()} 返回 null），对应全部可选能力
+     * （Git/JDBC 技能仓库、租户计量、事件总线）默认关闭的生产行为。
+     */
+    private static AgentConfigurer stubObjectProviders(AgentConfigurer configurer) {
+        for (String field : new String[] {"gitSkillRepositoryProvider", "jdbcSkillRepositoryProvider",
+                "tenantStorageMeterProvider", "messageBusProvider"}) {
+            try {
+                Field f = AgentConfigurer.class.getDeclaredField(field);
+                f.setAccessible(true);
+                f.set(configurer, mock(org.springframework.beans.factory.ObjectProvider.class));
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("注入 ObjectProvider 字段失败: " + field, e);
+            }
+        }
+        return configurer;
     }
 
     private static void stubCollaborators(AgentSpec spec,
@@ -414,10 +433,10 @@ class AgentConfigurerTest {
     // ---- builtin-export-dir 覆盖场景的工作区根对齐 ----
 
     private AgentConfigurer configurerWithExportDir(String dir) {
-        return new AgentConfigurer(configCenter, mcpDirectory, routingPolicy, modelFactory,
+        return stubObjectProviders(new AgentConfigurer(configCenter, mcpDirectory, routingPolicy, modelFactory,
                 distributedRuntimeConfig, specValidator, List.of(), List.of(), List.of(), eventPublisher, List.of(),
                 new SessionToolGroupRegistry(), new PermissionTemplateResolver(), new MemoryProperties(), dir,
-                new TenantConfig(false, "default"));
+                new TenantConfig(false, "default")));
     }
 
     @Test

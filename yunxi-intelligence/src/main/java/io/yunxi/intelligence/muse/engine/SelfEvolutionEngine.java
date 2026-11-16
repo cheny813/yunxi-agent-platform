@@ -78,7 +78,11 @@ public class SelfEvolutionEngine {
             outcome.setPrevPassRate(passRate);
 
             content = refiner.refine(skillName, content, report, iter);
-            refiner.persist(skillName, content, skillDir);
+            if (!refiner.persist(skillName, content, skillDir)) {
+                log.warn("[muse] skill={} 第{}轮保存被演进锁拒绝（其他副本持有），等待下轮重试",
+                        skillName, iter);
+                break;
+            }
         }
 
         outcome.setSucceeded(bestPass >= 1.0);

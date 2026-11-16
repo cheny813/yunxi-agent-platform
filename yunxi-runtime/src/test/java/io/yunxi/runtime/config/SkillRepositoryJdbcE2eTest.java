@@ -24,7 +24,8 @@ import org.junit.jupiter.api.Test;
  * 即「复用调度 MySQL + 预建表」方案的运行时可行性。连接参数可通过系统属性覆盖：
  * {@code yunxi.e2e.jdbc.url / .user / .password}，默认指向本地 3306 的 yunxi_agent_platform 库。
  *
- * <p>表结构取自 {@code deploy/infra/init/skill-store.sql}（框架 JdbcAgentSkillRepository 构造器不自动建表）。
+ * <p>表结构取自 {@code deploy/infra/init/skill-store.sql}；本测试预执行该脚本后再构建 dialect
+ * （{@code enableSkillTables(true)} 在 build() 阶段幂等建表，与生产装配一致）。
  */
 class SkillRepositoryJdbcE2eTest {
 

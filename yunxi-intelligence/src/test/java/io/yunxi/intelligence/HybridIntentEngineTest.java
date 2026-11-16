@@ -1,12 +1,12 @@
 package io.yunxi.intelligence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.yunxi.observability.AuditEvent;
 import io.yunxi.observability.AuditSink;
 import io.yunxi.observability.MetricRegistry;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -194,6 +194,28 @@ class HybridIntentEngineTest {
         assertEquals("intent.resolve", event.type());
         assertEquals("t1", event.actor());
         assertEquals("general", event.payload().get("agentId"));
-        assertTrue(((Instant) event.payload().get("at")) != null || true);
+        assertNotNull(event.at(), "审计事件必须记录发生时刻");
+    }
+
+    @Test
+    void keywordTargetOutsideCandidateSetIsIgnored() {
+        RecordingMetrics metrics = new RecordingMetrics();
+        IntentTextNormalizer normalizer = new IntentTextNormalizer();
+        HybridIntentEngine engine = new HybridIntentEngine(
+                normalizer,
+                new SlotExtractor(Map.of()),
+                (tenantId, limit) -> CANDIDATES,
+                new KeywordIntentResolver(
+                        Map.of("dsl", List.of("报表")), Map.of("dsl", "retired-agent"), "general", normalizer),
+                null,
+                props(),
+                metrics,
+                new RecordingAuditSink());
+
+        IntentResolution resolution = engine.resolve(IntentRequest.of("帮我看下报表", null));
+
+        assertEquals("general", resolution.targetAgentId(), "候选闭集外的规则目标必须被丢弃");
+        assertEquals(IntentResolution.Source.FALLBACK, resolution.source());
+        assertEquals(1L, metrics.counters.get("yunxi.intent.keyword.out_of_scope"));
     }
 }

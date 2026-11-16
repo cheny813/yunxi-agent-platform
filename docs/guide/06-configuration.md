@@ -573,7 +573,7 @@ yunxi 业务层现已统一采集每次 LLM 调用的 token 消耗与耗时，�
 
 **2. OpenTelemetry 指标**
 
-指标落 `yunxi-observability` 的 `MetricRegistry`（需在 `yunxi.observability.enabled=true` 默认开启时生效），可通过 `management.metrics.export.prometheus` 暴露给 Prometheus：
+指标落 `yunxi-observability` 的 `MetricRegistry`（生产装配为 Micrometer 桥接，见 [14. 可观测性](./14-observability.md)）；导出经 OTLP push 到 OpenTelemetry Collector（`management.otlp.metrics.export.enabled=true` 开启），未启用时度量经 `/actuator/metrics` 只读端点查看：
 
 | 指标名 | 类型 | 单位 | 维度（attribute） | 说明 |
 |--------|------|------|------------------|------|
@@ -901,29 +901,41 @@ ASK 规则，以及提供确认结果回传入口。
 ### 配置方式
 
 ```yaml
-# agent-definitions/<name>.yml
-agent:
-  name: general-assistant
-  extensions:
-    hitl:
-      toolGate:
-        enabled: true
-        tools:
-          - execute      # 命令执行
-          - write_file   # 文件写入
-          - edit_file    # 文件编辑
+# agent-definitions/<name>.yml（顶层即 AgentSpec 字段，无 agent: 包裹）
+identity:
+  agentId: general-assistant
+  name: 通用助手
+  description: 你是通用助手。
+permission:                            # 必填
+  toolGate:
+    enabled: true
+    tools:
+      - execute      # 命令执行
+      - write_file   # 文件写入
+      - edit_file    # 文件编辑
+    message: "该操作需要你确认后执行"
 ```
 
 ### 权限模式
 
-是否配置 HITL 决定了 Agent 采用的权限模式：
+`permission` 段**必填**：缺失或写成空壳会让校验失败、定义不加载。不按"未配置即不限制"解释——漏写只能由代码替作者猜模式，猜成全拒（Agent 静默失去全部业务工具）或全放行（限制根本没生效）都不会报错。
 
-| 情况 | 模式 | 未配置规则的工具 | 说明 |
-|------|------|-----------------|------|
-| 配置了 HITL | `DEFAULT` | 请求确认（挂起） | 需前端回传确认结果；无回传会停在挂起点 |
-| 未配置 HITL | `DONT_ASK` | **直接拒绝** | 无人值守场景，把"请求确认"降级为"拒绝"，避免永久挂起 |
+具体模式由声明了哪类工具清单派生：
+
+| 声明 | 模式 | 未列出的工具 | 适用场景 |
+|------|------|-----------------|----------|
+| `toolGate`（`enabled: true` 且 `tools` 非空） | `DEFAULT` | 请求确认（挂起） | 有人值守；可同时用 `allowedTools` 免确认、`deniedTools` 硬拒 |
+| 只有 `allowedTools` | `DONT_ASK` | **直接拒绝** | 无人值守白名单。`allowedTools: []` 表示除 MCP 订阅工具与平台治理工具外一律拒绝 |
+| 只有 `deniedTools` | `BYPASS` | 放行 | 无人值守黑名单。工具池很大、只需禁少数几个时用这个；基线 `execute` 始终禁止 |
 
 > 因此**未配置 HITL 不会导致卡死**：未命中放行规则的工具被直接拒绝，而非挂起等待。
+
+**交叉声明一律拒绝加载，不做优先级裁决**：
+
+- 无人值守下（无 `toolGate`）同时声明 `allowedTools` 与 `deniedTools` → 拒绝。两者对"未列出的工具"语义相反（拒绝 / 放行），同时给必然丢掉其中一半意图；
+- 同一工具名同时出现在任意两个清单中（`allowedTools` / `deniedTools` / `toolGate.tools`）→ 拒绝。框架判定顺序为 deny → ask → allow，若靠顺序裁决，作者写的"放行"会变成"每次确认"。
+
+> 黑名单模式的固有代价是**新增工具默认放行**：工具池新增高危工具时，用黑名单的 Agent 会自动获得它。因此高危工具应同时加入代码基线禁止集，或该 Agent 改用白名单。
 
 **平台级治理工具的内置放行**：以下工具不属于任何单个业务 Agent 的职责，而是平台治理能力，因此平台在所有权限模式下统一放行，**不参与 Agent 的业务工具白/黑名单**——否则会出现「工具已注册、工具组已激活，但模型调用时报 permission denied」：
 
@@ -932,7 +944,7 @@ agent:
 | `todo_write` | 任务清单（TodoList） | 始终放行 |
 | `muse_skill_eval` / `muse_skill_evolve` / `muse_skill_prune` | MUSE 自进化元工具 | `yunxi.muse.enabled: true` 时注册并放行 |
 
-> 若业务 Agent 声明了 `hitl.allowedTools` 白名单，白名单**只约束业务工具**；上表中的平台级工具在白名单之外仍被放行。
+> 若业务 Agent 声明了 `permission.allowedTools` 白名单，白名单**只约束业务工具**；上表中的平台级工具在白名单之外仍被放行。
 
 ### 注意事项（易踩坑）
 

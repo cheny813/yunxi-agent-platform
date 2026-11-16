@@ -74,6 +74,18 @@ class NacosBackedConfigCenterTest {
     }
 
     @Test
+    void sharedAcrossInstancesReflectsWhetherWritesReallyLeaveThisInstance() throws Exception {
+        ConfigService cs = mock(ConfigService.class);
+        when(cs.getConfig(anyString(), anyString(), anyLong())).thenReturn(null);
+
+        assertTrue(new NacosBackedConfigCenter(cs, props()).isSharedAcrossInstances(),
+                "已连上共享存储：写入跨实例可见");
+
+        assertFalse(new NacosBackedConfigCenter(null, props()).isSharedAcrossInstances(),
+                "已配置 Nacos 但连接失败退化为内存时，写入不跨实例可见，不得声称共享");
+    }
+
+    @Test
     void removeUpdatesImageAndPublishesToNacos() throws Exception {
         ConfigService cs = mock(ConfigService.class);
         when(cs.getConfig(anyString(), anyString(), anyLong())).thenReturn(null);

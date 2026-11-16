@@ -2,7 +2,8 @@
 #
 # 由 AgentDefinitionLoader 在启动期扫描 classpath*:agent-definitions/**/*.yml 加载，
 # 反序列化为 io.yunxi.definition.AgentSpec（定义平面唯一真相源）。顶层即 AgentSpec 字段，
-# 不再用 agent: 包裹；未知字段被忽略，不阻断加载。
+# 不再用 agent: 包裹。字段名严格匹配：拼错（如 permission 写成 permissions）会导致加载失败并提示
+# 应改成的字段名，而不是被静默丢弃——静默丢弃会让整段限制失效却毫无报错。
 #
 # 校验规则（DefaultAgentSpecValidator）：identity.agentId / identity.name 必填。
 #

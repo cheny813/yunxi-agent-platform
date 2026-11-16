@@ -257,15 +257,28 @@ public class NacosBackedConfigCenter implements ConfigCenter {
         }
     }
 
+    /**
+     * 仅当真正连上 Nacos 时写入才跨实例可见；降级为内存期间写入不离开本实例，按不可共享对待。
+     */
+    @Override
+    public boolean isSharedAcrossInstances() {
+        return configService != null;
+    }
+
     private void publishRaw(String dataId, String content) {
         ConfigService cs = configService;
         if (cs == null) {
+            // 降级期间写入只更新本实例镜像：不持久化、其它实例看不到。必须留下痕迹，
+            // 否则多副本部署会静默分叉（本实例行为与其它实例不一致，且重启后丢失）。
+            log.warn("[ConfigCenter] 配置中心不可用（已降级为进程内），本次写入仅本实例生效、"
+                    + "未持久化也未跨实例可见：dataId={}", dataId);
             return;
         }
         try {
             cs.publishConfig(dataId, props.getGroup(), content);
         } catch (Exception e) {
-            log.error("[ConfigCenter] 发布配置到 Nacos 失败 dataId={}：{}", dataId, e.getMessage());
+            log.error("[ConfigCenter] 发布配置到 Nacos 失败 dataId={}，本次写入仅本实例生效、"
+                    + "跨实例未生效：{}", dataId, e.getMessage());
         }
     }
 

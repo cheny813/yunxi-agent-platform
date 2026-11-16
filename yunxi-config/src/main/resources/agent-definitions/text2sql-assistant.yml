@@ -47,6 +47,8 @@ state:
   store: inmemory
   persist: false
 permission:
+  # 显式空白名单 = 「除 MCP 订阅工具与平台治理工具外一律拒绝」：本 Agent 的全部业务能力来自
+  # Text2SQL MCP，框架默认工具已由下方 toolkit 物理剔除，此处再收敛一层权限。
   allowedTools: []
   toolGate:
     enabled: false

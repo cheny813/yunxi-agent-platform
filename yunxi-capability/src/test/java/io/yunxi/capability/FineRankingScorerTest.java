@@ -33,6 +33,15 @@ class FineRankingScorerTest {
     }
 
     @Test
+    void telev1DegradesToEmptyWhenResolverThrows() {
+        // 解析失败（如 id 缺 provider 前缀）必须回退规则式；rank 抛异常会打断自动选型主链路。
+        ModelResolver throwing =
+                modelId -> { throw new IllegalArgumentException("cannot resolve: " + modelId); };
+        FineRankingScorer scorer = new Telev1FineRankingScorer(throwing, "tev1:0.8b");
+        assertTrue(scorer.rank("auto-agent", signals, candidates).isEmpty());
+    }
+
+    @Test
     void telev1ReordersByDecisionModelOutputAndKeepsAllCandidates() {
         // 决策模型给出与规则式不同的偏好顺序，并要求末尾补回未被提及的候选，保证不丢候选。
         ModelResolver factory = modelId -> new StubDecisionModel("qwen-mt-uni\nqwen3.8-omni-flash");

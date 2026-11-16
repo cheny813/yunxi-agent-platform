@@ -59,10 +59,16 @@ public class LocalDecisionIntentClassifier implements IntentClassifier {
         }
         String prompt = IntentPromptBuilder.build(truncate(normalizedText), entities, candidates);
         String output;
+        long startedAt = System.nanoTime();
         if (structuredOutput) {
             try {
                 output = invoke(model, prompt, structuredOptions());
             } catch (Exception e) {
+                if (System.nanoTime() - startedAt >= timeoutMillis * 1_000_000L) {
+                    // 结构化调用已耗尽本次分类预算，重试只会再把预算翻一倍，直接判定为本次不可用。
+                    LOG.warn("意图分类模型超出预算未返回，放弃重试：{}", e.getMessage());
+                    return null;
+                }
                 LOG.debug("结构化输出调用失败，改用普通调用重试：{}", e.getMessage());
                 try {
                     output = invoke(model, prompt, plainOptions());

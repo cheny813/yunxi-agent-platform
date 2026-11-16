@@ -46,18 +46,19 @@ public class IngressGateway {
     /** 按协议流式执行，透传 AgentScope-Java 事件流。准入闸门在入口同步拒绝非 ACTIVE 租户。 */
     public Flux<AgentEvent> stream(ConversationRequest request) {
         ProtocolAdapter adapter = resolveAdapter(request.getProtocol());
-        AgentCommand command = adapter.toCommand(resolveAgentId(request));
         String tenantId = request.getTenantId();
+        // 准入判定先于意图解析：非 ACTIVE 租户不得触达分类模型，避免为必然被拒的请求付出模型调用。
         TenantStatus status = tenantLifecycleService.admit(tenantId);
+        AgentCommand command = adapter.toCommand(resolveAgentId(request));
         return TenantContext.withTenant(executionFacade.execute(command), tenantId, status);
     }
 
     /** 按协议执行并结算为单一响应（提取末端回复文本）。准入闸门在入口同步拒绝非 ACTIVE 租户。 */
     public Mono<ConversationResponse> complete(ConversationRequest request) {
         ProtocolAdapter adapter = resolveAdapter(request.getProtocol());
-        AgentCommand command = adapter.toCommand(resolveAgentId(request));
         String tenantId = request.getTenantId();
         TenantStatus status = tenantLifecycleService.admit(tenantId);
+        AgentCommand command = adapter.toCommand(resolveAgentId(request));
         return TenantContext.withTenant(
                 executionFacade.settle(command)
                         .map(settle -> adapter.toResponse(settle, extractText(settle, command))),

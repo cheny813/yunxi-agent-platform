@@ -73,12 +73,12 @@ class PermissionContextCallIntegrationTest {
                 .build();
         when(distributedRuntimeConfig.distributedStore()).thenReturn(store);
 
-        AgentConfigurer configurer = new AgentConfigurer(
+        AgentConfigurer configurer = stubObjectProviders(new AgentConfigurer(
                 configCenter, mcpDirectory, routingPolicy,
                 modelFactory, distributedRuntimeConfig, specValidator,
                 List.of(), List.of(), List.of(), eventPublisher, List.of(),
                 new SessionToolGroupRegistry(), new PermissionTemplateResolver(), new MemoryProperties(),
-                ".agentscope/workspace/skills", new TenantConfig(false, "default"));
+                ".agentscope/workspace/skills", new TenantConfig(false, "default")));
 
         HarnessAgent agent = configurer.configure(spec);
 
@@ -93,5 +93,23 @@ class PermissionContextCallIntegrationTest {
         PermissionMode mode = agent.getDelegate().getPermissionMode(userId, sessionId);
         assertEquals(PermissionMode.DEFAULT, mode,
                 "构建期权限模板须经 freshState 进入运行时会话状态，并派生 DEFAULT 模式");
+    }
+
+    /**
+     * 纯单元测试不经 Spring 容器，{@code @Autowired ObjectProvider} 字段为 null；
+     * 注入空 provider mock（{@code getIfAvailable()} 返回 null），对应可选能力默认关闭的生产行为。
+     */
+    private static AgentConfigurer stubObjectProviders(AgentConfigurer configurer) {
+        for (String field : new String[] {"gitSkillRepositoryProvider", "jdbcSkillRepositoryProvider",
+                "tenantStorageMeterProvider", "messageBusProvider"}) {
+            try {
+                java.lang.reflect.Field f = AgentConfigurer.class.getDeclaredField(field);
+                f.setAccessible(true);
+                f.set(configurer, mock(org.springframework.beans.factory.ObjectProvider.class));
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("注入 ObjectProvider 字段失败: " + field, e);
+            }
+        }
+        return configurer;
     }
 }

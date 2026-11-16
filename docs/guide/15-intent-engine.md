@@ -60,9 +60,9 @@ public interface IntentClassifier {
 }
 ```
 
-默认实现 `LocalDecisionIntentClassifier`：经 `ModelResolver` 解析决策模型（`classifier.model-id: decision` → `defaults.decision` → 本机 Ollama 决策模型），`temperature=0` + 有限 token + 超时降级，优先 `responseFormat`（jsonSchema）约束输出；模型不支持时回退普通调用，并按"首个平衡括号 JSON 对象"容错解析。输出非法、模型不可用、超时一律返回 null（计数 `resolve.llm_fail`），由引擎降级，绝不抛出到入口。
+默认实现 `LocalDecisionIntentClassifier`：经 `ModelResolver` 解析决策模型（`classifier.model-id: decision` → `defaults.decision` → 本机 Ollama 决策模型），`temperature=0` + 有限 token + 超时降级，优先 `responseFormat`（jsonSchema）约束输出；模型不支持时回退普通调用，并按"首个平衡括号 JSON 对象"容错解析。回退只在分类预算内进行——结构化调用已耗尽超时预算时直接放弃，不再二次调用。输出非法、模型不可用、超时一律返回 null（计数 `resolve.llm_fail`），由引擎降级，绝不抛出到入口。
 
-提示词把候选清单与用户输入都作为**数据**并以边界包裹（`<<< ... >>>`），分类器只允许输出候选集内的 `agentId` 或 `unknown`。
+提示词把候选清单与用户输入都作为**数据**并以边界包裹（`<<< ... >>>`），数据内自带的边界标记会被中和，避免提前闭合数据区；分类器只允许输出候选集内的 `agentId` 或 `unknown`。规则（关键词）命中的显式目标同样受候选闭集约束，越界按未命中处理。
 
 ### IntentDecider（决策融合）
 
@@ -98,7 +98,7 @@ yunxi:
 
 ## 与请求主链路的关系
 
-入口织面 `IngressGateway` 在请求未显式指定 `agentId` 时，以带租户/会话的 `IntentRequest` 调用引擎并回填目标 Agent；解析结果（标签 / 置信度 / 来源 / 实体 / 改写文本）以 `yunxi.intent.*` 键写入请求上下文，`AbstractProtocolAdapter` 把标签透传到 `AgentCommand.intent`，上下文随命令进入执行链路（模型路由、观测均可消费）。显式指定 `agentId` 的请求优先级更高，不触发意图解析（零模型调用）。A2A / AG-UI / Chat Completions 协议由 AgentScope-Java 框架 starter 直接服务（Agent 在路径/参数中显式指定），不经意图引擎。
+入口织面 `IngressGateway` 先做租户准入判定（非 ACTIVE 直接拒绝，不触发模型调用），再在请求未显式指定 `agentId` 时，以带租户/会话的 `IntentRequest` 调用引擎并回填目标 Agent；解析结果（标签 / 置信度 / 来源 / 实体 / 改写文本）以 `yunxi.intent.*` 键写入请求上下文，`AbstractProtocolAdapter` 把标签透传到 `AgentCommand.intent`，上下文随命令进入执行链路（模型路由、观测均可消费）。显式指定 `agentId` 的请求优先级更高，不触发意图解析（零模型调用）。A2A / AG-UI / Chat Completions 协议由 AgentScope-Java 框架 starter 直接服务（Agent 在路径/参数中显式指定），不经意图引擎。
 
 ## 可观测
 

@@ -85,7 +85,7 @@ yunxi-runtime/src/main/java/io/yunxi/runtime/
 ├── AgentConfigurer.java            # 唯一装配点（校验→解析配置→路由模型→构建 Toolkit→装配 HarnessAgent→注册）
 ├── ExecutionFacade.java            # 统一执行门面接口
 ├── DefaultExecutionFacade.java     # 实现：经 AgentLookup 取已装配 Agent → RuntimeContextEnricher 富化 → agent.streamEvents
-├── ModelFactory.java / MapModelFactory.java   # 模型工厂（按 modelId 解析 AgentScope Model）
+├── ModelFactory.java               # 模型工厂（按 modelId 解析 AgentScope Model，生产装配委托框架 ModelRegistry）
 ├── AgentLookup.java               # 框架 AguiAgentRegistry 薄委托 seam（configure 后登记，单例 Agent 真相源在框架 AguiAgentRegistry）
 ├── AgentDefinitionLoader.java      # 加载 classpath*:agent-definitions/**/*.yml 并校验注册进 ConfigCenter
 ├── DistributedRuntimeConfig.java   # 分布式运行时配置（stateStore / sessionTurnGate 等）
@@ -109,7 +109,7 @@ yunxi-runtime/src/main/java/io/yunxi/runtime/
 |------|------|
 | `AgentConfigurer` | **唯一装配点**：校验 `AgentSpec` → 经 `ConfigCenter` 解析 `ResolvedConfig` → 经 `ModelRoutingPolicy`+`ModelFactory` 路由模型（主备由 `ConfigurableModelRoutingPolicy` 承载）→ 从 `McpDirectory`/`MuseToolRegistrar` 构建 `Toolkit` → 装配 `HarnessAgent` → 应用协议无关 `MiddlewareBase` 链 → 注册进框架 `AguiAgentRegistry`（经 `AgentLookup` 收口，装配集中，新增横切只改此处） |
 | `ExecutionFacade` / `DefaultExecutionFacade` | **统一执行门面**：接收 `ConversationRequest`，经 `AgentLookup` 取框架 `AguiAgentRegistry` 中已装配 Agent，经 `RuntimeContextEnricher` 富化 `RuntimeContext`，调用 `agent.streamEvents` 并管理会话轮次闸门（`SessionTurnGate`） |
-| `ModelFactory` / `MapModelFactory` | 统一模型工厂，按 modelId 解析 AgentScope `Model`（主备路由策略在 `yunxi-capability` 的 `ModelRoutingPolicy` / `ConfigurableModelRoutingPolicy`） |
+| `ModelFactory` | 统一模型工厂，按 modelId 解析 AgentScope `Model`（生产装配委托框架 `ModelRegistry`；主备路由策略在 `yunxi-capability` 的 `ModelRoutingPolicy` / `ConfigurableModelRoutingPolicy`） |
 | `AgentLookup` | 框架 `AguiAgentRegistry` 薄委托 seam，按 `agentId` 提供已装配 Agent 查询（单例 Agent 真相源在框架 `AguiAgentRegistry`） |
 | `AgentDefinitionLoader` | 加载 `classpath*:agent-definitions/**/*.yml`，校验后注册进 `ConfigCenter`（AgentSpec 已扁平化，`orchestration` 编排门禁随旧 schema 移除） |
 | `MuseToolRegistrar` | MUSE 元工具注册 SPI（仅 `yunxi.muse.enabled=true` 时存在实现） |

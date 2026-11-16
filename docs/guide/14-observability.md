@@ -1,6 +1,6 @@
 # 14. 可观测性
 
-yunxi 的可观测性由两部分组成：链路追踪 / 指标（yunxi 自建 `OtelTracingMiddleware` 复用框架 `MiddlewareBase` 契约 + 全局 `OpenTelemetry` API）与审计 / 指标汇聚（`yunxi-observability` 模块）。
+yunxi 的可观测性由两部分组成：链路追踪 / 指标（yunxi 自建 `OtelTracingMiddleware` 复用框架 `MiddlewareBase` 契约 + 全局 `OpenTelemetry` API；度量经 `MetricRegistry` → Micrometer → OTLP 导出）与审计 / 指标汇聚（`yunxi-observability` 模块）。
 
 > **历史说明**：AgentScope-Java 2.0 起废弃了原 `Tracer` / `TracerRegistry` 接口，改为在运行时内直接使用 OpenTelemetry 全局实例创建 Span。yunxi 旧版 `OpenTelemetryTracer.java` 已删除，现由 `OtelTracingMiddleware` 承担，不再实现任何 `Tracer` 接口。
 
@@ -29,7 +29,7 @@ yunxi 在 `AgentConfigurer.configureMiddlewares` 装配一条 `OtelTracingMiddle
              ┌─────────▼──────────┐
              │   双通道上报          │
              │  OpenTelemetry Span  │→ OTLP HTTP（4318）→ OTel Collector → Jaeger
-             │  MetricRegistry 计数 │→ 生产可桥接 Micrometer / Prometheus
+             │  MetricRegistry 计数 │→ Micrometer → OTLP push（与 Span 同一 Collector）
              └─────────────────────┘
 ```
 
@@ -68,7 +68,7 @@ invoke_agent <agentName>          # 包裹整轮回复（onAgent）
 
 ### 指标（经 `MetricRegistry`）
 
-`OtelTracingMiddleware` 通过 `yunxi-observability` 的 `MetricRegistry` 递增计数，生产装配可桥接到 Micrometer / Prometheus：
+`OtelTracingMiddleware` 通过 `yunxi-observability` 的 `MetricRegistry` 递增计数。生产装配（`RuntimeConfiguration.metricRegistry`）为 `MicrometerMetricRegistry`——桥接到进程内 Micrometer registry，由导出器决定去向：
 
 | 计数器 | 递增时机 |
 |--------|----------|
@@ -103,11 +103,28 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,agentscope-agents,agentscope-status,agentscope-tools,agentscope-models,agentscope-usage
   endpoint:
     health:
       show-details: when-authorized
+  otlp:
+    metrics:
+      export:
+        enabled: ${YUNXI_OTLP_METRICS_ENABLED:false}
+        url: ${YUNXI_OTLP_METRICS_URL:http://127.0.0.1:4318/v1/metrics}
 ```
+
+### 指标导出（OTLP push，默认关闭）
+
+度量经 Micrometer 的 OTLP registry 上报到与链路相同的 Collector。默认 `enabled=false`：未部署 Collector 时不产生外发流量；此时度量仍可经 `/actuator/metrics/<name>` 读取。
+
+```bash
+# 启用导出（与 tracing 共用 4318 端口）
+YUNXI_OTLP_METRICS_ENABLED=true
+YUNXI_OTLP_METRICS_URL=http://127.0.0.1:4318/v1/metrics   # 指向实际 Collector
+```
+
+> 说明：`MetricRegistry` 目前不携带维度标签（name-only），带租户 / 模型维度的度量属后续按需扩展，不在当前范围。
 
 ### 开发调试（无后端）
 
@@ -134,8 +151,9 @@ docker compose -f deploy/infra/docker-compose.yml up -d
 
 ```
 yunxi-observability/.../observability/        # 审计 / 指标 / 轨迹存储
-├── MetricRegistry.java          # 指标注册接口
-├── InMemoryMetricRegistry.java  # 内存实现（生产可桥接 Micrometer / Prometheus）
+├── MetricRegistry.java          # 指标注册接口（平台唯一度量记录入口）
+├── MicrometerMetricRegistry.java # 生产实现：桥接到 Micrometer，经 OTLP 导出
+├── InMemoryMetricRegistry.java  # 内存实现（测试 / 演示替身）
 ├── AuditEvent.java              # 审计事件
 ├── AuditSink.java               # 审计落点接口
 ├── InMemoryAuditSink.java       # 内存实现
@@ -155,7 +173,7 @@ yunxi-runtime/.../middleware/
 
 1. 首次打包需下载 OTel SDK 依赖，请确保网络连通
 2. Jaeger 不可用时 OTel 导出器会打印错误日志，应用正常运行
-3. 指标需将 `MetricRegistry` 桥接到 Micrometer / Prometheus 才能在监控面板观测（默认内存实现仅计数）
+3. 指标经 `MicrometerMetricRegistry` 桥接到 Micrometer；未启用 OTLP 导出时仅进程内可读（`/actuator/metrics`），启用后经 Collector 外发
 
 ---
 
