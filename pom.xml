@@ -1,0 +1,138 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.13</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>io.yunxi</groupId>
+    <artifactId>yunxi-parent</artifactId>
+    <version>${revision}</version>
+    <packaging>pom</packaging>
+
+    <name>yunxi-platform（目标架构）</name>
+    <description>
+        yunxi 企业级应用智能体平台：基于 AgentScope-Java 框架构建、可独立部署运行的智能体运行时与统一接入层。
+    </description>
+
+    <properties>
+        <revision>2.1.0</revision>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <agentscope.version>2.1.0-BETA1</agentscope.version>
+        <!-- IM 渠道旧版扩展（wecom / feishu / github / gitlab / weixin）：与 BOM 锁定的 dingtalk
+             2.1.0-BETA1 跨版本共存，版本收敛于此属性，模块不再散落硬编码。 -->
+        <agentscope-channel-legacy.version>2.0.4</agentscope-channel-legacy.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <modules>
+        <module>yunxi-definition</module>
+        <module>yunxi-config</module>
+        <module>yunxi-observability</module>
+        <module>yunxi-capability</module>
+        <module>yunxi-runtime</module>
+        <module>yunxi-ingress</module>
+        <module>yunxi-fabric</module>
+        <module>yunxi-intelligence</module>
+        <module>yunxi-app</module>
+        <module>yunxi-integration-test</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- AgentScope-Java 框架 BOM：统一管理所有 io.agentscope.* 的版本。 -->
+            <dependency>
+                <groupId>io.agentscope</groupId>
+                <artifactId>agentscope-bom</artifactId>
+                <version>${agentscope.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- yunxi 模块间坐标（同一反应器内，统一锁定为项目版本）。 -->
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-definition</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-config</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-observability</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-capability</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-runtime</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-ingress</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-fabric</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-intelligence</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-app</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-integration-test</artifactId><version>${project.version}</version></dependency>
+
+            <!-- Lombok：编译期注解处理（provided 作用域，不打包进运行时构件）。 -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>1.18.34</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- 以下第三方依赖的版本未由 spring-boot / agentscope BOM 管理（或需钉在高于父 BOM 的版本），
+                 统一在此锁定，避免各模块散落不同版本引发冲突。 -->
+            <!-- OpenTelemetry：钉在 1.61.0（高于 Spring Boot 3.5.13 管理的 1.49.0），与 AgentScope-Java 链路一致。 -->
+            <dependency><groupId>io.opentelemetry</groupId><artifactId>opentelemetry-api</artifactId><version>1.61.0</version></dependency>
+            <dependency><groupId>io.opentelemetry</groupId><artifactId>opentelemetry-context</artifactId><version>1.61.0</version></dependency>
+            <!-- 韧性：熔断 / 限流原语（Spring Boot 父 BOM 不管理 resilience4j）。 -->
+            <dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-circuitbreaker</artifactId><version>2.2.0</version></dependency>
+            <dependency><groupId>io.github.resilience4j</groupId><artifactId>resilience4j-ratelimiter</artifactId><version>2.2.0</version></dependency>
+            <!-- RAG 向量后端（store-type=milvus 时启用）。 -->
+            <dependency><groupId>io.milvus</groupId><artifactId>milvus-sdk-java</artifactId><version>2.4.2</version></dependency>
+            <!-- aistio Nacos 协调底座客户端（yunxi.mcp.nacos.enabled 开启时使用）。 -->
+            <dependency><groupId>com.alibaba.nacos</groupId><artifactId>nacos-client</artifactId><version>3.2.4</version></dependency>
+            <!-- 框架真实大模型 provider：显式锁定为 BOM 同源版本，消除 runtime(旧 2.0.4) 与 integration-test 的版本漂移。 -->
+            <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-model-dashscope</artifactId><version>${agentscope.version}</version></dependency>
+            <!-- IM 渠道旧版扩展：与 BOM 的 dingtalk（2.1.0-BETA1）跨版本共存，统一锁定为 2.0.4。 -->
+            <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-channel-wecom</artifactId><version>${agentscope-channel-legacy.version}</version></dependency>
+            <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-channel-feishu</artifactId><version>${agentscope-channel-legacy.version}</version></dependency>
+            <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-channel-github</artifactId><version>${agentscope-channel-legacy.version}</version></dependency>
+            <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-channel-gitlab</artifactId><version>${agentscope-channel-legacy.version}</version></dependency>
+            <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-channel-weixin</artifactId><version>${agentscope-channel-legacy.version}</version></dependency>
+            <!-- XXL-JOB 触发通道与 Quartz JDBC 连接池（父 BOM 均不管理，统一在此锁定）。 -->
+            <dependency><groupId>com.xuxueli</groupId><artifactId>xxl-job-core</artifactId><version>3.3.2</version></dependency>
+            <dependency><groupId>com.mchange</groupId><artifactId>c3p0</artifactId><version>0.9.5.4</version></dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <!-- CI-friendly 版本落地：install/deploy 时把 ${revision} 等 CI 友好属性解析为字面量。
+                 否则单体子模块构建（如 mvn -pl yunxi-app spring-boot:run）从本地仓库读取兄弟模块时，
+                 其 <parent><version>${revision}</version> 不会被 -Drevision 插值，报
+                 “yunxi-parent:pom:${revision} absent”；flatten 让安装的 pom 携带真实版本 2.1.0。 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.6.0</version>
+                <configuration>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

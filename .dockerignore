@@ -1,0 +1,30 @@
+# 版本控制与 CI
+.git
+.github
+.gitignore
+
+# 构建产物与缓存
+**/target
+**/build
+**/node_modules
+**/dist
+
+# 本地与临时文件
+tmp
+**/*.log
+.idea
+.vscode
+*.iml
+
+# 文档与非部署资源（减小构建上下文）
+docs
+CHANGELOG.md
+README.md
+LICENSE
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+SECURITY.md
+
+# 遗留与示例（不参与主镜像构建）
+legacy
+examples
