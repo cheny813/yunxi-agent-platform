@@ -14,6 +14,7 @@ import io.agentscope.harness.agent.gateway.HarnessGateway;
 import io.agentscope.spring.boot.admin.registry.AgentRegistry;
 import io.yunxi.app.shard.AgentShardResolver;
 import io.yunxi.app.startup.StartupGate;
+import io.yunxi.capability.McpDirectory;
 import io.yunxi.definition.AgentSpec;
 import io.yunxi.runtime.AgentConfigurer;
 import io.yunxi.runtime.AgentDefinitionLoader;
@@ -39,13 +40,16 @@ class AgentProvisionerShardTest {
         AgentDefinitionLoader loader = mock(AgentDefinitionLoader.class);
         when(loader.loadAllSpecs()).thenReturn(List.of(specA, specB));
         AgentConfigurer configurer = mock(AgentConfigurer.class);
-        when(configurer.configure(specA)).thenReturn(agentA);
-        when(configurer.configure(specB)).thenReturn(agentB);
+        when(configurer.configureDetailed(specA))
+                .thenReturn(new AgentConfigurer.ProvisionedAgent(agentA, List.of()));
+        when(configurer.configureDetailed(specB))
+                .thenReturn(new AgentConfigurer.ProvisionedAgent(agentB, List.of()));
 
         AguiAgentRegistry agui = mock(AguiAgentRegistry.class);
         A2aServerRegistry a2a = mock(A2aServerRegistry.class);
         HarnessGateway gateway = mock(HarnessGateway.class);
         org.springframework.beans.factory.ObjectProvider<AgentRegistry> regProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
+        McpDirectory mcpDirectory = mock(McpDirectory.class);
         StartupGate gate = mock(StartupGate.class);
         when(gate.tryAcquire()).thenReturn(true);
 
@@ -54,7 +58,7 @@ class AgentProvisionerShardTest {
         when(resolver.owns("b")).thenReturn(false);
 
         AgentProvisioner provisioner = new AgentProvisioner(
-                loader, configurer, agui, a2a, gateway, List.of(), regProvider, gate, resolver,
+                loader, configurer, agui, a2a, gateway, List.of(), regProvider, gate, resolver, mcpDirectory,
                 "localhost", 8080, "/a2a");
         provisioner.provision();
 

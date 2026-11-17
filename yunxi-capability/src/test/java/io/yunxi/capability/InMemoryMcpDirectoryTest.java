@@ -1,14 +1,20 @@
 package io.yunxi.capability;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.agentscope.core.tool.mcp.McpClientWrapper;
+import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import reactor.core.publisher.Mono;
 
 /**
  * 能力层 MCP 目录验证：{@link InMemoryMcpDirectory} 是产品平面唯一接触 McpClientBuilder 的地方。
@@ -83,6 +89,53 @@ class InMemoryMcpDirectoryTest {
         assertEquals(1, dir.clientCacheSize());
         w.close();
         assertEquals(1, dir.clientCacheSize(), "委托包装 close 不得误杀共享连接");
+    }
+
+    @Test
+    void probe_falseWhileUnreachable_trueAfterRecovery() {
+        AtomicReference<McpClientWrapper> reachable = new AtomicReference<>(null);
+        InMemoryMcpDirectory dir = new InMemoryMcpDirectory(true, true, spec -> {
+            McpClientWrapper d = reachable.get();
+            if (d == null) {
+                throw new RuntimeException("failed to initialize: connection refused");
+            }
+            return d;
+        });
+        dir.register(McpServerSpec.sse("web", "http://x"));
+
+        assertFalse(dir.probe("web"), "目标不可达时探活必须为 false");
+        assertFalse(dir.probe("missing"), "未注册定义的探活必须为 false");
+        assertEquals(1, dir.clientCacheSize(), "不可达探活只缓存一个真实连接包装");
+
+        McpClientWrapper ok = Mockito.mock(McpClientWrapper.class);
+        Mockito.when(ok.initialize()).thenReturn(Mono.empty());
+        Mockito.when(ok.listTools()).thenReturn(Mono.just(List.of()));
+        reachable.set(ok);
+        assertTrue(dir.probe("web"), "目标恢复后探活必须为 true");
+    }
+
+    @Test
+    void probe_reusesSameSharedConnectionAsBuildClient() {
+        AtomicReference<McpClientWrapper> reachable = new AtomicReference<>(null);
+        InMemoryMcpDirectory dir = new InMemoryMcpDirectory(true, true, spec -> {
+            McpClientWrapper d = reachable.get();
+            if (d == null) {
+                throw new RuntimeException("failed to initialize: connection refused");
+            }
+            return d;
+        });
+        McpServerSpec spec = McpServerSpec.sse("web", "http://x");
+        dir.register(spec);
+        dir.buildClient(spec);
+
+        assertFalse(dir.probe("web"), "构建期失败的共享连接探活必须为 false");
+        assertEquals(1, dir.clientCacheSize(), "探活必须复用 buildClient 的共享连接，不得新建第二条");
+
+        McpClientWrapper ok = Mockito.mock(McpClientWrapper.class);
+        Mockito.when(ok.initialize()).thenReturn(Mono.empty());
+        Mockito.when(ok.listTools()).thenReturn(Mono.just(List.of()));
+        reachable.set(ok);
+        assertTrue(dir.probe("web"));
     }
 
     @Test

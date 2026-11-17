@@ -23,6 +23,7 @@ import static org.mockito.Mockito.times;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -39,6 +40,7 @@ import io.agentscope.harness.agent.sandbox.SandboxExecutionGuard;
 import io.agentscope.harness.agent.sandbox.SandboxLease;
 import io.agentscope.harness.agent.sandbox.SandboxIsolationKey;
 import io.yunxi.capability.McpDirectory;
+import io.yunxi.capability.McpServerSpec;
 import io.yunxi.capability.ModelRoutingPolicy;
 import io.yunxi.capability.RoutedModel;
 import io.yunxi.config.ConfigCenter;
@@ -51,7 +53,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import io.agentscope.core.tool.mcp.McpClientWrapper;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import reactor.core.publisher.Mono;
 import org.springframework.context.ApplicationEventPublisher;
 import java.lang.reflect.Field;
 
@@ -165,6 +171,46 @@ class AgentConfigurerTest {
                 "build() 须从 distributedStore 自动装配状态存储（委托实例）");
         assertEquals(ConflictPolicy.FAIL, agent.getConflictPolicy(),
                 "正确性轴须设为 FAIL（冲突抛异常跳过写入，而非静默 OVERWRITE）");
+    }
+
+    @Test
+    @MockitoSettings(strictness = Strictness.LENIENT)
+    void configureDetailed_recordsFailedMcpServerWhenUnreachable() {
+        AgentSpec spec = new AgentSpec(
+                new AgentSpec.Identity("agent-1", "Agent One", "unit test agent"),
+                null, new AgentSpec.McpConfig(List.of("mcp1")), null, null, null,
+                new AgentSpec.SubagentsConfig(List.of()), null);
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, null);
+        McpClientWrapper unreachable = mock(McpClientWrapper.class);
+        when(unreachable.getName()).thenReturn("mcp1");
+        when(unreachable.initialize())
+                .thenReturn(Mono.error(new RuntimeException("failed to initialize: connection refused")));
+        when(mcpDirectory.get("mcp1"))
+                .thenReturn(Optional.of(McpServerSpec.sse("mcp1", "http://unreachable")));
+        when(mcpDirectory.buildClient(any())).thenReturn(unreachable);
+        when(mcpDirectory.probe("mcp1")).thenReturn(false);
+
+        AgentConfigurer.ProvisionedAgent provisioned = configurer(configCenter, mcpDirectory, routingPolicy,
+                modelFactory, distributedRuntimeConfig, specValidator, eventPublisher,
+                new PermissionTemplateResolver()).configureDetailed(spec);
+
+        assertTrue(provisioned.agent() instanceof HarnessAgent);
+        assertTrue(provisioned.failedMcpServers().contains("mcp1"),
+                "构建期不可达的 MCP 服务器必须进入 failedMcpServers（换装恢复依据）");
+    }
+
+    @Test
+    void configureDetailed_noFailedServersWithoutMcpSubscription() {
+        AgentSpec spec = sampleSpec();
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, null);
+
+        AgentConfigurer.ProvisionedAgent provisioned = configurer(configCenter, mcpDirectory, routingPolicy,
+                modelFactory, distributedRuntimeConfig, specValidator, eventPublisher,
+                new PermissionTemplateResolver()).configureDetailed(spec);
+
+        assertTrue(provisioned.failedMcpServers().isEmpty());
     }
 
     @Test

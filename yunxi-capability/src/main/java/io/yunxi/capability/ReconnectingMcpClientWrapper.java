@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 /**
- * 能力平面。带自动重连的 MCP 客户端包装。AgentScope-Java 2.0.4 的 {@code McpClientBuilder} 没有原生重连能力，
+ * 能力平面。带自动重连的 MCP 客户端包装。框架的 {@code McpClientBuilder} 没有原生重连能力，
  * 目标服务器在运行中掉线时连接不会自动恢复；本包装在连接异常时关闭旧 client 并经 supplier 重建一次，
  * 使 Nutrition 等"先构建后掉线"的场景能自愈，而不阻断 Agent 构建或 HTTP 请求。
  *
@@ -85,6 +85,27 @@ public class ReconnectingMcpClientWrapper extends McpClientWrapper {
             cur = cur.getCause();
         }
         return false;
+    }
+
+    /**
+     * 探活：对底层连接做一次惰性建连 + 工具列举，判定目标服务器当前是否可达。
+     * 连接类失败时重置连接（下次调用重新建连），返回 false；列举成功返回 true。
+     * 供构建期注册失败的换装恢复探测使用，不抛异常。
+     */
+    public boolean probeRecovery() {
+        try {
+            McpClientWrapper d = ensureDelegate();
+            d.listTools().block();
+            return true;
+        } catch (Exception e) {
+            if (log.isWarnEnabled()) {
+                log.warn("MCP[{}] 探活失败（目标不可达）：{}", getName(), e.getMessage());
+            }
+            if (isConnectionError(e)) {
+                rebuild();
+            }
+            return false;
+        }
     }
 
     @Override

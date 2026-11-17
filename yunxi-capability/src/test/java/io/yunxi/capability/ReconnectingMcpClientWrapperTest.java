@@ -1,6 +1,7 @@
 package io.yunxi.capability;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,6 +18,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 
@@ -97,6 +99,46 @@ class ReconnectingMcpClientWrapperTest {
 
         // 目标不可达时降级为 Mono.empty，不阻断工具注册。
         assertDoesNotThrow(() -> w.initialize().block());
+    }
+
+    @Test
+    void probeRecoveryTrueWhenDelegateHealthy() {
+        McpClientWrapper delegate = mock(McpClientWrapper.class);
+        when(delegate.listTools()).thenReturn(Mono.just(List.of()));
+        ReconnectingMcpClientWrapper w = wrap(delegate);
+
+        assertTrue(w.probeRecovery(), "已建连且列举成功时探活必须为 true");
+    }
+
+    @Test
+    void probeRecoveryFalseWhenBuildFailsThenTrueAfterSupplierRecovers() {
+        AtomicReference<McpClientWrapper> holder = new AtomicReference<>();
+        McpClientWrapper delegate = mock(McpClientWrapper.class);
+        when(delegate.initialize()).thenReturn(Mono.empty());
+        when(delegate.listTools()).thenReturn(Mono.just(List.of()));
+        ReconnectingMcpClientWrapper w = new ReconnectingMcpClientWrapper("svc", () -> {
+            McpClientWrapper d = holder.get();
+            if (d == null) {
+                throw new RuntimeException("failed to initialize: connection refused");
+            }
+            return d;
+        });
+
+        assertFalse(w.probeRecovery(), "构建期失败的连接探活必须为 false");
+
+        holder.set(delegate);
+        assertTrue(w.probeRecovery(), "目标恢复后探活必须转为 true");
+    }
+
+    @Test
+    void probeRecoveryFalseResetsDelegateOnConnectionError() {
+        McpClientWrapper delegate = mock(McpClientWrapper.class);
+        when(delegate.listTools()).thenReturn(Mono.error(new IOException("sse closed")));
+        ReconnectingMcpClientWrapper w = wrap(delegate);
+
+        assertFalse(w.probeRecovery(), "连接类失败时探活必须为 false");
+        // 连接类失败须重置连接，使后续调用重新建连
+        verify(delegate, times(1)).close();
     }
 
     @Test

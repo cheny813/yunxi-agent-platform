@@ -269,6 +269,15 @@ public class AgentConfigurer {
     }
 
     public HarnessAgent configure(AgentSpec spec) {
+        return configureDetailed(spec).agent();
+    }
+
+    /**
+     * 构建 Agent 并返回实例与构建期不可达的 MCP 服务器清单。
+     * 清单非空表示该 Agent 的部分 MCP 工具未装载（构建期静默降级），布建方据此登记待换装；
+     * 目标恢复可达后由 {@code probeAndRebuild} 调度整体重建实例，工具与权限上下文同源同刻换装。
+     */
+    public ProvisionedAgent configureDetailed(AgentSpec spec) {
         AgentSpec.ValidationResult result = specValidator.validate(spec);
         if (!result.valid()) {
             throw new IllegalArgumentException(
@@ -460,8 +469,11 @@ public class AgentConfigurer {
                     spec.identity().agentId(), equipped.size(), equipped);
         }
         eventPublisher.publishEvent(new AgentBuiltEvent(this, agent));
-        return agent;
+        return new ProvisionedAgent(agent, built.failedMcpServers());
     }
+
+    /** Agent 实例与本轮构建期不可达的 MCP 服务器清单（实例换装的登记与恢复依据）。 */
+    public record ProvisionedAgent(HarnessAgent agent, List<String> failedMcpServers) {}
 
     /**
      * 把 {@link MemoryProperties} 的压缩策略翻译为 AgentScope-Java 的 {@link CompactionConfig}。
@@ -585,11 +597,12 @@ public class AgentConfigurer {
     }
 
     /**
-     * 构建工具箱时收集到的真实装载工具名与 MCP 工具名。
+     * 构建工具箱时收集到的真实装载工具名、MCP 工具名与构建期不可达的 MCP 服务器清单。
      * {@code mcpToolNames} 用于把「MCP 订阅（mcp.servers / 自动装载）」自动派生为权限放行，
      * 使 Agent 定义只需声明订阅、无需在 allowedTools 里重复列 MCP 工具（装载与放行统一为单一来源）。
+     * {@code failedMcpServers} 供实例换装：目标恢复可达后整体重建，避免重建整个应用。
      */
-    private record BuiltToolkit(Toolkit toolkit, List<String> mcpToolNames) {}
+    private record BuiltToolkit(Toolkit toolkit, List<String> mcpToolNames, List<String> failedMcpServers) {}
 
     private BuiltToolkit buildToolkit(AgentSpec spec) {
         Toolkit toolkit = new Toolkit();
@@ -598,6 +611,7 @@ public class AgentConfigurer {
                 ? mcpDirectory.all().stream().map(s -> s.name()).toList()
                 : (spec.mcp() != null && spec.mcp().servers() != null ? spec.mcp().servers() : List.of());
         Set<String> mcpToolNames = new LinkedHashSet<>();
+        List<String> failedMcpServers = new ArrayList<>();
         for (String serverName : serverNames) {
             var serverSpec = mcpDirectory.get(serverName);
             if (serverSpec.isEmpty()) {
@@ -615,16 +629,31 @@ public class AgentConfigurer {
             toolkit.createToolGroup(serverName, serverName, groupActive);
             // apply() 内部 .block() 同步完成注册；注册前后取工具名差集，即得本服务器装载的工具。
             // 单个 MCP 服务器在 Agent 构建期不可达时 fail-soft：仅 WARN 跳过该服务器工具，
-            // 不拖垮整个 Agent 布建（目标服务器恢复可达后工具自然可用）。
+            // 不拖垮整个 Agent 布建；不可达服务器记入 failedMcpServers，供实例换装恢复。
             Set<String> before = new HashSet<>(toolkit.getToolNames());
             try {
                 toolkit.registration().mcpClient(wrapper).group(serverName).apply();
                 Set<String> after = new HashSet<>(toolkit.getToolNames());
                 after.removeAll(before);
-                mcpToolNames.addAll(after);
+                if (after.isEmpty()) {
+                    // 静默降级判定：ReconnectingMcpClientWrapper 对连接失败降级为空列表，
+                    // apply() 不抛异常而是注册零工具。此时以探活区分「服务器真的未暴露工具」
+                    // 与「构建期不可达」：不可达者登记为失败，供布建方登记待换装。
+                    if (!mcpDirectory.probe(serverName)) {
+                        failedMcpServers.add(serverName);
+                        if (log.isWarnEnabled()) {
+                            log.warn("MCP[{}] 构建期不可达，本 Agent 装载 0 工具（已登记待换装）", serverName);
+                        }
+                    } else if (log.isInfoEnabled()) {
+                        log.info("MCP[{}] 可达但未暴露任何工具", serverName);
+                    }
+                } else {
+                    mcpToolNames.addAll(after);
+                }
             } catch (Exception e) {
+                failedMcpServers.add(serverName);
                 if (log.isWarnEnabled()) {
-                    log.warn("MCP[{}] 注册失败，跳过该服务器工具（目标不可达）：{}",
+                    log.warn("MCP[{}] 注册失败，跳过该服务器工具（已登记待换装）：{}",
                             serverName, e.getMessage());
                 }
             }
@@ -642,7 +671,7 @@ public class AgentConfigurer {
         for (RagToolRegistrar registrar : ragToolRegistrars) {
             registrar.registerTools(toolkit);
         }
-        return new BuiltToolkit(toolkit, List.copyOf(mcpToolNames));
+        return new BuiltToolkit(toolkit, List.copyOf(mcpToolNames), List.copyOf(failedMcpServers));
     }
 
     /**

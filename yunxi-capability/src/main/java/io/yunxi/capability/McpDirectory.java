@@ -24,4 +24,10 @@ public interface McpDirectory {
 
     /** 为给定定义构建（并初始化）一个存活的客户端包装器。 */
     McpClientWrapper buildClient(McpServerSpec spec);
+
+    /**
+     * 探活：判定指定名称的 MCP 服务器当前是否可达（惰性建连 + 工具列举）。
+     * 定义不存在时返回 false；不抛异常。供构建期注册失败的恢复探测使用。
+     */
+    boolean probe(String serverName);
 }

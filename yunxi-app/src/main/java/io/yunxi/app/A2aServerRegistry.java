@@ -35,6 +35,14 @@ public class A2aServerRegistry {
     }
 
     /**
+     * 按 agentId 驱逐已缓存的 A2A server 实例（保留工厂）。供 Agent 实例换装后调用：
+     * 已缓存实例持有旧 Agent 引用，驱逐后下一个 A2A 请求经工厂基于新 Agent 惰性重建。
+     */
+    public void evict(String agentId) {
+        servers.remove(agentId);
+    }
+
+    /**
      * 按 agentId 取出对应 A2A server；优先已就绪实例，缺失则惰性构建工厂结果并缓存；均未注册返回 {@code null}。
      * 并发下 {@code computeIfAbsent} 保证工厂至多构建一次（单节点单实例）。
      */

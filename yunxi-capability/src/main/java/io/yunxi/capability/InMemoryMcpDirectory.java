@@ -27,14 +27,24 @@ public class InMemoryMcpDirectory implements McpDirectory {
 
     private final boolean clientCacheEnabled;
     private final boolean evictOnUnregister;
+    private final java.util.function.Function<McpServerSpec, McpClientWrapper> rawClientFactory;
 
     public InMemoryMcpDirectory() {
         this(true, true);
     }
 
     public InMemoryMcpDirectory(boolean clientCacheEnabled, boolean evictOnUnregister) {
+        this(clientCacheEnabled, evictOnUnregister, null);
+    }
+
+    /** 测试用构造：注入真实客户端构建函数，替换 {@code McpClientBuilder} 真连行为。 */
+    public InMemoryMcpDirectory(
+            boolean clientCacheEnabled,
+            boolean evictOnUnregister,
+            java.util.function.Function<McpServerSpec, McpClientWrapper> rawClientFactory) {
         this.clientCacheEnabled = clientCacheEnabled;
         this.evictOnUnregister = evictOnUnregister;
+        this.rawClientFactory = rawClientFactory != null ? rawClientFactory : this::buildRaw;
     }
 
     /** 按名称写入（或覆盖）定义。 */
@@ -71,19 +81,35 @@ public class InMemoryMcpDirectory implements McpDirectory {
     public McpClientWrapper buildClient(McpServerSpec spec) {
         if (!clientCacheEnabled) {
             // 兼容旧语义：每次新建真实连接（不共享）
-            return new ReconnectingMcpClientWrapper(spec.name(), () -> buildRaw(spec));
+            return new ReconnectingMcpClientWrapper(spec.name(), () -> rawClientFactory.apply(spec));
         }
         // 每 serverName 只建一个真实连接（computeIfAbsent 保证），返回非持有委托包装。
         // N 个 Agent 注册同一 MCP server 时共享同一底层连接，灭掉 N×S 连接爆炸。
         ReconnectingMcpClientWrapper real = clientCache.computeIfAbsent(
                 spec.name(),
-                k -> new ReconnectingMcpClientWrapper(spec.name(), () -> buildRaw(spec)));
+                k -> new ReconnectingMcpClientWrapper(spec.name(), () -> rawClientFactory.apply(spec)));
         return new SharedMcpClientWrapper(real);
     }
 
     /** 测试探针：当前缓存的真实连接数（验证跨 Agent 共享）。 */
     int clientCacheSize() {
         return clientCache.size();
+    }
+
+    /**
+     * 探活：复用（或惰性创建）该 server 的共享连接包装做一次可达性判定，不新建第二条连接。
+     * 定义不存在时返回 false。
+     */
+    @Override
+    public boolean probe(String serverName) {
+        McpServerSpec spec = specs.get(serverName);
+        if (spec == null) {
+            return false;
+        }
+        ReconnectingMcpClientWrapper real = clientCache.computeIfAbsent(
+                serverName,
+                k -> new ReconnectingMcpClientWrapper(serverName, () -> rawClientFactory.apply(spec)));
+        return real.probeRecovery();
     }
 
     /** 用 AgentScope-Java 的 McpClientBuilder 按传输类型构建并初始化真实客户端（STDIO / SSE）。 */

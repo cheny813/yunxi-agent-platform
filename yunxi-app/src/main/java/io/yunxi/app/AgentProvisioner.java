@@ -9,6 +9,7 @@ import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.gateway.HarnessGateway;
 import io.agentscope.spring.boot.admin.registry.AgentRegistry;
+import io.yunxi.capability.McpDirectory;
 import io.yunxi.definition.AgentSpec;
 import org.springframework.beans.factory.ObjectProvider;
 import io.yunxi.app.shard.AgentShardResolver;
@@ -18,6 +19,9 @@ import io.yunxi.runtime.AgentDefinitionLoader;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
@@ -65,6 +69,13 @@ public class AgentProvisioner {
     private final String a2aPathPrefix;
     private final StartupGate startupGate;
     private final AgentShardResolver shardResolver;
+    private final McpDirectory mcpDirectory;
+
+    /** 构建期 MCP 注册失败的待换装登记（agentId → 定义快照与失败服务器集合）。 */
+    private final Map<String, PendingRebuild> pendingRebuilds = new ConcurrentHashMap<>();
+
+    /** 本实例绑定的主 Agent（首个注册的分片 Agent），换装后需重新绑定网关 main agent。 */
+    private volatile String mainAgentId;
 
     private static final Logger log = LoggerFactory.getLogger(AgentProvisioner.class);
 
@@ -78,6 +89,7 @@ public class AgentProvisioner {
             ObjectProvider<AgentRegistry> agentRegistryProvider,
             StartupGate startupGate,
             AgentShardResolver shardResolver,
+            McpDirectory mcpDirectory,
             @Value("${yunxi.a2a.host:localhost}") String a2aHost,
             @Value("${yunxi.a2a.port:8080}") int a2aPort,
             @Value("${yunxi.a2a.path-prefix:/a2a}") String a2aPathPrefix) {
@@ -90,6 +102,7 @@ public class AgentProvisioner {
         this.agentRegistryProvider = agentRegistryProvider;
         this.startupGate = startupGate;
         this.shardResolver = shardResolver;
+        this.mcpDirectory = mcpDirectory;
         this.a2aHost = a2aHost;
         this.a2aPort = a2aPort;
         this.a2aPathPrefix = a2aPathPrefix;
@@ -133,16 +146,17 @@ public class AgentProvisioner {
         executor.setMaxPoolSize(parallelism);
         executor.setThreadNamePrefix("agent-provision-");
         executor.initialize();
-        List<AbstractMap.SimpleEntry<String, HarnessAgent>> built = new ArrayList<>(specs.size());
+        record ProvisionedBuild(String agentId, AgentSpec spec, AgentConfigurer.ProvisionedAgent provisioned) {}
+        List<ProvisionedBuild> built = new ArrayList<>(specs.size());
         List<Throwable> errors = new ArrayList<>();
         try {
-            List<Future<AbstractMap.SimpleEntry<String, HarnessAgent>>> futures = specs.stream()
+            List<Future<ProvisionedBuild>> futures = specs.stream()
                     .map(spec -> executor.submit(() -> {
-                        HarnessAgent agent = agentConfigurer.configure(spec);
-                        return new AbstractMap.SimpleEntry<>(spec.identity().agentId(), agent);
+                        AgentConfigurer.ProvisionedAgent provisioned = agentConfigurer.configureDetailed(spec);
+                        return new ProvisionedBuild(spec.identity().agentId(), spec, provisioned);
                     }))
                     .collect(Collectors.toList());
-            for (Future<AbstractMap.SimpleEntry<String, HarnessAgent>> future : futures) {
+            for (Future<ProvisionedBuild> future : futures) {
                 try {
                     built.add(future.get());
                 } catch (ExecutionException e) {
@@ -160,16 +174,66 @@ public class AgentProvisioner {
                     "AgentProvisioner：并行构建失败 " + errors.size() + " 个 Agent，终止布建", errors.get(0));
         }
         boolean first = true;
-        for (AbstractMap.SimpleEntry<String, HarnessAgent> entry : built) {
-            if (!shardResolver.owns(entry.getKey())) {
+        for (ProvisionedBuild entry : built) {
+            if (!shardResolver.owns(entry.agentId())) {
                 // 非本实例分片：跳过本地注册，由转发层承接（每实例仅构建自身分片）。
                 continue;
             }
-            registerAll(entry.getKey(), entry.getValue());
+            registerAll(entry.agentId(), entry.provisioned().agent());
+            if (!entry.provisioned().failedMcpServers().isEmpty()) {
+                // 构建期 MCP 不可达：登记待换装，目标恢复可达后整体重建实例（probeAndRebuild 调度）。
+                pendingRebuilds.put(entry.agentId(), new PendingRebuild(
+                        entry.spec(), Set.copyOf(entry.provisioned().failedMcpServers())));
+            }
             if (first) {
-                harnessGateway.bindMainAgent(entry.getValue());
+                mainAgentId = entry.agentId();
+                harnessGateway.bindMainAgent(entry.provisioned().agent());
                 first = false;
             }
+        }
+    }
+
+    /** 构建期 MCP 注册失败的待换装登记（agentId → 定义快照与失败服务器集合）。 */
+    private record PendingRebuild(AgentSpec spec, Set<String> failedServers) {}
+
+    /**
+     * 恢复探测调度入口（由 McpRecoveryScheduler 定时调用）：对每个待换装登记中的构建期失败服务器探活，
+     * 任一恢复可达即触发该 Agent 实例换装——经 AgentConfigurer 整体重建（工具装载与权限上下文派生
+     * 同源同刻换装，不引入增量补规则的第二个真相时刻），并替换四处注册真相源。换装后按重建结果刷新登记：
+     * 仍失败的服务器保留待下轮，全部恢复则移除。换装失败保留登记下轮重试。
+     */
+    public synchronized void probeAndRebuild() {
+        if (pendingRebuilds.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, PendingRebuild> entry : pendingRebuilds.entrySet()) {
+            boolean recovered = entry.getValue().failedServers().stream().anyMatch(mcpDirectory::probe);
+            if (recovered) {
+                rebuildAgent(entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    private void rebuildAgent(String agentId, PendingRebuild pending) {
+        try {
+            AgentConfigurer.ProvisionedAgent rebuilt = agentConfigurer.configureDetailed(pending.spec());
+            registerAll(agentId, rebuilt.agent());
+            if (agentId.equals(mainAgentId)) {
+                harnessGateway.bindMainAgent(rebuilt.agent());
+            }
+            // 已缓存 A2A server 持有旧 Agent 引用，驱逐后经工厂基于新实例惰性重建。
+            a2aServerRegistry.evict(agentId);
+            if (rebuilt.failedMcpServers().isEmpty()) {
+                pendingRebuilds.remove(agentId);
+                log.info("MCP 恢复换装完成：agent={} 失败服务器全部恢复，移除待换装登记", agentId);
+            } else {
+                pendingRebuilds.put(agentId,
+                        new PendingRebuild(pending.spec(), Set.copyOf(rebuilt.failedMcpServers())));
+                log.info("MCP 恢复换装完成：agent={} 仍有失败服务器 {}，保留待换装登记",
+                        agentId, rebuilt.failedMcpServers());
+            }
+        } catch (Exception e) {
+            log.warn("MCP 恢复换装失败：agent={}，保留待换装登记下轮重试", agentId, e);
         }
     }
 
