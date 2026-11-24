@@ -24,6 +24,9 @@ public class ModelProperties {
 
     private Map<String, String> defaults = new HashMap<>();
 
+    /** 拓扑豁免开关（yunxi.models.allow-local-llm，默认 false）：允许本地 provider 承载 llm 类模型（仅限离线演示场景）。 */
+    private boolean allowLocalLlm = false;
+
     public Map<String, ModelEntry> getCatalog() {
         return catalog;
     }
@@ -46,5 +49,13 @@ public class ModelProperties {
 
     public void setDefaults(Map<String, String> defaults) {
         this.defaults = defaults;
+    }
+
+    public boolean isAllowLocalLlm() {
+        return allowLocalLlm;
+    }
+
+    public void setAllowLocalLlm(boolean allowLocalLlm) {
+        this.allowLocalLlm = allowLocalLlm;
     }
 }

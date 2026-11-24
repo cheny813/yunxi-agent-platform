@@ -53,7 +53,6 @@ permission:
   toolGate:
     enabled: false
     tools: []
-    message: ""
 # 订阅 Text2SQL MCP 服务：text2sql_start / text2sql_chat / text2sql_execute 由此提供。
 # 订阅即由 PermissionTemplateResolver 自动放行，无需在 allowedTools 重复列出。
 mcp:

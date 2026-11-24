@@ -17,7 +17,7 @@ import java.util.function.Function;
 import reactor.core.publisher.Flux;
 
 /**
- * 链路追踪中间件（order=90，最内层之一）。
+ * 链路追踪中间件（order=90：数值小者靠外，位于审计 10 之后、HITL 95 与韧性 200 之前——即包裹了整条内层链，自身被整条外层链包裹）。
  *
  * <p>职责：为 Agent 生命周期产出 OpenTelemetry span 并上报指标，闭环跨协议链路追踪缺失的内核缺口。
  * 三种 span：

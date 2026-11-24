@@ -16,11 +16,12 @@ yunxi:
     max-candidates: 8               # 进入分类的候选上限
     max-input-chars: 2000           # 送入分类模型的文本长度上限（字符）
 
-    # 本地决策模型：经 ModelResolver 解析 defaults.decision -> local-decision（本机 Ollama）。
+    # 本地决策模型：model-id 须为带 provider 前缀的完整模型 id（ModelResolver/ModelRegistry 按 provider:model 全名解析，
+    # 不存在"逻辑名 -> defaults"的映射兜底；配裸逻辑名会解析失败并 WARN + 降级关键词级）。
     # classifier.impl: jev 为可选增强（复用框架 JEV 契约，需 JEV_API_KEY；默认 local，无数据外发）。
     classifier:
       impl: local
-      model-id: decision
+      model-id: ollama:tev1:0.8b
       timeout-millis: 3000
       max-tokens: 512
       structured-output: true       # 模型不支持 jsonSchema 时自动回退普通调用 + 容错解析

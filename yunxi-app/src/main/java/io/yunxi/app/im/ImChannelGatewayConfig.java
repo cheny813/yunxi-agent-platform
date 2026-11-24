@@ -119,6 +119,19 @@ public class ImChannelGatewayConfig {
         return new GitLabWebhookController();
     }
 
+    /**
+     * 逐渠道装配隔离：单渠道构造异常只跳过该渠道并 ERROR 告警，不中止其余渠道装配，
+     * 也不冒泡到 ContextRefreshedEvent 监听（否则会中断上下文刷新、拖垮整个应用启动）。
+     */
+    static void addChannel(GatewayBootstrap.Builder builder, String name, java.util.function.Supplier<Channel> supplier, Runnable onSuccess) {
+        try {
+            builder.channel(supplier.get());
+            onSuccess.run();
+        } catch (Exception e) {
+            log.error("IM 渠道 {} 装配失败，跳过该渠道（不影响其余渠道装配与应用启动）。", name, e);
+        }
+    }
+
     /** 上下文刷新后装配渠道网关：IM 渠道（钉钉 / 企业微信 / 飞书）与编程式 ChatUi 渠道经 ChannelManager 接入 HarnessGateway。 */
     @EventListener(ContextRefreshedEvent.class)
     public void start() {
@@ -153,33 +166,33 @@ public class ImChannelGatewayConfig {
         }
 
         if (properties.getDingtalk().isEnabled()) {
-            builder.channel(buildDingTalk(properties.getDingtalk()));
-            log.info("渠道网关：已接入钉钉渠道（channelId={}）。", properties.getDingtalk().getChannelId());
+            addChannel(builder, "dingtalk", () -> buildDingTalk(properties.getDingtalk()),
+                    () -> log.info("渠道网关：已接入钉钉渠道（channelId={}）。", properties.getDingtalk().getChannelId()));
         }
 
         if (properties.getWecom().isEnabled()) {
-            builder.channel(buildWeCom(properties.getWecom()));
-            log.info("渠道网关：已接入企业微信渠道（channelId={}）。", properties.getWecom().getChannelId());
+            addChannel(builder, "wecom", () -> buildWeCom(properties.getWecom()),
+                    () -> log.info("渠道网关：已接入企业微信渠道（channelId={}）。", properties.getWecom().getChannelId()));
         }
 
         if (properties.getFeishu().isEnabled()) {
-            builder.channel(buildFeishu(properties.getFeishu()));
-            log.info("渠道网关：已接入飞书渠道（channelId={}）。", properties.getFeishu().getChannelId());
+            addChannel(builder, "feishu", () -> buildFeishu(properties.getFeishu()),
+                    () -> log.info("渠道网关：已接入飞书渠道（channelId={}）。", properties.getFeishu().getChannelId()));
         }
 
         if (properties.getGithub().isEnabled()) {
-            builder.channel(buildGitHub(properties.getGithub()));
-            log.info("渠道网关：已接入 GitHub 渠道（channelId={}）。", properties.getGithub().getChannelId());
+            addChannel(builder, "github", () -> buildGitHub(properties.getGithub()),
+                    () -> log.info("渠道网关：已接入 GitHub 渠道（channelId={}）。", properties.getGithub().getChannelId()));
         }
 
         if (properties.getGitlab().isEnabled()) {
-            builder.channel(buildGitLab(properties.getGitlab()));
-            log.info("渠道网关：已接入 GitLab 渠道（channelId={}）。", properties.getGitlab().getChannelId());
+            addChannel(builder, "gitlab", () -> buildGitLab(properties.getGitlab()),
+                    () -> log.info("渠道网关：已接入 GitLab 渠道（channelId={}）。", properties.getGitlab().getChannelId()));
         }
 
         if (properties.getWeixin().isEnabled()) {
-            builder.channel(buildWeixin(properties.getWeixin()));
-            log.info("渠道网关：已接入微信（iLink）渠道（channelId={}）。", properties.getWeixin().getChannelId());
+            addChannel(builder, "weixin", () -> buildWeixin(properties.getWeixin()),
+                    () -> log.info("渠道网关：已接入微信（iLink）渠道（channelId={}）。", properties.getWeixin().getChannelId()));
         }
 
         try {

@@ -33,12 +33,13 @@ public class ConfigurableModelRoutingPolicy implements ModelRoutingPolicy {
         this(properties, new RuleBasedFineRankingScorer());
     }
 
-    /** 注入模型配置与精排器，并在构造期做启动快速失败校验（defaults 类型一致 + Auto 候选池非空）。 */
+    /** 注入模型配置与精排器，并在构造期做启动快速失败校验（defaults 类型一致 + Auto 候选池非空 + llm 远程拓扑）。 */
     public ConfigurableModelRoutingPolicy(ModelProperties properties, FineRankingScorer fineRankingScorer) {
         this.properties = properties;
         this.fineRankingScorer = fineRankingScorer;
         validateDefaultsTypeConsistency();
         validateAutoCandidatePool();
+        validateLlmRemoteTopology();
     }
 
     /**
@@ -71,6 +72,23 @@ public class ConfigurableModelRoutingPolicy implements ModelRoutingPolicy {
         if (!hasLlm) {
             throw new IllegalStateException(
                     "Auto 模型选择需要至少一个 type=llm 的候选模型，请先在 yunxi.models.catalog 声明对话模型。");
+        }
+    }
+
+    /**
+     * 启动期快速失败：llm 类模型一律远程（provider 不得为 ollama 本地族），本地只承载 decision / embedding。
+     * 离线演示等确有理由的场景用 yunxi.models.allow-local-llm: true 显式豁免（护栏 fail-closed 口径）。
+     */
+    private void validateLlmRemoteTopology() {
+        if (properties.isAllowLocalLlm()) {
+            return;
+        }
+        for (Map.Entry<String, ModelEntry> e : properties.getCatalog().entrySet()) {
+            if ("llm".equals(e.getValue().getType()) && "ollama".equals(e.getValue().getProvider())) {
+                throw new IllegalStateException("模型目录[" + e.getKey() + "] 为本地 provider(ollama) 的 llm 类模型，"
+                        + "违反拓扑约定：llm 一律远程，本地只承载 decision / embedding。"
+                        + "确有离线场景请显式设置 yunxi.models.allow-local-llm: true 豁免。");
+            }
         }
     }
 

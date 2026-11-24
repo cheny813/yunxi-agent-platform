@@ -27,6 +27,7 @@ import io.yunxi.ingress.WebProtocolAdapter;
 import io.yunxi.app.mcp.McpNacosProperties;
 import io.yunxi.app.config.ConfigCenterNacosProperties;
 import io.yunxi.app.config.NacosBackedConfigCenter;
+import io.yunxi.app.config.ResilienceProperties;
 import io.yunxi.app.config.TenantProperties;
 import io.yunxi.app.config.TenantQuotaProperties;
 import io.yunxi.app.shard.AgentShardResolver;
@@ -77,6 +78,7 @@ import io.yunxi.runtime.middleware.HitlMiddleware;
 import io.yunxi.runtime.middleware.IntentSignalMiddleware;
 import io.yunxi.runtime.middleware.OtelTracingMiddleware;
 import io.yunxi.runtime.middleware.ResilienceMiddleware;
+import io.yunxi.runtime.middleware.ResilienceThresholds;
 import io.yunxi.runtime.middleware.SessionToolGroupActivationMiddleware;
 import io.yunxi.runtime.middleware.SessionToolGroupRegistry;
 import io.yunxi.runtime.permission.PermissionTemplateResolver;
@@ -114,7 +116,7 @@ import org.springframework.context.annotation.Import;
 @Configuration
 @Import({IntentEngineConfiguration.class})
 @EnableScheduling
-@EnableConfigurationProperties({ModelProperties.class, McpNacosProperties.class, MemoryProperties.class, ConfigCenterNacosProperties.class, TenantProperties.class, TenantQuotaProperties.class})
+@EnableConfigurationProperties({ModelProperties.class, McpNacosProperties.class, MemoryProperties.class, ConfigCenterNacosProperties.class, TenantProperties.class, TenantQuotaProperties.class, ResilienceProperties.class})
 public class RuntimeConfiguration {
 
     /**
@@ -236,17 +238,24 @@ public class RuntimeConfiguration {
     @Bean
     public List<MiddlewareBase> protocolAgnosticMiddlewares(
             AuditSink auditSink, MetricRegistry metricRegistry, ModelRoutingPolicy modelRoutingPolicy,
-            SessionToolGroupRegistry sessionToolGroupRegistry, TenantQuotaMiddleware tenantQuotaMiddleware) {
+            SessionToolGroupRegistry sessionToolGroupRegistry, TenantQuotaMiddleware tenantQuotaMiddleware,
+            ResilienceProperties resilienceProperties) {
         // 协议无关横切中间件在此统一装配（审计 / 追踪 / 人机协同 / 韧性 / 会话级工具组激活 / 租户配额 / 意图信号透传）。
         // 所有协议（web / A2A / AG-UI / Chat Completions）统一经此链；运行时装配点按 order 挂载。
         // 跨会话长期记忆已下沉为 AgentScope-Java 框架原生的 MEMORY.md（由框架组件扫描注册），
         // 不再由 yunxi 自建中间件接兂，故此处只装配 yunxi 拥有的横切中间件。
+        ResilienceThresholds resilienceThresholds = new ResilienceThresholds(
+                resilienceProperties.getSlidingWindowSize(),
+                resilienceProperties.getFailureRateThreshold(),
+                resilienceProperties.getLimitForPeriod(),
+                resilienceProperties.getLimitRefreshSeconds(),
+                resilienceProperties.getWaitOpenSeconds());
         return new ArrayList<>(List.of(
                 tenantQuotaMiddleware,
                 new ChatAuditMiddleware(auditSink),
                 new OtelTracingMiddleware(metricRegistry),
                 new HitlMiddleware(auditSink, metricRegistry),
-                new ResilienceMiddleware(metricRegistry, auditSink, modelRoutingPolicy),
+                new ResilienceMiddleware(metricRegistry, auditSink, modelRoutingPolicy, resilienceThresholds),
                 new SessionToolGroupActivationMiddleware(sessionToolGroupRegistry),
                 new IntentSignalMiddleware()));
     }

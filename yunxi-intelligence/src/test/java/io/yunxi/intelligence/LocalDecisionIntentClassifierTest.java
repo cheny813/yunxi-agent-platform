@@ -98,6 +98,33 @@ class LocalDecisionIntentClassifierTest {
     }
 
     @Test
+    void warnsAndFallsBackWhenModelResolutionFails() {
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger)
+                org.slf4j.LoggerFactory.getLogger(LocalDecisionIntentClassifier.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        logger.addAppender(appender);
+        appender.start();
+        try {
+            LocalDecisionIntentClassifier classifier = new LocalDecisionIntentClassifier(
+                    id -> {
+                        throw new IllegalStateException("unknown model: " + id);
+                    },
+                    "decision", 3000L, 512, 2000, true, MAPPER);
+
+            assertNull(classifier.classify("hi", Map.of(), CANDIDATES), "解析失败必须降级为 null（引擎走关键词级）");
+
+            boolean warned = appender.list.stream().anyMatch(ev ->
+                    ev.getLevel() == ch.qos.logback.classic.Level.WARN
+                            && String.valueOf(ev.getFormattedMessage()).contains("decision"));
+            org.junit.jupiter.api.Assertions.assertTrue(warned,
+                    "模型解析失败必须以 WARN 级暴露且携带 model-id，不得静默降级");
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
     void usesZeroTemperatureAndBoundedTokens() {
         StubModel model = new StubModel("{\"agentId\":\"nutrition\",\"label\":\"diet\",\"confidence\":0.8}");
         classifier(model).classify("hi", Map.of(), CANDIDATES);

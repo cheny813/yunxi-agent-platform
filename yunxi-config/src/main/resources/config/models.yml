@@ -1,13 +1,15 @@
 # 模型目录与路由（外部化配置：代码中不出现具体模型名）。
 # catalog 为命名模型清单；routing 为 agentId → 主模型 + 兜底；defaults 为各用途分类默认模型。
 #
-# 拓扑约定（务必遵守，ConfigurableModelRoutingPolicy 会在启动期强制校验）：
+# 拓扑约定（启动期强制校验，ConfigurableModelRoutingPolicy 构造期执行）：
 #   - llm 类（对话 / 推理主模型）一律走远程（DashScope 等），本地不承载对话生成；
 #   - decision 类为本地决策模型（文本决策 tev1:0.8b、图片决策 clef-flash），仅用于专项决策节点；
 #   - embedding 类为本地矢量模型（bge-m3），仅用于检索 embedding。
 # 因此 defaults.llm 必须指向真正的对话模型，绝不可把 decision / embedding 模型当 llm 默认。
+# 离线演示等确有理由的场景可用 allow-local-llm: true 显式豁免校验（生产不得打开）。
 yunxi:
   models:
+    allow-local-llm: false
     catalog:
       # 远程对话 / 推理模型（DashScope，密钥经 DASHSCOPE_API_KEY 注入）。
       qwen-plus:

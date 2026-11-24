@@ -69,7 +69,7 @@ Set-Location $scriptDir
 # 如需临时切换模型 key，通过脚本参数 -DashscopeKey 显式传入（变量传递，不落地、不持久化），
 # 而非设置系统环境变量。生产部署不通过此脚本启动，应通过网关/环境变量显式设置真实 key。
 # 安全提示：真实密钥写入脚本后请勿提交含密钥的版本；泄露请立即在 DashScope 控制台吊销并更换。
-$DevDashscopeKey = 'sk-49c025bd3'
+$DevDashscopeKey = 'sk-49c0e25bd3'
 # 仅在本进程内写入，作为子进程（后端 JVM）的环境变量传递给模型服务；仅在本次启动进程内生效，不持久化。
 $env:DASHSCOPE_API_KEY = if ($DashscopeKey) { $DashscopeKey } else { $DevDashscopeKey }
 # 本地开发默认值，与前端 dev 代理（vite.config.js 注入的 admin:yunxi-dev-pass）保持一致，

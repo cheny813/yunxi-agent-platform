@@ -32,4 +32,5 @@ spring:
       classpath:config/memory.yml,
       classpath:config/im.yml,
       classpath:config/scheduler.yml,
+      classpath:config/resilience.yml,
       classpath:config/tenant.yml

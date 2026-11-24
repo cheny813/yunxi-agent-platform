@@ -76,11 +76,12 @@ state:
   persist: false
 permission:
   allowedTools:
-    - memory
+    - memory_search
+    - memory_get
+    - memory_save
   toolGate:
     enabled: false
     tools: []
-    message: ""
 
 mcp:
   # 订阅营养数据 MCP 服务：evaluate_recipe / search_dishes 等工具由此提供。

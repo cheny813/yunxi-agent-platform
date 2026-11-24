@@ -28,6 +28,17 @@
 - **分类卡片显式声明（`AgentSpec.intent.hint`）**：定义平面可选声明一句话职责卡片，意图分类时优先于从 `identity.description` 自动派生的首句卡片；旧 YAML 不声明 `intent` 段零迁移。
 - **JEV 云端判定（可选增强，`classifier.impl=jev`）**：复用框架 `agentscope-extensions-jev` 类型化契约（`ChoiceQuestion` 闭集单选 + 概率分布），候选卡片即选项、`unknown` 为闭集兜底项；云端 Key（`TYPESAFE_API_KEY` / `JEV_API_KEY`）缺失、调用失败或选择越出闭集时自动回落本地决策模型，降级链路不变。默认仍为 `impl=local`（无数据外发）。
 
+### 修复
+
+- **意图 LLM 分类级静默失效**：`intent.yml` 的 `classifier.model-id` 曾配裸逻辑名（不带 provider 前缀），`ModelRegistry` 全名解析要求下解析失败、LLM 分类级在默认配置下静默降级为关键词级。现配置改为完整模型 id（`ollama:tev1:0.8b`），且解析失败以 WARN 告警（携带 model-id）后降级——配错不再无声。
+- **MCP 缺名引用静默跳过**：Agent 定义引用未注册 / `enabled: false` 的 MCP 服务时原本零日志跳过，该 Agent 工具集整组缺失无从排查。现跳过时打 WARN（提示检查定义引用与 `config/mcp.yml` 注册）。
+- **`toolGate.message` 字段移除**：该字段全仓无消费点（底层框架人工确认机制不支持自定义文案），留着会误导管理员以为配置有效。从 AgentSpec 契约与全部示例定义中移除（`toolGate` 仅 `enabled` / `tools` 两键）；含该字段的旧定义文件启动期会被严格解析拒绝，需删除该行。
+- **示例定义死引用更正**：示例 Agent 白名单中的 `memory` 不是任何真实工具名（框架记忆工具实名 `memory_search` / `memory_get` / `memory_save`），该规则曾静默永不命中，已改实名。
+- **IM 渠道装配逐渠道隔离**：此前某渠道构造异常（凭据错等）会中止其后全部渠道装配并导致整个应用启动失败。现每渠道独立 try/catch：失败渠道 ERROR 告警并跳过，其余渠道照常装配，不再拖垮应用启动。
+- **模型拓扑约定升级为启动期校验**：「llm 一律远程」原为 models.yml 注释约定（无强制，且注释自称已校验属失实）。现启动期强制：本地 provider 的 llm 条目拒绝启动；离线演示可用 `yunxi.models.allow-local-llm: true` 显式豁免。
+- **韧性阈值配置化**：限流 / 熔断五个阈值原硬编码在 `ResilienceMiddleware`，现外部化为 `yunxi.resilience.*` 配置键（新增 `config/resilience.yml`，默认值与历史行为一致）。
+- **注释口径更正**：`OtelTracingMiddleware` javadoc 的层级描述与 `intent.yml` / `docs/guide` 中对意图模型解析链的失实声明已按实际行为更正。
+
 ---
 
 ## [2.0.3] - 2026-09-16（架构升级补充）

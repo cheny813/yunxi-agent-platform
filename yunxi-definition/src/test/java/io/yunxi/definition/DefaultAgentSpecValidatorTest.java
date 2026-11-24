@@ -126,7 +126,7 @@ class DefaultAgentSpecValidatorTest {
                 new AgentSpec.Identity("agent-1", "Agent One", "d"),
                 null, null, null,
                 new AgentSpec.PermissionConfig(
-                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                         null, List.of("memory"), List.of("rm")),
                 null, new AgentSpec.SubagentsConfig(List.of()), null);
 
@@ -142,7 +142,7 @@ class DefaultAgentSpecValidatorTest {
                 new AgentSpec.Identity("agent-1", "Agent One", "d"),
                 null, null, null,
                 new AgentSpec.PermissionConfig(
-                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("memory"), "confirm"),
+                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("memory")),
                         null, List.of("memory"), null),
                 null, new AgentSpec.SubagentsConfig(List.of()), null);
 

@@ -107,7 +107,6 @@ permission:                           # 必填：显式声明工具策略（白�
   toolGate:
     enabled: false
     tools: []
-    message: ""
 # 模型不在 AgentSpec 中声明，统一由 yunxi-config/config/models.yml 的 routing 段按 identity.agentId 解析（未声明则走自动选型）
 ```
 

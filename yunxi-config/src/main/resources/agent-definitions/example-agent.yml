@@ -23,8 +23,9 @@ state:
   persist: false
 permission:
   allowedTools:
-    - memory
+    - memory_search
+    - memory_get
+    - memory_save
   toolGate:
     enabled: false
     tools: []
-    message: ""

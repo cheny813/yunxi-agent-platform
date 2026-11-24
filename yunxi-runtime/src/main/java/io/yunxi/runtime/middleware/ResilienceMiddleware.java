@@ -40,21 +40,23 @@ import reactor.core.publisher.Flux;
  */
 public class ResilienceMiddleware implements MiddlewareBase {
 
-    private static final int SLIDING_WINDOW = 10;
-    private static final int FAILURE_RATE = 50;
-    private static final int LIMIT_FOR_PERIOD = 100;
-
     private final MetricRegistry metricRegistry;
     private final AuditSink auditSink;
     private final ModelRoutingPolicy routingPolicy;
+    private final ResilienceThresholds thresholds;
 
     private final ConcurrentHashMap<String, CircuitBreaker> circuitBreakers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
 
-    public ResilienceMiddleware(MetricRegistry metricRegistry, AuditSink auditSink, ModelRoutingPolicy routingPolicy) {
+    public ResilienceMiddleware(
+            MetricRegistry metricRegistry,
+            AuditSink auditSink,
+            ModelRoutingPolicy routingPolicy,
+            ResilienceThresholds thresholds) {
         this.metricRegistry = metricRegistry;
         this.auditSink = auditSink;
         this.routingPolicy = routingPolicy;
+        this.thresholds = thresholds;
     }
 
     @Override
@@ -145,20 +147,20 @@ public class ResilienceMiddleware implements MiddlewareBase {
                         "fallback", routed.fallbackModelIds().get(0))));
     }
 
-    private static RateLimiterConfig rateLimiterConfig() {
+    RateLimiterConfig rateLimiterConfig() {
         return RateLimiterConfig.custom()
-                .limitForPeriod(LIMIT_FOR_PERIOD)
-                .limitRefreshPeriod(Duration.ofSeconds(1))
+                .limitForPeriod(thresholds.limitForPeriod())
+                .limitRefreshPeriod(Duration.ofSeconds(thresholds.limitRefreshSeconds()))
                 .timeoutDuration(Duration.ofMillis(0))
                 .build();
     }
 
-    private static CircuitBreakerConfig circuitBreakerConfig() {
+    CircuitBreakerConfig circuitBreakerConfig() {
         return CircuitBreakerConfig.custom()
-                .failureRateThreshold(FAILURE_RATE)
+                .failureRateThreshold(thresholds.failureRateThreshold())
                 .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
-                .slidingWindowSize(SLIDING_WINDOW)
-                .waitDurationInOpenState(Duration.ofSeconds(30))
+                .slidingWindowSize(thresholds.slidingWindowSize())
+                .waitDurationInOpenState(Duration.ofSeconds(thresholds.waitOpenSeconds()))
                 .build();
     }
 

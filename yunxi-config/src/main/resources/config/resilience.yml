@@ -1,0 +1,11 @@
+# ============================================================
+# 韧性阈值（限流 + 熔断）：经 ResilienceMiddleware 生效，改值后重启生效。
+# 默认值即历史行为；只服务 yunxi.resilience 根前缀。
+# ============================================================
+yunxi:
+  resilience:
+    sliding-window-size: 10      # 熔断滑动窗口（按调用次数）
+    failure-rate-threshold: 50   # 失败率阈值（%），超阈值进入 OPEN
+    limit-for-period: 100        # 限流：每刷新周期内允许次数
+    limit-refresh-seconds: 1     # 限流刷新周期（秒）
+    wait-open-seconds: 30        # OPEN 状态等待时长（秒），超时转 HALF-OPEN 试探

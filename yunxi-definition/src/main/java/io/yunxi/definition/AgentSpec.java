@@ -117,7 +117,7 @@ public record AgentSpec(
             List<String> deniedTools) {
 
         /** 工具门控：声明需要人工确认（ASK）的工具清单。 */
-        public record ToolGate(boolean enabled, List<String> tools, String message) {}
+        public record ToolGate(boolean enabled, List<String> tools) {}
 
         /** 推理复核：对高风险工具调用前做二次确认；复用 {@link ToolGate#tools()} 作为待复核清单。 */
         public record ReasoningReview(boolean enabled, String strategy, List<String> keywords) {}

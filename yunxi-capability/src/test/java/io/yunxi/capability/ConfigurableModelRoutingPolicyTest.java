@@ -2,6 +2,7 @@ package io.yunxi.capability;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -50,6 +51,28 @@ class ConfigurableModelRoutingPolicyTest {
         Map<String, String> defaults = new HashMap<>();
         defaults.put("llm", "cheap");
         return props(catalog, defaults, new HashMap<>());
+    }
+
+    @Test
+    void localLlmIsRejectedAtStartup() {
+        ModelProperties p = sampleProperties();
+        p.getCatalog().put("local-llm", entry("ollama", "qwen3:8b", "llm", "cheap", List.of(), 8_000));
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> new ConfigurableModelRoutingPolicy(p));
+        assertTrue(ex.getMessage().contains("allow-local-llm"), "错误信息必须指明豁免开关");
+    }
+
+    @Test
+    void localLlmAllowedWithExplicitExemptionFlag() {
+        ModelProperties p = sampleProperties();
+        p.getCatalog().put("local-llm", entry("ollama", "qwen3:8b", "llm", "cheap", List.of(), 8_000));
+        p.setAllowLocalLlm(true);
+        assertNotNull(new ConfigurableModelRoutingPolicy(p));
+    }
+
+    @Test
+    void remoteLlmPassesTopologyValidation() {
+        assertNotNull(new ConfigurableModelRoutingPolicy(sampleProperties()));
     }
 
     @Test

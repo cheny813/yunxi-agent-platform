@@ -28,7 +28,7 @@ class PermissionTemplateResolverTest {
     @Test
     void askTools_derivesDefaultWithAskRule() {
         AgentSpec.PermissionConfig cfg = new AgentSpec.PermissionConfig(
-                new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                 null, null, null);
         var ctx = resolver.resolve(cfg);
         assertNotNull(ctx);
@@ -63,7 +63,7 @@ class PermissionTemplateResolverTest {
         // 有人值守下三种声明语义并不冲突：允许的免确认、禁止的硬拒、门控的走确认。
         // 曾经的实现只注入 ASK 规则，allowedTools / deniedTools 被整段丢弃（写了不生效）。
         AgentSpec.PermissionConfig cfg = new AgentSpec.PermissionConfig(
-                new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                 null, List.of("memory"), List.of("rm"));
 
         var ctx = resolver.resolve(cfg);
@@ -106,7 +106,7 @@ class PermissionTemplateResolverTest {
         // 推理复核与 toolGate 是同一套「有工具需确认」的两种开关，派生规则必须一致；
         // 曾有两份各自实现的判定，一处改了另一处忘改即会让校验通过与运行期行为脱节。
         AgentSpec.PermissionConfig cfg = new AgentSpec.PermissionConfig(
-                new AgentSpec.PermissionConfig.ToolGate(false, List.of("shell"), "confirm"),
+                new AgentSpec.PermissionConfig.ToolGate(false, List.of("shell")),
                 new AgentSpec.PermissionConfig.ReasoningReview(true, "strict", List.of("rm")),
                 null, null);
 

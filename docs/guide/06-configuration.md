@@ -913,7 +913,6 @@ permission:                            # 必填
       - execute      # 命令执行
       - write_file   # 文件写入
       - edit_file    # 文件编辑
-    message: "该操作需要你确认后执行"
 ```
 
 ### 权限模式

@@ -60,7 +60,7 @@ public interface IntentClassifier {
 }
 ```
 
-默认实现 `LocalDecisionIntentClassifier`：经 `ModelResolver` 解析决策模型（`classifier.model-id: decision` → `defaults.decision` → 本机 Ollama 决策模型），`temperature=0` + 有限 token + 超时降级，优先 `responseFormat`（jsonSchema）约束输出；模型不支持时回退普通调用，并按"首个平衡括号 JSON 对象"容错解析。回退只在分类预算内进行——结构化调用已耗尽超时预算时直接放弃，不再二次调用。输出非法、模型不可用、超时一律返回 null（计数 `resolve.llm_fail`），由引擎降级，绝不抛出到入口。
+默认实现 `LocalDecisionIntentClassifier`：经 `ModelResolver` 按 **provider:model 全名**解析决策模型（`classifier.model-id` 须配置完整模型 id，如 `ollama:tev1:0.8b`——不存在"逻辑名 → defaults"的映射兜底，裸逻辑名会解析失败并 WARN 降级），`temperature=0` + 有限 token + 超时降级，优先 `responseFormat`（jsonSchema）约束输出；模型不支持时回退普通调用，并按"首个平衡括号 JSON 对象"容错解析。回退只在分类预算内进行——结构化调用已耗尽超时预算时直接放弃，不再二次调用。输出非法、模型不可用、超时一律返回 null（计数 `resolve.llm_fail`），由引擎降级，绝不抛出到入口。
 
 提示词把候选清单与用户输入都作为**数据**并以边界包裹（`<<< ... >>>`），数据内自带的边界标记会被中和，避免提前闭合数据区；分类器只允许输出候选集内的 `agentId` 或 `unknown`。规则（关键词）命中的显式目标同样受候选闭集约束，越界按未命中处理。
 
@@ -81,7 +81,7 @@ yunxi:
     max-input-chars: 2000
     classifier:
       impl: local                # local（默认）| jev（可选增强，需 JEV_API_KEY）
-      model-id: decision         # 经 ModelResolver 解析 defaults.decision
+      model-id: ollama:tev1:0.8b # 须为带 provider 前缀的完整模型 id（ModelResolver 全名解析）
       timeout-millis: 3000
       max-tokens: 512
       structured-output: true

@@ -53,7 +53,7 @@ class PermissionContextRealLlmCallTest {
                 new AgentSpec.Identity("agent-perm-realllm", "Real LLM Agent", "e2e with real model"),
                 null, null, null,
                 new AgentSpec.PermissionConfig(
-                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                         null, null, null),
                 null, new AgentSpec.SubagentsConfig(List.of()), null);
 

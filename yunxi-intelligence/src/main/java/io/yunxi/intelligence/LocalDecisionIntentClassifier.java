@@ -92,7 +92,9 @@ public class LocalDecisionIntentClassifier implements IntentClassifier {
         try {
             return modelResolver.resolve(modelId);
         } catch (Exception e) {
-            LOG.debug("模型解析异常：{}", e.getMessage());
+            // 解析失败意味着 LLM 意图分类级将持续不可用（引擎恒走关键词降级），必须以 WARN 暴露而非静默。
+            LOG.warn("意图分类模型解析失败（model-id={}，检查是否为带 provider 前缀的完整模型 id）：{}",
+                    modelId, e.getMessage());
             return null;
         }
     }

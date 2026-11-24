@@ -36,7 +36,6 @@ class YamlSpecCodecTest {
                   toolGate:
                     enabled: true
                     tools: [shell]
-                    message: confirm
                   reasoningReview:
                     enabled: false
                     strategy: strict
@@ -60,7 +59,6 @@ class YamlSpecCodecTest {
 
         assertTrue(spec.permission().toolGate().enabled());
         assertEquals(List.of("shell"), spec.permission().toolGate().tools());
-        assertEquals("confirm", spec.permission().toolGate().message());
 
         assertEquals(List.of("Read", "Grep"), spec.permission().allowedTools());
         assertEquals(List.of("Write"), spec.permission().deniedTools());
@@ -74,7 +72,7 @@ class YamlSpecCodecTest {
                 new AgentSpec.McpConfig(List.of("mc")),
                 new AgentSpec.StateConfig("redis", true),
                 new AgentSpec.PermissionConfig(
-                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                         null, List.of("Read"), List.of("Write")),
                 null, new AgentSpec.SubagentsConfig(List.of()), null,
                 null, null,

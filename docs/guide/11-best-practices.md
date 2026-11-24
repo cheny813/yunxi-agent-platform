@@ -349,7 +349,6 @@ permission:
   toolGate:
     enabled: false
     tools: []                         # 如需限制可见工具组，在此声明允许的 MCP 服务器名 / 工具组
-    message: ""
 toolkit:
   deniedToolNames: []                # 显式拒绝的工具名
 ```

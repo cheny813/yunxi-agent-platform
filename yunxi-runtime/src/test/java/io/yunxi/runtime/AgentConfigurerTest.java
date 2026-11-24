@@ -258,7 +258,7 @@ class AgentConfigurerTest {
                 new AgentSpec.Identity("agent-perm", "Perm Agent", "permission wiring"),
                 null, null, null,
                 new AgentSpec.PermissionConfig(
-                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                         null, null, null),
                 null, new AgentSpec.SubagentsConfig(List.of()), null);
         DistributedStore store = buildStore();

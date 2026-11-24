@@ -49,7 +49,7 @@ class PermissionContextCallIntegrationTest {
                 new AgentSpec.Identity("agent-perm-call", "Perm Call Agent", "strong verification"),
                 null, null, null,
                 new AgentSpec.PermissionConfig(
-                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                        new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                         null, null, null),
                 null, new AgentSpec.SubagentsConfig(List.of()), null);
 

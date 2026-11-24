@@ -81,7 +81,7 @@ class PermissionEndToEndTest {
     @Test
     void askModeSuspendsConfiguredTool() {
         AgentSpec.PermissionConfig permission = new AgentSpec.PermissionConfig(
-                new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell"), "confirm"),
+                new AgentSpec.PermissionConfig.ToolGate(true, List.of("shell")),
                 null, null, null);
         PermissionEngine engine = new PermissionEngine(resolver.resolve(permission, List.of()));
 

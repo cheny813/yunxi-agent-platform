@@ -615,6 +615,10 @@ public class AgentConfigurer {
         for (String serverName : serverNames) {
             var serverSpec = mcpDirectory.get(serverName);
             if (serverSpec.isEmpty()) {
+                // 服务未注册进目录（或 enabled:false 未装载）：静默 continue 会让该 Agent 工具集
+                // 整组缺失且无从排查，必须 WARN 暴露。不记入 failedMcpServers——配置错误重试无意义。
+                log.warn("MCP 服务 '{}' 未注册或未启用（enabled:false），跳过装载，该 Agent 将缺少其全部工具。"
+                        + "请检查 agent-definitions 的 mcp.servers 引用与 config/mcp.yml 注册。", serverName);
                 continue;
             }
             var wrapper = mcpDirectory.buildClient(serverSpec.get());
