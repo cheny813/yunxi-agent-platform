@@ -11,16 +11,27 @@ import java.util.Map;
  * 不在此声明。</p>
  */
 public record AgentSpec(
+        /** Agent 身份：唯一 id、展示名与职责描述；必填，description 同时是系统提示词全文来源。 */
         Identity identity,
+        /** 技能边界：可见 / 可加载的技能集合与选择模式；缺省沿用框架默认全开。 */
         SkillConfig skill,
+        /** MCP 订阅：本 Agent 可使用的 MCP 服务名列表，订阅即由权限模板自动放行其工具。 */
         McpConfig mcp,
+        /** 会话状态：状态存储后端及是否跨轮持久化；缺省为内存态、不持久化。 */
         StateConfig state,
+        /** 工具权限策略（必填）：白名单 / 黑名单 / 人工确认，缺失即校验失败。 */
         PermissionConfig permission,
+        /** 工具箱裁剪：从框架默认工具箱中摘除的工具名列表。 */
         ToolkitConfig toolkit,
+        /** 子 Agent 声明集合：本 Agent 可委派的通用子 Agent。 */
         SubagentsConfig subagents,
+        /** 沙箱执行声明：仅声明时放行主路径代码执行，由隔离容器承载。 */
         SandboxConfig sandbox,
+        /** 调度定义：定时 / 周期触发该 Agent 的模式与参数；缺省为交互式调用。 */
         ScheduleConfig schedule,
+        /** 任务清单能力开关：是否启用 todo_write 与任务提醒中间件；缺省关闭。 */
         PlanConfig plan,
+        /** 意图辅助：意图分类用的短卡片；缺省从 identity.description 自动派生。 */
         IntentConfig intent) {
 
     /** 兼容构造：既有定义文件不声明 intent 段时保持为零迁移。 */
@@ -65,7 +76,13 @@ public record AgentSpec(
         this(identity, skill, mcp, state, permission, toolkit, subagents, sandbox, null, null);
     }
 
-    public record Identity(String agentId, String name, String description) {}
+    public record Identity(
+            /** Agent 唯一标识，同一配置中心内寻址键。 */
+            String agentId,
+            /** 展示名称，面向用户与日志。 */
+            String name,
+            /** 职责描述；同时作为系统提示词的全文来源。 */
+            String description) {}
 
     /**
      * 技能选择模式（产品平面语义，不携带任何 AgentScope-Java 框架类型）。
@@ -100,9 +117,15 @@ public record AgentSpec(
             /** 技能选择模式：ALL / WHITELIST / BLACKLIST / NONE。缺省 null，按 skills 是否为空兜底（见上方类注释）。 */
             SkillMode skillMode) {}
 
-    public record McpConfig(List<String> servers) {}
+    public record McpConfig(
+            /** 订阅的 MCP 服务名列表；订阅即由权限模板自动放行其工具。 */
+            List<String> servers) {}
 
-    public record StateConfig(String store, boolean persist) {}
+    public record StateConfig(
+            /** 会话状态存储后端标识（如 inmemory）。 */
+            String store,
+            /** 是否跨会话持久化状态。 */
+            boolean persist) {}
 
     /**
      * HITL 权限配置（产品平面语义，不携带任何 AgentScope-Java 框架类型）。
@@ -111,16 +134,30 @@ public record AgentSpec(
      * 翻译即代码，二者边界清晰，符合「配置不携带框架语义」的约束。</p>
      */
     public record PermissionConfig(
+            /** 工具门控：声明需人工确认（ASK）的工具；与推理复核共用待确认清单。 */
             ToolGate toolGate,
+            /** 推理复核：高风险工具调用前二次确认；null 表示不启用。 */
             ReasoningReview reasoningReview,
+            /** 工具白名单：仅列出的工具可用；与 deniedTools 不可同时声明（除非启用门控）。 */
             List<String> allowedTools,
+            /** 工具黑名单：列出的工具被拒绝，其余放行；与 allowedTools 不可同时声明（除非启用门控）。 */
             List<String> deniedTools) {
 
         /** 工具门控：声明需要人工确认（ASK）的工具清单。 */
-        public record ToolGate(boolean enabled, List<String> tools) {}
+        public record ToolGate(
+                /** 是否启用门控；false 时 tools 不生效。 */
+                boolean enabled,
+                /** 需人工确认的工具名列表。 */
+                List<String> tools) {}
 
         /** 推理复核：对高风险工具调用前做二次确认；复用 {@link ToolGate#tools()} 作为待复核清单。 */
-        public record ReasoningReview(boolean enabled, String strategy, List<String> keywords) {}
+        public record ReasoningReview(
+                /** 是否启用复核。 */
+                boolean enabled,
+                /** 复核策略标识，由构建期翻译。 */
+                String strategy,
+                /** 触发复核的关键词。 */
+                List<String> keywords) {}
 
         /**
          * 需要人工确认（ASK）的工具清单：{@code toolGate} 或 {@code reasoningReview} 任一启用时，
@@ -162,7 +199,9 @@ public record AgentSpec(
      * 需要文件 / 代码执行能力的 Agent，不声明 toolkit 字段（保留框架默认），或从 deniedToolNames
      * 中移除对应工具名即可。
      */
-    public record ToolkitConfig(List<String> deniedToolNames) {}
+    public record ToolkitConfig(
+            /** 要从工具箱摘除的工具名列表；两类来源区别见上方类注释。 */
+            List<String> deniedToolNames) {}
 
     /**
      * 子 Agent 声明集合（产品平面语义，不携带任何 AgentScope-Java 框架类型）。
@@ -173,7 +212,9 @@ public record AgentSpec(
      * 由框架在构建期自动挂上对应的 sub-agent 中间件与后台执行能力。定义即数据，框架语义翻译留在装配点，
      * 符合「配置不携带框架语义」约束，也不与框架能力形成并行的事实源。</p>
      */
-    public record SubagentsConfig(List<SubagentSpec> subagents) {}
+    public record SubagentsConfig(
+            /** 本 Agent 可委派的通用子 Agent 声明列表。 */
+            List<SubagentSpec> subagents) {}
 
     /**
      * 真实沙箱执行后端声明（产品平面语义，不携带任何 AgentScope-Java 框架类型）。
@@ -222,7 +263,11 @@ public record AgentSpec(
     }
 
     /** 沙箱快照策略。v1 仅支持 noop（不持久化）。 */
-    public record SnapshotConfig(String type, String location) {}
+    public record SnapshotConfig(
+            /** 快照策略类型；v1 仅接受 noop。 */
+            String type,
+            /** 快照存放位置；noop 策略下不使用。 */
+            String location) {}
 
     /**
      * 计划 / 任务清单能力开关（产品平面语义，不携带任何 AgentScope-Java 框架类型）。
@@ -243,7 +288,9 @@ public record AgentSpec(
      * 全文，其首句未必适合做分类依据；hint 允许作者用「这个 Agent 承接什么请求」的精确表述提升分类精度。
      * 未声明（intent 为 null）或 hint 为空白时一律回落自动派生，旧定义文件零迁移。</p>
      */
-    public record IntentConfig(String hint) {}
+    public record IntentConfig(
+            /** 意图分类短卡片；为空时从 identity.description 首句自动派生。 */
+            String hint) {}
 
     /**
      * 调度定义（定义平面纯数据，不携带任何框架类型）。
@@ -253,14 +300,23 @@ public record AgentSpec(
      * 仅用于触发日志标识，不作为身份认证凭据。</p>
      */
     public record ScheduleConfig(
+            /** 调度模式：CRON / FIXED_RATE / FIXED_DELAY / NONE。 */
             String mode,
+            /** CRON 表达式；mode=CRON 时必填。 */
             String cron,
+            /** 固定周期毫秒；mode=FIXED_RATE 时必填且不小于 MIN_INTERVAL_MILLIS。 */
             Long rateMillis,
+            /** 固定延迟毫秒；mode=FIXED_DELAY 时必填且不小于 MIN_INTERVAL_MILLIS。 */
             Long delayMillis,
+            /** 首次触发前的延迟毫秒；不得为负。 */
             Long initialDelayMillis,
+            /** 调度时区 id，如 Asia/Shanghai。 */
             String zoneId,
+            /** 该调度 Agent 触发时使用的系统提示。 */
             String prompt,
+            /** 触发用户标识，仅用于日志标识，不作为身份凭据。 */
             String triggerUserId,
+            /** 调度归属租户，用于多租户隔离与配额计量。 */
             String tenantId) {
 
         /** 周期任务最小间隔（毫秒），定义平面与装配点共用同一常量。 */
@@ -302,7 +358,11 @@ public record AgentSpec(
             String mode) {}
 
     /** 由 {@link AgentSpecValidator} 返回的轻量校验结果。 */
-    public record ValidationResult(boolean valid, List<String> errors) {
+    public record ValidationResult(
+            /** 校验是否通过。 */
+            boolean valid,
+            /** 错误明细；通过时为空列表。 */
+            List<String> errors) {
         public static ValidationResult ok() {
             return new ValidationResult(true, List.of());
         }

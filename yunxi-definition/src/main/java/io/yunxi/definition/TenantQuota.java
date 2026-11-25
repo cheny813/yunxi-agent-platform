@@ -8,5 +8,11 @@ package io.yunxi.definition;
  * 由 {@code RedisTenantStorageMeter} 在运行时读取派生；其余由 {@code TenantQuotaMiddleware} 派生。
  * 配额不进入 {@code Tenant} 定义单一真相源——{@code Tenant} 仅携带不含配额/分片运行时状态的治理元数据。
  */
-public record TenantQuota(Long dailyRequestLimit, Long concurrentSessionLimit, Long storageBytesLimit) {
+public record TenantQuota(
+        /** 每日请求数上限；null 表示该维度不限额。 */
+        Long dailyRequestLimit,
+        /** 并发会话数上限；null 表示该维度不限额。 */
+        Long concurrentSessionLimit,
+        /** 存储软告警阈值（按写入次数近似）；null 表示不限额。 */
+        Long storageBytesLimit) {
 }

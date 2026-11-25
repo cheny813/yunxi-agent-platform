@@ -11,7 +11,17 @@ import java.time.Instant;
  * <p>时间戳采用 ISO-8601 字符串（{@code Instant.toString()} 输出），便于 JSON 序列化零依赖、可读，
  * 避免引入 Jackson JavaTimeModule 与现有序列化策略漂移。</p>
  */
-public record Tenant(String tenantId, TenantStatus status, String displayName, String createdAt, String updatedAt) {
+public record Tenant(
+        /** 租户唯一标识，tenant 轴的寻址键。 */
+        String tenantId,
+        /** 租户生命周期状态，决定准入行为（状态机见 {@link TenantStatus}）。 */
+        TenantStatus status,
+        /** 展示名称，面向用户与日志。 */
+        String displayName,
+        /** 创建时间，ISO-8601 字符串。 */
+        String createdAt,
+        /** 最近更新时间，ISO-8601 字符串；状态迁移时自动刷新。 */
+        String updatedAt) {
 
     /** 便捷工厂：创建处于 {@code ACTIVE} 的新租户，时间戳取当前时刻（ISO-8601）。 */
     public static Tenant active(String tenantId, String displayName) {
