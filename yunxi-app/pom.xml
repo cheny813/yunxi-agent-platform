@@ -74,6 +74,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- 嵌入式 JDBC 数据库（E2E）：技能使用遥测端到端测试以 H2（MySQL 兼容模式）承载
+             skillStoreDataSource，验证中间件→事件表→聚合→剪枝覆盖全链路，无需真实 MySQL。 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>

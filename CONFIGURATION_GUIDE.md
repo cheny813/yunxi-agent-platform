@@ -140,6 +140,16 @@ dataId 内容为 JSON 映射：`{ "<tenantId>": ["<agentId>", ...] }`。示例�
 - `GET /v1/admin/tenants/{tenantId}/agents`：返回指定租户被授权 Agent 的简要身份（`agentId` / `name` / `description`）。该端点受全局认证保护（未认证返回 `401`），`{tenantId}` 由路径显式传入、不依赖请求上下文租户。
 - 返回内容由「分配集合 ∩ 当前 Agent 定义目录」组装；无分配时返回全量目录（fail-open）。
 
+## MUSE 技能使用遥测（可选）
+
+MUSE 自进化的剪枝体检默认依赖模型自报使用次数；开启服务端真相后，技能使用事件落 JDBC 表（与技能仓库同库），剪枝时以聚合结果覆盖自报值，并激活「使用者广度」画像判据。
+
+| 配置项 | 默认值 | 说明 |
+|---|---|---|
+| `yunxi.muse.usage.enabled` | 跟随 `yunxi.skill.jdbc.enabled` | 技能使用事件遥测开关。技能仓库启用则自动启用（同一数据源同一生命周期）；显式设置可否决——`false` 单独关闭，`true` 在数据面缺失时启动报错 |
+
+事件表 `skill_usage_event` 由存储启动期自动创建（幂等）；`deploy/infra/init/skill-store.sql` 为部署期显式管控兜底。
+
 ## 生产部署
 
 - 密钥一律走环境变量 / Secrets，切勿提交明文。

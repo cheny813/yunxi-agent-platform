@@ -31,3 +31,17 @@ CREATE TABLE IF NOT EXISTS agentscope_skill_resources (
   INDEX idx_namespace (namespace),
   FOREIGN KEY (id) REFERENCES agentscope_skills (id) ON DELETE CASCADE
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT='技能附属资源表：存储技能目录内的子文件（代码/示例/附件等）';
+
+-- 技能使用事件表（yunxi 产品平面）：技能使用遥测的单一真相源。
+-- 由 JdbcSkillUseEventStore 启动期自动建表（幂等），本文件为部署期显式管控兜底。
+-- append-only：记录语义为「调用意向」（onActing 进入即记，不区分调用成败）。
+-- 启用：yunxi.muse.usage.enabled=true（复用本库 skillStoreDataSource）。
+CREATE TABLE IF NOT EXISTS skill_usage_event (
+  id          BIGINT       NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+  skill_name  VARCHAR(255) NOT NULL COMMENT '技能名（与模型提交清单同口径）',
+  tenant_id   VARCHAR(64)  NULL COMMENT '租户 id（admit 绑定，可为空）',
+  user_id     VARCHAR(128) NULL COMMENT '触发用户 id（RuntimeContext，可为空）',
+  event_type  VARCHAR(16)  NOT NULL COMMENT '事件类型：VIEW（内容加载）/ USE（显式调用）',
+  occurred_at TIMESTAMP    NOT NULL COMMENT '事件时间',
+  INDEX idx_skill_name (skill_name)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT='技能使用事件表（append-only，聚合出 useCount 与 distinctUsers）';

@@ -30,6 +30,7 @@
 
 ### 修复
 
+- **MUSE 技能使用统计服务端真相（随 `yunxi.skill.jdbc.enabled` 联动）**：`muse_skill_prune` 的 `usage_count` 原为模型自报参数（无服务端兜底），画像驱动判据因 `UsageProfile` 无生产者恒不生效。新增技能使用事件遥测：运行时中间件记录技能加载/调用事件到 JDBC 表（`skill_usage_event`，append-only，与技能仓库复用 MUSE 数据面数据源），聚合器从同一张表算出使用次数与去重使用者数，剪枝时服务端覆盖模型自报值并激活画像判据。开关默认跟随 `yunxi.skill.jdbc.enabled`（技能仓库启用即自动启用）；显式设置 `yunxi.muse.usage.enabled` 可单独否决（缺数据源且显式开启时启动 fail-fast）。
 - **意图 LLM 分类级静默失效**：`intent.yml` 的 `classifier.model-id` 曾配裸逻辑名（不带 provider 前缀），`ModelRegistry` 全名解析要求下解析失败、LLM 分类级在默认配置下静默降级为关键词级。现配置改为完整模型 id（`ollama:tev1:0.8b`），且解析失败以 WARN 告警（携带 model-id）后降级——配错不再无声。
 - **MCP 缺名引用静默跳过**：Agent 定义引用未注册 / `enabled: false` 的 MCP 服务时原本零日志跳过，该 Agent 工具集整组缺失无从排查。现跳过时打 WARN（提示检查定义引用与 `config/mcp.yml` 注册）。
 - **`toolGate.message` 字段移除**：该字段全仓无消费点（底层框架人工确认机制不支持自定义文案），留着会误导管理员以为配置有效。从 AgentSpec 契约与全部示例定义中移除（`toolGate` 仅 `enabled` / `tools` 两键）；含该字段的旧定义文件启动期会被严格解析拒绝，需删除该行。

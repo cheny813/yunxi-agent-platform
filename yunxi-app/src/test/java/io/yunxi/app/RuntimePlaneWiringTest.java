@@ -80,6 +80,16 @@ class RuntimePlaneWiringTest {
     }
 
     @Test
+    void museUsageTelemetryOffWhenSkillJdbcDisabled() {
+        // 技能使用遥测联动条件（MuseUsageEnabledCondition）：默认态 skill.jdbc 关闭 →
+        // 遥测不装配任何 bean，剪枝保持模型自报的旧口径（零回归）。
+        assertEquals(0, context.getBeanNamesForType(io.yunxi.runtime.skilluse.SkillUseEventStore.class).length,
+                "默认态（skill.jdbc 关闭）不应装配技能使用事件存储");
+        assertEquals(0, context.getBeanNamesForType(io.yunxi.runtime.middleware.SkillUseEventRecorder.class).length,
+                "默认态不应装配技能使用事件记录中间件");
+    }
+
+    @Test
     void shardDisabledByDefaultRegistersAllOwnsResolver() {
         // 分片默认关闭（yunxi.shard.enabled 缺失 → matchIfMissing），应装配全量兜底解析器（owns 永真），
         // 保证 AgentProvisioner 始终注入一个 AgentShardResolver；NacosBackedShardResolver 不应在上下文内。
