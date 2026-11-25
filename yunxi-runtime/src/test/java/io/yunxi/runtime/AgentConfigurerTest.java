@@ -22,10 +22,17 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.model.Model;
@@ -577,5 +584,141 @@ class AgentConfigurerTest {
         HarnessAgent agent = configurer.configure(spec);
         assertTrue(agent.getToolkit().getToolNames().contains("todo_write"),
                 "全局开时即使 per-Agent 显式 false，OR 语义仍须注册 todo_write");
+    }
+
+    // ---- 权限清单死名审计（装配期终态比对 → [权限审计] WARN） ----
+    //
+    // 端到端验证走真实 configure() 链路：死名触发 WARN 且实名零误报。终态名单里的"实名"
+    // 不硬编码——先 provision 一次探底拿真实工具名单，再据此构造目标声明，测试不因
+    // 框架默认工具集变化而变脆。
+
+    private ListAppender<ILoggingEvent> attachAgentLogProbe() {
+        Logger logger = (Logger) LoggerFactory.getLogger(AgentConfigurer.class);
+        ListAppender<ILoggingEvent> probe = new ListAppender<>();
+        probe.start();
+        logger.addAppender(probe);
+        return probe;
+    }
+
+    private static List<String> auditWarnings(ListAppender<ILoggingEvent> probe) {
+        List<String> messages = new ArrayList<>();
+        for (ILoggingEvent event : probe.list) {
+            if (event.getLevel() == Level.WARN
+                    && event.getFormattedMessage().contains("[权限审计]")) {
+                messages.add(event.getFormattedMessage());
+            }
+        }
+        return messages;
+    }
+
+    private static AgentSpec specWithPermission(AgentSpec.PermissionConfig permission) {
+        return new AgentSpec(
+                new AgentSpec.Identity("agent-audit", "Audit Agent", "dead tool name audit"),
+                null, null, null, permission, null,
+                new AgentSpec.SubagentsConfig(List.of()), null);
+    }
+
+    private static AgentSpec.PermissionConfig allowedTools(List<String> names) {
+        return new AgentSpec.PermissionConfig(null, null, names, null);
+    }
+
+    @Test
+    void configure_deadNameInAllowedTools_warnsWithSuggestionAndNoFalsePositive() {
+        // 第一段：探底拿真实终态名单（含构建期注册的记忆等工具），验证"实名不误报"才有真实基准。
+        AgentSpec probeSpec = sampleSpec();
+        stubCollaborators(probeSpec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, buildStore());
+        String realToolName = List.copyOf(newConfigurer().configure(probeSpec)
+                .getToolkit().getToolNames()).get(0);
+        assertFalse(realToolName.isBlank(), "探底须取到至少一个终态实名");
+
+        // 第二段：实名 + 近距死名一起进白名单——死名告警且实名零误报（审计点若提前到
+        // HarnessAgent 构建前，构建期才注册的实名会被误判为死名，本断言即守住该回归）。
+        AgentSpec spec = specWithPermission(allowedTools(List.of(realToolName, "memory_serch")));
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, buildStore());
+
+        ListAppender<ILoggingEvent> probe = attachAgentLogProbe();
+        try {
+            HarnessAgent agent = newConfigurer().configure(spec);
+            assertTrue(agent.getToolkit().getToolNames().contains(realToolName));
+        } finally {
+            ((Logger) LoggerFactory.getLogger(AgentConfigurer.class)).detachAppender(probe);
+        }
+
+        List<String> warnings = auditWarnings(probe);
+        // 两条 WARN：主告警（点名死名清单）+ 候选建议（死名 → 最接近实名）。
+        assertEquals(2, warnings.size(), "恰一条死名的主告警与一条候选建议，实名不得误报，实际：" + warnings);
+        assertTrue(warnings.get(0).contains("memory_serch"), "主告警须点名死名，实际：" + warnings.get(0));
+        assertFalse(warnings.get(0).contains(realToolName), "实名不得出现在主告警里");
+        assertTrue(warnings.get(1).contains("memory_serch") && warnings.get(1).contains("memory_search"),
+                "近距死名须给出最接近实名候选，实际：" + warnings.get(1));
+    }
+
+    @Test
+    void configure_allRealAllowedTools_noAuditWarning() {
+        AgentSpec probeSpec = sampleSpec();
+        stubCollaborators(probeSpec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, buildStore());
+        List<String> realNames = List.copyOf(newConfigurer().configure(probeSpec)
+                .getToolkit().getToolNames()).subList(0, 3);
+
+        AgentSpec spec = specWithPermission(allowedTools(realNames));
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, buildStore());
+
+        ListAppender<ILoggingEvent> probe = attachAgentLogProbe();
+        try {
+            newConfigurer().configure(spec);
+        } finally {
+            ((Logger) LoggerFactory.getLogger(AgentConfigurer.class)).detachAppender(probe);
+        }
+
+        assertTrue(auditWarnings(probe).isEmpty(), "全实名清单不得产生死名告警");
+    }
+
+    @Test
+    void configure_farDeadNameInDeniedTools_warnsDeclaredWithoutGuessingCandidate() {
+        // memory 与任何实名编辑距离都超过 0.3（像"记错名"而非"拼错字"）：只报死名不猜候选，
+        // 乱猜比不猜更误导。deniedTools 与 allowedTools 同样字面匹配，须一并扫描。
+        AgentSpec spec = specWithPermission(new AgentSpec.PermissionConfig(
+                null, null, null, List.of("memory")));
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, buildStore());
+
+        ListAppender<ILoggingEvent> probe = attachAgentLogProbe();
+        try {
+            newConfigurer().configure(spec);
+        } finally {
+            ((Logger) LoggerFactory.getLogger(AgentConfigurer.class)).detachAppender(probe);
+        }
+
+        List<String> warnings = auditWarnings(probe);
+        assertEquals(1, warnings.size(), "deniedTools 死名同样须告警，实际：" + warnings);
+        assertTrue(warnings.get(0).contains("memory"), "告警须点名死名");
+        assertFalse(warnings.get(0).contains("最接近的实名"),
+                "距离过远不猜候选（乱猜比不猜更误导）");
+    }
+
+    @Test
+    void configure_todoWriteDeclaredWhenTaskListOn_noFalseDeadName() throws Exception {
+        // 独立评审 W1 回归：todo_write（enableTaskList）与框架记忆工具都是 HarnessAgent
+        // 构建期才注册进工具箱——死名审计若放在构建完成之前，这类实名会被误报为死名。
+        AgentSpec spec = specWithPermission(allowedTools(List.of("todo_write")));
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, buildStore());
+
+        AgentConfigurer configurer = newConfigurer();
+        setGlobalTaskListEnabled(configurer, true);
+
+        ListAppender<ILoggingEvent> probe = attachAgentLogProbe();
+        try {
+            configurer.configure(spec);
+        } finally {
+            ((Logger) LoggerFactory.getLogger(AgentConfigurer.class)).detachAppender(probe);
+        }
+
+        assertTrue(auditWarnings(probe).isEmpty(),
+                "开启 taskList 后 todo_write 是终态实名，不得误报为死名");
     }
 }

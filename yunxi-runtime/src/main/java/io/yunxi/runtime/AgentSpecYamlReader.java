@@ -31,14 +31,6 @@ import java.util.List;
  */
 public final class AgentSpecYamlReader {
 
-    /**
-     * 建议字段名的最大相对编辑距离：距离 / 较长字段名长度。超过即不像手误，不猜（乱猜比不猜更误导）。
-     *
-     * <p>用比例而非绝对距离，是因为手误的"绝对距离"随字段名变长而变大：{@code denyTools} →
-     * {@code deniedTools} 相差 3 次编辑（短名里算很远，长名里就是手误），只有按长度归一才两头都对。
-     */
-    private static final double MAX_SUGGESTION_RATIO = 0.3;
-
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
             .configure(JsonParser.Feature.STRICT_DUPLICATE_DETECTION, true);
@@ -64,7 +56,7 @@ public final class AgentSpecYamlReader {
     private static String describeUnknownField(UnrecognizedPropertyException e) {
         String field = e.getPropertyName();
         List<String> known = e.getKnownPropertyIds().stream().map(String::valueOf).toList();
-        String suggestion = nearestName(field, known);
+        String suggestion = SpellingSuggestions.nearest(field, known);
 
         StringBuilder message = new StringBuilder();
         message.append("未知字段 '").append(field).append("'");
@@ -81,49 +73,5 @@ public final class AgentSpecYamlReader {
         }
         message.append("该层可用字段：").append(String.join(" / ", known));
         return message.toString();
-    }
-
-    /**
-     * 在已知字段中找与输入最接近者；距离过远（不像手误）则不猜。
-     *
-     * <p>不区分大小写比较：{@code ToolGate} 与 {@code toolGate} 这类差异是常见手误，
-     * 按原样比距离会被算成 1 而恰好可提示，但全大写写法会被算成很远，故先归一大小写再看距离。
-     */
-    private static String nearestName(String field, List<String> candidates) {
-        String best = null;
-        int bestDistance = Integer.MAX_VALUE;
-        int bestLength = 0;
-        for (String candidate : candidates) {
-            int distance = editDistance(field.toLowerCase(), candidate.toLowerCase());
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = candidate;
-                bestLength = Math.max(field.length(), candidate.length());
-            }
-        }
-        if (best == null || bestLength == 0) {
-            return null;
-        }
-        return (double) bestDistance / bestLength <= MAX_SUGGESTION_RATIO ? best : null;
-    }
-
-    /** 标准编辑距离（插入 / 删除 / 替换各计 1）；字段名都很短，二次复杂度无实际影响。 */
-    private static int editDistance(String a, String b) {
-        int[] previous = new int[b.length() + 1];
-        int[] current = new int[b.length() + 1];
-        for (int j = 0; j <= b.length(); j++) {
-            previous[j] = j;
-        }
-        for (int i = 1; i <= a.length(); i++) {
-            current[0] = i;
-            for (int j = 1; j <= b.length(); j++) {
-                int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
-                current[j] = Math.min(Math.min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + cost);
-            }
-            int[] swap = previous;
-            previous = current;
-            current = swap;
-        }
-        return previous[b.length()];
     }
 }

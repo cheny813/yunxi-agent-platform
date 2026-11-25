@@ -31,6 +31,7 @@ import io.yunxi.definition.AgentSpecValidator;
 import io.yunxi.definition.TenantStorageMeter;
 import java.nio.file.Path;
 import io.yunxi.runtime.middleware.SessionToolGroupRegistry;
+import io.yunxi.runtime.permission.DeadToolNameAdvisor;
 import io.yunxi.runtime.permission.PermissionTemplateResolver;
 import io.yunxi.runtime.MemoryProperties;
 import io.yunxi.runtime.rag.RagToolRegistrar;
@@ -467,6 +468,28 @@ public class AgentConfigurer {
                     .toList();
             log.info("[工具箱审计] agent={} 已装备工具数={} 工具列表={}",
                     spec.identity().agentId(), equipped.size(), equipped);
+        }
+        // 权限清单死名审计：权限规则按字面匹配工具名，写错的名字不报错、那条规则静默地永不生效
+        // （存量模板曾把 memory 写进白名单，而框架记忆工具实名是 memory_search / memory_get / memory_save）。
+        // 必须在 HarnessAgent 构建完成之后比对：todo_write（enableTaskList）与框架记忆工具等实名
+        // 是构建期才注册进工具箱的，提前比对会把实名误报为死名。此处名单与 [工具箱审计] 同一终态口径。
+        // 候选名用编辑距离最近实名（过远不猜），与 MCP 订阅缺名 WARN 同一取舍：告警不拒启，
+        // 先声明后装载是合法演进路径（工具名单随 skill / MCP 变化）。
+        LinkedHashSet<String> knownToolNames = new LinkedHashSet<>();
+        agent.getToolkit().getToolSchemas().forEach(schema -> knownToolNames.add(schema.getName()));
+        List<DeadToolNameAdvisor.DeadName> deadToolNames =
+                DeadToolNameAdvisor.findDeadNames(spec.permission(), knownToolNames);
+        if (!deadToolNames.isEmpty()) {
+            log.warn("[权限审计] agent={} permission 清单含不存在的工具名 {} 条：{}。"
+                            + "这些名字按字面匹配永不生效（规则等同未写）。",
+                    spec.identity().agentId(), deadToolNames.size(),
+                    deadToolNames.stream().map(DeadToolNameAdvisor.DeadName::declared).toList());
+            for (DeadToolNameAdvisor.DeadName dead : deadToolNames) {
+                if (dead.suggestion() != null) {
+                    log.warn("[权限审计] agent={} 死名 '{}' 最接近的实名是 '{}'。",
+                            spec.identity().agentId(), dead.declared(), dead.suggestion());
+                }
+            }
         }
         eventPublisher.publishEvent(new AgentBuiltEvent(this, agent));
         return new ProvisionedAgent(agent, built.failedMcpServers());
