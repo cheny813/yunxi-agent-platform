@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>PageAgentSDK Loader Integration Test</title>
+</head>
+<body>
+  <!-- 模拟含表单的真实页面：下拉框是 DomEngine 增强扫描的重点验证对象 -->
+  <form id="profile-form">
+    <label for="name">姓名</label>
+    <input id="name" type="text" placeholder="请输入姓名" />
+
+    <label for="city">城市</label>
+    <select id="city" name="city">
+      <option value="">请选择城市</option>
+      <option value="hangzhou">杭州</option>
+      <option value="shanghai">上海</option>
+      <option value="beijing">北京</option>
+    </select>
+
+    <label for="remark">备注</label>
+    <textarea id="remark" rows="3"></textarea>
+
+    <button id="submit" type="button">提交</button>
+  </form>
+
+  <!-- 真实加载器（ESM，内部经 import.meta.url 解析 dist 产物） + DOM 执行引擎 -->
+  <script src="../src/page-agent-dom-engine.js"></script>
+  <script type="module" src="../src/page-agent-sdk.js"></script>
+
+  <script>
+    // 测试驱动：
+    //  1. SDK 产物级：await PageController.getBrowserState()（v1.12 为 async），
+    //     断言文本化状态含下拉框
+    //  2. DomEngine 增强路径：触发 scan（SDK 异步预热）→ 等待 __PAGE_SDK_SCAN_STATE__
+    //     → 再 scan 断言缓存命中且含下拉框 options
+    // 结果挂 window.__TEST_RESULT__ 供 Playwright 侧断言。
+    (function () {
+      function waitFor(fn, timeoutMs) {
+        var start = Date.now();
+        return new Promise(function (resolve, reject) {
+          (function poll() {
+            var v = fn();
+            if (v) return resolve(v);
+            if (Date.now() - start > timeoutMs) return reject(new Error('waitFor 超时'));
+            setTimeout(poll, 100);
+          })();
+        });
+      }
+      Promise.all([
+        waitFor(function () { return window.PageAgentSDK; }, 10000),
+        waitFor(function () { return window.PageAgentDomEngine; }, 10000),
+      ]).then(function () {
+        return window.PageAgentSDK.loadSdk();
+      }).then(function () {
+        var ctrl = window.PageAgentSDK.getPageController();
+        if (!ctrl || typeof ctrl.getBrowserState !== 'function') {
+          throw new Error('pageController 或 getBrowserState 缺失');
+        }
+        // 1. SDK 产物级断言（v1.12：async，返回文本化状态）
+        return ctrl.getBrowserState().then(function (state) {
+          var content = String(state && state.content || '');
+          window.__SDK_STATE__ = {
+            isObject: !!state && typeof state === 'object' && !Array.isArray(state),
+            hasHeader: typeof state.header === 'string',
+            contentLen: content.length,
+            contentSawCity: content.toLowerCase().indexOf('city') !== -1,
+          };
+        });
+      }).then(function () {
+        // 2. DomEngine 增强：首扫触发 SDK 异步预热，等待完成后二扫命中缓存
+        window.PageAgentDomEngine.scan(false);
+        return waitFor(function () {
+          var s = window.__PAGE_SDK_SCAN_STATE__;
+          return s && (s.done === true || s.done === false);
+        }, 15000);
+      }).then(function () {
+        var s = window.__PAGE_SDK_SCAN_STATE__;
+        if (!s.done) throw new Error('SDK 增强扫描失败: ' + s.error);
+        var list = window.PageAgentDomEngine.scan(true);
+        var city = list.filter(function (el) { return el.id === 'city' || el.name === 'city'; })[0] || null;
+        window.__TEST_RESULT__ = {
+          loaded: true,
+          sdkScanCount: s.count,
+          scanCount: list.length,
+          city: city ? {
+            tag: city.tag,
+            type: city.type,
+            optionCount: (city.options || []).length,
+            optionValues: (city.options || []).map(function (o) { return o.value; }),
+          } : null,
+        };
+      }).catch(function (e) {
+        window.__TEST_RESULT__ = { loaded: false, error: String(e && e.message || e) };
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -37,6 +37,8 @@ yunxi Agent Platform 的前端 SDK 单一源（Single Source of Truth）。所�
 | `src/formfill-client.js` | **桥接层**：WebSocket 通信 + 指令执行。自动连接、幂等去重、重试、结构上报 |
 | `src/formfill-debug.js` | **调试面板**：浏览器控制台可视化查看/编辑填表数据、手动触发 fill |
 | `src/page-agent-sdk.js` | **可选 SDK 加载器**：按需加载原生 page-agent SDK（加载后 DomEngine 使用其增强状态）。不再包含任何 LLM 决策循环 |
+| `build/sdk.ts` + `build/vite.sdk.config.mjs` | **定制 SDK 构建入口**：从 page-agent 上游仓源码打包 IIFE 产物（见下节） |
+| `dist/page-agent.sdk.js` | **构建产物**：上表构建入口的输出，加载器按候选顺序加载 |
 | `src/yunxi-chat.js` | **对话客户端**：封装 `/api/conversations/chat`（同步）与 `/api/conversations/chat/stream`（SSE 流式），提供 `window.yunxiChat`；支持文本增量、任务清单、人机确认结果回传 |
 
 ## 快速接入
@@ -121,6 +123,21 @@ yunxiChat({
 ## 现有页面
 
 `page-agent-config.yml` (agent-config) 中定义的 Path A 工具与提示词已不再被前端使用，仅保留供参考；实际配置路由迁移至 AgentScope 的 `agent-definitions/*.yml`。
+
+## 可选增强层：构建 page-agent.sdk.js
+
+原生 [page-agent](https://github.com/alibaba/page-agent) 上游只发布 ESM/NPM 包，无浏览器直用的 IIFE 单文件。本包的 `build/` 目录是定制构建入口：从上游仓源码打包出暴露 `PageAgentPageController`（独立实例化，无 Panel UI、无 Agent 循环）的 IIFE 产物。
+
+前置：page-agent 仓已 checkout 为本仓 sibling 目录（或用环境变量 `PAGE_AGENT_REPO` 指定位置）且已 `npm install`。
+
+```bash
+cd <page-agent-repo>
+npx vite build -c <agent-web-sdk>/build/vite.sdk.config.mjs
+```
+
+产物直接输出到 `dist/page-agent.sdk.js`。加载器（`src/page-agent-sdk.js`）按候选顺序加载：`setSdkUrl()` 显式 URL → 同源后端透传 `/js/page-agent.sdk.js` → 本包内置 `dist/page-agent.sdk.js`。全部失败时 DomEngine 降级为内置 DOM 扫描，功能不受损。
+
+升级上游版本后需重跑上述构建。
 
 ## 设计原则
 

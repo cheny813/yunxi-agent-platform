@@ -32,6 +32,10 @@
 
   var _scanned = null;
   var _scanTS = 0;
+  var _scanSource = 'builtin'; // 'sdk' | 'builtin'：当前缓存结果的来源
+  var _sdkScanTS = 0;
+  var _sdkScanRunning = false;
+  var SDK_SCAN_CACHE_MS = 3000; // SDK 扫描需重建整棵交互树，缓存窗口较内置扫描放宽
   var _stylesInjected = false;
   var _sentinel = {}; // 哨兵值，避免与合法值混淆
 
@@ -212,37 +216,91 @@
 
   // ── 页面扫描 ────────────────────────────────────────────────────────────
 
+  /**
+   * SDK 增强扫描（异步，结果写入 _scanned 缓存）。
+   *
+   * page-agent 上游 PageController.getBrowserState() 为 async 且返回文本化
+   * 状态 {url,title,header,content,footer}；结构化交互元素在其内部 flatTree
+   * 属性中（经 bracket 访问，上游结构变更时护栏返回、自动保持内置扫描降级）。
+   * 本函数只做信息面增强（字段清单 + 下拉框 options），填充/点击动作仍走
+   * 页面真实 DOM（见 fillField/clickField）。
+   */
+  function sdkScanAsync() {
+    if (_sdkScanRunning) return;
+    var externalAgent = window.__PAGE_AGENT__;
+    var ctrl = externalAgent && externalAgent.pageController;
+    if (!ctrl || typeof ctrl.getBrowserState !== 'function') return;
+    _sdkScanRunning = true;
+    Promise.resolve()
+      .then(function () { return ctrl.getBrowserState(); }) // 内部 updateTree 刷新 flatTree
+      .then(function () {
+        var tree = ctrl['flatTree'];
+        var map = tree && tree.map;
+        if (!map) return null; // 上游内部结构不匹配 → 降级
+        var list = [];
+        Object.keys(map).forEach(function (key) {
+          var node = map[key];
+          if (!node || node.isInteractive !== true || node.highlightIndex == null) return;
+          if (node.isVisible === false) return;
+          var attrs = node.attributes || {};
+          var ref = node.ref || {};
+          var tag = String(node.tagName || '').toLowerCase();
+          var isSelect = tag === 'select';
+          list.push({
+            highlightIndex: node.highlightIndex,
+            tagName: node.tagName,
+            type: attrs.type || getTypeByRaw(node.tagName, attrs.type),
+            name: attrs.name || '',
+            id: attrs.id || '',
+            description: attrs.placeholder || attrs['aria-label'] || attrs.label || '',
+            text: getValueFromRaw({ type: attrs.type, value: ref.value, checked: ref.checked }),
+            options: isSelect && ref.options
+              ? Array.prototype.map.call(ref.options, function (o) {
+                  return { value: o.value, label: (o.textContent || '').trim() };
+                })
+              : [],
+          });
+        });
+        return list;
+      })
+      .then(function (elements) {
+        if (!elements || !elements.length) return; // 结构不匹配或无元素 → 保持内置结果
+        _scanned = elements.map(function (el) {
+          return {
+            index:       el.highlightIndex,
+            tag:         String(el.tagName || '').toLowerCase(),
+            type:        el.type || getTypeByRaw(el.tagName, el.type),
+            name:        el.name || '',
+            id:          el.id || '',
+            label:       el.description || el.text || el.name || '',
+            placeholder: el.description || '',
+            value:       el.text,
+            options:     el.options || [],
+            el:          _sentinel, // 不持有 DOM 引用，后续通过 index 去 pageController 操作
+          };
+        });
+        _scanSource = 'sdk';
+        _scanTS = Date.now();
+        _sdkScanTS = Date.now();
+        console.log(LOG, 'SDK 增强扫描完成：' + _scanned.length + ' 个交互元素');
+        window.__PAGE_SDK_SCAN_STATE__ = { done: true, count: _scanned.length, ts: _scanTS };
+      })
+      .catch(function (e) {
+        console.warn(LOG, 'SDK 增强扫描失败，保持内置扫描结果', e);
+        window.__PAGE_SDK_SCAN_STATE__ = { done: false, error: String(e && e.message || e), ts: Date.now() };
+      })
+      .then(function () { _sdkScanRunning = false; });
+  }
+
   function scanPage(force) {
-    if (!force && _scanned && (Date.now() - _scanTS < SCAN_CACHE_MS)) {
-      return _scanned;
+    // SDK 增强扫描预热：发现已注入的 pageController 且缓存过期时后台异步扫描，
+    // 结果就绪后写入缓存供后续同步调用命中（保持本引擎同步 API 不变）。
+    if (window.__PAGE_AGENT__ && window.__PAGE_AGENT__.pageController &&
+        Date.now() - _sdkScanTS > SDK_SCAN_CACHE_MS) {
+      sdkScanAsync();
     }
-
-    // 优先：尝试使用已加载的 page-agent SDK 的 getBrowserState（更成熟的元素检测）
-    var sdkElements = null;
-    try {
-      var externalAgent = window.__PAGE_AGENT__;
-      if (externalAgent && externalAgent.pageController &&
-          typeof externalAgent.pageController.getBrowserState === 'function') {
-        sdkElements = externalAgent.pageController.getBrowserState();
-      }
-    } catch (_) {}
-
-    if (sdkElements && Array.isArray(sdkElements)) {
-      // SDK 返回 { highlightIndex, tagName, type, name, id, description, text, options? }
-      _scanned = sdkElements.map(function (el) {
-        return {
-          index:     el.highlightIndex,
-          tag:       el.tagName || '',
-          type:      el.type || getTypeByRaw(el.tagName, el.type),
-          name:      el.name || '',
-          id:        el.id || '',
-          label:     el.description || el.text || el.name || '',
-          value:     getValueFromRaw(el),
-          options:   el.options || [],
-          el:        _sentinel, // 不持有 DOM 引用，后续通过 index 去 pageController 操作
-        };
-      });
-      _scanTS = Date.now();
+    var ttl = _scanSource === 'sdk' ? SDK_SCAN_CACHE_MS : SCAN_CACHE_MS;
+    if (!force && _scanned && (Date.now() - _scanTS < ttl)) {
       return _scanned;
     }
 
@@ -275,6 +333,7 @@
     });
 
     _scanned = list;
+    _scanSource = 'builtin';
     _scanTS = Date.now();
     return list;
   }

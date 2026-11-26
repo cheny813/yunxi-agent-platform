@@ -96,6 +96,8 @@ yarn-error.log
 # 构建工具
 .gradle/
 build/
+# 例外：agent-web-sdk/build/ 是定制 SDK 的构建入口源码（sdk.ts + vite 配置），非构建产物
+!agent-web-sdk/build/
 
 # 数据库文件
 *.db

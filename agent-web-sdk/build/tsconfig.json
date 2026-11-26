@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@page-agent/page-agent": ["../../../page-agent/packages/page-agent/src/PageAgent.ts"],
+      "@page-agent/page-controller": ["../../../page-agent/packages/page-controller/src/PageController.ts"],
+      "@page-agent/core": ["../../../page-agent/packages/core/src/PageAgentCore.ts"],
+      "@page-agent/ui": ["../../../page-agent/packages/ui/src/index.ts"],
+      "@page-agent/llms": ["../../../page-agent/packages/llms/src/index.ts"],
+      "zod/v4": ["../../../page-agent/node_modules/zod/v4"],
+      "zod": ["../../../page-agent/node_modules/zod"]
+    }
+  },
+  "include": ["sdk.ts"]
+}
