@@ -20,8 +20,10 @@ import io.yunxi.fabric.InMemoryDistributedRuntimeConfig;
 import io.yunxi.fabric.CrossInstanceEventBus;
 import io.yunxi.fabric.RedisDistributedRuntimeConfig;
 import io.yunxi.fabric.RedisMessageBus;
+import io.yunxi.ingress.A2uiStreamProcessor;
 import io.yunxi.ingress.ConversationController;
 import io.yunxi.ingress.IngressGateway;
+import io.yunxi.ingress.MacroDslStreamProcessor;
 import io.yunxi.ingress.ProtocolAdapter;
 import io.yunxi.ingress.WebProtocolAdapter;
 import io.yunxi.app.mcp.McpNacosProperties;
@@ -483,17 +485,31 @@ public class RuntimeConfiguration {
         return new TenantQuotaMiddleware(properties, redisTemplateProvider);
     }
 
+    /** A2UI 流末分流器（传输层）：无配置态，仅在正文含哨兵块时动作。 */
+    @Bean
+    public A2uiStreamProcessor a2uiStreamProcessor() {
+        return new A2uiStreamProcessor();
+    }
+
+    /** @macroui/a2ui DSL 流末分流器（传输层）：与 Google A2UI 通道并存。 */
+    @Bean
+    public MacroDslStreamProcessor macroDslStreamProcessor() {
+        return new MacroDslStreamProcessor();
+    }
+
     /** 四协议聚合 HTTP 入口控制器（对外唯一端点，横切关切已由运行时装配点统一承担）。 */
     @Bean
     public ConversationController conversationController(IngressGateway ingressGateway,
             ProtocolUserIdResolver protocolUserIdResolver,
             TenantResolver tenantResolver,
             TenantConfig tenantConfig,
-            ObjectProvider<ShardForwarder> shardForwarder) {
+            ObjectProvider<ShardForwarder> shardForwarder,
+            A2uiStreamProcessor a2uiStreamProcessor,
+            MacroDslStreamProcessor macroDslStreamProcessor) {
         // 四协议聚合的 HTTP 入口；经此唯一端点对外暴露运行时，所有横切关切已由运行时装配点统一承担。
         // shardForwarder 以 ObjectProvider 注入：分片关闭时无 ShardForwarder bean → 空 → fail-open 本地兜底。
         return new ConversationController(ingressGateway, protocolUserIdResolver, tenantResolver,
-                tenantConfig, shardForwarder);
+                tenantConfig, shardForwarder, a2uiStreamProcessor, macroDslStreamProcessor);
     }
 
     /**

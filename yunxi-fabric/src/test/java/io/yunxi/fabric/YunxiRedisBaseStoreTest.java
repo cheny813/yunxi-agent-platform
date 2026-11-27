@@ -20,9 +20,9 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.springframework.data.domain.Range;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.connection.RedisZSetCommands;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 
@@ -108,7 +108,7 @@ class YunxiRedisBaseStoreTest {
             when(template.opsForHash()).thenReturn(hashOps);
             when(template.opsForZSet()).thenReturn(zsetOps);
             when(hashOps.entries(any())).thenAnswer(inv -> hashStore.get(inv.getArgument(0)));
-            when(zsetOps.rangeByLex(any(), any(RedisZSetCommands.Range.class)))
+            when(zsetOps.rangeByLex(any(), any(Range.class)))
                     .thenAnswer(inv -> new HashSet<>(indexStore.getOrDefault(inv.getArgument(0), Set.of())));
             when(template.execute(any(), anyList(), any(Object[].class))).thenAnswer(this);
         }

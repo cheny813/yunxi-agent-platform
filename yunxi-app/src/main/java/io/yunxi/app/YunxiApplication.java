@@ -13,7 +13,8 @@ import org.springframework.boot.autoconfigure.quartz.QuartzAutoConfiguration;
  * 按框架原生入口自建并持有调度器，生命周期由应用上下文统一收口。</p>
  */
 @SpringBootApplication(
-        scanBasePackages = {"io.yunxi.app", "io.yunxi.fabric.aistio", "io.yunxi.runtime", "io.yunxi.intelligence"},
+        scanBasePackages = {"io.yunxi.app", "io.yunxi.fabric.aistio", "io.yunxi.runtime", "io.yunxi.intelligence",
+                "io.yunxi.a2ui"},
         exclude = QuartzAutoConfiguration.class)
 public class YunxiApplication {
 

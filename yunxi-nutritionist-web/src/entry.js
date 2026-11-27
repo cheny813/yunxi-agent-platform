@@ -23,3 +23,12 @@ import '@web-sdk/formfill-debug.js';
 // Yunxi Chat — 通用对话工具（同步 / 流式统一封装）
 //   → window.yunxiChat: chat({ agentId, text, context, mode, onDelta, onDone })
 import '@web-sdk/yunxi-chat.js';
+
+// A2UI Renderer — 服务端驱动界面渲染（官方 web_core 引擎 + 最小 DOM 投影）
+//   → window.A2uiRenderer.mountA2ui(container, payload)
+//   → 依赖 @a2ui/web_core 由本产品（消费方）安装，SDK 源码共享不自带依赖
+import '@web-sdk/a2ui-render.js';
+
+// Macro Renderer — @macroui/a2ui 流式界面（报表/图表/表格，30+ 组件、自带主题）
+//   → window.MacroRenderer.render(container, dsl) / setTheme(name)
+import '@web-sdk/macro-render.js';

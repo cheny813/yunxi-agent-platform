@@ -71,9 +71,57 @@ identity:
     nutritionScore 取工具返回的「总分」；microRatings 取工具返回的维度与微量元素评分
     （分数均为 0-100 的整数，字段名可依据工具实际返回适度调整）。
 
+    当你给出完整饮食方案时，还必须输出界面载荷：在 JSON 摘要代码块之后，单独追加一个
+    <a2ui-json> ... </a2ui-json> 块，用 A2UI 组件把方案渲染成界面（不是可选，是必须）。
+    规则：^ 表示 1.0 协议，createSurface 的 surfaceId 固定为 "recipe"，
+    catalogId 固定为 "https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json"；
+    components 用 Text / Card / Row / Column 呈现方案名称、评分与各天食谱（id 为 "root" 的是
+    根组件，children 是子组件 id 数组）。示例（按真实方案内容替换文本，勿照抄示例数据）：
+    <a2ui-json>
+    ^ {"version":"1.0","createSurface":{"surfaceId":"recipe","catalogId":"https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json","components":[{"id":"root","component":"Column","children":["t1","c1"]},{"id":"t1","component":"Text","text":"方案名称"},{"id":"c1","component":"Card","child":"t2"},{"id":"t2","component":"Text","text":"早餐/午餐/晚餐摘要"}]}}
+    </a2ui-json>
+    严格约束：components 里每个组件只允许 id、component 及其协议定义的标准属性
+    （Text 只允许 text；Card 只允许 child；Row/Column 只允许 children；Image 只允许 url/description）。
+    禁止添加 weight、variant、style 等任何自定义属性——它们会导致界面校验失败、整批被丢弃。
+    确保每个 children/child 引用的 id 都在 components 中定义，且只有一个 id 为 "root" 的根组件。
+    正文与 JSON 摘要保持原格式不变；A2UI 块是额外追加的第三段，不可省略。
+
+    当用户要求报表、图表、表格或可视化对比时，追加一个 <macro-a2ui> ... </macro-a2ui>
+    块（与上面的 A2UI 块可并存，各自独立）：这是 @macroui 的流式界面 DSL，用一行标签描述
+    一个组件，[card tt:标题][p 正文][/card] 是基本形态。报表场景首选：
+    - [table] 容器 + [tr 单元格1 单元格2] 行（表格）
+    - [chart t:bar d:数值A,数值B,数值C l:标签A,标签B,标签C tt:标题] 柱状图；d: 只放纯数字
+      （逗号分隔），标签必须用 l: 单独给（写成 d:标签=数值 会解析失败）；把 t: 换成
+      line / pie / radar / donut / scatter / gantt / funnel 即其他图表
+    - [h3 标题][row_layout][col ...][/col][/row_layout] 做详细页布局
+    示例（按真实方案数据替换，勿照抄）：
+    <macro-a2ui>
+    [card tt:营养摄入对比][chart t:bar tt:三大营养素摄入量 d:100,165,45 l:蛋白质,碳水,脂肪][/card]
+    </macro-a2ui>
+    DSL 只用上述标签与属性，不要发明新标签；标签内容中避免裸 "[" 与 "]" 字符。
+    输出前自检：① 所有 [card]/[table]/[chart]/[row_layout]/[col] 都有对应闭合标签；
+    ② [chart] 的 d: 全为数字且个数与 l: 标签个数一致（格式错误会导致图表不显示）；
+    ③ 未知标签一律不用，宁可只用 [card][p][h3][table] 这些确定合法的标签；
+    ④ 报表数据取不到就不输出 chart，只输出表格，不要编造数值。
+
 state:
   store: inmemory
   persist: false
+
+# 技能边界：显式零技能。营养师是知识内置的纯业务 Agent（系统提示词已禁止加载技能），
+# 声明 NONE 后：框架技能目录（内建技能名与描述清单）不再注入系统提示词（省每轮 1–2K 输入 token），
+# load_skill_through_path 不再注册，MUSE 元工具（muse 工具组，含只读评估工具）整组不挂载——
+# 评估属自进化闭环事务，对纯业务 Agent 无消费场景，只读暴露只会诱发与业务工具名相近的幻觉调用。
+skill:
+  skillMode: NONE
+
+# 生成参数：逐键透传到推理服务请求体（键值语义由目标服务解释，这里不做含义校验）。
+# 配餐是结构化生成任务，不需要深度推理链；关思考可省一半以上的单轮耗时与思考输出 token。
+# 思考型智能任务（自进化、复杂推理类 Agent）不要复制本段——不声明即保持框架默认思考。
+generate:
+  extraBody:
+    enable_thinking: false
+
 permission:
   allowedTools:
     - memory_search
@@ -110,3 +158,9 @@ toolkit:
     - glob_files
     - execute
     - load_skill_through_path
+
+# 界面生成能力（per-Agent 声明）：启用后装配点注入 catalog 驱动的提示词片段，模型可在
+# 回复中输出 <a2ui-json> 界面载荷，经 SSE a2ui-message 事件下发前端渲染（配餐卡片界面）。
+# 与全局开关 yunxi.agent.a2ui.enabled OR 生效，任一开启即启用。
+a2ui:
+  enabled: true

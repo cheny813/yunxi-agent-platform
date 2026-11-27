@@ -84,8 +84,7 @@ public class SecurityConfig {
         // 显式装配：上下文中若存在其它 PasswordEncoder Bean（来自 Spring AI / 框架依赖），
         // DaoAuthenticationProvider 默认会选择 DelegatingPasswordEncoder 而非本平台的 BCrypt，导致口令永远不匹配。
         // 此处把编码与校验锁定到同一 BCrypt 实例，避免该歧义。
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService());
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService());
         provider.setPasswordEncoder(passwordEncoder());
         return provider;
     }

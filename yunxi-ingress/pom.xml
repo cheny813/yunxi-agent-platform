@@ -25,6 +25,10 @@
         </dependency>
         <dependency>
             <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-a2ui</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.yunxi</groupId>
             <artifactId>yunxi-definition</artifactId>
         </dependency>
         <dependency>

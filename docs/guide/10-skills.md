@@ -307,7 +307,9 @@ yunxi:
 
 ### 接入方式
 
-业务模块通过 `io.yunxi.intelligence` 统一组件扫描装配 MUSE 组件（各组件自带 `@ConditionalOnProperty(yunxi.muse.enabled=true)`，默认开启）。MUSE 经 `matchIfMissing=true` 默认启用，无需改动任何 Agent 定义 YAML 即获得技能自进化能力；如需关闭，设置 `yunxi.muse.enabled=false`——这符合 MUSE「薄壳」设计：关闭时不加载任何 MUSE 类，对框架零侵入。MUSE 与框架技能系统完全兼容——它只读写 `.agentscope/workspace/skills/` 下的标准技能文件，不引入私有格式。
+业务模块通过 `io.yunxi.intelligence` 统一组件扫描装配 MUSE 组件（各组件自带 `@ConditionalOnProperty(yunxi.muse.enabled=true)`，默认开启）。MUSE 经 `matchIfMissing=true` 默认启用；如需**全局**关闭，设置 `yunxi.muse.enabled=false`——这符合 MUSE「薄壳」设计：关闭时不加载任何 MUSE 类，对框架零侵入。MUSE 与框架技能系统完全兼容——它只读写 `.agentscope/workspace/skills/` 下的标准技能文件，不引入私有格式。
+
+**按 Agent 的门控**：`yunxi.muse.enabled=true` 只让 MUSE 元工具组（`muse_skill_eval` / `muse_skill_evolve` / `muse_skill_prune`）**可用**；是否挂到某个 Agent 由该 Agent 的技能边界裁决——声明 `skill.skillMode: NONE` 的知识内置纯业务 Agent（如营养师）整组不挂载（写类工具无消费场景，只读评估工具对业务 Agent 是幻觉诱饵，曾诱发把业务工具名当技能名的误调用）。这与全局开关是**两层**：全局关 = 不加载任何 MUSE 类；Agent 级 NONE = 类在、但不给该 Agent 暴露工具。配置示例见 [06. 配置指南 · 技能边界与生成参数](./06-configuration.md#技能边界与生成参数可选)。
 
 ### 对框架升级的友好性
 

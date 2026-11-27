@@ -13,6 +13,10 @@
  *
  * 流式渲染：仅 TEXT_BLOCK_DELTA 的 delta 进入正文（full）；THINKING 与工具中间结果
  * 不污染面向用户的正文。
+ *
+ * A2UI 界面载荷：后端在流末下发 `a2ui-message` 命名事件（载荷 { surfaceId, messages, issues }，
+ * 已在后端经协议校验），SDK 分发给 onA2ui 回调；正文中 `<a2ui-json>` 哨兵块为协议传输
+ * 载体，SDK 统一剥离（展示细节剥离在此唯一实现，前端不重复解析协议）。
  */
 
 (function (global) {
@@ -47,17 +51,59 @@
     };
   }
 
-  // 解析单个 SSE 事件块为 agent-event 对象（仅取 data: 行做 JSON 解析）
-  function _parseAgentEvent(chunk) {
+  // 解析单个 SSE 事件块：返回 { event: 命名事件（缺省 agent-event），data: 载荷对象 }，
+  // 无 data 行 / 坏 JSON 返回 null。a2ui-message 块的 data 只经 _parseSseBlock 通道分发，
+  // 不进 agent-event 事件流。
+  function _parseSseBlock(chunk) {
     if (!chunk) return null;
+    var eventName = null;
     var dataLine = '';
     chunk.split('\n').forEach(function (line) {
-      if (line.indexOf('data:') === 0) {
+      if (line.indexOf('event:') === 0) {
+        eventName = line.slice(6).replace(/^\s+/, '');
+      } else if (line.indexOf('data:') === 0) {
         dataLine += line.slice(5).replace(/^\s+/, '');
       }
     });
     if (!dataLine) return null;
-    try { return JSON.parse(dataLine); } catch (_) { return null; }
+    var data;
+    try { data = JSON.parse(dataLine); } catch (_) { return null; }
+    return { event: eventName || 'agent-event', data: data };
+  }
+
+  // 解析单个 SSE 事件块为 agent-event 对象（a2ui-message 块不进此通道）
+  function _parseAgentEvent(chunk) {
+    var parsed = _parseSseBlock(chunk);
+    if (!parsed || parsed.event !== 'agent-event') return null;
+    return parsed.data;
+  }
+
+  // 剥离正文中的界面协议哨兵块（纯展示细节；协议解析由后端/专用渲染器完成，
+  // 此处只隐藏传输载体）。支持 Google A2UI 1.0 的 <a2ui-json> 与 @macroui 的
+  // <macro-a2ui> 两种哨兵，可混用；流式期间未闭合的块从开标记处截断隐藏。
+  var SENTINELS = [
+    { open: '<a2ui-json>', close: '</a2ui-json>' },
+    { open: '<macro-a2ui>', close: '</macro-a2ui>' }
+  ];
+
+  function _stripSentinel(raw) {
+    if (!raw) return '';
+    var out = '';
+    var rest = raw;
+    while (true) {
+      var earliest = -1;
+      var tag = null;
+      SENTINELS.forEach(function (s) {
+        var at = rest.indexOf(s.open);
+        if (at !== -1 && (earliest === -1 || at < earliest)) { earliest = at; tag = s; }
+      });
+      if (earliest === -1) { out += rest; break; }
+      out += rest.slice(0, earliest);
+      var close = rest.indexOf(tag.close, earliest);
+      if (close === -1) break;
+      rest = rest.slice(close + tag.close.length);
+    }
+    return out;
   }
 
   // 从 SSE 块提取进入正文的文本增量（仅 TEXT_BLOCK_DELTA）
@@ -133,7 +179,8 @@
     var reader = res.body.getReader();
     var decoder = new TextDecoder('utf-8');
     var buffer = '';
-    var full = '';
+    var raw = '';   // 模型正文原样累积（含 A2UI 哨兵块传输载体）
+    var full = '';  // 可见正文快照（哨兵块已剥离）
     // 按 toolCallId 隔离累积 todo_write 的 TOOL_RESULT_TEXT_DELTA
     var todoBuffers = {};
 
@@ -147,12 +194,24 @@
       while ((idx = buffer.indexOf('\n\n')) !== -1) {
         var block = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
-        var evt = _parseAgentEvent(block);
-        if (!evt) continue;
+        var parsed = _parseSseBlock(block);
+        if (!parsed) continue;
+        if (parsed.event === 'a2ui-message') {
+          if (typeof handlers.onA2ui === 'function') handlers.onA2ui(parsed.data);
+          continue;
+        }
+        if (parsed.event === 'macro-dsl') {
+          if (typeof handlers.onMacroDsl === 'function') {
+            handlers.onMacroDsl(typeof parsed.data.dsl === 'string' ? parsed.data.dsl : '');
+          }
+          continue;
+        }
+        var evt = parsed.data;
         if (evt.type === 'TEXT_BLOCK_DELTA') {
           var delta = typeof evt.delta === 'string' ? evt.delta : '';
           if (delta) {
-            full += delta;
+            raw += delta;
+            full = _stripSentinel(raw);
             if (typeof handlers.onDelta === 'function') handlers.onDelta(delta, full);
           }
           continue;
@@ -163,16 +222,26 @@
     }
     // 处理尾部残留（无结尾空行）
     if (buffer.trim()) {
-      var tailEvt = _parseAgentEvent(buffer);
-      if (tailEvt) {
-        if (tailEvt.type === 'TEXT_BLOCK_DELTA') {
-          var tail = typeof tailEvt.delta === 'string' ? tailEvt.delta : '';
-          if (tail) {
-            full += tail;
-            if (typeof handlers.onDelta === 'function') handlers.onDelta(tail, full);
+      var tailParsed = _parseSseBlock(buffer);
+      if (tailParsed) {
+        if (tailParsed.event === 'a2ui-message') {
+          if (typeof handlers.onA2ui === 'function') handlers.onA2ui(tailParsed.data);
+        } else if (tailParsed.event === 'macro-dsl') {
+          if (typeof handlers.onMacroDsl === 'function') {
+            handlers.onMacroDsl(typeof tailParsed.data.dsl === 'string' ? tailParsed.data.dsl : '');
           }
         } else {
-          _dispatchEvent(tailEvt, handlers, todoBuffers);
+          var tailEvt = tailParsed.data;
+          if (tailEvt.type === 'TEXT_BLOCK_DELTA') {
+            var tail = typeof tailEvt.delta === 'string' ? tailEvt.delta : '';
+            if (tail) {
+              raw += tail;
+              full = _stripSentinel(raw);
+              if (typeof handlers.onDelta === 'function') handlers.onDelta(tail, full);
+            }
+          } else {
+            _dispatchEvent(tailEvt, handlers, todoBuffers);
+          }
         }
       }
     }
@@ -210,8 +279,10 @@
    *   userId    终端用户标识（可选，用于画像/审计）
    *   mode      'stream'（默认）| 'sync'
    *   autoManageConversation 默认 true，维持同一会话支持多轮
- *   onDelta(delta, full) 流式增量
- *   onDone(full)          流/同步结束
+ *   onDelta(delta, full) 流式增量（full 为剥离哨兵块后的可见正文）
+ *   onDone(full)          流/同步结束（同上，可见正文）
+   *   onA2ui(payload)       Google A2UI 1.0 界面载荷（payload = { surfaceId, messages, issues }）
+   *   onMacroDsl(dsl)       @macroui/a2ui DSL 文本（报表/图表/表格，流末下发）
    *   onError(err)          错误回调（仍会向上抛出）
    */
   async function yunxiChat(opts) {
@@ -219,7 +290,9 @@
     var handlers = {
       onDelta: opts.onDelta,
       onDone: opts.onDone,
-      onTodo: opts.onTodo
+      onTodo: opts.onTodo,
+      onA2ui: opts.onA2ui,
+      onMacroDsl: opts.onMacroDsl
     };
 
     var sessionId = opts.sessionId || null;
@@ -233,7 +306,7 @@
 
     try {
       if (opts.mode === 'sync') {
-        var text = await _chatSync(body);
+        var text = _stripSentinel(await _chatSync(body));
         if (typeof handlers.onDone === 'function') handlers.onDone(text);
         return text;
       }
@@ -257,6 +330,8 @@
       yunxiChat: yunxiChat,
       resetConversation: resetConversation,
       _parseAgentEvent: _parseAgentEvent,
+      _parseSseBlock: _parseSseBlock,
+      _stripSentinel: _stripSentinel,
       _extractTodoList: _extractTodoList,
       _dispatchEvent: _dispatchEvent
     };

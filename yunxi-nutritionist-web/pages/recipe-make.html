@@ -116,6 +116,20 @@
     <!-- 任务清单面板：由 yunxiChat 的 onTodo 回调驱动（纯前端透出框架 todo_write 事件）
          位于 #result-area 之外，避免被 onDone 重写结果区时覆盖。 -->
     <div id="todo-panel" class="todo-panel" hidden></div>
+    <!-- A2UI 界面面板：由 yunxiChat 的 onA2ui 回调驱动（后端校验通过的界面载荷，
+         经官方 @a2ui/web_core 引擎渲染）。与任务清单同理由：位于 #result-area 之外。 -->
+    <div id="a2ui-panel" class="a2ui-panel" hidden>
+      <div class="a2ui-panel-title">智能界面</div>
+      <div id="a2ui-area" class="a2ui-area"></div>
+    </div>
+    <!-- Macro 界面面板：由 onMacroDsl 回调驱动（@macroui/a2ui 渲染报表/图表/表格）。 -->
+    <div id="macro-panel" class="a2ui-panel" hidden>
+      <div class="a2ui-panel-title">
+        数据报表
+        <button type="button" id="macro-theme-btn" class="macro-theme-btn" title="切换明暗主题">◐</button>
+      </div>
+      <div id="macro-area" class="macro-area"></div>
+    </div>
   </section>
 
   <footer class="footer">
@@ -126,25 +140,28 @@
   </footer>
 
   <style>
+    /* 智能页面统一走全局深色主题（style.css 的 --surface / --border / --text / --primary），
+       与站点外壳同一套视觉语言；仅状态语义色（优/良/待改善）局部提亮以适配深色底。 */
     /* AI 对话右栏（自有 UI，复用底层 pageController 操作左栏） */
     #ai-chat { display:flex; flex-direction:column; min-height:520px; max-height:78vh; }
-    .chat-head { display:flex; align-items:center; justify-content:space-between; padding:4px 2px 12px; border-bottom:1px solid rgba(0,0,0,.06); }
+    .chat-head { display:flex; align-items:center; justify-content:space-between; padding:4px 2px 12px; border-bottom:1px solid var(--border); }
     .chat-title { display:flex; align-items:center; gap:10px; }
-    .chat-avatar { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,#34d399,#059669); color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; }
-    .chat-status { font-size:12px; color:#10b981; }
-    .chat-collapse { border:none; background:transparent; font-size:20px; cursor:pointer; color:#94a3b8; line-height:1; }
+    .chat-avatar { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,var(--primary),var(--primary-2)); color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(57,182,255,.25); }
+    .chat-status { font-size:12px; color:var(--accent); }
+    .chat-collapse { border:none; background:transparent; font-size:20px; cursor:pointer; color:var(--text-muted); line-height:1; }
     .chat-body { flex:1; overflow-y:auto; padding:14px 4px; display:flex; flex-direction:column; gap:12px; }
     .chat-msg { max-width:88%; padding:10px 13px; border-radius:14px; font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
-    .chat-msg.ai { align-self:flex-start; background:#f1f5f9; color:#0f172a; border-bottom-left-radius:4px; }
-    .chat-msg.user { align-self:flex-end; background:#059669; color:#fff; border-bottom-right-radius:4px; }
+    .chat-msg.ai { align-self:flex-start; background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-bottom-left-radius:4px; }
+    .chat-msg.user { align-self:flex-end; background:linear-gradient(135deg,var(--primary),var(--primary-2)); color:#fff; border-bottom-right-radius:4px; }
     .chat-msg.thinking { opacity:.6; font-style:italic; }
-    .chat-foot { display:flex; gap:8px; padding-top:12px; border-top:1px solid rgba(0,0,0,.06); align-items:center; }
-    .chat-input { flex:1; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:14px; outline:none; }
-    .chat-input:focus { border-color:#34d399; }
-    .chat-send { border:none; background:#059669; color:#fff; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; }
+    .chat-foot { display:flex; gap:8px; padding-top:12px; border-top:1px solid var(--border); align-items:center; }
+    .chat-input { flex:1; border:1px solid var(--border); background:var(--surface-2); border-radius:10px; padding:10px 12px; font-size:14px; color:var(--text); outline:none; }
+    .chat-input::placeholder { color:var(--text-muted); }
+    .chat-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(57,182,255,.15); }
+    .chat-send { border:none; background:linear-gradient(135deg,var(--primary),var(--primary-2)); color:#fff; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; }
     .chat-send:disabled { opacity:.5; cursor:default; }
-    .chat-fill { border:1px solid #34d399; background:#ecfdf5; color:#059669; border-radius:10px; padding:10px 10px; font-size:13px; cursor:pointer; white-space:nowrap; }
-    .chat-fill:hover { background:#d1fae5; }
+    .chat-fill { border:1px solid rgba(57,182,255,.45); background:rgba(57,182,255,.12); color:var(--primary); border-radius:10px; padding:10px; font-size:13px; cursor:pointer; white-space:nowrap; }
+    .chat-fill:hover { background:rgba(57,182,255,.2); }
     .chat-fill:disabled { opacity:.5; cursor:default; }
     #ai-chat.collapsed .chat-body, #ai-chat.collapsed .chat-foot { display:none; }
     /* 生成方案按钮 loading 态 */
@@ -155,70 +172,106 @@
     .result-area { font-size:14px; }
     .plan-card { display:flex; flex-direction:column; gap:16px; }
     .plan-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-    .plan-title { font-size:18px; font-weight:700; color:#065f46; }
+    .plan-title { font-size:18px; font-weight:700; color:var(--text); }
     .score-ring { --p:0; width:96px; height:96px; border-radius:50%; flex:0 0 auto;
-      background:conic-gradient(#10b981 calc(var(--p)*1%), #e2e8f0 0);
-      display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; }
-    .score-ring::before { content:""; position:absolute; inset:10px; border-radius:50%; background:#fff; }
-    .score-ring span { position:relative; font-size:26px; font-weight:800; color:#059669; }
-    .score-ring small { position:relative; font-size:11px; color:#64748b; margin-top:2px; }
-    .micro-block, .days-block { background:#f8fafc; border:1px solid #eef2f7; border-radius:14px; padding:14px 16px; }
-    .micro-title { font-size:14px; font-weight:700; color:#0f172a; margin-bottom:12px; }
+      background:conic-gradient(var(--primary) calc(var(--p)*1%), var(--surface-2) 0);
+      display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative;
+      box-shadow:0 0 20px rgba(57,182,255,.18); }
+    .score-ring::before { content:""; position:absolute; inset:10px; border-radius:50%; background:var(--surface); }
+    .score-ring span { position:relative; font-size:26px; font-weight:800; color:var(--primary); }
+    .score-ring small { position:relative; font-size:11px; color:var(--text-muted); margin-top:2px; }
+    .micro-block, .days-block { background:linear-gradient(160deg,var(--surface-2),var(--surface)); border:1px solid var(--border); border-radius:14px; padding:14px 16px; box-shadow:inset 0 1px 0 rgba(255,255,255,.03); }
+    .micro-title { font-size:14px; font-weight:700; color:var(--text); margin-bottom:12px; }
     .micro-list { display:flex; flex-direction:column; gap:10px; }
     .micro-item { display:grid; grid-template-columns:64px 1fr auto; align-items:center; gap:10px; }
-    .micro-name { font-size:13px; color:#334155; }
-    .micro-bar { height:8px; border-radius:6px; background:#e2e8f0; overflow:hidden; }
+    .micro-name { font-size:13px; color:var(--text-muted); }
+    .micro-bar { height:8px; border-radius:6px; background:var(--border); overflow:hidden; }
     .micro-bar i { display:block; height:100%; border-radius:6px; }
-    .micro-bar i.good, .micro-val em.good { background:#10b981; color:#059669; }
-    .micro-bar i.mid, .micro-val em.mid { background:#f59e0b; color:#b45309; }
-    .micro-bar i.low, .micro-val em.low { background:#ef4444; color:#b91c1c; }
-    .micro-val { font-size:12px; color:#475569; white-space:nowrap; }
+    .micro-bar i.good, .micro-val em.good { background:var(--accent); color:#4ade80; }
+    .micro-bar i.mid, .micro-val em.mid { background:#f59e0b; color:#fbbf24; }
+    .micro-bar i.low, .micro-val em.low { background:#ef4444; color:#f87171; }
+    .micro-val { font-size:12px; color:var(--text-muted); white-space:nowrap; }
     .micro-val em { font-style:normal; font-weight:700; margin-left:4px; }
-    .day-card { border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; margin-bottom:12px; background:#fff; }
+    .day-card { border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:12px; background:var(--surface-2); transition:border-color .2s ease; }
+    .day-card:hover { border-color:rgba(57,182,255,.5); }
     .day-card:last-child { margin-bottom:0; }
-    .day-head { font-weight:700; color:#065f46; margin-bottom:8px; }
-    .day-theme { font-weight:500; color:#0f766e; font-size:13px; margin-left:6px; }
+    .day-head { font-weight:700; color:var(--primary); margin-bottom:8px; }
+    .day-theme { font-weight:500; color:var(--text-muted); font-size:13px; margin-left:6px; }
     .meal-list { display:flex; flex-direction:column; gap:6px; }
-    .meal-row { display:grid; grid-template-columns:52px 1fr auto; gap:10px; align-items:center; font-size:13px; }
-    .meal-type { color:#059669; font-weight:600; }
-    .meal-name { color:#1e293b; }
-    .meal-kcal { color:#94a3b8; font-size:12px; }
-    .plan-prose { color:#334155; line-height:1.7; white-space:pre-wrap;
-      background:#fff; border:1px solid #e2e8f0; border-left:4px solid #10b981;
-      border-radius:12px; padding:16px 18px; font-size:15px; box-shadow:0 1px 3px rgba(15,23,42,.04); }
-    .plan-prose h3 { font-size:16px; font-weight:700; color:#065f46; margin:12px 0 6px; }
+    /* 餐别列改为内容自适应（minmax）：模型常输出「早餐（约400 kcal｜蛋白25g/...）」长串，
+       固定 52px 会把整串挤成一团；自适应宽度 + nowrap 让餐别完整显示、不挤压食谱正文。 */
+    .meal-row { display:grid; grid-template-columns:minmax(42px, max-content) 1fr auto; gap:10px; align-items:baseline; font-size:13px; }
+    .meal-type { color:var(--accent); font-weight:600; white-space:nowrap; }
+    .meal-name { color:var(--text); }
+    .meal-note { font-size:11px; color:var(--text-muted); margin-left:6px; }
+    .meal-kcal { color:var(--text-muted); font-size:12px; white-space:nowrap; }
+    .plan-prose { color:var(--text); line-height:1.7; white-space:pre-wrap;
+      background:var(--surface-2); border:1px solid var(--border); border-left:3px solid var(--primary);
+      border-radius:12px; padding:16px 18px; font-size:15px; box-shadow:inset 0 1px 0 rgba(255,255,255,.03); }
+    .plan-prose h3 { font-size:16px; font-weight:700; color:var(--primary); margin:12px 0 6px; }
     .plan-prose h3:first-child { margin-top:0; }
     .plan-prose ul { margin:6px 0; padding-left:20px; }
     .plan-prose li { margin:4px 0; }
-    .plan-prose strong { color:#0f172a; font-weight:700; }
-    .plan-prose .prose-tag { display:inline-block; font-size:12px; color:#059669; background:#ecfdf5;
-      border:1px solid #a7f3d0; border-radius:999px; padding:2px 10px; margin-bottom:10px; font-weight:600; }
+    .plan-prose strong { color:var(--text); font-weight:700; }
+    .plan-prose .prose-tag { display:inline-block; font-size:12px; color:var(--primary); background:rgba(57,182,255,.12);
+      border:1px solid rgba(57,182,255,.35); border-radius:999px; padding:2px 10px; margin-bottom:10px; font-weight:600; }
     /* 流式阶段骨架占位：预示结构化卡片即将生成，给出连贯的「卡片在长出来」观感 */
     .plan-skeleton { display:flex; align-items:center; gap:10px; padding:18px 20px; margin-top:14px;
-      background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; color:#94a3b8; font-size:13px; }
-    .plan-skeleton .skeleton-dot { width:9px; height:9px; border-radius:50%; background:#34d399;
+      background:var(--surface-2); border:1px dashed var(--border); border-radius:12px; color:var(--text-muted); font-size:13px; }
+    .plan-skeleton .skeleton-dot { width:9px; height:9px; border-radius:50%; background:var(--primary);
       animation:pulseDot 1s ease-in-out infinite; }
     @keyframes pulseDot { 0%,100% { opacity:.3; transform:scale(.8); } 50% { opacity:1; transform:scale(1.1); } }
 
+    /* ── A2UI 界面面板（yunxiChat.onA2ui 透出，官方 web_core 引擎渲染）── */
+    .a2ui-panel { margin-top:16px; padding:14px; border:1px solid var(--border); border-radius:14px;
+      background:linear-gradient(160deg,var(--surface-2),var(--surface)); }
+    .a2ui-panel-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:10px; }
+    .a2ui-area { display:flex; flex-direction:column; gap:10px; font-size:14px; color:var(--text); }
+    .a2ui-text { line-height:1.6; white-space:pre-wrap; }
+    .a2ui-title { font-size:15px; margin:2px 0; color:var(--text); }
+    .a2ui-row { display:flex; flex-direction:row; gap:10px; align-items:center; flex-wrap:wrap; }
+    .a2ui-column { display:flex; flex-direction:column; gap:10px; }
+    .a2ui-card { border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; background:var(--surface-2); }
+    .a2ui-icon { color:var(--primary); font-size:16px; }
+    .a2ui-image { max-width:100%; border-radius:10px; }
+    .a2ui-divider { border:none; border-top:1px solid var(--border); margin:2px 0; }
+    .a2ui-button { padding:8px 16px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--primary),var(--primary-2)); color:#fff; font-size:14px; }
+    .a2ui-button:disabled { opacity:.55; cursor:not-allowed; }
+    .a2ui-placeholder { padding:8px 12px; border:1px dashed var(--border); border-radius:10px; color:var(--text-muted); font-size:13px; }
+    .a2ui-issues { padding:10px; border-radius:10px; background:rgba(239,68,68,.12); color:#fca5a5; font-size:13px; }
+    .a2ui-empty { color:var(--text-muted); font-size:13px; }
+
+    /* ── Macro 报表面板（@macroui/a2ui 渲染，自带主题 + 响应式）── */
+    .macro-area { font-size:14px; color:var(--text); overflow-x:auto; }
+    .macro-theme-btn { float:right; border:1px solid var(--border); border-radius:8px;
+      background:var(--surface-2); color:var(--text); font-size:14px; cursor:pointer; padding:2px 8px; }
+    .macro-theme-btn:hover { background:var(--border); }
+    /* 手机端：表格/图表允许横向滚动，SVG 图表不溢出视口 */
+    @media (max-width: 640px) {
+      .macro-area { font-size:13px; }
+      .macro-area svg { max-width:100%; height:auto; }
+      .a2ui-panel { padding:10px; }
+    }
+
     /* ── 任务清单面板（yunxiChat.onTodo 透出）── */
-    .todo-panel { margin-top:16px; padding:14px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; }
+    .todo-panel { margin-top:16px; padding:14px 16px; background:linear-gradient(160deg,var(--surface-2),var(--surface)); border:1px solid var(--border); border-radius:14px; }
     .todo-panel[hidden] { display:none; }
     .todo-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
-    .todo-title { font-size:14px; font-weight:700; color:#0f172a; }
-    .todo-progress { font-size:12px; color:#64748b; }
+    .todo-title { font-size:14px; font-weight:700; color:var(--text); }
+    .todo-progress { font-size:12px; color:var(--text-muted); }
     .todo-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
     .todo-item { display:flex; align-items:center; gap:10px; font-size:13px; line-height:1.5; }
     .todo-check { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center;
       justify-content:center; font-size:11px; flex:0 0 auto; color:#fff; }
-    .todo-completed .todo-check { background:#10b981; }
-    .todo-completed .todo-content { color:#94a3b8; text-decoration:line-through; }
+    .todo-completed .todo-check { background:var(--accent); }
+    .todo-completed .todo-content { color:var(--text-muted); text-decoration:line-through; }
     .todo-in_progress .todo-check { background:#f59e0b; }
-    .todo-pending .todo-check { background:#e2e8f0; color:#64748b; }
-    .todo-content { flex:1; color:#0f172a; word-break:break-word; }
+    .todo-pending .todo-check { background:var(--border); color:var(--text-muted); }
+    .todo-content { flex:1; color:var(--text); word-break:break-word; }
     .todo-pri { font-size:11px; padding:1px 8px; border-radius:8px; flex:0 0 auto; text-transform:capitalize; }
-    .pri-high { background:#fee2e2; color:#dc2626; }
-    .pri-medium { background:#fef3c7; color:#d97706; }
-    .pri-low { background:#e0f2fe; color:#0284c7; }
+    .pri-high { background:rgba(239,68,68,.15); color:#fca5a5; }
+    .pri-medium { background:rgba(245,158,11,.15); color:#fbbf24; }
+    .pri-low { background:rgba(56,189,248,.15); color:#7dd3fc; }
   </style>
 
   <!-- 公共 SDK 入口（agent-web-sdk 单一源）：
@@ -230,7 +283,13 @@
 
     // ── 1. 表单实时通道接入 ──
     // 写页面能力统一收敛到 FormFillClient → PageAgentDomEngine，不再依赖 LLM Agent 循环。
+    // mcp-formfill 服务当前不在本地依赖栈内（见 vite.config.js：/ws/formfill 代理已移除），
+    // 默认不连接以免控制台噪声；需要联调时以 ?formfill=1 或 window.FORMFILL_ENABLED=true 打开。
     (async function initClient() {
+      const formfillEnabled =
+        window.FORMFILL_ENABLED === true ||
+        new URLSearchParams(location.search).get('formfill') === '1';
+      if (!formfillEnabled) return;
       FF = window.FormFillClient.getClient()
         .onLog((m) => {
           if (m.indexOf('⚠') === 0) addMsg('ai', m);
@@ -303,6 +362,15 @@
     chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
     $('chat-collapse').addEventListener('click', () => $('ai-chat').classList.toggle('collapsed'));
 
+    // Macro 报表主题切换（明/暗）：默认 dark 与站点深色底一致，点击切到浅色细读
+    let macroDark = true;
+    $('macro-theme-btn').title = '切换明暗主题（当前：深色）';
+    $('macro-theme-btn').addEventListener('click', () => {
+      macroDark = !macroDark;
+      $('macro-theme-btn').title = '切换明暗主题（当前：' + (macroDark ? '深色' : '浅色') + '）';
+      window.MacroRenderer.setTheme(macroDark ? 'dark' : 'default');
+    });
+
     // ── 3. 自动填表：DomEngine 读取真实页面字段 → LLM 看图说话 → FormFillClient 写回 ──
     const chatFillBtn = $('chat-fill');
     chatFillBtn.addEventListener('click', async () => {
@@ -368,6 +436,13 @@
       area.innerHTML = '<p class="result-empty">正在生成方案…</p>';
       area.classList.add('result-loading');
 
+      // 重新生成：先清掉上一轮的结构化面板（智能界面 / 数据报表），
+      // 避免旧方案残留与新方案混排（面板由本轮事件回调重新唤起）。
+      const a2uiPanel = $('a2ui-panel');
+      if (a2uiPanel) { a2uiPanel.hidden = true; $('a2ui-area').innerHTML = ''; }
+      const macroPanel = $('macro-panel');
+      if (macroPanel) { macroPanel.hidden = true; $('macro-area').innerHTML = ''; }
+
       try {
         // 路线 A：走 resident-nutrition-assistant Agent（居民口径，含真实营养评分链路 evaluate_recipe）
         // 注意：不要直接打 /v1/chat/completions（裸 LLM 透传，无评分能力）
@@ -405,6 +480,22 @@
               return;
             }
             area.innerHTML = proseCard + buildPlanStructured(plan);
+          },
+          onA2ui: (payload) => {
+            // A2UI 界面载荷（后端已校验）：经官方 @a2ui/web_core 引擎渲染到独立面板
+            const panel = $('a2ui-panel');
+            if (!panel) return;
+            panel.hidden = false;
+            window.A2uiRenderer.mountA2ui($('a2ui-area'), payload);
+          },
+          onMacroDsl: (dsl) => {
+            // @macroui/a2ui DSL 报表/图表：由公共渲染组件渲染到独立面板
+            const panel = $('macro-panel');
+            if (!panel) return;
+            panel.hidden = false;
+            // 渲染器实例构造时固定 theme:'default'，每次渲染前按当前选择同步，默认 dark 与站点深色底一致
+            window.MacroRenderer.setTheme(macroDark ? 'dark' : 'default');
+            window.MacroRenderer.render($('macro-area'), dsl);
           },
           // 任务清单透出：Agent 调用 todo_write 工具时，框架透出 TOOL_RESULT 事件，
           // SDK 还原结构化任务列表后回调此处（纯前端识别，后端零改动）。
@@ -498,20 +589,33 @@
           // 支持两种形态：items 为字符串数组（如 "早餐：燕麦+蓝莓"），meals 为对象数组。
           const mealItems = Array.isArray(d.meals) ? d.meals : (Array.isArray(d.items) ? d.items : []);
           for (const meal of mealItems) {
-            let type = '', name = '';
+            let type = '', name = '', note = '', kcal = '';
             if (typeof meal === 'string') {
-              // "早餐：燕麦+蓝莓" / "午餐-鸡胸沙拉" → 拆出餐别与内容，分别落入 type / name 列
-              const m = meal.match(/^\s*([^:：\-–—]+?)\s*[:：\-–—]\s*(.*)$/);
-              if (m) { type = m[1]; name = m[2]; } else { name = meal; }
+              // 模型常见形态：
+              //  a) "早餐：燕麦+蓝莓"
+              //  b) "早餐（约400 kcal｜蛋白25g/碳水40g/脂肪15g）：燕麦+蓝莓" —— 括号内营养信息是备注，
+              //     不能整串塞进餐别列（固定宽时挤成一团），拆出为 note 小字。
+              const bracket = meal.match(/^\s*([^（(]+?)\s*[（(]([^）)]*)[）)]\s*[:：\-–—]?\s*(.*)$/);
+              const simple = meal.match(/^\s*([^:：\-–—（(]+?)\s*[:：\-–—]\s*(.*)$/);
+              if (bracket) {
+                type = bracket[1].trim(); note = bracket[2].trim(); name = bracket[3].trim();
+              } else if (simple) {
+                type = simple[1].trim(); name = simple[2].trim();
+              } else {
+                name = meal.trim();
+              }
             } else {
               name = meal.name || meal.dish || '';
               type = meal.type || meal.meal || '';
+              note = meal.note || meal.description || '';
             }
-            const kcal = (meal && typeof meal === 'object') ? (meal.calorie ?? meal.kcal ?? '') : '';
+            kcal = (meal && typeof meal === 'object') ? (meal.calorie ?? meal.kcal ?? '') : '';
             html += '<div class="meal-row">'
               + '<span class="meal-type">' + escapeHtml(type) + '</span>'
-              + '<span class="meal-name">' + escapeHtml(name) + '</span>'
-              + (kcal !== '' ? '<span class="meal-kcal">' + kcal + ' kcal</span>' : '')
+              + '<span class="meal-name">' + escapeHtml(name)
+              + (note ? '<span class="meal-note">（' + escapeHtml(note) + '）</span>' : '')
+              + '</span>'
+              + (kcal !== '' ? '<span class="meal-kcal">' + escapeHtml(String(kcal)) + ' kcal</span>' : '')
               + '</div>';
           }
           html += '</div></div>';

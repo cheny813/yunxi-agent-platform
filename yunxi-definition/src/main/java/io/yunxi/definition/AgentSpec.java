@@ -32,9 +32,29 @@ public record AgentSpec(
         /** 任务清单能力开关：是否启用 todo_write 与任务提醒中间件；缺省关闭。 */
         PlanConfig plan,
         /** 意图辅助：意图分类用的短卡片；缺省从 identity.description 自动派生。 */
-        IntentConfig intent) {
+        IntentConfig intent,
+        /** A2UI 渲染协议能力开关；缺省关闭。 */
+        A2uiConfig a2ui,
+        /** 生成参数：extra-body 逐键透传到推理服务请求体（如 DashScope enable_thinking=false 关思考）；缺省不设置即框架默认。 */
+        GenerateConfig generate) {
 
-    /** 兼容构造：既有定义文件不声明 intent 段时保持为零迁移。 */
+    /**
+     * 生成参数（产品平面语义，不携带任何 AgentScope-Java 框架类型）。
+     *
+     * <p>{@code extraBody} 是到推理服务的<b>透传地图</b>：逐键原样进入框架
+     * {@code GenerateOptions.additionalBodyParams}，由模型 Provider 拼入请求体，键值语义由目标服务解释
+     * （如 DashScope 兼容端点的 {@code enable_thinking}、Ollama 的 {@code think}）。之所以用透传而非枚举
+     * 「思考开关」，是不同 provider 的键名与语义不同，枚举化就得在产品平面维护 per-provider 映射表；
+     * 透传把键值约定留给定义者，产品平面只做形状校验（键非空白、值非 null）。</p>
+     *
+     * <p>缺省（generate 段不声明，即 null）：不设置 GenerateOptions，生成行为完全沿用框架与模型默认
+     * （思考型模型保持思考）。需要控制智能水平（如格式化生成类任务关思考提速省 token）的 Agent 显式声明。</p>
+     */
+    public record GenerateConfig(
+            /** 逐键透传的请求体扩展字段；键不得空白，值不得为 null。 */
+            Map<String, Object> extraBody) {}
+
+    /** 兼容构造：既有定义文件不声明 intent / a2ui / generate 段时保持为零迁移。 */
     public AgentSpec(
             Identity identity,
             SkillConfig skill,
@@ -46,7 +66,40 @@ public record AgentSpec(
             SandboxConfig sandbox,
             ScheduleConfig schedule,
             PlanConfig plan) {
-        this(identity, skill, mcp, state, permission, toolkit, subagents, sandbox, schedule, plan, null);
+        this(identity, skill, mcp, state, permission, toolkit, subagents, sandbox, schedule, plan, null, null, null);
+    }
+
+    /** 兼容构造：既有定义文件不声明 a2ui / generate 段时保持为零迁移。 */
+    public AgentSpec(
+            Identity identity,
+            SkillConfig skill,
+            McpConfig mcp,
+            StateConfig state,
+            PermissionConfig permission,
+            ToolkitConfig toolkit,
+            SubagentsConfig subagents,
+            SandboxConfig sandbox,
+            ScheduleConfig schedule,
+            PlanConfig plan,
+            IntentConfig intent) {
+        this(identity, skill, mcp, state, permission, toolkit, subagents, sandbox, schedule, plan, intent, null, null);
+    }
+
+    /** 兼容构造：既有定义文件不声明 a2ui / generate 段时保持为零迁移。 */
+    public AgentSpec(
+            Identity identity,
+            SkillConfig skill,
+            McpConfig mcp,
+            StateConfig state,
+            PermissionConfig permission,
+            ToolkitConfig toolkit,
+            SubagentsConfig subagents,
+            SandboxConfig sandbox,
+            ScheduleConfig schedule,
+            PlanConfig plan,
+            IntentConfig intent,
+            A2uiConfig a2ui) {
+        this(identity, skill, mcp, state, permission, toolkit, subagents, sandbox, schedule, plan, intent, a2ui, null);
     }
 
     /** 兼容构造：既有定义文件不声明 plan 段时保持为零迁移。 */
@@ -279,6 +332,16 @@ public record AgentSpec(
     public record PlanConfig(
             /** 是否启用该 Agent 的任务清单（todo_write）能力；缺省 false（默认关）。 */
             boolean taskList) {}
+
+    /**
+     * A2UI 渲染协议能力开关（定义平面纯数据，不携带任何框架类型）。
+     * <p>该声明在装配点 AgentConfigurer 翻译为是否给该 Agent 注入 A2UI 系统提示词中间件
+     * （告知模型可产出经协议约定的界面载荷）；全局开关 yunxi.agent.a2ui.enabled 提供另一通道，
+     * 二者 OR 生效。传输层分流与前端渲染不在定义平面表达。配置即数据，框架语义翻译留在装配点。</p>
+     */
+    public record A2uiConfig(
+            /** 是否启用该 Agent 的 A2UI 界面生成能力；缺省 false（默认关）。 */
+            boolean enabled) {}
 
     /**
      * 意图辅助声明（定义平面纯数据，不携带任何框架类型）。

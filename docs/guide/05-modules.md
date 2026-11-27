@@ -4,7 +4,7 @@
 
 ## 模块概览
 
-### Maven 模块（根 `pom.xml` 的 `<modules>`，共 10 个）
+### Maven 模块（根 `pom.xml` 的 `<modules>`，共 11 个）
 
 ```
 yunxi-agent-platform/
@@ -16,9 +16,12 @@ yunxi-agent-platform/
 ├── yunxi-ingress           # 传输适配器与统一入口网关（聚合 web / A2A / AG-UI / Chat Completions 四协议）
 ├── yunxi-fabric            # aistio 控制面 / 数据面接入 + 分布式运行时后端接线
 ├── yunxi-intelligence       # 意图路由（关键词规则，`yunxi.intent.rules` 配置化）+ MUSE 技能自进化引擎
+├── yunxi-a2ui              # A2UI 生成式 UI 协议适配层（默认关闭、显式启用）
 ├── yunxi-app               # 可执行应用打包（统一入口，端口 40001）
 └── yunxi-integration-test  # 跨模块集成测试
 ```
+
+> **构建前置**：`yunxi-a2ui` 依赖独立仓库 [`a2ui4j`](https://gitcode.com/chenyao813/a2ui4j) 的 `io.a2ui4j:a2ui4j-core` / `a2ui4j-catalog:1.0.0-SNAPSHOT`。该 SNAPSHOT 未发布到任何公共 Maven 仓库（Central / 阿里云 public 均 404），新环境必须先克隆 a2ui4j 并执行 `mvn clean install -DskipTests` 装到本地仓库，否则 `yunxi-a2ui` 模块依赖解析失败、全 reactor 构建中止。详见 [02. 快速开始 · 获取 yunxi](./02-quickstart.md#1-克隆项目)。
 
 ### 附属工程（非 Maven 模块，独立构建）
 
@@ -37,7 +40,8 @@ yunxi-definition → yunxi-config → yunxi-capability → yunxi-intelligence �
                                 yunxi-observability（独立，被 capability / runtime 依赖）
 yunxi-ingress  ──► yunxi-runtime
 yunxi-fabric   ──► yunxi-runtime
-yunxi-app      ──►（聚合全部平面 + 启动入口）
+yunxi-app      ──► yunxi-runtime / yunxi-ingress / yunxi-fabric / yunxi-intelligence / yunxi-a2ui（聚合全部平面 + 启动入口）
+yunxi-a2ui     ──► yunxi-runtime + a2ui4j-core / a2ui4j-catalog（外部 SNAPSHOT，构建前置见上文）
 ```
 
 ---

@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -24,6 +25,7 @@ import static org.mockito.Mockito.times;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,6 +37,7 @@ import ch.qos.logback.core.read.ListAppender;
 import org.slf4j.LoggerFactory;
 
 import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.state.ConflictPolicy;
@@ -366,6 +369,83 @@ class AgentConfigurerTest {
                 "声明的沙箱 Agent 须保留 execute 工具（在容器内执行）");
     }
 
+    // ---- 生成参数透传（generate.extra-body → GenerateOptions.additionalBodyParams）----
+
+    @Test
+    void configure_withGenerateExtraBody_passesThroughToAgent() {
+        // 定义平面 generate.extra-body 翻译为框架 GenerateOptions.additionalBodyParams，经模型
+        // Provider 透传到推理服务（如 DashScope enable_thinking=false 关思考）；键值原样透传不解释。
+        AgentSpec spec = new AgentSpec(
+                new AgentSpec.Identity("agent-gen", "Gen Agent", "generate passthrough"),
+                null, null, null, null, null, new AgentSpec.SubagentsConfig(List.of()),
+                null, null, null, null, null,
+                new AgentSpec.GenerateConfig(Map.of("enable_thinking", false)));
+        DistributedStore store = buildStore();
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, store);
+
+        HarnessAgent agent = newConfigurer().configure(spec);
+
+        GenerateOptions options = agent.getDelegate().getGenerateOptions();
+        assertNotNull(options, "声明 generate.extra-body 后须设置 GenerateOptions");
+        assertEquals(Boolean.FALSE, options.getAdditionalBodyParams().get("enable_thinking"),
+                "extra-body 须原样进入 additionalBodyParams");
+    }
+
+    @Test
+    void configure_withoutGenerateConfig_keepsFrameworkDefaults() {
+        // 未声明 generate 段的既有 Agent 零迁移：不设置 GenerateOptions（思考等行为=框架/模型默认）。
+        AgentSpec spec = sampleSpec();
+        DistributedStore store = buildStore();
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, store);
+
+        HarnessAgent agent = newConfigurer().configure(spec);
+
+        assertNull(agent.getDelegate().getGenerateOptions(),
+                "未声明 generate 须保持框架默认（不设 GenerateOptions）");
+    }
+
+    // ---- MUSE 元工具门控（与技能边界同源判定）----
+
+    @Test
+    void configure_skillModeNone_registersNoMuseTools() {
+        // 纯业务 Agent（知识内置、无法加载动态技能）不注册任何 MUSE 元工具：写类工具无消费场景，
+        // 只读 eval 是幻觉诱饵（实证：与业务工具名相近即诱发误调用，白耗一整轮推理）。
+        AgentSpec spec = specWithSkill(AgentSpec.SkillMode.NONE, List.of());
+        DistributedStore store = buildStore();
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, store);
+        MuseToolRegistrar registrar = mock(MuseToolRegistrar.class);
+
+        AgentConfigurer configurer = stubObjectProviders(new AgentConfigurer(
+                configCenter, mcpDirectory, routingPolicy, modelFactory, distributedRuntimeConfig,
+                specValidator, List.of(), List.of(registrar), List.of(), eventPublisher, List.of(),
+                new SessionToolGroupRegistry(), new PermissionTemplateResolver(), new MemoryProperties(),
+                ".agentscope/workspace/skills", new TenantConfig(false, "default")));
+        configurer.configure(spec);
+
+        verify(registrar, never()).registerTools(any());
+    }
+
+    @Test
+    void configure_skillCapableAgent_registersMuseTools() {
+        AgentSpec spec = sampleSpec();
+        DistributedStore store = buildStore();
+        stubCollaborators(spec, configCenter, routingPolicy, modelFactory,
+                distributedRuntimeConfig, specValidator, store);
+        MuseToolRegistrar registrar = mock(MuseToolRegistrar.class);
+
+        AgentConfigurer configurer = stubObjectProviders(new AgentConfigurer(
+                configCenter, mcpDirectory, routingPolicy, modelFactory, distributedRuntimeConfig,
+                specValidator, List.of(), List.of(registrar), List.of(), eventPublisher, List.of(),
+                new SessionToolGroupRegistry(), new PermissionTemplateResolver(), new MemoryProperties(),
+                ".agentscope/workspace/skills", new TenantConfig(false, "default")));
+        configurer.configure(spec);
+
+        verify(registrar, times(1)).registerTools(any());
+    }
+
     // ---- 缺口 A：技能选择（SkillConfig → SkillFilter）判定矩阵 ----
     // 默认 configurer 的 museToolRegistrars 为空（MUSE 未启用）；WHITELIST + MUSE 启用的降级分支见
     // yunxi-intelligence 模块测试（该分支需注入非空 MuseToolRegistrar，而 yunxi-runtime 不依赖 intelligence）。
@@ -456,31 +536,31 @@ class AgentConfigurerTest {
         assertTrue(plan.filter().isAllowed("other"), "其余技能须保留");
     }
 
-    // ---- 缺口 P4：零技能 Agent 摘除 MUSE 写类工具（allowMuseWriteTools 与技能边界判定同源） ----
+    // ---- 缺口 P4：零技能 Agent 摘除 MUSE 元工具（allowMuseTools 与技能边界判定同源） ----
 
     @Test
-    void allowMuseWrite_none_disabled() {
-        assertFalse(newConfigurer().allowMuseWriteTools(specWithSkill(AgentSpec.SkillMode.NONE, List.of())),
-                "NONE 零技能 Agent 不可挂载写类工具（写出的技能自己加载不了）");
+    void allowMuse_none_disabled() {
+        assertFalse(newConfigurer().allowMuseTools(specWithSkill(AgentSpec.SkillMode.NONE, List.of())),
+                "NONE 零技能 Agent 整组不挂载 MUSE 元工具（写类无消费场景，只读 eval 是幻觉诱饵）");
     }
 
     @Test
-    void allowMuseWrite_emptyListBackwardCompatible_disabled() {
-        assertFalse(newConfigurer().allowMuseWriteTools(specWithSkill(null, List.of())),
-                "空列表向后兼容 NONE，不可挂载写类工具");
+    void allowMuse_emptyListBackwardCompatible_disabled() {
+        assertFalse(newConfigurer().allowMuseTools(specWithSkill(null, List.of())),
+                "空列表向后兼容 NONE，整组不挂载 MUSE 元工具");
     }
 
     @Test
-    void allowMuseWrite_all_enabled() {
-        assertTrue(newConfigurer().allowMuseWriteTools(specWithSkill(AgentSpec.SkillMode.ALL, List.of("x"))),
-                "ALL 可加载动态技能，飞轮成立，允许写工具");
+    void allowMuse_all_enabled() {
+        assertTrue(newConfigurer().allowMuseTools(specWithSkill(AgentSpec.SkillMode.ALL, List.of("x"))),
+                "ALL 可加载动态技能，飞轮成立，挂载 MUSE 元工具组");
     }
 
     @Test
-    void allowMuseWrite_blacklist_enabled() {
-        assertTrue(newConfigurer().allowMuseWriteTools(
+    void allowMuse_blacklist_enabled() {
+        assertTrue(newConfigurer().allowMuseTools(
                 specWithSkill(AgentSpec.SkillMode.BLACKLIST, List.of("code-reviewer"))),
-                "BLACKLIST 可加载动态技能，允许写工具");
+                "BLACKLIST 可加载动态技能，挂载 MUSE 元工具组");
     }
 
     // ---- builtin-export-dir 覆盖场景的工作区根对齐 ----

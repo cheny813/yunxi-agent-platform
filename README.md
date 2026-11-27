@@ -55,9 +55,10 @@ yunxi Agent Platform 是一个**企业级多智能体协作平台**，构建于�
 
 ## 快速开始
 
-MCP 服务来自独立的 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) 仓库（可选），需与本项目放在**同级目录**（脚本默认从此推导路径）：
+有两项来自独立仓库，其中 a2ui4j 是**构建必需项**（`yunxi-app` 经 `yunxi-a2ui` 传递依赖它，且 `1.0.0-SNAPSHOT` 未发布到任何公共 Maven 仓库——Central / 阿里云 public 均 404；不克隆并 install 则 `mvn clean install` 在 `yunxi-a2ui` 模块解析依赖失败）：
 
-- [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) — 30+ 个 MCP 服务模块（Java 进程，可选；不启用时平台仍可正常启动与对话）
+- [`a2ui4j`](https://gitcode.com/chenyao813/a2ui4j) — **必选**，A2UI v1.0 协议库（`io.a2ui4j:a2ui4j-core` / `a2ui4j-catalog`，`1.0.0-SNAPSHOT`），克隆到任意目录后先执行 `mvn clean install -DskipTests` 安装到本地 Maven 仓库
+- [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/yunxi-mcp-servers) — 可选，30+ 个 MCP 服务模块（Java 进程），需与本项目放在**同级目录**（脚本默认从此推导路径）；不启用时平台仍可正常启动与对话
 - aistio 管控面以 **AgentScope-Java 官方 Docker 镜像**提供（见下文「启用 aistio 管控面」），无需克隆任何源码仓
 
 ### 环境要求
@@ -67,8 +68,15 @@ JDK 17+ · Maven 3.8+ · Docker Desktop（基础设施与 aistio，基础对话�
 ### 第一步：获取 yunxi
 
 ```bash
+# 1) 先装 a2ui4j（构建必需，SNAPSHOT 不在公共仓库）
+git clone https://gitcode.com/chenyao813/a2ui4j.git
+cd a2ui4j && mvn clean install -DskipTests && cd ..
+
+# 2) 再装 yunxi
 git clone https://gitcode.com/chenyao813/yunxi-agent-platform.git
 cd yunxi-agent-platform
+
+# 3) MCP 服务（可选）
 git clone https://gitcode.com/chenyao813/yunxi-mcp-servers.git ../yunxi-mcp-servers
 ```
 
@@ -91,16 +99,20 @@ MCP 服务来自独立的 [`yunxi-mcp-servers`](https://gitcode.com/chenyao813/y
 
 ### 第四步：配置大模型（DashScope 密钥）
 
-平台默认路由到阿里云 DashScope 的 `qwen3.8-27b`，模型清单与路由在 `yunxi-config/src/main/resources/config/models.yml` 的 `yunxi.models` 段调整。密钥通过环境变量 `DASHSCOPE_API_KEY` 注入（仓库不含任何密钥）。该变量**非强制**：缺失时后端仍能启动，仅对话会失败。
+平台默认对话模型为 `yunxi-config/src/main/resources/config/models.yml` 中 `catalog.qwen3`（当前指向 `deepseek-v4.1-flash-1017`，经 DashScope OpenAI 兼容端点调用），`defaults.llm` 与 Agent 定义的 `primary` 均指向该键；模型清单与路由在 `yunxi.models` 段调整。密钥通过环境变量 `DASHSCOPE_API_KEY` 注入（仓库不含任何密钥；`start-yunxi.ps1` 同时把它映射为 `OPENAI_API_KEY` 并设定 `OPENAI_BASE_URL` 指向兼容端点）。该变量**非强制**：缺失时后端仍能启动，仅对话会失败。
 
 启动时有两种填法，二选一：
 
-- **由启动脚本交互提示（推荐）**：直接运行 `.\start-yunxi.ps1`。若未设置 `DASHSCOPE_API_KEY`，脚本会暂停并提示 `请输入 DASHSCOPE_API_KEY`，在此粘贴真实密钥即可（直接回车留空也能继续，仅对话失败）。
-- **预先设置环境变量**：运行脚本前手动赋值，脚本检测到已设置便跳过提示：
+- **脚本参数传入（推荐）**：`.\start-yunxi.ps1 -DashscopeKey "sk-你的真实Key"`。脚本仅在当前进程内注入，不落地、不持久化。
+- **直接运行脚本（内置 dev key）**：`.\start-yunxi.ps1`。脚本内置一个仅供本地体验的 dev key，**不读取**系统/用户作用域中预置的 `DASHSCOPE_API_KEY` 旧值（避免残留旧值劫持请求）；真实调用请用上面的 `-DashscopeKey` 参数。
+
+> 若**不用脚本**、手动 `mvn spring-boot:run`，则需自行设置环境变量：
 
 ```powershell
 $env:DASHSCOPE_API_KEY = "sk-你的真实Key"
-.\start-yunxi.ps1
+$env:OPENAI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+$env:OPENAI_API_KEY = $env:DASHSCOPE_API_KEY
+mvn spring-boot:run -pl yunxi-app
 ```
 
 切换其它厂商（OpenAI / 百度 / 华为）：在 `yunxi.models.catalog` 新增对应 `provider` 条目并把 `defaults.llm` 指向它；各 Provider 的 `*_API_KEY` 仍经环境变量注入。
@@ -274,6 +286,7 @@ $env:YUNXI_AISTIO_INTERNAL_TOKEN = "compose-local-internal-token-at-least-32char
 | **yunxi-ingress** | 统一接入网关：聚合 web / A2A / AG-UI / Chat Completions 四协议 | Spring Boot Web, AgentScope-Java 协议 Starter |
 | **yunxi-fabric** | aistio 管控面集成（注册、gRPC 对话流、编排触发器、契约与治理、任务接活），默认关闭 | AgentScope-Java aistio 扩展 |
 | **yunxi-intelligence** | 智能意图识别（四段式管线：归一化/槽位 → 候选收窄 → 本地决策模型闭集分类 → 决策融合降级）+ MUSE 自进化引擎 | agentscope, Java 子进程沙箱 |
+| **yunxi-a2ui** | A2UI 生成式 UI 协议适配层：把 a2ui4j catalog prompt 经框架原生扩展点注入 Agent，解析并校验模型响应中的 A2UI 块后分发给宿主；默认关闭、显式启用 | a2ui4j, agentscope-core |
 | **yunxi-app** | 启动入口：整合所有平面（端口 40001） | Spring Boot |
 | **yunxi-integration-test** | 集成测试 | JUnit, Testcontainers |
 | **yunxi-nutritionist-web** | 参考业务前端模块（营养师业务），对应平台 nutritionist Agent，演示如何基于平台 API 构建 Web 应用 | Vite |

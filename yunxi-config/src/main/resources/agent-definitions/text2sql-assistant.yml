@@ -9,7 +9,7 @@
 # 并注册进 AgentRegistry。identity.description 作为系统提示词。
 #
 # 模型：未显式声明路由，沿用全局「自动选型」（AutoModelProvider 按任务动态选最便宜且满足能力的模型），
-# 候选池耗尽时兜底 qwen3-8-27b（见 config/models.yml 的 defaults.llm）。
+# 候选池耗尽时兜底 qwen3（见 config/models.yml 的 defaults.llm）。
 #
 # 前提（开箱即用两步）：
 #   1. 先启动 mcp-text2sql 服务（yunxi-mcp-servers/mcp-text2sql，端口 40110，需配置 DB_HOST/DB_NAME/

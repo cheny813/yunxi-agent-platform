@@ -10,7 +10,7 @@
 # 桥接：加载后经 AgentProvisioner 在启动期调 AgentConfigurer.configure 构建可运行 HarnessAgent
 # 并注册进框架协议层 AguiAgentRegistry / A2aServerRegistry。identity.description 作为系统提示词
 # （AgentConfigurer.sysPromptOf 取 identity.description）。模型经 ModelRoutingPolicy 按
-# identity.agentId 路由（默认装配已为 example-assistant 注册 qwen3-8-27b 远程主模型，兜底 qwen-plus）。
+# identity.agentId 路由（默认装配已为 example-assistant 注册 qwen3 远程主模型，兜底 qwen-plus）。
 
 identity:
   agentId: example-assistant        # 必填，Agent 唯一标识；同时作为 ModelRoutingPolicy 的路由键

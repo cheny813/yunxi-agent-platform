@@ -95,6 +95,58 @@ class AgentSpecYamlReaderTest {
                 """));
     }
 
+    @Test
+    void parsesA2uiDeclaration() throws IOException {
+        AgentSpec spec = read(MINIMAL + """
+                a2ui:
+                  enabled: true
+                """);
+
+        assertTrue(spec.a2ui() != null && spec.a2ui().enabled(),
+                "声明 a2ui.enabled: true 须解析为启用");
+    }
+
+    @Test
+    void a2uiOmittedStaysNullForZeroMigration() throws IOException {
+        // 未声明 a2ui 段的既有定义文件零迁移：解析为 null，装配点按关闭处理。
+        assertTrue(read(MINIMAL).a2ui() == null);
+    }
+
+    @Test
+    void misspelledA2uiKeyFailsWithSuggestion() {
+        // enable 拼错等价于整段失效——模型不会被注入协议说明，功能静默消失。
+        IOException error = assertThrows(IOException.class, () -> read(MINIMAL + """
+                a2ui:
+                  enable: true
+                """));
+
+        String message = error.getMessage();
+        assertTrue(message.contains("enable"), "须点名写错的字段：" + message);
+        assertTrue(message.contains("是否想写 'enabled'"), "须给出应改成的字段名：" + message);
+    }
+
+    @Test
+    void parsesGenerateExtraBody() throws IOException {
+        // generate.extra-body 是到推理服务的透传地图（如 DashScope enable_thinking），
+        // 逐键解析为 AgentSpec.generate()，由装配点翻译为框架 GenerateOptions.additionalBodyParams。
+        AgentSpec spec = read(MINIMAL + """
+                generate:
+                  extraBody:
+                    enable_thinking: false
+                """);
+
+        assertTrue(spec.generate() != null && spec.generate().extraBody() != null,
+                "generate.extra-body 须解析为非空配置");
+        assertEquals(Boolean.FALSE, spec.generate().extraBody().get("enable_thinking"),
+                "extra-body 键值须原样保留（不解释语义）");
+    }
+
+    @Test
+    void generateOmittedStaysNull() throws IOException {
+        // 未声明 generate 段的既有定义文件零迁移：解析为 null，装配点按框架默认（思考开启）处理。
+        assertTrue(read(MINIMAL).generate() == null);
+    }
+
     private static AgentSpec read(String yaml) throws IOException {
         try (InputStream in = new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8))) {
             return AgentSpecYamlReader.read(in);

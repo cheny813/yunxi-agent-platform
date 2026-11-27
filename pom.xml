@@ -30,6 +30,8 @@
         <!-- IM 渠道旧版扩展（wecom / feishu / github / gitlab / weixin）：与 BOM 锁定的 dingtalk
              2.1.0-BETA1 跨版本共存，版本收敛于此属性，模块不再散落硬编码。 -->
         <agentscope-channel-legacy.version>2.0.4</agentscope-channel-legacy.version>
+        <!-- A2UI 协议库版本：与 a2ui4j 实现的 A2UI 协议 v1.0 对齐，全仓唯一声明。 -->
+        <a2ui4j.version>1.0.0-SNAPSHOT</a2ui4j.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -43,6 +45,7 @@
         <module>yunxi-fabric</module>
         <module>yunxi-intelligence</module>
         <module>yunxi-app</module>
+        <module>yunxi-a2ui</module>
         <module>yunxi-integration-test</module>
     </modules>
 
@@ -67,7 +70,14 @@
             <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-fabric</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-intelligence</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-app</artifactId><version>${project.version}</version></dependency>
+            <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-a2ui</artifactId><version>${project.version}</version></dependency>
             <dependency><groupId>io.yunxi</groupId><artifactId>yunxi-integration-test</artifactId><version>${project.version}</version></dependency>
+            <!-- A2UI 协议库：版本由 a2ui4j.version 属性唯一锁定。 -->
+            <dependency><groupId>io.a2ui4j</groupId><artifactId>a2ui4j-core</artifactId><version>${a2ui4j.version}</version></dependency>
+            <dependency><groupId>io.a2ui4j</groupId><artifactId>a2ui4j-catalog</artifactId><version>${a2ui4j.version}</version></dependency>
+            <!-- json-schema-validator：交由 Spring Boot BOM 管理（2.0.x）。
+                 版本冲突背景：agentscope-core 的 ToolValidator 与 a2ui4j 的 SpecSchemaValidator
+                 均基于 networknt 2.x API（SpecificationVersion），1.x 会致运行时 ClassNotFound。 -->
 
             <!-- Lombok：编译期注解处理（provided 作用域，不打包进运行时构件）。 -->
             <dependency>
@@ -91,6 +101,9 @@
             <dependency><groupId>com.alibaba.nacos</groupId><artifactId>nacos-client</artifactId><version>3.2.4</version></dependency>
             <!-- 框架真实大模型 provider：显式锁定为 BOM 同源版本，消除 runtime(旧 2.0.4) 与 integration-test 的版本漂移。 -->
             <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-model-dashscope</artifactId><version>${agentscope.version}</version></dependency>
+            <!-- OpenAI 兼容 provider：框架原生 OpenAIModelProvider，承载只提供 OpenAI 兼容端点的
+                 模型（经 OPENAI_BASE_URL / OPENAI_API_KEY 注入），与 dashscope 原生端点互补。 -->
+            <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-model-openai</artifactId><version>${agentscope.version}</version></dependency>
             <!-- IM 渠道旧版扩展：与 BOM 的 dingtalk（2.1.0-BETA1）跨版本共存，统一锁定为 2.0.4。 -->
             <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-channel-wecom</artifactId><version>${agentscope-channel-legacy.version}</version></dependency>
             <dependency><groupId>io.agentscope</groupId><artifactId>agentscope-extensions-channel-feishu</artifactId><version>${agentscope-channel-legacy.version}</version></dependency>

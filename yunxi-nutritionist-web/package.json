@@ -11,5 +11,9 @@
   },
   "devDependencies": {
     "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "@a2ui/web_core": "^0.16.1",
+    "@macroui/a2ui": "^1.0.1"
   }
 }

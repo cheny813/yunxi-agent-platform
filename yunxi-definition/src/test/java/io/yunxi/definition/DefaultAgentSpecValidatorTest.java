@@ -3,7 +3,9 @@ package io.yunxi.definition;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -186,5 +188,38 @@ class DefaultAgentSpecValidatorTest {
                 new AgentSpec.SandboxConfig("podman", null, null, null, null, null,
                         null, null, null, "SESSION", null));
         assertFalse(validator.validate(spec).valid(), "非法沙箱后端（podman）须被拒绝");
+    }
+
+    @Test
+    void validGenerateExtraBody_passes() {
+        AgentSpec spec = new AgentSpec(
+                new AgentSpec.Identity("agent-gen", "Gen Agent", "d"),
+                null, null, null, whitelist("memory"), null,
+                new AgentSpec.SubagentsConfig(List.of()),
+                null, null, null, null, null,
+                new AgentSpec.GenerateConfig(Map.of("enable_thinking", false)));
+
+        assertTrue(validator.validate(spec).valid(),
+                "合法的 generate.extra-body 不应导致非法");
+    }
+
+    @Test
+    void blankExtraBodyKeyOrNullOrNullValue_rejected() {
+        // extra-body 逐键透传到推理服务请求体：空白键/空值是「配了但没生效」，null 值会把无效载荷
+        // 打进请求体，都须在定义期拒绝，而不是运行期悄悄发一个畸形字段。
+        Map<String, Object> bad = new LinkedHashMap<>();
+        bad.put(" ", false);
+        bad.put("enable_thinking", null);
+        AgentSpec spec = new AgentSpec(
+                new AgentSpec.Identity("agent-gen", "Gen Agent", "d"),
+                null, null, null, whitelist("memory"), null,
+                new AgentSpec.SubagentsConfig(List.of()),
+                null, null, null, null, null,
+                new AgentSpec.GenerateConfig(bad));
+
+        AgentSpec.ValidationResult result = validator.validate(spec);
+        assertFalse(result.valid(), "空白键或 null 值的 extra-body 条目须被拒绝");
+        assertTrue(result.errors().stream().anyMatch(e -> e.contains("generate.extra-body")),
+                result.errors().toString());
     }
 }

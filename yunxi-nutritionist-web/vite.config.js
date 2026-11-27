@@ -24,11 +24,20 @@ const DEV_BASIC = 'Basic ' + Buffer.from(`${UI_USER}:${UI_PASSWORD}`).toString('
 export default defineConfig({
   root: '.',
   resolve: {
-    alias: {
+    // 数组形式 + 正则精确匹配：避免 '@a2ui/web_core' 前缀先命中把子路径拼错。
+    alias: [
       // 公共前端 SDK 层（单一源：yunxi-agent-platform/agent-web-sdk）
       // dev 与 build 均经此 alias 解析，避免跨 root 被 Rollup 拒绝
-      '@web-sdk': resolve(__dirname, '../agent-web-sdk/src'),
-    },
+      { find: '@web-sdk', replacement: resolve(__dirname, '../agent-web-sdk/src') },
+      // SDK 源码共享层的第三方依赖由本产品（消费方）安装：SDK 文件位于兄弟目录，
+      // Node 解析从该文件位置向上找不到产品侧 node_modules，故显式指向包入口文件。
+      // 子路径按包 exports 映射到实际文件（alias 不读取 exports，须写精确路径）。
+      { find: /^@a2ui\/web_core$/, replacement: resolve(__dirname, 'node_modules/@a2ui/web_core/src/index.js') },
+      { find: /^@a2ui\/web_core\/catalogs\/basic\/v1$/, replacement: resolve(__dirname, 'node_modules/@a2ui/web_core/src/catalogs/basic/v1/index.js') },
+      // @macroui/a2ui：SDK 源码共享层的另一第三方依赖，同样由本产品安装
+      { find: /^@macroui\/a2ui$/, replacement: resolve(__dirname, 'node_modules/@macroui/a2ui/dist/a2ui.mjs') },
+      { find: /^@macroui\/a2ui\/css$/, replacement: resolve(__dirname, 'node_modules/@macroui/a2ui/dist/a2ui.css') },
+    ],
   },
   server: {
     port: 5173,

@@ -51,7 +51,10 @@ class ArchitectureAuthorityTest {
                 + "|属于" + "冗余|撤销" + "自建|并非" + "重复实现|须另" + "行复核");
         Set<String> skipDirs = Set.of("legacy", "docs", "target", "tmp", ".git", "node_modules",
                 "build-out", "openspec", ".idea", ".vscode", ".agentscope", ".codebuddy", ".repowise",
-                "builtin-skills");
+                "builtin-skills",
+                // 构建产物（均已被 .gitignore 忽略、不进发布包）：前端打包输出等为压缩生成物，
+                // 不是可发布源码，扫描只会产生噪音命中（如压缩 JS 中的随机字符串撞上标记词）。
+                "dist");
         Set<String> allowedExt = Set.of(".java", ".xml", ".yml", ".yaml", ".properties", ".json",
                 ".ps1", ".bat", ".sh", ".sql", ".ts", ".js", ".html", ".css", ".md");
         List<String> violations = new ArrayList<>();

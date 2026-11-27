@@ -41,7 +41,7 @@ class ConversationControllerForwardingTest {
         ObjectProvider<ShardForwarder> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(resolver);
         return new ConversationController(ingressGateway, protocolUserIdResolver, tenantResolver,
-                tenantConfig, provider);
+                tenantConfig, provider, new A2uiStreamProcessor(), new MacroDslStreamProcessor());
     }
 
     @Test
@@ -64,7 +64,8 @@ class ConversationControllerForwardingTest {
     @Test
     void noForwarderFallsThroughToLocal() {
         ConversationController local = new ConversationController(ingressGateway, protocolUserIdResolver,
-                tenantResolver, tenantConfig, mock(ObjectProvider.class));
+                tenantResolver, tenantConfig, mock(ObjectProvider.class), new A2uiStreamProcessor(),
+                new MacroDslStreamProcessor());
         ConversationRequest req = new ConversationRequest();
         req.setText("hi");
         ConversationResponse localResp = new ConversationResponse("a", "s", "local-reply", Settle.Status.OK, null);

@@ -10,6 +10,7 @@ import io.agentscope.extensions.jdbc.skill.JdbcAgentSkillRepository;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.ReActAgent;
+import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.model.ToolSchema;
 import io.agentscope.core.tool.Toolkit;
@@ -376,6 +377,18 @@ public class AgentConfigurer {
         builder.compaction(toCompactionConfig(memoryProperties))
                 .memory(toMemoryConfig(memoryProperties));
 
+        // 生成参数透传：定义平面 generate.extra-body 翻译为框架 GenerateOptions.additionalBodyParams，
+        // 经模型 Provider 拼入推理服务请求体（如 DashScope enable_thinking=false 关思考，提速省 token）。
+        // 缺省不设置 = 框架与模型默认（思考型模型保持思考），按 Agent 粒度声明、不全局一刀切。
+        AgentSpec.GenerateConfig generateConfig = spec.generate();
+        if (generateConfig != null
+                && generateConfig.extraBody() != null
+                && !generateConfig.extraBody().isEmpty()) {
+            builder.generateOptions(GenerateOptions.builder()
+                    .additionalBodyParams(generateConfig.extraBody())
+                    .build());
+        }
+
         // 子 Agent 接线：定义平面声明翻译为框架 SubagentDeclaration，由 HarnessAgent 构建期自动挂上能力。
         configureSubagents(spec, builder);
 
@@ -583,7 +596,7 @@ public class AgentConfigurer {
             declaration.skills(source.skills());
         }
         if (source.maxIters() != null) {
-            declaration.maxIters(source.maxIters());
+            declaration.steps(source.maxIters());
         }
         if (source.steps() != null) {
             declaration.steps(source.steps());
@@ -686,11 +699,14 @@ public class AgentConfigurer {
             }
         }
         // MUSE 自进化元工具（muse 工具组）。仅当 yunxi.muse.enabled=true 时存在实现，
-        // 未启用则列表为空，对未启用 MUSE 的 Agent 零侵入。写类工具（evolve/prune）仅在 Agent 能加载自己
-        // 写出的技能时才挂载（与技能边界判定同源），零技能 Agent 仅保留只读评估工具 eval。
-        boolean allowMuseWrite = allowMuseWriteTools(spec);
-        for (MuseToolRegistrar registrar : museToolRegistrars) {
-            registrar.registerTools(toolkit, allowMuseWrite);
+        // 未启用则列表为空，对未启用 MUSE 的 Agent 零侵入。与技能边界同源判定：无法加载动态技能的
+        // Agent（disableDefault）不注册任何 MUSE 元工具——写类工具无消费场景，只读评估工具 eval 对
+        // 纯业务 Agent 是幻觉诱饵（与业务工具名相近即诱发误调用，白耗一整轮推理，实证事故）；评估属
+        // 自进化闭环事务，由带技能能力的 Agent 或 SelfEvolutionEngine 后台驱动。
+        if (allowMuseTools(spec)) {
+            for (MuseToolRegistrar registrar : museToolRegistrars) {
+                registrar.registerTools(toolkit);
+            }
         }
         // RAG 知识库检索工具（rag 工具组）。仅当 yunxi.rag.enabled=true 时存在实现，
         // 未启用则列表为空，对未启用 RAG 的 Agent 零侵入。检索经自研 @Tool 注入 toolkit，
@@ -784,13 +800,18 @@ public class AgentConfigurer {
     }
 
     /**
-     * 判定本 Agent 是否允许挂载 MUSE 写类元工具（evolve / prune）。
+     * 判定本 Agent 是否允许挂载 MUSE 元工具（整个 muse 工具组：muse_skill_eval / evolve / prune）。
      *
-     * <p>「写技能」的前提是「该 Agent 能加载自己写出的技能」，否则写出来自己用不了、纯属噪音。与技能边界
-     * 同源判定：仅 {@code disableDefault}（NONE / 空列表向后兼容）场景禁止写工具，其余（ALL / BLACKLIST /
-     * 白名单降级 BLACKLIST）均可加载动态技能，飞轮成立。</p>
+     * <p>挂载的前提是「该 Agent 能加载动态技能」（含自己写出的技能），否则整套元工具没有消费场景：
+     * 写类工具（evolve / prune）写出来自己用不了，只读评估工具 eval 对纯业务 Agent 只会诱发与业务
+     * 工具名相近的幻觉调用（实证事故：白耗一整轮推理）。与技能边界同源判定：仅 {@code disableDefault}
+     * （NONE / 空列表向后兼容）场景整组不挂载，其余（ALL / BLACKLIST / 白名单降级 BLACKLIST）均可加载
+     * 动态技能，飞轮成立。</p>
+     *
+     * <p>这是整个 muse 工具组的<b>唯一</b>挂载闸门：不提供「只挂只读工具」的部分注册——同一横切关切
+     * 只允许一个判定点，部分注册的降级语义已随死代码删除。</p>
      */
-    boolean allowMuseWriteTools(AgentSpec spec) {
+    boolean allowMuseTools(AgentSpec spec) {
         return !resolveSkillSelection(spec).disableDefault();
     }
 

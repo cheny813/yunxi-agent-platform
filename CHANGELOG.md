@@ -27,6 +27,8 @@
   - 回滚路径：`strategy=keyword` 一键回退纯关键词路由（零模型调用）；关键词规则新增 `targets` 显式目标映射（修正旧实现"命中也回落默认 Agent"的缺陷）。
 - **分类卡片显式声明（`AgentSpec.intent.hint`）**：定义平面可选声明一句话职责卡片，意图分类时优先于从 `identity.description` 自动派生的首句卡片；旧 YAML 不声明 `intent` 段零迁移。
 - **JEV 云端判定（可选增强，`classifier.impl=jev`）**：复用框架 `agentscope-extensions-jev` 类型化契约（`ChoiceQuestion` 闭集单选 + 概率分布），候选卡片即选项、`unknown` 为闭集兜底项；云端 Key（`TYPESAFE_API_KEY` / `JEV_API_KEY`）缺失、调用失败或选择越出闭集时自动回落本地决策模型，降级链路不变。默认仍为 `impl=local`（无数据外发）。
+- **Agent 生成参数透传（`AgentSpec.generate.extraBody`）**：定义平面可选声明逐键透传到推理服务请求体的扩展字段（键值原样进入框架 `GenerateOptions.additionalBodyParams`，经模型 Provider 拼入请求体），如 DashScope 兼容端点 `enable_thinking: false` 关思考——配餐 / 格式化生成类任务可省一半以上单轮耗时与思考输出 token；缺省（不声明 `generate` 段）为框架默认，按 Agent 粒度声明、不全局一刀切。校验器守护形状（键非空白、值非 null），键值语义由目标服务解释。
+- **MUSE 元工具门控与技能边界收敛**：无法加载动态技能的 Agent（`skill.skillMode: NONE`，知识内置的纯业务 Agent）整组不注册 MUSE 元工具（含只读评估工具 `muse_skill_eval`）——评估属自进化闭环事务，对这类 Agent 无消费场景，只读暴露只会诱发与业务工具名相近的幻觉调用（实证：与业务工具名相近即诱发误调用，白耗一整轮推理）；营养师定义显式声明 `skillMode: NONE` 并关思考。配套修复 `SkillEvalTool` 目录解析：缺省 `skill_dir` 按技能名解析到平台技能目录的技能子目录（评估沙箱以技能目录为 cwd，测试脚本相对路径才能命中），含路径穿越防护。
 
 ### 修复
 

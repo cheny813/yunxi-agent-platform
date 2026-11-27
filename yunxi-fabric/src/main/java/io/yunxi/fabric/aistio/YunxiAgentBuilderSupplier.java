@@ -64,8 +64,8 @@ public class YunxiAgentBuilderSupplier implements Supplier<HarnessAgent.Builder>
         }
         for (MuseToolRegistrar registrar : museToolRegistrars) {
             // 工作区 Agent 的技能由框架 HarnessWorkspaceAgentFactory 从工作区定义装配，本底座不持有单 Agent
-            // 技能模式判定，沿用「允许写类工具」语义（与改造前一致）。
-            registrar.registerTools(toolkit, true);
+            // 技能模式判定，整组挂载（是否挂载的判定由具备技能边界信息的装配点裁决）。
+            registrar.registerTools(toolkit);
         }
         HarnessAgent.Builder builder = HarnessAgent.builder().toolkit(toolkit);
         DistributedStore store = distributedRuntimeConfig.distributedStore();

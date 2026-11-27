@@ -1,0 +1,6 @@
+# A2UI 渲染协议全局开关（Agent 界面生成能力）。
+# per-Agent 声明（定义文件 a2ui 段）与本开关 OR 生效，判定位于 A2uiAgentBuildContributor 单点。
+yunxi:
+  agent:
+    a2ui:
+      enabled: false

@@ -129,7 +129,7 @@ public final class RedisMessageBus implements MessageBus {
                                                     .collectList()
                                                     .flatMap(ids -> reactiveTemplate
                                                             .opsForZSet()
-                                                            .remove(bk, ids.toArray(new String[0]))
+                                                            .remove(bk, ids.toArray(new Object[0]))
                                                             .thenReturn(0L)))
                                             .defaultIfEmpty(0L)
                                     : Mono.just(0L);

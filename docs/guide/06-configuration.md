@@ -170,7 +170,7 @@ yunxi:
         model: qwen-plus
         api-key-env: DASHSCOPE_API_KEY
         type: llm
-      qwen3-8-27b:
+      qwen3:
         provider: dashscope
         model: qwen3.8-27b
         api-key-env: DASHSCOPE_API_KEY
@@ -188,7 +188,7 @@ yunxi:
         primary: auto
         fallbacks: [qwen-plus]
     defaults:
-      llm: qwen3-8-27b
+      llm: qwen3
       decision: local-decision
       embedding: local-embedding
 ```
@@ -915,6 +915,20 @@ permission:                            # 必填
       - edit_file    # 文件编辑
 ```
 
+### 技能边界与生成参数（可选）
+
+```yaml
+skill:
+  skillMode: NONE     # 知识内置的纯业务 Agent 显式声明零技能：技能目录不再注入提示词（省每轮输入 token），
+                      # load_skill_through_path 不再注册，MUSE 元工具整组不挂载。
+                      # 缺省（不声明）= ALL，沿用框架默认；支持 NONE / ALL / WHITELIST / BLACKLIST。
+
+generate:
+  extraBody:          # 逐键透传到推理服务请求体，键值语义由目标服务解释，只做形状校验（键非空白、值非 null）
+    enable_thinking: false   # 如关思考：配餐、格式化生成类任务可省一半以上单轮耗时与思考输出 token
+                            # 缺省（不声明 generate 段）= 框架默认，思考型模型保持思考，按 Agent 粒度声明、不全局一刀切
+```
+
 ### 权限模式
 
 `permission` 段**必填**：缺失或写成空壳会让校验失败、定义不加载。不按"未配置即不限制"解释——漏写只能由代码替作者猜模式，猜成全拒（Agent 静默失去全部业务工具）或全放行（限制根本没生效）都不会报错。
@@ -941,9 +955,11 @@ permission:                            # 必填
 | 工具 | 用途 | 生效条件 |
 |------|------|----------|
 | `todo_write` | 任务清单（TodoList） | 始终放行 |
-| `muse_skill_eval` / `muse_skill_evolve` / `muse_skill_prune` | MUSE 自进化元工具 | `yunxi.muse.enabled: true` 时注册并放行 |
+| `muse_skill_eval` / `muse_skill_evolve` / `muse_skill_prune` | MUSE 自进化元工具 | `yunxi.muse.enabled: true` 且 Agent 具备技能能力（未声明 `skill.skillMode: NONE`）时注册并放行 |
 
 > 若业务 Agent 声明了 `permission.allowedTools` 白名单，白名单**只约束业务工具**；上表中的平台级工具在白名单之外仍被放行。
+>
+> **MUSE 门控**：无法加载动态技能的 Agent（`skill.skillMode: NONE`，即知识内置的纯业务 Agent）**整组不注册** MUSE 元工具（含只读评估工具）——评估属自进化闭环事务，对这类 Agent 无消费场景，只读暴露只会诱发与业务工具名相近的幻觉调用，白耗一整轮推理。
 
 ### 注意事项（易踩坑）
 

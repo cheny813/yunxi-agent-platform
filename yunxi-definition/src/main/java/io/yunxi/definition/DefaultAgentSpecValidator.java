@@ -87,8 +87,28 @@ public class DefaultAgentSpecValidator implements AgentSpecValidator {
                 errors.add("sandbox.snapshot.type must be 'noop' in v1");
             }
         }
+        validateGenerate(spec.generate(), errors);
 
         return errors.isEmpty() ? AgentSpec.ValidationResult.ok() : AgentSpec.ValidationResult.fail(errors);
+    }
+
+    /**
+     * generate.extra-body 形状门禁：条目逐键透传到推理服务请求体，空白键匹配不到任何服务端约定
+     * （「配了但没生效」），null 值会把无效载荷打进请求体。键值语义（如 enable_thinking 是否合法）
+     * 由目标服务解释，这里只守护形状，不解释含义。
+     */
+    private static void validateGenerate(AgentSpec.GenerateConfig generate, List<String> errors) {
+        if (generate == null || generate.extraBody() == null) {
+            return;
+        }
+        generate.extraBody().forEach((key, value) -> {
+            if (key == null || key.isBlank()) {
+                errors.add("generate.extra-body must not contain blank keys");
+            }
+            if (value == null) {
+                errors.add("generate.extra-body." + key + " must not have a null value");
+            }
+        });
     }
 
     /**

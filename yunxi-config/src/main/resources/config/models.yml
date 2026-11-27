@@ -12,15 +12,17 @@ yunxi:
     allow-local-llm: false
     catalog:
       # 远程对话 / 推理模型（DashScope，密钥经 DASHSCOPE_API_KEY 注入）。
-      qwen-plus:
-        provider: dashscope
-        model: qwen-plus
+      # qwen4-max 只提供 OpenAI 兼容端点：走框架原生 OpenAIModelProvider，
+      # base-url/key 由 OPENAI_BASE_URL / OPENAI_API_KEY 注入（见 start-yunxi.ps1）。
+      qwen3:
+        provider: openai
+        model: deepseek-v4.1-flash-1017
         api-key-env: DASHSCOPE_API_KEY
         type: llm
-      qwen3-8-27b:
-        provider: dashscope
-        model: qwen3.8-27b
-        api-key-env: DASHSCOPE_API_KEY
+      qwen4-max:
+        provider: openai
+        model: qwen4-max
+        api-key-env: OPENAI_API_KEY
         type: llm
       # 以下为本地 Ollama 模型（需本机已拉取且 ollama 服务在 OLLAMA_BASE_URL 默认 http://localhost:11434 可达）。
       # 模型名带 :latest 等标签时原样透传给 Ollama，无需去除冒号。
@@ -39,7 +41,7 @@ yunxi:
         type: embedding
       # 开发测试用阿里 DashScope 的 fast LLM；自动选型在能力满足时默认选成本档 cheap 的最便宜候选。
       qwen3.8-flash:
-        provider: dashscope
+        provider: openai
         model: qwen3.8-flash
         api-key-env: DASHSCOPE_API_KEY
         type: llm
@@ -48,7 +50,7 @@ yunxi:
         context-window: 131072
       # 多模态（图文 + 视频）对话 LLM，用于用户请求含图片 / 视频输入时的自动选型分支。
       qwen3.8-omni-flash:
-        provider: dashscope
+        provider: openai
         model: qwen3.8-omni-flash
         api-key-env: DASHSCOPE_API_KEY
         type: llm
@@ -57,7 +59,7 @@ yunxi:
         context-window: 131072
       # 多模态翻译（图文 + 多语）对话 LLM，用于多语言输入场景的自动选型分支。
       qwen-mt-uni:
-        provider: dashscope
+        provider: openai
         model: qwen-mt-uni
         api-key-env: DASHSCOPE_API_KEY
         type: llm
@@ -72,14 +74,17 @@ yunxi:
       example-assistant:
         primary: auto
         fallbacks:
-          - qwen-plus
+          - qwen3.8-max
       resident-nutrition-assistant:
-        primary: auto
+        # 显式绑定轻量对话模型：绕开 auto 自动选型的视觉分支（原生多模态端点免费额度耗尽 403）。
+        # 注意：qwen3.8-27b 免费额度已耗尽（403 FreeTierOnly），需在 DashScope 控制台
+        # 充值或关闭「仅用免费额度」模式后可用。
+        primary: qwen3
         fallbacks: []
     defaults:
       # defaults.llm 仅作为 AutoModelProvider 候选池耗尽时的最终兜底（见 ConfigurableModelRoutingPolicy.resolveAuto），
       # 不得设为 auto（否则 toFrameworkId("auto") 会抛异常）；保持为真实对话模型。
-      llm: qwen3-8-27b
+      llm: qwen3
       decision: local-decision
       embedding: local-embedding
     # 自动选型精排（可选增强）：开启后由本地决策模型对候选做二次排序；

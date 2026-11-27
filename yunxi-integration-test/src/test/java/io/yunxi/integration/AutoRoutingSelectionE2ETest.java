@@ -44,9 +44,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class AutoRoutingSelectionE2ETest {
 
     /** 纯文本请求预期选中的最便宜文本模型（catalog 中 cost-tier=cheap 的唯一项）。 */
-    private static final String TEXT_PRIMARY = "dashscope:qwen3.8-flash";
+    private static final String TEXT_PRIMARY = "openai:qwen3.8-flash";
     /** 含图 / 视频请求预期选中的多模态模型（同时具备 vision / video 能力）。 */
-    private static final String MULTIMODAL_PRIMARY = "dashscope:qwen3.8-omni-flash";
+    private static final String MULTIMODAL_PRIMARY = "openai:qwen3.8-omni-flash";
 
     private final RecordingModelFactory factory = new RecordingModelFactory();
     private final AutoModelProvider provider =

@@ -51,19 +51,25 @@ public class ConversationController {
     private final TenantResolver tenantResolver;
     private final TenantConfig tenantConfig;
     private final ObjectProvider<ShardForwarder> shardForwarder;
+    private final A2uiStreamProcessor a2uiStreamProcessor;
+    private final MacroDslStreamProcessor macroDslStreamProcessor;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 注入统一入口网关、身份归一解析器与多租户解析器。 */
+    /** 注入统一入口网关、身份归一解析器、多租户解析器与 A2UI 流末分流器。 */
     public ConversationController(IngressGateway ingressGateway,
             ProtocolUserIdResolver protocolUserIdResolver,
             TenantResolver tenantResolver,
             TenantConfig tenantConfig,
-            ObjectProvider<ShardForwarder> shardForwarder) {
+            ObjectProvider<ShardForwarder> shardForwarder,
+            A2uiStreamProcessor a2uiStreamProcessor,
+            MacroDslStreamProcessor macroDslStreamProcessor) {
         this.ingressGateway = ingressGateway;
         this.protocolUserIdResolver = protocolUserIdResolver;
         this.tenantResolver = tenantResolver;
         this.tenantConfig = tenantConfig;
         this.shardForwarder = shardForwarder;
+        this.a2uiStreamProcessor = a2uiStreamProcessor;
+        this.macroDslStreamProcessor = macroDslStreamProcessor;
     }
 
     /**
@@ -96,8 +102,14 @@ public class ConversationController {
         normalize(request);
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
         Flux<AgentEvent> events = ingressGateway.stream(request);
+        StringBuilder finalText = new StringBuilder();
         events.subscribe(
-                event -> safeSend(emitter, event),
+                event -> {
+                    if (event instanceof io.agentscope.core.event.TextBlockDeltaEvent delta) {
+                        finalText.append(delta.getDelta());
+                    }
+                    safeSend(emitter, event);
+                },
                 error -> {
                     Settle settle = Settle.fromError(request.getAgentId(), request.getUserId(),
                             request.getSessionId(), error);
@@ -116,8 +128,49 @@ public class ConversationController {
                     }
                     emitter.complete();
                 },
-                emitter::complete);
+                () -> {
+                    sendA2uiMessage(emitter, finalText.toString(), request);
+                    sendMacroDslMessage(emitter, finalText.toString(), request);
+                    emitter.complete();
+                });
         return emitter;
+    }
+
+    /**
+     * 流末 A2UI 分流：最终正文含经校验的界面载荷时，在关闭连接前下发一条
+     * {@code a2ui-message} 命名事件（载荷契约见 {@link A2uiStreamProcessor}）。
+     * 分流失败只记日志，不影响连接正常关闭。
+     */
+    private void sendA2uiMessage(SseEmitter emitter, String finalText, ConversationRequest request) {
+        try {
+            String surfaceId = request.getSessionId() == null || request.getSessionId().isBlank()
+                    ? "main"
+                    : request.getSessionId();
+            com.fasterxml.jackson.databind.JsonNode payload = a2uiStreamProcessor.split(finalText, surfaceId);
+            if (payload != null) {
+                emitter.send(SseEmitter.event().name("a2ui-message").data(payload));
+            }
+        } catch (Exception e) {
+            log.warn("a2ui stream split failed: agentId={}, sessionId={}", request.getAgentId(),
+                    request.getSessionId(), e);
+        }
+    }
+
+    /**
+     * 流末 macro DSL 分流：最终正文含 &lt;macro-a2ui&gt; 哨兵块时，在关闭连接前下发一条
+     * {@code macro-dsl} 命名事件（载荷契约见 {@link MacroDslStreamProcessor}）。
+     * 与 Google A2UI 通道并存、互不干扰；分流失败只记日志，不影响连接正常关闭。
+     */
+    private void sendMacroDslMessage(SseEmitter emitter, String finalText, ConversationRequest request) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode payload = macroDslStreamProcessor.split(finalText);
+            if (payload != null) {
+                emitter.send(SseEmitter.event().name("macro-dsl").data(payload));
+            }
+        } catch (Exception e) {
+            log.warn("macro-dsl stream split failed: agentId={}, sessionId={}", request.getAgentId(),
+                    request.getSessionId(), e);
+        }
     }
 
     /** 安全下发单条事件（命名事件 agent-event）；IO 异常转错误完成。 */

@@ -40,6 +40,22 @@ $env:DASHSCOPE_API_KEY = "sk-你的真实Key"
 
 缺失时应用仍可启动，仅对话失败。切换其它厂商在 `config/models.yml` 的 `yunxi.models.catalog` 新增 provider 条目，并把 `defaults.llm` 指向它。
 
+### OpenAI 兼容端点（新版 DashScope 模型，如 qwen4-max）
+
+部分新版模型（如 `qwen4-max`、`qwen3.8-27b`）只提供 OpenAI 兼容端点
+（`/compatible-mode/v1/chat/completions`），框架原生 DashScope 端点不支持。
+这类模型在 `models.yml` 中声明为 `provider: openai`，由框架原生 `OpenAIModelProvider`
+承载，端点与密钥经环境变量注入。`start-yunxi.ps1` 已自动从 `DASHSCOPE_API_KEY` 派生注入；
+**直接以 Maven / IDE 启动应用或跑测试时须自行注入**，否则对应 Agent 布建失败：
+
+```powershell
+$env:OPENAI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+$env:OPENAI_API_KEY = $env:DASHSCOPE_API_KEY
+```
+
+原生 DashScope 端点的模型（如 `qwen-max`、`qwen-plus`）无需此变量，继续走
+`DASHSCOPE_API_KEY`。两种 provider 按模型条目各自声明，互不影响。
+
 ### Redis（会话状态 / 轨迹 / 跨实例锁，必需）
 
 Docker 部署默认密码 `redispass`；非 Docker 用环境变量覆盖：

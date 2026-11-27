@@ -16,6 +16,9 @@ import lombok.extern.slf4j.Slf4j;
  * <p>三个元工具均通过 {@link ObjectProvider#getIfAvailable()} 懒取，仅当
  * {@code yunxi.muse.enabled=true} 时它们作为 Bean 存在，否则本注册器在
  * AgentConfigurer 侧直接被跳过，对未启用 MUSE 的 Agent 零侵入。</p>
+ *
+ * <p>是否挂载（含是否整组挂载）由 {@code AgentConfigurer} 的技能边界判定统一裁决，
+ * 本实现只执行注册，不携带判定。</p>
  */
 @Slf4j
 @Component
@@ -37,15 +40,10 @@ public class MuseToolRegistrarImpl implements MuseToolRegistrar {
     /**
      * 把三个元工具注册进 toolkit 的 muse 组（组默认激活）。
      *
-     * <p>只读评估工具 {@code muse_skill_eval} 始终注册；写类工具 {@code muse_skill_evolve} /
-     * {@code muse_skill_prune} 仅在 {@code allowWriteTools=true} 时注册（零技能 Agent 无法加载自己写出的技能，
-     * 写出来纯属噪音，按零技能 Agent 摘除写类工具判定摘除）。</p>
-     *
-     * @param toolkit         AgentScope toolkit 实例
-     * @param allowWriteTools true 注册 evolve / prune；false 仅注册 eval
+     * @param toolkit AgentScope toolkit 实例
      */
     @Override
-    public void registerTools(Toolkit toolkit, boolean allowWriteTools) {
+    public void registerTools(Toolkit toolkit) {
         SkillEvalTool evalTool = evalToolProvider.getIfAvailable();
         SkillRefineTool refineTool = refineToolProvider.getIfAvailable();
         SkillPruneTool pruneTool = pruneToolProvider.getIfAvailable();
@@ -55,12 +53,8 @@ public class MuseToolRegistrarImpl implements MuseToolRegistrar {
         }
         toolkit.createToolGroup("muse", "MUSE 自进化元工具", true);
         toolkit.registration().tool(evalTool).group("muse").apply();
-        if (allowWriteTools) {
-            toolkit.registration().tool(refineTool).group("muse").apply();
-            toolkit.registration().tool(pruneTool).group("muse").apply();
-            log.info("[muse] 已注册 MUSE 元工具组: muse_skill_eval / muse_skill_evolve / muse_skill_prune");
-        } else {
-            log.info("[muse] 已注册 MUSE 只读元工具: muse_skill_eval（零技能 Agent 不挂载写类工具）");
-        }
+        toolkit.registration().tool(refineTool).group("muse").apply();
+        toolkit.registration().tool(pruneTool).group("muse").apply();
+        log.info("[muse] 已注册 MUSE 元工具组: muse_skill_eval / muse_skill_evolve / muse_skill_prune");
     }
 }

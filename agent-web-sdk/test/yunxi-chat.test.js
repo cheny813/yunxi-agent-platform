@@ -110,3 +110,43 @@ test('_dispatchEvent: 多工具并发按 toolCallId 隔离累积', () => {
   assert.strictEqual(captured[0].todos.length, 1);
   assert.strictEqual(captured[0].todos[0].content, 'A');
 });
+
+// ── A2UI：a2ui-message 事件分发 + 正文哨兵块剥离 ──
+
+test('_parseSseBlock: 区分 agent-event 与 a2ui-message 命名事件', () => {
+  assert.strictEqual(typeof api._parseSseBlock, 'function', '未暴露 _parseSseBlock');
+
+  const agentEvt = api._parseSseBlock('event:agent-event\ndata:{"type":"TEXT_BLOCK_DELTA","delta":"hi"}\n');
+  assert.strictEqual(agentEvt.event, 'agent-event');
+  assert.strictEqual(agentEvt.data.type, 'TEXT_BLOCK_DELTA');
+
+  const a2ui = api._parseSseBlock(
+    'event:a2ui-message\n' +
+    'data:{"surfaceId":"s1","messages":[{"version":"1.0","createSurface":{"surfaceId":"s1","catalogId":"acme:basic"}}],"issues":[]}\n');
+  assert.strictEqual(a2ui.event, 'a2ui-message');
+  assert.strictEqual(a2ui.data.surfaceId, 's1');
+  assert.strictEqual(a2ui.data.messages.length, 1);
+  assert.deepStrictEqual(a2ui.data.issues, []);
+
+  assert.strictEqual(api._parseSseBlock('data:{bad json}\n'), null);
+});
+
+test('_parseAgentEvent: a2ui-message 块不误入 agent-event 通道', () => {
+  const block = 'event:a2ui-message\ndata:{"surfaceId":"s1","messages":[],"issues":[]}\n';
+  assert.strictEqual(api._parseAgentEvent(block), null);
+});
+
+test('_stripSentinel: 无块原样返回', () => {
+  assert.strictEqual(typeof api._stripSentinel, 'function', '未暴露 _stripSentinel');
+  assert.strictEqual(api._stripSentinel('今天天气不错。'), '今天天气不错。');
+  assert.strictEqual(api._stripSentinel(''), '');
+});
+
+test('_stripSentinel: 单块剥离、未闭合截断、多块剥离', () => {
+  const block = '<a2ui-json>[{"version":"1.0","createSurface":{"surfaceId":"s1","catalogId":"acme:basic"}}]</a2ui-json>';
+  assert.strictEqual(api._stripSentinel('界面如下：' + block + '以上。'), '界面如下：以上。');
+  assert.strictEqual(api._stripSentinel('界面如下：<a2ui-json>[{"vers'), '界面如下：');
+  assert.strictEqual(
+    api._stripSentinel(block + '中段' + block + '尾'),
+    '中段尾');
+});

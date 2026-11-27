@@ -39,7 +39,9 @@ yunxi Agent Platform 的前端 SDK 单一源（Single Source of Truth）。所�
 | `src/page-agent-sdk.js` | **可选 SDK 加载器**：按需加载原生 page-agent SDK（加载后 DomEngine 使用其增强状态）。不再包含任何 LLM 决策循环 |
 | `build/sdk.ts` + `build/vite.sdk.config.mjs` | **定制 SDK 构建入口**：从 page-agent 上游仓源码打包 IIFE 产物（见下节） |
 | `dist/page-agent.sdk.js` | **构建产物**：上表构建入口的输出，加载器按候选顺序加载 |
-| `src/yunxi-chat.js` | **对话客户端**：封装 `/api/conversations/chat`（同步）与 `/api/conversations/chat/stream`（SSE 流式），提供 `window.yunxiChat`；支持文本增量、任务清单、人机确认结果回传 |
+| `src/yunxi-chat.js` | **对话客户端**：封装 `/api/conversations/chat`（同步）与 `/api/conversations/chat/stream`（SSE 流式），提供 `window.yunxiChat`；支持文本增量、任务清单、人机确认结果回传、`onA2ui` 界面载荷回调 |
+| `src/a2ui-render.js` | **A2UI 界面渲染器**：官方 `@a2ui/web_core` 引擎 + 最小 DOM 投影，提供 `window.A2uiRenderer.mountA2ui(container, payload)`；框架无关（React/Vue/原生 HTML）。依赖 `@a2ui/web_core` 由消费方页面安装 |
+| `src/macro-render.js` | **@macroui DSL 渲染器**：30+ 组件（表格/8 类 SVG 图表/表单/Tabs/明暗主题），提供 `window.MacroRenderer.render(container, dsl)` / `setTheme(name)`；供报表/可视化场景，依赖 `@macroui/a2ui` 由消费方安装 |
 
 ## 快速接入
 
@@ -74,6 +76,8 @@ client.reportStructure('recipe', { bootstrap: true }); // 上报真实页面字�
   - `onDelta(delta, fullSoFar)` — 流式文本增量（仅 `stream` 模式）
   - `onDone(fullText)` — 完成回调（两种模式都会调用）
   - `onTodo(todos, meta)` — 任务清单全量更新（仅 `stream` 模式；需 Agent 启用任务清单）。`meta` 为 `{ toolCallId, revision }`
+  - `onA2ui(payload)` — A2UI 界面载荷（仅 `stream` 模式；需 Agent 启用 A2UI）。`payload` 为 `{ surfaceId, messages, issues }`，传给 `window.A2uiRenderer.mountA2ui(container, payload)` 渲染
+  - `onMacroDsl(dsl)` — @macroui/a2ui DSL 文本（仅 `stream` 模式；报表/图表/表格场景）。传给 `window.MacroRenderer.render(container, dsl)` 渲染
   - `confirmResults` — 人机确认结果回传，用于恢复因权限确认而挂起的对话
 
 **任务清单示例**（需 Agent 配置 `plan.taskList: true`）：

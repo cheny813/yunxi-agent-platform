@@ -25,6 +25,12 @@
             <groupId>io.yunxi</groupId>
             <artifactId>yunxi-runtime</artifactId>
         </dependency>
+        <!-- A2UI 适配层：真实 LLM 端到端测试经其公开 API 解析模型响应。 -->
+        <dependency>
+            <groupId>io.yunxi</groupId>
+            <artifactId>yunxi-a2ui</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

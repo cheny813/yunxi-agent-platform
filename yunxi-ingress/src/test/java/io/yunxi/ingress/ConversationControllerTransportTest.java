@@ -34,7 +34,8 @@ class ConversationControllerTransportTest {
     @BeforeEach
     void setUp() {
         controller = new ConversationController(ingressGateway, new ProtocolUserIdResolver(),
-                new HeaderTenantResolver("X-Tenant-Id"), TenantConfig.DISABLED, Mockito.mock(ObjectProvider.class));
+                new HeaderTenantResolver("X-Tenant-Id"), TenantConfig.DISABLED, Mockito.mock(ObjectProvider.class),
+                new A2uiStreamProcessor(), new MacroDslStreamProcessor());
         mvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
